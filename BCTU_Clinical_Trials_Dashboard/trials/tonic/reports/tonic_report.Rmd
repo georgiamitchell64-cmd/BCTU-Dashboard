@@ -1,0 +1,700 @@
+---
+title: "TONIC Progress Report"
+output:
+  html_document:
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+params:
+  report_data: NULL
+  selected_sites: "All sites"
+  date_from: NULL
+  date_to: NULL
+  include_withdrawn: false
+  include_appendix: false
+  report_date: !r format(Sys.Date(), "%d %B %Y")
+  logo_path: NULL
+  crf_csv_path: NULL
+  screening_xlsx_path: NULL
+  report_type: "TMG"
+  completeness_style: "heatmap"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE,warning=FALSE,message=FALSE,results="asis")
+library(dplyr)
+# Load shared flat completeness helper (copied alongside Rmd by reports_server)
+if (file.exists("flat_completeness.R")) source("flat_completeness.R")
+rd<-params$report_data;kpi<-if(!is.null(rd$kpis)) rd$kpis else list()
+N<-"#1B4F6B";T2<-"#2EC4A5";M<-"#6b7c8d";R2<-"#d0dde6"
+
+# Global safe accessor: NULL / length-0 → fallback (default NA)
+safe <- function(x, fallback = NA) if (is.null(x) || length(x) == 0) fallback else x
+logo_b64<-"";if(!is.null(params$logo_path)&&file.exists(params$logo_path))logo_b64<-base64enc::base64encode(params$logo_path)
+ph<-function(){if(nchar(logo_b64)>0)cat(sprintf('<div class="ph"><img src="data:image/jpeg;base64,%s" style="height:28px"/><span class="r">CONFIDENTIAL</span></div>\n',logo_b64)) else cat('<div class="ph"><span>TONIC</span><span class="r">CONFIDENTIAL</span></div>\n')}
+ps<-function(){cat('<div class="pg">\n');ph();cat('<div class="pb">\n')}
+pe<-function(n)cat(sprintf('</div><div class="pf"><span>TONIC %s Progress Report</span><span>%s</span><span>Birmingham Clinical Trials Unit</span></div></div>\n', if(!is.null(params$report_type) && params$report_type == "iTMG") "iTMG" else "TMG", n))
+sh<-function(n,t)cat(sprintf('<div class="sh"><span class="sn">%s</span>%s</div>\n',n,t))
+sb<-function(t,mt="8px")cat(sprintf('<div class="sb" style="margin-top:%s">%s</div>\n',mt,t))
+kc<-function(l,v,s,vc=""){cl<-if(nchar(vc)>0)paste0(" ",vc) else "";cat(sprintf('<div class="kc"><div class="kl">%s</div><div class="kv%s">%s</div><div class="ks">%s</div></div>\n',l,cl,v,s))}
+ht<-function(df,cn=names(df),sc=NULL,fs=NULL){
+  fss<-if(!is.null(fs))sprintf(' style="font-size:%s"',fs) else ""
+  cat(sprintf('<table class="rt"%s>\n<thead><tr>',fss))
+  for(h in cn)cat(sprintf('<th>%s</th>',h))
+  cat('</tr></thead>\n<tbody>\n')
+  for(i in seq_len(nrow(df))){cat('<tr>')
+    for(j in seq_along(df)){v<-as.character(df[i,j])
+      if(!is.null(sc)&&j==sc)cat(sprintf('<td class="stn">%s</td>',v)) else cat(sprintf('<td>%s</td>',v))}
+    cat('</tr>\n')};cat('</tbody></table>\n')}
+rl<-function(s)switch(s,green="GREEN",amber="AMBER",red="RED",not_yet_due="NOT YET DUE",small_n="AMBER (small n)","N/A")
+rb<-function(s)switch(s,green="sg",amber="sa",red="sr",not_yet_due="sna",small_n="sa","sna")
+```
+
+<style>
+:root{--N:#1B4F6B;--T:#2EC4A5;--T5:#e6f9f5;--N5:#e8f0f5;--tx:#2C3E50;--mu:#6b7c8d;--ru:#d0dde6;--st:#f8fafb}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:#f0f3f6;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}body{padding:0;background:white}.pg{box-shadow:none;margin:0;border:none;border-radius:0;page-break-after:always}.pg:last-child{page-break-after:avoid}}
+@page{size:A4;margin:8mm}
+.rw{font-family:-apple-system,system-ui,'Segoe UI',sans-serif;color:var(--tx);max-width:210mm;margin:0 auto}
+.pg{background:white;border:.5px solid var(--ru);border-radius:4px;margin-bottom:14px;overflow:hidden;width:210mm;min-height:287mm;box-sizing:border-box;position:relative}
+.ph{display:flex;justify-content:space-between;align-items:center;padding:5px 18px;background:var(--N)}.ph span{font-size:10px;color:rgba(255,255,255,.8)}.ph .r{color:rgba(255,255,255,.5)}.ph img{height:28px}
+.pf{display:flex;justify-content:space-between;align-items:center;padding:4px 18px;border-top:.5px solid var(--ru);position:absolute;bottom:0;left:0;right:0}.pf span{font-size:9px;color:var(--mu)}
+.pb{padding:16px 24px 28px}
+.tb{text-align:center;padding:14px 16px 6px}
+.tm{font-size:11px;color:var(--N);margin:0 0 2px}.tt{font-size:30px;font-weight:700;color:var(--N);margin:0;letter-spacing:1px;line-height:1.1}.tt span{color:var(--N)}.ts{font-size:13px;color:var(--T);font-weight:600;margin:5px 0 0}.tr{width:50px;height:3px;background:var(--T);margin:8px auto;border-radius:2px}.td{font-size:11px;color:var(--mu);margin:2px 0}
+.pd{font-size:9px;color:var(--tx);margin:6px 0;line-height:1.5}.pd td{padding:1px 0;vertical-align:top}.pd td:first-child{width:110px;color:var(--mu);font-weight:600}
+.fb{margin:6px 0 0;background:var(--N5);border-left:3px solid var(--N);border-radius:0 4px 4px 0;padding:5px 14px}.fb table{width:100%;font-size:10px;border-collapse:collapse}.fb td{padding:1px 0}.fb td:first-child{color:var(--mu);width:100px;font-weight:500}.fb td:last-child{color:var(--N);font-weight:500}
+.sh{font-size:13px;font-weight:600;color:var(--N);margin:0 0 3px;padding-bottom:3px;border-bottom:2px solid var(--T);display:flex;align-items:center;gap:6px}.sn{font-size:10px;color:var(--T);font-weight:700}
+.sb{font-size:10px;font-weight:600;color:var(--N);margin:8px 0 4px;text-transform:uppercase;letter-spacing:.5px}
+.kpi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:6px 0}
+.kc{background:var(--st);border:.5px solid var(--ru);border-radius:6px;padding:6px 8px;border-left:3px solid var(--T)}
+.kl{font-size:8px;color:var(--mu);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}.kv{font-size:18px;font-weight:700;color:var(--N);line-height:1}.kv.green{color:#1a9e75}.kv.amber{color:#b97417}.ks{font-size:8px;color:var(--mu);margin-top:1px}
+.ca{background:white;border:.5px solid var(--ru);border-radius:6px;padding:8px 10px 4px;margin:4px 0 0}.ct{font-size:9px;color:var(--N);font-weight:600;margin-bottom:4px}.cc{font-size:8px;color:var(--mu);margin-top:2px;font-style:italic}
+svg.ch text{font-family:-apple-system,system-ui,sans-serif}
+.cw{position:relative}
+.rt{width:100%;border-collapse:collapse;font-size:10px;margin:4px 0}.rt th{background:var(--N);color:white;padding:4px 7px;font-weight:500;text-align:left;font-size:9px}.rt th:not(:first-child){text-align:right}.rt td{padding:3px 7px;border-bottom:.5px solid var(--ru)}.rt td:not(:first-child){text-align:right}.rt tr:nth-child(even) td{background:var(--st)}.rt tr:last-child td{border-bottom:none}
+.stn{font-weight:500;color:var(--N)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:9px;padding:2px 8px;border-radius:12px;font-weight:500}
+.sg{background:#d4f5ec;color:#0F6E56}.sa{background:#fef3dc;color:#8a5a0d}.sr{background:#fde8e8;color:#991b1b}.sna{background:#F1F5F9;color:#64748B}
+.st-rec{background:#d4f5ec;color:#0F6E56}.st-set{background:#fef3dc;color:#8a5a0d}.st-id{background:#E6F1FB;color:#0C447C}.st-pen{background:#F1F5F9;color:#64748B}.st-cl{background:#fde8e8;color:#991b1b}
+.dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.pc{display:flex;align-items:center;gap:4px}.pt{flex:1;height:7px;background:#edf2f7;border-radius:20px;overflow:hidden;border:.5px solid var(--ru)}.pfl{height:100%;border-radius:20px}.plb{font-size:8px;font-weight:600;width:30px;text-align:right;flex-shrink:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.na{background:#F1F5F9;border:.5px solid #CBD5E1;border-radius:6px;padding:6px 10px;font-size:10px;color:#4a5568}
+.psc{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0}
+.pcd{border-radius:6px;padding:12px 8px;text-align:center}.pcl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}.pcv{font-size:28px;font-weight:700;line-height:1}
+.ptb{width:100%;border-collapse:collapse;font-size:11px;margin:8px 0}.ptb th{padding:7px 10px;font-weight:600;text-align:left;font-size:10px;border-bottom:2px solid var(--N);color:var(--N)}.ptb th:not(:first-child){text-align:center}.ptb td{padding:6px 10px;border-bottom:1px solid var(--ru)}.ptb td:not(:first-child){text-align:center}.ptb tr:nth-child(even) td{background:var(--st)}.ptb .cr{font-weight:500;color:var(--N)}.ptb .cv{font-weight:700;font-size:12px}
+.sp{display:inline-block;font-size:9px;padding:2px 10px;border-radius:12px;font-weight:600}
+.hm-g{background:#d4f5ec;color:#0F6E56}.hm-a{background:#fef3dc;color:#8a5a0d}.hm-r{background:#fde8e8;color:#991b1b}.hm-z{background:#F1F5F9;color:#94A3B8}
+.mt{font-size:10px;margin:4px 0}
+#header,h1.title,h4.date{display:none}
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+<div class="rw">
+
+```{r page1-title}
+ps()
+rtype <- if(!is.null(params$report_type) && params$report_type == "iTMG") "Independent Trial Management Group" else "Trial Management Group"
+rtype_short <- if(!is.null(params$report_type) && params$report_type == "iTMG") "iTMG" else "TMG"
+cat(sprintf('<div class="tb"><p class="tm">Timing Of Nutrition In emergenCy laparotomy</p><p class="tt">T<span>O</span>NI<span>C</span></p><div class="tr"></div><p class="ts">%s Meeting &mdash; Progress Report</p>\n', rtype))
+cat(sprintf('<p class="td">%s</p>',params$report_date))
+cat('<p style="font-size:10px;color:var(--T);font-weight:600;margin:2px 0">Confidential &mdash; for internal use only</p></div>\n')
+cat('<div class="pd"><table style="width:100%;border-collapse:collapse"><tr><td>CI</td><td>Mr Matthew Lee</td></tr><tr><td>Programme</td><td>NIHR Health Technology Assessment (HTA) Programme</td></tr><tr><td>Funder ref</td><td>NIHR155875</td></tr><tr><td>Sponsor</td><td>University of Birmingham (RG_25-059)</td></tr><tr><td>REC (E&amp;W)</td><td>25-0268, East of England &ndash; Essex REC</td></tr><tr><td>REC (Scotland)</td><td>26-SS-0001, Scotland A REC</td></tr><tr><td>ISRCTN</td><td>ISRCTN11056540 &middot; CPMS 56203</td></tr><tr><td>Project dates</td><td>01-Jun-2024 to 29-Feb-2028 (45 months)</td></tr><tr><td>Sample / Sites</td><td>898 (449 per arm) &middot; 25 UK sites</td></tr></table></div>\n')
+sl<-if(is.null(params$selected_sites)||"All sites"%in%params$selected_sites)"All sites" else params$selected_sites
+dl<-if(is.null(params$date_from))"No filter applied" else paste(format(as.Date(params$date_from),"%d %b %Y"),"\u2192",format(as.Date(params$date_to),"%d %b %Y"))
+cat(sprintf('<div class="fb"><table><tr><td>Sites</td><td>%s</td></tr><tr><td>Date range</td><td>%s</td></tr><tr><td>Participants</td><td>%s included</td></tr></table></div>\n',sl,dl,nrow(rd$filtered_df)))
+
+# Milestone table
+sb("Key milestones","8px")
+cat('<table class="rt"><thead><tr><th>Milestone</th><th style="text-align:left">Date</th><th style="text-align:left">Status</th></tr></thead><tbody>\n')
+ms<-list(c("Grant activation","Jun 2024","Complete"),c("Protocol v2 finalised","14 Feb 2026","Complete"),c("REC favourable opinion (E&amp;W)","14 Jan 2026","Complete"),c("REC favourable opinion (Scotland)","06 Mar 2026","Complete"),c("HRA/HRCW approval","16 Jan 2026","Complete"),c("First site opened","01 Apr 2026","Complete"),c("First participant randomised","01 Apr 2026","Complete"),c("Pilot end (6-month)","Sep 2026","Pending"),c("Full recruitment end","~Jun 2028","Estimated"),c("Follow-up complete","~Sep 2028","Estimated"),c("Database lock","~Nov 2028","Estimated"),c("Analysis complete","~Jan 2029","Estimated"),c("Close out","~Feb 2029","Estimated"))
+for(m in ms){stc<-if(m[3]=="Complete")"sg" else if(m[3]=="Pending")"sa" else "sna";cat(sprintf('<tr><td class="stn">%s</td><td style="text-align:left">%s</td><td style="text-align:left"><span class="pill %s">%s</span></td></tr>\n',m[1],m[2],stc,m[3]))}
+cat('</tbody></table>\n')
+
+# Gantt chart
+sb("Project timeline","8px")
+cat('<div class="ca">\n<svg viewBox="0 0 680 165" width="100%" style="font-family:-apple-system,system-ui,sans-serif">\n')
+# Timeline: Jun 2024 (month 1) to Feb 2029 (month 57)
+# x scale: months 1-57 mapped to x=90..670
+sx_g<-function(mo) 90+(mo-1)/56*580
+# Y positions for 7 rows
+yb<-28;rh<-16;rg<-3
+# Month labels (every 6 months)
+mlabs<-c("Jun 24","Dec 24","Jun 25","Dec 25","Jun 26","Dec 26","Jun 27","Dec 27","Jun 28","Dec 28")
+mvals<-c(1,7,13,19,25,31,37,43,49,55)
+for(i in seq_along(mlabs))cat(sprintf('<text x="%.0f" y="16" font-size="7" fill="#8fa8b8" text-anchor="middle">%s</text>\n',sx_g(mvals[i]),mlabs[i]))
+cat(sprintf('<line x1="90" y1="20" x2="670" y2="20" stroke="#e0e8ef" stroke-width=".5"/>\n'))
+# Phases: name, start_month, end_month, colour
+phases<-list(
+  list("Study setup",1,21,"#85B7EB"),
+  list("Recruitment pilot (6mo)",22,27,"#1B4F6B"),
+  list("Full trial (21mo)",28,49,"#2EC4A5"),
+  list("Treatment / follow-up",22,52,"#FAC775"),
+  list("Data cleaning",50,53,"#97C459"),
+  list("Analysis & writeup",52,56,"#F0997B"),
+  list("Close out",55,57,"#ED93B1"))
+for(i in seq_along(phases)){p<-phases[[i]];y<-yb+(i-1)*(rh+rg)
+  cat(sprintf('<text x="4" y="%.0f" font-size="8" fill="#6b7c8d" font-weight="500">%s</text>\n',y+11,p[[1]]))
+  cat(sprintf('<rect x="%.0f" y="%.0f" width="%.0f" height="%s" fill="%s" rx="3" opacity=".85"/>\n',sx_g(p[[2]]),y,sx_g(p[[3]])-sx_g(p[[2]]),rh,p[[4]]))}
+# Current month marker (Apr 2026 = month 23)
+cm_mo<-as.numeric(difftime(Sys.Date(),as.Date("2024-06-01"),units="days"))/30.44+1
+cat(sprintf('<line x1="%.0f" y1="20" x2="%.0f" y2="%.0f" stroke="#C0392B" stroke-width="1.5" stroke-dasharray="4,2"/>\n',sx_g(cm_mo),sx_g(cm_mo),yb+7*(rh+rg)))
+cat(sprintf('<text x="%.0f" y="%.0f" font-size="7" fill="#C0392B" text-anchor="middle" font-weight="600">Now</text>\n',sx_g(cm_mo),yb+7*(rh+rg)+10))
+cat('</svg>\n</div>\n')
+pe(1)
+```
+
+```{r page2-kpis-recruitment}
+mo<-rd$monthly_recruit
+ps();sh("1","Summary KPIs")
+
+vp<-safe(kpi$recruitment_pct)
+vc<-if(is.na(vp))"" else if(vp>=100)"green" else "amber"
+vl<-if(is.na(vp))"N/A" else if(vp>=100)paste0(round(vp-100,1),"%") else paste0(round(100-vp,1),"%")
+vs<-if(is.na(vp))"not yet calculable" else if(vp>=100)"ahead of trajectory" else "behind trajectory"
+
+fk<-rd$fu_kpi
+fdc_elig<-safe(fk$fu_dc_elig, 0); fdc_count<-safe(fk$fu_dc_count, 0)
+f3_elig<-safe(fk$fu_30_elig, 0); f3_count<-safe(fk$fu_30_count, 0)
+f9_elig<-safe(fk$fu_90_elig, 0); f9_count<-safe(fk$fu_90_count, 0)
+fdcv<-as.character(fdc_count); fdcs<-if(fdc_elig>0)paste0("of ",fdc_elig," eligible") else "not yet due"; fdcc<-if(fdc_elig>0&&fdc_count/fdc_elig>=.8)"" else "amber"
+f3v<-as.character(f3_count); f3s<-if(f3_elig>0)paste0("of ",f3_elig," eligible") else "not yet due"; f3c<-if(f3_elig>0&&f3_count/f3_elig>=.8)"" else "amber"
+f9v<-as.character(f9_count); f9s<-if(f9_elig>0)paste0("of ",f9_elig," eligible") else "not yet due"; f9c<-if(f9_elig>0&&f9_count/f9_elig>=.8)"" else "amber"
+
+etd<-safe(kpi$expected_to_date)
+cat('<div class="kpi">\n');kc("Total randomised",safe(kpi$total_randomised,0),sprintf("of %s target",safe(kpi$trial_target,898)));kc("Sites active",safe(kpi$n_sites_active,0),"UK sites open");kc("Expected to date",if(is.na(etd))"N/A" else etd,"protocol target");kc("vs. expected",vl,vs,vc);kc("Months elapsed",safe(kpi$months_elapsed,0),"of 27 total");kc("SAEs reported",safe(kpi$sae_count,0),"since trial start");kc("Discharge follow-up",fdcv,fdcs,fdcc);kc("30-day follow-up",f3v,f3s,f3c);kc("90-day follow-up",f9v,f9s,f9c);cat(sprintf('<div class="kc" style="border-left:3px solid var(--T)"><div class="kl">Trial target</div><div class="kv">%s</div><div class="ks">by Jun 2028</div></div>\n',safe(kpi$trial_target,898)));cat('</div>\n')
+
+# Recruitment charts
+cat('<div style="margin-top:8px">\n');sh("2","Recruitment")
+cat('<div class="two"><div class="ca"><div class="ct">Cumulative randomisations</div><div class="cw" style="height:160px"><canvas id="cumC" role="img" aria-label="Cumulative recruitment chart"></canvas></div></div>\n')
+cat('<div class="ca"><div class="ct">Monthly randomisations</div><div class="cw" style="height:160px"><canvas id="monC" role="img" aria-label="Monthly recruitment chart"></canvas></div></div></div></div>\n')
+
+# Chart.js data — sequential months from first recruitment to current; no future actuals
+if(!is.null(mo) && nrow(mo)>0){
+  current_month_date <- as.Date(format(Sys.Date(), "%Y-%m-01"))
+  first_month <- min(mo$month_date)
+  # Build sequential months from first recruitment to current month (inclusive)
+  all_m <- seq.Date(first_month, current_month_date, by = "month")
+
+  # Target schedule: extend one quarter beyond current for context
+  tgt <- rd$target_schedule[
+    rd$target_schedule$month_date >= first_month &
+    rd$target_schedule$month_date <= (current_month_date + 90), ]
+
+  # Cumulative actual at each month (carry forward from most recent recruitment)
+  cum_a <- sapply(all_m, function(d){
+    r <- mo[mo$month_date <= d, ]
+    if(nrow(r)>0) max(r$cumulative) else 0
+  })
+
+  # Cumulative target at each month (include target months even beyond actuals for the dashed line)
+  all_m_tgt <- sort(unique(c(all_m, tgt$month_date)))
+  cum_t <- sapply(all_m_tgt, function(d){
+    r <- tgt[tgt$month_date <= d, ]
+    if(nrow(r)>0) r$cumulative_target[nrow(r)] else NA
+  })
+  # Align cum_a onto the longer x-axis (NA for future months on actual line)
+  cum_a_aligned <- sapply(all_m_tgt, function(d) if(d <= current_month_date) cum_a[match(d, all_m)] else NA)
+
+  labs_j <- paste0("['", paste(format(all_m_tgt, "%b %y"), collapse="','"), "']")
+
+  # Monthly bars: every month from first recruitment to current, 0 for missing
+  mon_vals_df <- data.frame(month_date = all_m)
+  mon_vals_df <- merge(mon_vals_df, mo[, c("month_date","n")], by="month_date", all.x=TRUE)
+  mon_vals_df$n[is.na(mon_vals_df$n)] <- 0
+  mon_vals_df <- mon_vals_df[order(mon_vals_df$month_date), ]
+  mon_labs <- paste0("['", paste(format(mon_vals_df$month_date,"%b %y"), collapse="','"), "']")
+  mon_vals <- paste0("[", paste(mon_vals_df$n, collapse=","), "]")
+
+  cat(sprintf('<script>
+var N="#1B4F6B",T2="#2EC4A5",M="#6b7c8d",R2="#d0dde680";Chart.defaults.font.family="-apple-system,system-ui,sans-serif";Chart.defaults.font.size=10;Chart.defaults.color=M;
+new Chart(document.getElementById("cumC"),{type:"line",data:{labels:%s,datasets:[{label:"Actual",data:[%s],borderColor:N,backgroundColor:T2+"30",fill:true,tension:.3,pointBackgroundColor:N,pointRadius:4,borderWidth:2,spanGaps:false},{label:"Target",data:[%s],borderColor:R2,borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},border:{display:false}},y:{beginAtZero:true,grid:{color:R2},border:{display:false}}}}});
+new Chart(document.getElementById("monC"),{type:"bar",data:{labels:%s,datasets:[{data:%s,backgroundColor:[%s],borderRadius:6,maxBarThickness:40}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},border:{display:false}},y:{beginAtZero:true,grid:{color:R2},border:{display:false},ticks:{stepSize:1}}}}});
+</script>\n',
+    labs_j,
+    paste(ifelse(is.na(cum_a_aligned),"null",cum_a_aligned), collapse=","),
+    paste(ifelse(is.na(cum_t),"null",cum_t), collapse=","),
+    mon_labs, mon_vals,
+    paste0(rep(sprintf('"%s"',c(N,T2)), length.out=nrow(mon_vals_df)), collapse=",")))
+}
+pe(2)
+```
+
+```{r page3-sites}
+ss<-rd$site_summary;sst<-rd$site_status;ma<-rd$monthly_achievement;ost<-rd$open_sites;hm<-rd$site_month_heatmap
+# Ensure data frames, never NULL
+if(is.null(ss))  ss  <- data.frame(site_name=character(0), randomisations=integer(0))
+if(is.null(sst)) sst <- data.frame(site_name=character(0), stage=character(0), target=integer(0), progress_pct=numeric(0), randomisations=integer(0))
+if(is.null(ma))  ma  <- data.frame(site_name=character(0), actual=integer(0), monthly_target=integer(0), month_label=character(0))
+if(is.null(ost)) ost <- data.frame(site_name=character(0), open_date=character(0), randomisations=integer(0), days_to_first=integer(0))
+ps();sh("3","Site Performance")
+
+# Site recruitment chart — actual vs monthly target (consolidated)
+if(nrow(ss)>0){
+  sb("Randomisations by site (vs monthly target)","4px")
+  # Merge actual randomisations with monthly targets from site_status
+  chart_df <- ss[order(ss$randomisations), , drop=FALSE]
+  if(!is.null(sst) && nrow(sst)>0 && "monthly_target" %in% names(sst)){
+    chart_df <- merge(chart_df, sst[, c("site_name","monthly_target"), drop=FALSE], by="site_name", all.x=TRUE)
+    chart_df$monthly_target[is.na(chart_df$monthly_target)] <- 2
+  } else {
+    chart_df$monthly_target <- 2
+  }
+  chart_df <- chart_df[order(chart_df$randomisations), , drop=FALSE]
+  h1 <- max(nrow(chart_df)*32+60,120)
+  cat(sprintf('<div class="ca"><div class="cw" style="height:%spx"><canvas id="sB" role="img" aria-label="Site randomisations vs monthly target"></canvas></div>\n',h1))
+  cat('<div style="display:flex;gap:12px;margin-top:4px;font-size:10px;color:#6b7c8d"><span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#1B4F6B"></span>Actual (total)</span><span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#2EC4A540"></span>Monthly target</span></div></div>\n')
+  cat(sprintf('<script>new Chart(document.getElementById("sB"),{type:"bar",data:{labels:[%s],datasets:[{label:"Actual",data:[%s],backgroundColor:"%s",borderRadius:4,maxBarThickness:20},{label:"Monthly target",data:[%s],backgroundColor:"%s40",borderColor:"%s80",borderWidth:1,borderRadius:4,maxBarThickness:20}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,grid:{color:"#d0dde680"},border:{display:false},ticks:{stepSize:1}},y:{grid:{display:false},border:{display:false}}}}});</script>\n',
+    paste0(sprintf('"%s"',chart_df$site_name),collapse=","),
+    paste(chart_df$randomisations,collapse=","), N,
+    paste(chart_df$monthly_target,collapse=","), T2, T2))
+}
+
+# Open sites table
+if(nrow(ost)>0){sb("Open sites","8px")
+  ost_d<-ost;ost_d$days_to_first[is.na(ost_d$days_to_first)]<-"\u2014";ost_d$open_date[is.na(ost_d$open_date)]<-"\u2014"
+  ht(ost_d,c("Site","Date opened","Randomisations","Days to 1st rand"),sc=1)}
+
+# Heatmap
+if(!is.null(hm)&&nrow(hm)>0){sb("Per-site per-month recruitment","8px")
+  months_u<-unique(hm$month_label[order(hm$month)])
+  sites_u<-unique(hm$site_name)
+  cat('<table class="rt"><thead><tr><th>Site</th>')
+  for(m in months_u)cat(sprintf('<th style="text-align:center">%s</th>',m))
+  cat('</tr></thead><tbody>\n')
+  for(s in sites_u){
+    cat(sprintf('<tr><td class="stn">%s</td>',s))
+    for(m in months_u){
+      r<-hm[hm$site_name==s&hm$month_label==m,]
+      if(nrow(r)>0){a<-r$actual[1];mt2<-r$monthly_target[1]
+        cl<-if(a>=mt2)"hm-g" else if(a>0)"hm-a" else "hm-r"
+        cat(sprintf('<td style="text-align:center"><span class="pill %s" style="min-width:20px;justify-content:center">%s</span></td>',cl,a))
+      } else cat('<td style="text-align:center;color:#CBD5E1">\u2014</td>')
+    }
+    cat('</tr>\n')
+  }
+  cat('</tbody></table>\n')
+  cat('<div class="mt" style="color:#6b7c8d;font-size:9px;margin-top:4px"><span class="pill hm-g" style="font-size:8px">Met target</span> <span class="pill hm-a" style="font-size:8px">Below target</span> <span class="pill hm-r" style="font-size:8px">Zero</span></div>\n')
+}
+
+# Status table — progress bars only for recruiting sites
+if(nrow(sst)>0){sb("All sites \u2014 current status","8px")
+  stc<-function(s){s<-tolower(s);if(grepl("recruit",s))"st-rec" else if(grepl("setup|set.up",s))"st-set" else if(grepl("identif",s))"st-id" else if(grepl("closed|suspend",s))"st-cl" else "st-pen"}
+  dc<-function(s){s<-tolower(s);if(grepl("recruit",s))"#0F6E56" else if(grepl("setup|set.up",s))"#D97706" else if(grepl("identif",s))"#378ADD" else if(grepl("closed",s))"#C0392B" else "#888780"}
+  prc<-function(s){s<-tolower(s);if(grepl("recruit",s))"#0F6E56" else "#94A3B8"}
+  is_recruiting<-function(s) grepl("recruit",tolower(s))
+  cat('<table class="rt"><thead><tr><th>Site</th><th style="text-align:left">Status</th><th>Target</th><th style="text-align:left;width:30%">Progress</th></tr></thead><tbody>\n')
+  for(i in seq_len(nrow(sst))){sc2<-stc(sst$stage[i]);d2<-dc(sst$stage[i]);pr2<-prc(sst$stage[i])
+    if(is_recruiting(sst$stage[i])){
+      p<-min(sst$progress_pct[i],100)
+      prog_html<-sprintf('<div class="pc"><div class="pt"><div class="pfl" style="width:%s%%;background:%s"></div></div><span class="plb" style="color:%s">%s/%s</span></div>',p,pr2,pr2,sst$randomisations[i],sst$target[i])
+    } else {
+      prog_html<-sprintf('<span style="font-size:9px;color:#94A3B8">\u2014</span>')
+    }
+    cat(sprintf('<tr><td class="stn">%s</td><td style="text-align:left"><span class="pill %s"><span class="dot" style="background:%s"></span>%s</span></td><td>%s</td><td style="text-align:left">%s</td></tr>\n',
+      sst$site_name[i],sc2,d2,sst$stage[i],sst$target[i],prog_html))}
+  cat('</tbody></table>\n')
+}
+pe(3)
+```
+
+```{r page-consort}
+# CONSORT flow diagram — renders inline SVG using the shared builder.
+# Looks for consort_flow.R in several likely locations (matches tsc_charts sourcing).
+consort_script_candidates <- c(
+  "consort_flow.R",
+  file.path(dirname(knitr::current_input(dir = TRUE)), "consort_flow.R"),
+  file.path(dirname(knitr::current_input(dir = TRUE)), "..", "consort_flow.R"),
+  file.path(dirname(knitr::current_input(dir = TRUE)), "..", "functions", "consort_flow.R")
+)
+consort_script <- consort_script_candidates[file.exists(consort_script_candidates)][1]
+if (!is.na(consort_script)) {
+  source(consort_script, local = FALSE)
+  counts <- consort_counts(rd, screening_xlsx_path = params$screening_xlsx_path)
+  ps(); sh("4", "CONSORT Flow Diagram")
+  cat('<p class="mt" style="color:#6b7c8d">Participant flow from screening through to 90-day follow-up. ',
+      'Counts derived from REDCap where possible; screening total sourced from the sites screening log.</p>\n')
+  cat('<div style="display:flex;justify-content:center;margin:10px 0">\n')
+  cat(consort_svg(counts))
+  cat('</div>\n')
+  pe(4)
+}
+```
+
+```{r page4-fu-crf-safety-wd-demo}
+fu<-rd$fu_summary;wd<-rd$withdrawals;dem<-if(!is.null(rd$demographics)) rd$demographics else list()
+if(is.null(fu)) fu <- data.frame(timepoint=c("Discharge","30-day","90-day"), eligible=0L, complete=NA_integer_, assessable=FALSE, pct=NA_real_, denominator_note="", stringsAsFactors=FALSE)
+if(is.null(wd)) wd <- list(n=0, rate=0, log=NULL)
+ha<-!is.null(dem$age)&&(safe(dem$age$under_70,0)+safe(dem$age$over_70,0))>0
+hn<-!is.null(dem$nela)&&(safe(dem$nela$under_5,0)+safe(dem$nela$over_5,0))>0
+he<-!is.null(dem$ethnicity)&&!is.null(dem$ethnicity$table)&&nrow(dem$ethnicity$table)>0
+ps();sh("5","Follow-up Completion")
+cat('<div class="two" style="margin-top:4px"><div class="ca"><div class="ct">Completion by timepoint</div><div class="cw" style="height:140px"><canvas id="fuC" role="img" aria-label="Follow-up completion chart"></canvas></div></div><div>\n')
+ft<-data.frame(T=fu$timepoint,E=ifelse(!fu$assessable,"\u2014",as.character(fu$eligible)),C=ifelse(!fu$assessable|is.na(fu$complete),"\u2014",as.character(fu$complete)),P=ifelse(!fu$assessable|is.na(fu$pct),"N/A",paste0(fu$pct,"%")),stringsAsFactors=FALSE)
+ht(ft,c("Timepoint","Eligible","Complete","%"))
+cat('</div></div>\n')
+# Chart.js follow-up
+fv<-ifelse(is.na(fu$pct)|!fu$assessable,0,fu$pct)
+cat(sprintf('<script>new Chart(document.getElementById("fuC"),{type:"bar",data:{labels:["Discharge","30-day","90-day"],datasets:[{data:[%s],backgroundColor:["%s","%s","#5B8DB8"],borderRadius:6,maxBarThickness:44}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},border:{display:false}},y:{beginAtZero:true,max:100,grid:{color:"#d0dde680"},border:{display:false},ticks:{callback:function(v){return v+"%%"}}}}}});</script>\n',paste(fv,collapse=","),N,T2))
+
+# Safety
+sb("Safety events","8px")
+sae_n<-safe(kpi$sae_count,0)
+if(sae_n==0)cat('<p class="mt" style="color:#6b7c8d">No SAEs reported.</p>\n') else {
+  cat(sprintf('<p class="mt">Total SAEs: <strong>%s</strong></p>\n',sae_n))
+  if(!is.null(rd$safety_summary)&&nrow(rd$safety_summary)>0)ht(rd$safety_summary)}
+
+# Withdrawals + Demographics side by side
+cat('<div class="two" style="margin-top:6px"><div>\n');sh("6","Withdrawals")
+if(safe(wd$n,0)==0)cat('<p class="mt" style="color:#6b7c8d">No withdrawals.</p>\n') else {
+  cat(sprintf('<p class="mt"><strong>%s</strong> from %s (%s%%)</p>\n',wd$n,safe(kpi$total_randomised,0),safe(wd$rate,0)))
+  if(!is.null(wd$log)&&nrow(wd$log)>0)ht(wd$log,c("Site","Reason"),sc=1)}
+cat('</div><div>\n');sh("7","Demographics")
+if(ha){ta<-dem$age$under_70+dem$age$over_70;pu<-round(dem$age$under_70/ta*100,1);po<-round(dem$age$over_70/ta*100,1)
+  cat(sprintf('<div class="sb" style="margin-top:4px">Age at operation</div><div style="display:flex;gap:6px;margin:3px 0"><div style="flex:1;text-align:center;padding:6px 4px;background:var(--T5);border-radius:6px"><div style="font-size:16px;font-weight:700;color:#0F6E56">%s</div><div style="font-size:8px;color:var(--mu)">Under 70 (%s%%)</div></div><div style="flex:1;text-align:center;padding:6px 4px;background:var(--N5);border-radius:6px"><div style="font-size:16px;font-weight:700;color:var(--N)">%s</div><div style="font-size:8px;color:var(--mu)">70+ (%s%%)</div></div></div>\n',dem$age$under_70,pu,dem$age$over_70,po))}
+if(hn){tn<-dem$nela$under_5+dem$nela$over_5;u5<-round(dem$nela$under_5/tn*100,1);o5<-round(dem$nela$over_5/tn*100,1)
+  cat(sprintf('<div class="sb">NELA 30-day mortality</div><div style="display:flex;gap:6px;margin:3px 0"><div style="flex:1;text-align:center;padding:6px 4px;background:var(--T5);border-radius:6px"><div style="font-size:16px;font-weight:700;color:#0F6E56">%s</div><div style="font-size:8px;color:var(--mu)">Under 5%% (%s%%)</div></div><div style="flex:1;text-align:center;padding:6px 4px;background:var(--N5);border-radius:6px"><div style="font-size:16px;font-weight:700;color:var(--N)">%s</div><div style="font-size:8px;color:var(--mu)">5%%+ (%s%%)</div></div></div>\n',dem$nela$under_5,u5,dem$nela$over_5,o5))}
+if(!ha&&!hn)cat('<div class="na">No demographic data.</div>\n')
+cat('</div></div>\n')
+if(he){eth<-dem$ethnicity$table;mx<-max(eth$n,1);sb("Ethnicity","4px")
+  cat('<table class="rt"><thead><tr><th>Category</th><th>n</th><th>%</th></tr></thead><tbody>\n')
+  for(i in seq_len(nrow(eth))){iw<-grepl("^White",eth$ethnicity[i]);tc<-if(iw)"var(--N)" else "var(--T)"
+    cat(sprintf('<tr><td style="color:%s;font-weight:500">%s</td><td>%s</td><td>%s%%</td></tr>\n',tc,eth$ethnicity[i],eth$n[i],eth$pct[i]))}
+  cat('</tbody></table>\n')
+  cat(sprintf('<p class="mt" style="font-size:9px;color:#6b7c8d">Total: %s. White: %s, Ethnic minorities: %s.</p>\n',dem$ethnicity$total,dem$ethnicity$white,dem$ethnicity$minority))
+}
+pe(5)
+```
+
+```{r page5b-baseline-table}
+# ── Baseline characteristics ("Table 1") ──────────────────────────────────
+if (file.exists("baseline_table.R")) {
+  source("baseline_table.R")
+  bl_df <- tryCatch(baseline_characteristics_df(rd), error = function(e) NULL)
+  if (!is.null(bl_df) && nrow(bl_df) > 0) {
+    ps(); sh("7b","Baseline characteristics")
+    cat('<p class="mt" style="color:#6b7c8d">Participant characteristics at baseline, including minimisation variables and key demographic measures.</p>\n')
+    cat(baseline_characteristics_html(bl_df))
+    pe(6)
+  }
+}
+```
+```{r page5-recruitment-targets}
+ps(); sh("X","Recruitment Targets & Progression")
+
+# ─────────────────────────────────────────────
+# 1. Recruitment vs Target
+# ─────────────────────────────────────────────
+sb("Recruitment vs target","6px")
+
+rec <- rd$monthly_recruit
+tgt <- rd$target_schedule
+if(is.null(tgt)) tgt <- data.frame(month_date=as.Date(character(0)), cumulative_target=integer(0))
+
+if(!is.null(rec) && nrow(rec)>0 && nrow(tgt)>0){
+
+  df <- rec %>%
+    left_join(tgt, by = "month_date") %>%
+    mutate(
+      pct = ifelse(cumulative_target > 0,
+                   round(100 * cumulative / cumulative_target), 0),
+      pct_col = case_when(
+        pct >= 100 ~ "color:#0F6E56;font-weight:600",
+        pct >= 80  ~ "color:#D97706;font-weight:600",
+        TRUE       ~ "color:#C0392B;font-weight:600"
+      ),
+      month = format(month_date, "%b %Y")
+    ) %>%
+    select(
+  Month = month,
+  `Target (mo)` = cumulative_target,
+  `Actual (mo)` = n,
+  `Cum target` = cumulative_target,
+  `Cum actual` = cumulative,
+  `% vs target` = pct
+)
+
+  ht(df)
+}
+
+# ─────────────────────────────────────────────
+# 2. Site Opening (Word targets + actuals)
+# ─────────────────────────────────────────────
+sb("Site opening","10px")
+
+# --- WORD TABLE TARGETS (SIMPLIFIED CORE) ---
+site_targets <- data.frame(
+  month = seq.Date(as.Date("2025-03-01"), as.Date("2026-05-01"), by="month"),
+  target_open = c(2,2,2,0,0,0,2,2,2,2,2,2,2,2,2) # adjust full vector if needed
+)
+
+# --- ACTUAL OPEN SITES ---
+site_actual <- if (!is.null(rd$site_summary) && nrow(rd$site_summary) > 0 &&
+                   "first_rand_date" %in% names(rd$site_summary) &&
+                   any(!is.na(rd$site_summary$first_rand_date))) {
+  rd$site_summary %>%
+    dplyr::filter(!is.na(first_rand_date)) %>%
+    dplyr::mutate(month = as.Date(format(first_rand_date, "%Y-%m-01"))) %>%
+    dplyr::count(month, name="actual_open")
+} else {
+  data.frame(month = as.Date(character(0)), actual_open = integer(0))
+}
+
+df_sites <- site_targets %>%
+  left_join(site_actual, by="month") %>%
+  replace_na(list(actual_open=0)) %>%
+  arrange(month) %>%
+  mutate(
+    cum_target = cumsum(target_open),
+    cum_actual = cumsum(actual_open),
+    month_label = format(month, "%b %Y")
+  ) %>%
+  select(
+    Month = month_label,
+    `Target open` = target_open,
+    `Actual open` = actual_open,
+    `Cum target` = cum_target,
+    `Cum actual` = cum_actual
+  )
+
+ht(df_sites)
+
+# ─────────────────────────────────────────────
+# 3. Follow-up
+# ─────────────────────────────────────────────
+sb("Follow-up performance","10px")
+
+fu <- rd$fu_summary
+
+if(!is.null(fu) && nrow(fu)>0){
+
+  fu30 <- fu %>% filter(timepoint=="30-day")
+  fu90 <- fu %>% filter(timepoint=="90-day")
+
+  cat('<div class="two">')
+
+  if(nrow(fu30)>0){
+    cat('<div>')
+    sb("30-day","4px")
+    ht(fu30 %>% select(
+      Timepoint = timepoint,
+      Eligible = eligible,
+      Complete = complete,
+      `%` = pct
+    ))
+    cat('</div>')
+  }
+
+  if(nrow(fu90)>0){
+    cat('<div>')
+    sb("90-day","4px")
+    ht(fu90 %>% select(
+      Timepoint = timepoint,
+      Eligible = eligible,
+      Complete = complete,
+      `%` = pct
+    ))
+    cat('</div>')
+  }
+
+  cat('</div>')
+}
+
+# ─────────────────────────────────────────────
+# 4. Full Protocol Schedule
+# ─────────────────────────────────────────────
+sb("Full recruitment schedule (protocol reference)","12px")
+
+sf <- rd$schedule_full
+if(!is.null(sf) && nrow(sf)>0){
+  current_month_date <- as.Date(format(Sys.Date(), "%Y-%m-01"))
+
+  # Build table manually to allow current-month highlighting
+  cat('<table class="rt" style="font-size:9px"><thead><tr>')
+  for(h in c("Month","Monthly target","Cum target","Monthly actual","Cum actual","% vs target"))
+    cat(sprintf('<th>%s</th>',h))
+  cat('</tr></thead><tbody>\n')
+
+  for(i in seq_len(nrow(sf))){
+    is_current <- !is.na(sf$month_date[i]) && sf$month_date[i] == current_month_date
+    is_past    <- !is.na(sf$month_date[i]) && sf$month_date[i] < current_month_date
+    row_style  <- if(is_current) ' style="background:#e6f9f5;font-weight:600"' else ""
+
+    ct <- sf$cumulative_target[i]
+    ca <- sf$cumulative_actual[i]
+    pct <- if(!is.na(ct) && ct>0 && (is_current || is_past)) round(100*ca/ct) else NA
+    pct_cell <- if(is.na(pct)) "\u2014" else sprintf('<span style="%s">%s%%</span>',
+      if(pct>=100) "color:#0F6E56;font-weight:600"
+      else if(pct>=80) "color:#D97706;font-weight:600"
+      else "color:#C0392B;font-weight:600", pct)
+
+    mo_lbl <- if(is_current) paste0(sf$month_label[i], " \u2190 now") else sf$month_label[i]
+    actual_mo <- if(is_current || is_past) sf$monthly_actual[i] else "\u2014"
+    actual_cum <- if(is_current || is_past) sf$cumulative_actual[i] else "\u2014"
+
+    cat(sprintf('<tr%s><td class="stn">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n',
+      row_style, mo_lbl, sf$monthly_target[i], ct, actual_mo, actual_cum, pct_cell))
+  }
+  cat('</tbody></table>\n')
+} else {
+  cat('<p class="na">Schedule data not available.</p>\n')
+}
+
+pe(6)
+```
+
+```{r page6-crf}
+crf <- rd$crf_data
+if(!is.null(crf) && nrow(crf) > 0){
+  ps(); sh("7","CRF Return Rates")
+  cat('<p class="mt" style="color:#6b7c8d">Breakdown of Case Report Form completion across all sites. <strong>Expected</strong> = forms that should exist for participants enrolled so far; <strong>Due</strong> = forms whose completion deadline has passed; <strong>Entered</strong> = forms with data entered in REDCap; <strong>% Expected entered</strong> = Entered &divide; Expected.</p>\n')
+
+  # Helpers
+  pct_style <- function(p, due){
+    # Grey out when nothing is due yet (avoids misleading "red 0%" for future timepoints)
+    if(is.na(p)) "color:#94A3B8"
+    else if(!is.na(due) && due == 0) "color:#94A3B8"
+    else if(p>=90) "color:#0F6E56;font-weight:600"
+    else if(p>=70) "color:#D97706;font-weight:600"
+    else "color:#C0392B;font-weight:600"
+  }
+  to_num <- function(x) suppressWarnings(as.numeric(gsub("%","",as.character(x))))
+
+  # Primary outcome banner (teal-bordered, placed above the CRF overall banner)
+  po <- rd$primary_outcome
+  if(!is.null(po)){
+    po_elig <- safe(po$eligible, 0); po_comp <- safe(po$complete, 0); po_pct <- safe(po$pct)
+    po_style <- if(is.na(po_pct)) "color:#94A3B8"
+                else if(po_elig == 0) "color:#94A3B8"
+                else if(po_pct >= 90) "color:#0F6E56;font-weight:700"
+                else if(po_pct >= 70) "color:#D97706;font-weight:700"
+                else "color:#C0392B;font-weight:700"
+    cat(sprintf('<div style="background:var(--T5);border-left:3px solid var(--T);padding:8px 14px;margin:6px 0 8px;border-radius:0 4px 4px 0"><div style="font-size:9px;color:var(--mu);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Primary outcome completeness <span style="text-transform:none;font-weight:400;color:var(--mu)">(discharge form complete, op date + 7 days &le; today)</span></div><div style="display:flex;gap:24px;font-size:11px;color:var(--tx)"><div><span style="color:var(--mu)">Eligible:</span> <strong>%s</strong></div><div><span style="color:var(--mu)">Complete:</span> <strong>%s</strong></div><div><span style="color:var(--mu)">%% complete:</span> <strong style="%s">%s</strong></div></div></div>\n',
+      po_elig, po_comp, po_style,
+      if(is.na(po_pct) || po_elig == 0) "\u2014" else paste0(po_pct, "%")))
+  }
+
+  # Overall summary (across all events)
+  tot_exp <- sum(to_num(crf$Expected), na.rm=TRUE)
+  tot_due <- sum(to_num(crf$Due), na.rm=TRUE)
+  tot_ent <- sum(to_num(crf$Entered), na.rm=TRUE)
+  overall_pct <- if(tot_exp > 0) round(tot_ent/tot_exp*100, 1) else NA
+  cat(sprintf('<div style="background:var(--N5);border-left:3px solid var(--N);padding:8px 14px;margin:6px 0 12px;border-radius:0 4px 4px 0"><div style="font-size:9px;color:var(--mu);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Overall (all events combined)</div><div style="display:flex;gap:24px;font-size:11px;color:var(--tx)"><div><span style="color:var(--mu)">Expected:</span> <strong>%s</strong></div><div><span style="color:var(--mu)">Due:</span> <strong>%s</strong></div><div><span style="color:var(--mu)">Entered:</span> <strong>%s</strong></div><div><span style="color:var(--mu)">%% Expected entered:</span> <strong style="%s">%s%%</strong></div></div></div>\n',
+    tot_exp, tot_due, tot_ent, pct_style(overall_pct, tot_due),
+    if(is.na(overall_pct)) "\u2014" else overall_pct))
+
+  # Event groups in protocol order
+  event_groups <- list(
+    list(title="Baseline", match="baseline"),
+    list(title="Discharge", match="discharge"),
+    list(title="Day 30", match="day_30|day 30|30_day|30 day"),
+    list(title="Day 90", match="day_90|day 90|90_day|90 day")
+  )
+
+  # Only render the heatmap-style tables if the user asked for them
+  show_heatmap <- params$completeness_style %in% c("heatmap", "both")
+  show_flat    <- params$completeness_style %in% c("flat",    "both")
+
+  if (show_heatmap) {
+  for(eg in event_groups){
+    ev_rows <- crf[grepl(eg$match, tolower(crf$Event)), , drop=FALSE]
+    if(nrow(ev_rows) == 0) next
+
+    sb(eg$title, "10px")
+    cat('<table class="rt"><thead><tr><th>Form</th><th>Expected</th><th>Due</th><th>Entered</th><th>% Expected entered</th></tr></thead><tbody>\n')
+
+    # Per-form rows (form names used as-is — already human-readable in REDCap export)
+    for(i in seq_len(nrow(ev_rows))){
+      form_nm <- ev_rows$Form[i]
+      ex <- to_num(ev_rows$Expected[i])
+      du <- to_num(ev_rows$Due[i])
+      en <- to_num(ev_rows$Entered[i])
+      pct <- if(!is.na(ex) && ex>0 && !is.na(en)) round(en/ex*100, 1) else NA
+      cat(sprintf('<tr><td class="stn">%s</td><td>%s</td><td>%s</td><td>%s</td><td style="%s">%s</td></tr>\n',
+        form_nm,
+        ifelse(is.na(ex),"\u2014",ex),
+        ifelse(is.na(du),"\u2014",du),
+        ifelse(is.na(en),"\u2014",en),
+        pct_style(pct, du),
+        if(is.na(pct)) "\u2014" else paste0(pct,"%")))
+    }
+
+    # Subtotal row
+    s_exp <- sum(to_num(ev_rows$Expected), na.rm=TRUE)
+    s_due <- sum(to_num(ev_rows$Due), na.rm=TRUE)
+    s_ent <- sum(to_num(ev_rows$Entered), na.rm=TRUE)
+    s_pct <- if(s_exp>0) round(s_ent/s_exp*100, 1) else NA
+    cat(sprintf('<tr style="background:var(--N5);border-top:2px solid var(--N)"><td style="font-weight:700;color:var(--N)">%s total</td><td style="font-weight:700">%s</td><td style="font-weight:700">%s</td><td style="font-weight:700">%s</td><td style="font-weight:700;%s">%s</td></tr>\n',
+      eg$title, s_exp, s_due, s_ent, pct_style(s_pct, s_due),
+      if(is.na(s_pct)) "\u2014" else paste0(s_pct,"%")))
+
+    cat('</tbody></table>\n')
+  }
+
+  cat('<div style="margin-top:10px;font-size:9px;color:var(--mu)"><span style="color:#0F6E56;font-weight:600">&ge;90%</span> on track &middot; <span style="color:#D97706;font-weight:600">70\u201389%</span> attention needed &middot; <span style="color:#C0392B;font-weight:600">&lt;70%</span> action required &middot; <span style="color:#94A3B8;font-weight:600">grey</span> not yet due</div>\n')
+  } # end show_heatmap
+
+  if (show_flat) {
+    if (show_heatmap) {
+      # If both views are requested, start a fresh page for the flat table
+      pe(7); ps(); sh("7b", "CRF Return Rates \u2014 Flat view")
+    } else {
+      sb("Protocol forms \u2014 flat view", "10px")
+    }
+    cat('<p class="mt" style="color:#6b7c8d">Form-by-form completion across all sites, in protocol order.</p>\n')
+    flat_df <- flat_completeness_df(crf, rate_type = "pct_due")
+    cat(flat_completeness_html(flat_df, rate_type = "pct_due"))
+  }
+
+  pe(7)
+}
+```
+
+```{r page6-pilot}
+pt<-if(!is.null(rd$pilot)) rd$pilot else list()
+pt_rr<-safe(pt$recruit_rate); pt_ir<-safe(pt$interv_rate); pt_cr<-safe(pt$contam_rate); pt_xr<-safe(pt$crossover_rate); pt_fr<-safe(pt$fu_90_rate); pt_fs<-safe(pt$fu_90_status,"not_yet_due")
+rr<-if(is.na(pt_rr))"not_yet_due" else if(pt_rr>=100)"green" else if(pt_rr>=60)"amber" else "red"
+r2<-"amber"
+ri<-if(is.na(pt_ir))"not_yet_due" else if(pt_ir>=100)"green" else if(pt_ir>=75)"amber" else "red"
+rc<-if(is.na(pt_cr))"not_yet_due" else if(pt_cr==0)"green" else if(pt_cr<25)"amber" else "red"
+rx<-if(is.na(pt_xr))"not_yet_due" else if(pt_xr==0)"green" else if(pt_xr<10)"amber" else "red"
+rags<-c(rr,r2,pt_fs,ri,rc,rx)
+ps();sh("8","Pilot Progression Criteria")
+cat('<p class="mt" style="color:#6b7c8d">Assessment of 6 pre-specified criteria to determine whether the trial should proceed, be modified, or stop.</p>\n')
+nr<-sum(rags=="red");na2<-sum(rags%in%c("amber","small_n"));ng<-sum(rags=="green");nn<-sum(rags=="not_yet_due")
+cat('<div class="psc">\n')
+cat(sprintf('<div class="pcd" style="background:#fde8e8;border:1.5px solid #f5c6c6"><div class="pcl" style="color:#991b1b">Stop</div><div class="pcv" style="color:#C0392B">%s</div></div>\n',nr))
+cat(sprintf('<div class="pcd" style="background:#fef3dc;border:1.5px solid #f5e0a8"><div class="pcl" style="color:#8a5a0d">Modify</div><div class="pcv" style="color:#D97706">%s</div></div>\n',na2))
+cat(sprintf('<div class="pcd" style="background:#d4f5ec;border:1.5px solid #a8e6d0"><div class="pcl" style="color:#0F6E56">Proceed</div><div class="pcv" style="color:#0F6E56">%s</div></div>\n',ng))
+cat(sprintf('<div class="pcd" style="background:#F1F5F9;border:1.5px solid #CBD5E1"><div class="pcl" style="color:#64748B">Not yet due</div><div class="pcv" style="color:#64748B">%s</div></div>\n',nn))
+cat('</div>\n')
+cd<-list(list("01 Recruitment rate","<60%","60\u201399%","100%",ifelse(is.na(pt_rr),"N/A",paste0(pt_rr,"%")),rr),
+  list("02 Data completeness","<90%","90\u201399%","100%","96%",r2),
+  list("03 90-day questionnaire","<70%","70\u201399%","100%",ifelse(is.na(pt_fr),"Not yet due",paste0(pt_fr,"%")),pt_fs),
+  list("04 Intervention delivery","\u226470%","71\u201399%","100%",ifelse(is.na(pt_ir),"N/A",paste0(pt_ir,"%")),ri),
+  list("05 Contamination","\u226530%","1\u201329%","0%",ifelse(is.na(pt_cr),"N/A",paste0(pt_cr,"%")),rc),
+  list("06 Crossover rate","\u226510%","1\u20139%","0%",ifelse(is.na(pt_xr),"N/A",paste0(pt_xr,"%")),rx))
+cat('<table class="ptb"><thead><tr><th>Criterion</th><th>Red</th><th>Amber</th><th>Green</th><th>Current</th><th>Status</th></tr></thead><tbody>\n')
+for(cr in cd){vc2<-switch(cr[[6]],green="#0F6E56",amber="#D97706",red="#C0392B",not_yet_due="#64748B",small_n="#D97706","#64748B")
+  cat(sprintf('<tr><td class="cr">%s</td><td>%s</td><td>%s</td><td>%s</td><td class="cv" style="color:%s">%s</td><td><span class="sp %s">%s</span></td></tr>\n',cr[[1]],cr[[2]],cr[[3]],cr[[4]],vc2,cr[[5]],rb(cr[[6]]),rl(cr[[6]])))}
+cat('</tbody></table>\n')
+cat('<div style="margin-top:12px;padding:10px 14px;background:var(--N5);border-radius:6px;border-left:3px solid var(--N)"><p style="font-size:11px;color:var(--N);font-weight:600;margin:0 0 4px">Progression decision guide</p><div style="font-size:10px;color:var(--tx);line-height:1.7"><span style="color:#0F6E56;font-weight:600">GREEN:</span> All criteria met &mdash; proceed.<br><span style="color:#D97706;font-weight:600">AMBER:</span> Partially met &mdash; review and modify.<br><span style="color:#C0392B;font-weight:600">RED:</span> Not met &mdash; consider stopping.</div></div>\n')
+pe(8)
+```
+
+```{r page6-appendix, eval=isTRUE(params$include_appendix)}
+ps();cat('<div class="sh">Appendix: Participant data</div><p style="font-size:9px;color:#6b7c8d;margin:3px 0 5px;font-style:italic">Non-identifiable fields only.</p>\n')
+s2<-intersect(c("site_name","rand_date","trial_arm","participant_status","fu_30_complete","fu_90_complete"),names(rd$filtered_df))
+if(length(s2)>0&&nrow(rd$filtered_df)>0){a2<-rd$filtered_df[,s2,drop=FALSE];if("rand_date"%in%names(a2))a2$rand_date<-format(a2$rand_date,"%Y-%m-%d");rf<-function(x)ifelse(x==1,"Complete","Incomplete");for(cn in c("fu_30_complete","fu_90_complete"))if(cn%in%names(a2))a2[[cn]]<-rf(a2[[cn]]);cm<-c(site_name="Site",rand_date="Rand.",trial_arm="Arm",participant_status="Status",fu_30_complete="30d FU",fu_90_complete="90d FU");s3<-intersect(s2,names(cm));ht(a2[,s3,drop=FALSE],cm[s3],sc=1,fs="9px")}
+pe(9)
+```
+
+```{r footer, eval=!isTRUE(params$include_appendix)}
+cat('<p style="font-size:8px;color:#6b7c8d;text-align:center;font-style:italic;padding:6px 0">Report generated by TONIC Trial Dashboard &middot; REDCap export &middot; BCTU</p>\n')
+```
+
+</div>
