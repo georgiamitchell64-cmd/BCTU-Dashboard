@@ -20,14 +20,16 @@ reports_server <- function(input, output, session, state) {
   rpt_monthly <- reactive({
     raw   <- rv$raw_redcap
     dates <- input$rpt_dates
+    rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
+    site_col <- fld("site_name",              default = "site_name")
     if (is.null(raw) || nrow(raw) == 0)          return(NULL)
     if (is.null(dates) || length(dates) != 2)     return(NULL)
-    if (!"rand_dttm_s" %in% names(raw))           return(NULL)
-    
+    if (!rand_col %in% names(raw))                return(NULL)
+
     rands <- raw %>%
-      mutate(.rand_raw = trimws(as.character(rand_dttm_s))) %>%
+      mutate(.rand_raw = trimws(as.character(.data[[rand_col]]))) %>%
       filter(nchar(.rand_raw) > 0, !is.na(.rand_raw),
-             !is.na(site_name), nchar(trimws(site_name)) > 0) %>%
+             !is.na(.data[[site_col]]), nchar(trimws(.data[[site_col]])) > 0) %>%
       group_by(record_id) %>% slice(1) %>% ungroup() %>%
       mutate(
         rand_date = suppressWarnings(lubridate::parse_date_time(
@@ -43,16 +45,16 @@ reports_server <- function(input, output, session, state) {
     if (nrow(rands) == 0) return(NULL)
     
     site_meta <- rv$sites %>%
-      transmute(.tonic_id = site_id, monthly_target,
+      transmute(.matched_id = site_id, monthly_target,
                 .jk = tolower(trimws(site_name)))
-    
+
     rands <- rands %>%
-      mutate(.jk = tolower(trimws(site_name))) %>%
+      mutate(.jk = tolower(trimws(.data[[site_col]]))) %>%
       left_join(site_meta, by = ".jk") %>%
       select(-.jk) %>%
-      filter(!is.na(.tonic_id)) %>%
-      mutate(site_id = .tonic_id) %>%
-      select(-.tonic_id)
+      filter(!is.na(.matched_id)) %>%
+      mutate(site_id = .matched_id) %>%
+      select(-.matched_id)
     
     if (nrow(rands) == 0) return(NULL)
     

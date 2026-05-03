@@ -5,6 +5,10 @@ participants_server <- function(input, output, session, state) {
     if (is.null(df)||nrow(df)==0) return(0L)
     length(unique(df$record_id[df$event_type==et]))
   }
+  # Event labels are derived from the active trial's redcap_events mapping
+  # (process_redcap() title-cases the role names: "baseline" → "Baseline",
+  # "day_30" → "Day 30"). The four headline boxes assume the standard four
+  # timepoints; if a trial is missing one, that box just shows 0.
   output$n_p_baseline  <- renderText(n_event("Baseline"))
   output$n_p_discharge <- renderText(n_event("Discharge"))
   output$n_p_d30       <- renderText(n_event("Day 30"))
@@ -55,28 +59,27 @@ participants_server <- function(input, output, session, state) {
   })
   
   # --- Demographics summary cards ---
-  WHITE_CODES <- c(13L, 14L, 15L, 16L, 17L)
-  
-  ETHNIC_GROUPS <- c(
-    "1"="Asian - Indian","2"="Asian - Pakistani","3"="Asian - Bangladeshi",
-    "4"="Asian - Chinese","5"="Asian - Other","6"="Black - Caribbean",
-    "7"="Black - African","8"="Black - Other","9"="Mixed - White & Black Caribbean",
-    "10"="Mixed - White & Black African","11"="Mixed - White & Asian",
-    "12"="Mixed - Other","13"="White - British","14"="White - Irish",
-    "15"="White - Gypsy/Traveller","16"="White - Roma","17"="White - Other",
-    "18"="Other - Arab","19"="Other")
-  
+  # White-ethnicity codes & ethnicity labels come from the active trial config.
+  # Fall back to the NHS 19-category scheme that TONIC uses.
+  WHITE_CODES <- {
+    cfg <- current_trial_config()
+    as.integer(cfg$white_ethnicity_codes %||% as.character(13:17))
+  }
+
   demo_data <- reactive({
     raw <- rv$raw_redcap
     if (is.null(raw) || nrow(raw)==0) return(NULL)
-    # Use baseline rows only for demographics
     bl <- raw %>% filter(event_type=="Baseline") %>% distinct(record_id, .keep_all=TRUE)
     if (nrow(bl)==0) return(NULL)
-    
-    age <- if ("cae_age" %in% names(bl)) suppressWarnings(as.numeric(bl$cae_age)) else rep(NA_real_, nrow(bl))
-    eth <- if ("base_ethnic_gp" %in% names(bl)) suppressWarnings(as.integer(bl$base_ethnic_gp)) else rep(NA_integer_, nrow(bl))
-    nela <- if ("base_nela_score_mort" %in% names(bl)) suppressWarnings(as.numeric(bl$base_nela_score_mort)) else rep(NA_real_, nrow(bl))
-    
+
+    c_age  <- fld("age",        default = "cae_age")
+    c_eth  <- fld("ethnicity",  default = "base_ethnic_gp")
+    c_nela <- fld("nela_score", default = "base_nela_score_mort")
+
+    age  <- if (c_age  %in% names(bl)) suppressWarnings(as.numeric(bl[[c_age]]))  else rep(NA_real_,    nrow(bl))
+    eth  <- if (c_eth  %in% names(bl)) suppressWarnings(as.integer(bl[[c_eth]]))  else rep(NA_integer_, nrow(bl))
+    nela <- if (c_nela %in% names(bl)) suppressWarnings(as.numeric(bl[[c_nela]])) else rep(NA_real_,    nrow(bl))
+
     list(age=age, eth=eth, nela=nela, n=nrow(bl))
   })
   
@@ -160,88 +163,68 @@ participants_server <- function(input, output, session, state) {
     raw <- rv$raw_redcap
     if (is.null(raw)||nrow(raw)==0)
       return(div(class="info-box-tonic","No REDCap data \u2014 use Data / Export tab to load CSV."))
-    q_cols <- c(prodigi="prodigi_complete",eq5d="eq5d_complete",qor15="qor15_complete",
-                sat="patient_satisfaction_complete",hruq="hruq_complete")
-    avail <- intersect(unname(q_cols), names(raw))
-    if (length(avail)==0) return(div("Questionnaire columns not found in export."))
-    
+
+    # The participant table is rendered from the active trial's
+    # participant_table_layout. Each timepoint has a display name (matches
+    # event_type produced by process_redcap), an event role, and a list of
+    # instruments with `label` + `field` (the REDCap completion column).
+    cfg    <- current_trial_config()
+    layout <- cfg$participant_table_layout
+    tps    <- layout$timepoints
+    if (is.null(tps) || length(tps) == 0)
+      return(div(class="info-box-tonic",
+                 "No participant_table_layout configured for this trial."))
+
+    all_fields <- unlist(lapply(tps, function(tp)
+      vapply(tp$instruments, function(ins) ins$field %||% "", character(1))))
+    if (!any(all_fields %in% names(raw)))
+      return(div("Questionnaire columns not found in export."))
+
     filt <- pq_filtered()
     if (is.null(filt) || length(filt$ids)==0)
       return(div(class="info-box-tonic","No participants match the current filter."))
-    
-    # If no filter applied, show only last 10
+
     ids <- filt$ids
-    if (filt$no_filter && length(ids)>10) {
-      ids <- tail(ids, 10)
-    }
-    
-    inst_event_map <- list(
-      # Baseline (2)
-      list(col="eq5d_complete",                  event="Baseline",  cls_d="col-bl tp-div-bl"),
-      list(col="hruq_complete",                  event="Baseline",  cls_d="col-bl tp-border-r"),
-      # Discharge (3)
-      list(col="prodigi_complete",               event="Discharge", cls_d="col-dc tp-div-dc"),
-      list(col="eq5d_complete",                  event="Discharge", cls_d="col-dc"),
-      list(col="qor15_complete",                 event="Discharge", cls_d="col-dc tp-border-r"),
-      # Day 30 (5)
-      list(col="prodigi_complete",               event="Day 30",    cls_d="col-d30 tp-div-d30"),
-      list(col="eq5d_complete",                  event="Day 30",    cls_d="col-d30"),
-      list(col="qor15_complete",                 event="Day 30",    cls_d="col-d30"),
-      list(col="patient_satisfaction_complete",   event="Day 30",    cls_d="col-d30"),
-      list(col="hruq_complete",                  event="Day 30",    cls_d="col-d30 tp-border-r"),
-      # Day 90 (4)
-      list(col="prodigi_complete",               event="Day 90",    cls_d="col-d90 tp-div-d90"),
-      list(col="qor15_complete",                 event="Day 90",    cls_d="col-d90"),
-      list(col="patient_satisfaction_complete",   event="Day 90",    cls_d="col-d90"),
-      list(col="hruq_complete",                  event="Day 90",    cls_d="col-d90")
-    )
-    
+    if (filt$no_filter && length(ids) > 10) ids <- tail(ids, 10)
+
+    # Header: top row = timepoint name spanning its instruments;
+    # second row = one cell per instrument label.
+    top_cells <- lapply(tps, function(tp) {
+      tags$th(colspan = length(tp$instruments),
+              style  = "text-align:center",
+              tp$name %||% "")
+    })
+    sub_cells <- unlist(lapply(tps, function(tp)
+      lapply(tp$instruments, function(ins) tags$th(ins$label %||% ""))),
+      recursive = FALSE)
+
     header <- tags$thead(
       tags$tr(style="background:#F8FAFD",
               tags$th(rowspan=2, style="text-align:left;border-right:2px solid #EEF3F8;min-width:90px;background:#F8FAFD", "Record ID"),
               tags$th(rowspan=2, style="text-align:left;border-right:2px solid #EEF3F8;min-width:110px;background:#F8FAFD", "Site"),
-              tags$th(colspan=2, class="tp-baseline tp-div-bl", HTML("&mdash;&mdash; Baseline &mdash;&mdash;")),
-              tags$th(colspan=3, class="tp-discharge tp-div-dc", HTML("&mdash;&mdash;&mdash; Discharge &mdash;&mdash;&mdash;")),
-              tags$th(colspan=5, class="tp-d30 tp-div-d30", HTML("&mdash;&mdash;&mdash;&mdash;&mdash; Day 30 &mdash;&mdash;&mdash;&mdash;&mdash;")),
-              tags$th(colspan=4, class="tp-d90 tp-div-d90", HTML("&mdash;&mdash;&mdash;&mdash; Day 90 &mdash;&mdash;&mdash;&mdash;"))
-      ),
-      tags$tr(
-        # Baseline
-        tags$th(class="tp-baseline-sub tp-div-bl", "EQ-5D"),
-        tags$th(class="tp-baseline-sub tp-border-r", "HRUQ"),
-        # Discharge
-        tags$th(class="tp-discharge-sub tp-div-dc", "PRODIGI"),
-        tags$th(class="tp-discharge-sub", "EQ-5D"),
-        tags$th(class="tp-discharge-sub tp-border-r", "QoR-15"),
-        # Day 30
-        tags$th(class="tp-d30-sub tp-div-d30", "PRODIGI"),
-        tags$th(class="tp-d30-sub", "EQ-5D"),
-        tags$th(class="tp-d30-sub", "QoR-15"),
-        tags$th(class="tp-d30-sub", "Pat. Sat."),
-        tags$th(class="tp-d30-sub tp-border-r", "HRUQ"),
-        # Day 90
-        tags$th(class="tp-d90-sub tp-div-d90", "PRODIGI"),
-        tags$th(class="tp-d90-sub", "QoR-15"),
-        tags$th(class="tp-d90-sub", "Pat. Sat."),
-        tags$th(class="tp-d90-sub", "HRUQ")
-      )
+              top_cells),
+      tags$tr(sub_cells)
     )
 
     tbody_rows <- lapply(ids, function(rid) {
-      p_rows <- raw %>% filter(record_id==rid)
+      p_rows <- raw %>% filter(record_id == rid)
       site   <- coalesce(p_rows$site_dag[1], "")
-      cells  <- lapply(inst_event_map, function(ie) {
-        r <- p_rows %>% filter(event_type==ie$event)
-        val <- if(nrow(r)>0 && ie$col %in% names(r)) suppressWarnings(as.integer(r[[ie$col]][1])) else NA_integer_
-        tags$td(class=ie$cls_d, style="text-align:center", HTML(comp_label(val)))
-      })
+      cells <- unlist(lapply(tps, function(tp) {
+        r <- p_rows %>% filter(event_type == (tp$name %||% ""))
+        lapply(tp$instruments, function(ins) {
+          col <- ins$field %||% ""
+          val <- if (nrow(r) > 0 && col %in% names(r))
+            suppressWarnings(as.integer(r[[col]][1])) else NA_integer_
+          tags$td(style = "text-align:center", HTML(comp_label(val)))
+        })
+      }), recursive = FALSE)
       tags$tr(
         tags$td(class="sid", style="text-align:left;border-right:2px solid #EEF3F8", rid),
         tags$td(style="text-align:left;border-right:2px solid #EEF3F8", site),
         cells
       )
     })
-    
+
     div(class="comp-tbl",
         tags$table(style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:1100px",
                    header, tags$tbody(tbody_rows)))
@@ -250,7 +233,8 @@ participants_server <- function(input, output, session, state) {
   # Safety helpers
   safety_df <- reactive({ parse_safety(rv$raw_redcap) })
   has_dev_col <- reactive({
-    !is.null(rv$raw_redcap) && "deviation_complete" %in% names(rv$raw_redcap)
+    dev_field <- fld("deviation_complete", default = "deviation_complete")
+    !is.null(rv$raw_redcap) && dev_field %in% names(rv$raw_redcap)
   })
   safe_n <- function(col) {
     df <- safety_df()
@@ -312,5 +296,8 @@ participants_server <- function(input, output, session, state) {
               columns=list(Count=colDef(align="center"),Code=colDef(align="center")))
   })
   
-  output$dl_participants <- xlsx_download(function() rv$participants, "TONIC_participants")
+  output$dl_participants <- xlsx_download(
+    function() rv$participants,
+    paste0(current_trial_config()$short_name %||% "trial", "_participants")
+  )
 }
