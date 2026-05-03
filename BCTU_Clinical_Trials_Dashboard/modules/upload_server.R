@@ -80,6 +80,13 @@ upload_server <- function(input, output, session, state) {
 
     cfg <- rv$trial_config
     if (.should_prompt(cfg, detected)) {
+      # Initialise rv values to empty defaults so dashboard reactives can
+      # resolve while the user decides on the modal. Without this, Shiny
+      # shows a global loading overlay that covers the modal itself.
+      if (is.null(rv$participants)) rv$participants <- empty_participants
+      if (is.null(rv$sites))        rv$sites        <- if (reset_sites) empty_sites else empty_sites
+      if (is.null(rv$raw_redcap))   rv$raw_redcap   <- raw[0, ]
+
       removeModal()
       showModal(modalDialog(
         title = div(style = "display:flex;align-items:center;gap:10px;",
