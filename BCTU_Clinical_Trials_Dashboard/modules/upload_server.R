@@ -87,6 +87,11 @@ upload_server <- function(input, output, session, state) {
       if (is.null(rv$sites))        rv$sites        <- if (reset_sites) empty_sites else empty_sites
       if (is.null(rv$raw_redcap))   rv$raw_redcap   <- raw[0, ]
 
+      # Force-close any modal that's still mid-animation (e.g. the
+      # "Loading Panorama" splash from trial_selector_server). removeModal()
+      # alone is unreliable when called immediately after showModal — Bootstrap
+      # ignores close requests for modals that haven't finished opening yet.
+      shinyjs::runjs('$(".modal").modal("hide"); $(".modal-backdrop").remove();')
       removeModal()
       showModal(modalDialog(
         title = div(style = "display:flex;align-items:center;gap:10px;",
