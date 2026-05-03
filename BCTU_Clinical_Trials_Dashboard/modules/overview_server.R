@@ -161,8 +161,9 @@ overview_server <- function(input, output, session, state) {
 
     # Actuals
     rand_dates <- tryCatch({
-      if ("rand_dttm_s" %in% names(rv$raw_redcap)) {
-        d <- suppressWarnings(as.Date(rv$raw_redcap$rand_dttm_s))
+      rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
+      if (rand_col %in% names(rv$raw_redcap)) {
+        d <- suppressWarnings(as.Date(rv$raw_redcap[[rand_col]]))
         d[!is.na(d)]
       } else {
         as.Date(character(0))

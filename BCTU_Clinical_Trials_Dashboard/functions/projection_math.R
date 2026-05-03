@@ -147,8 +147,9 @@
 
 # ── Smart defaults: derive per-site rates from actuals when ≥3 months ──────
 .projection_smart_defaults <- function(raw_redcap, sites) {
-  if (is.null(raw_redcap) || !("rand_dttm_s" %in% names(raw_redcap))) return(NULL)
-  rd <- suppressWarnings(as.Date(raw_redcap$rand_dttm_s))
+  rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
+  if (is.null(raw_redcap) || !(rand_col %in% names(raw_redcap))) return(NULL)
+  rd <- suppressWarnings(as.Date(raw_redcap[[rand_col]]))
   rd <- rd[!is.na(rd)]
   if (length(rd) == 0) return(NULL)
 

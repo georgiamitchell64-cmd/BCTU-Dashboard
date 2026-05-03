@@ -448,15 +448,37 @@ process_redcap <- function(raw_df, current_sites) {
     stop(sprintf("Could not find required columns. Found: %s",
                  paste(orig[1:min(8, length(orig))], collapse = ", ")))
   if (rec_col != "record_id") df <- df %>% rename(record_id = all_of(rec_col))
+
+  # Build event_type from the active trial's redcap_events mapping.
+  # For each logical role (baseline, discharge, day_30, day_90, ...) we accept
+  # an exact match against the configured event name(s), then fall back to a
+  # fuzzy regex match for backwards compatibility with TONIC-style names.
+  cfg_evts <- (current_trial_config() %||% list())$redcap_events %||% list()
+  pretty <- function(role) {
+    role |>
+      gsub("_", " ", x = _) |>
+      tools::toTitleCase()
+  }
+  classify_event <- function(raw) {
+    raw_t <- trimws(raw)
+    if (is.na(raw_t) || nchar(raw_t) == 0) return(NA_character_)
+    for (role in names(cfg_evts)) {
+      vals <- cfg_evts[[role]]
+      if (is.null(vals)) next
+      if (raw_t %in% vals) return(pretty(role))
+    }
+    # Fallback fuzzy matching for unmapped/unknown trials.
+    if (grepl("baseline",  raw_t, ignore.case = TRUE)) return("Baseline")
+    if (grepl("discharge", raw_t, ignore.case = TRUE)) return("Discharge")
+    if (grepl("day.?30",   raw_t, ignore.case = TRUE)) return("Day 30")
+    if (grepl("day.?90",   raw_t, ignore.case = TRUE)) return("Day 90")
+    raw_t
+  }
+
   df <- df %>%
     mutate(
       record_id  = trimws(as.character(record_id)),
-      event_type = case_when(
-        str_detect(.data[[evt_col]], regex("baseline",  ignore_case = TRUE)) ~ "Baseline",
-        str_detect(.data[[evt_col]], regex("discharge", ignore_case = TRUE)) ~ "Discharge",
-        str_detect(.data[[evt_col]], regex("day.?30",   ignore_case = TRUE)) ~ "Day 30",
-        str_detect(.data[[evt_col]], regex("day.?90",   ignore_case = TRUE)) ~ "Day 90",
-        TRUE ~ trimws(.data[[evt_col]])),
+      event_type = vapply(.data[[evt_col]], classify_event, character(1)),
       site_dag   = if (!is.na(dag_col)) trimws(as.character(.data[[dag_col]])) else NA_character_,
       .rand_dttm = if (!is.na(rand_col)) .data[[rand_col]] else NA_character_
     ) %>%

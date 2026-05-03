@@ -98,6 +98,16 @@ baseline_characteristics_df <- function(rd) {
   df <- if (is.null(rd$baseline_df)) data.frame() else rd$baseline_df
   total_n <- nrow(df)
 
+  # Resolve trial-specific REDCap column names from the active config.
+  # Falls back to TONIC defaults so existing call sites keep working.
+  c_nela <- fld("nela_score",  default = "base_nela_score_mort")
+  c_nrs  <- fld("nrs_group",   default = "nut_b_nrs_group")
+  c_age  <- fld("age",         default = "cae_age")
+  c_sex  <- fld("sex",         default = "base_sex")
+  c_eth  <- fld("ethnicity",   default = "base_ethnic_gp")
+  c_res  <- fld("residence",   default = "base_residence")
+  c_must <- fld("must_score",  default = "nut_b_must_score")
+
   rows <- list()
   add  <- function(section, label, sublabel, stat) {
     rows[[length(rows) + 1]] <<- list(
@@ -107,8 +117,8 @@ baseline_characteristics_df <- function(rd) {
 
   # ── MINIMISATION VARIABLES ─────────────────────────────────────────────────
   # NELA Mortality Score
-  if ("base_nela_score_mort" %in% names(df)) {
-    x <- suppressWarnings(as.numeric(df$base_nela_score_mort))
+  if (c_nela %in% names(df)) {
+    x <- suppressWarnings(as.numeric(df[[c_nela]]))
     n_under <- sum(x < 5,  na.rm = TRUE)
     n_over  <- sum(x >= 5, na.rm = TRUE)
     valid   <- sum(!is.na(x))
@@ -123,8 +133,8 @@ baseline_characteristics_df <- function(rd) {
   }
 
   # Nutrition Risk Score (NRS)
-  if ("nut_b_nrs_group" %in% names(df)) {
-    nrs <- as.character(df$nut_b_nrs_group)
+  if (c_nrs %in% names(df)) {
+    nrs <- as.character(df[[c_nrs]])
     n_under <- sum(grepl("^0-3", nrs), na.rm = TRUE)
     n_over  <- sum(grepl("^(4|5-7)", nrs), na.rm = TRUE)
     valid   <- n_under + n_over
@@ -153,8 +163,8 @@ baseline_characteristics_df <- function(rd) {
 
   # ── PARTICIPANT DEMOGRAPHICS ───────────────────────────────────────────────
   # Age
-  if ("cae_age" %in% names(df)) {
-    age <- suppressWarnings(as.numeric(df$cae_age))
+  if (c_age %in% names(df)) {
+    age <- suppressWarnings(as.numeric(df[[c_age]]))
     add("Participant demographics", "Age (years)", "Mean (SD)",
         .fmt_mean_sd(age))
     add("Participant demographics", "Age (years)", "Range (min, max)",
@@ -164,8 +174,8 @@ baseline_characteristics_df <- function(rd) {
   }
 
   # Gender
-  if ("base_sex" %in% names(df)) {
-    sx    <- as.character(df$base_sex)
+  if (c_sex %in% names(df)) {
+    sx    <- as.character(df[[c_sex]])
     labs  <- .sex_labels[sx]
     valid <- sum(!is.na(labs))
     for (nm in unname(.sex_labels)) {
@@ -181,8 +191,8 @@ baseline_characteristics_df <- function(rd) {
   }
 
   # Ethnic group — only show categories that actually appear
-  if ("base_ethnic_gp" %in% names(df)) {
-    eg    <- as.character(df$base_ethnic_gp)
+  if (c_eth %in% names(df)) {
+    eg    <- as.character(df[[c_eth]])
     labs  <- .eth_labels[eg]
     valid <- sum(!is.na(labs))
     if (valid > 0) {
@@ -201,8 +211,8 @@ baseline_characteristics_df <- function(rd) {
 
   # ── GENERAL ────────────────────────────────────────────────────────────────
   # Place of residence
-  if ("base_residence" %in% names(df)) {
-    res   <- as.character(df$base_residence)
+  if (c_res %in% names(df)) {
+    res   <- as.character(df[[c_res]])
     labs  <- .residence_labels[res]
     valid <- sum(!is.na(labs))
     for (nm in unname(.residence_labels)) {
@@ -218,8 +228,8 @@ baseline_characteristics_df <- function(rd) {
   }
 
   # MUST score
-  if ("nut_b_must_score" %in% names(df)) {
-    ms    <- as.character(df$nut_b_must_score)
+  if (c_must %in% names(df)) {
+    ms    <- as.character(df[[c_must]])
     labs  <- .must_labels[ms]
     valid <- sum(!is.na(labs))
     for (nm in unname(.must_labels)) {

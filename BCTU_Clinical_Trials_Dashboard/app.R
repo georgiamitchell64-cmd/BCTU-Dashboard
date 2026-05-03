@@ -127,7 +127,16 @@ server <- function(input, output, session) {
         if (!is.null(cfg)) cfg$redcap_fields$contact_preference %||% "cntct_questionnaires_pref"
         else "cntct_questionnaires_pref"
       }),
-      site_col     = "site_name",
+      site_col     = reactive({
+        cfg <- state$rv$trial_config
+        if (!is.null(cfg)) cfg$redcap_fields$site_name %||% "site_name"
+        else "site_name"
+      }),
+      baseline_event = reactive({
+        cfg <- state$rv$trial_config
+        if (!is.null(cfg)) cfg$redcap_events$baseline %||% "baseline_arm_1"
+        else "baseline_arm_1"
+      }),
       lead_days    = 7
     ),
     error = function(e) message("POSTAL: ", e$message)

@@ -16,14 +16,19 @@
 
 postal_tracking_server <- function(id, redcap_data,
                                    current_user = reactive("unknown"),
-                                   id_col    = "record_id",
-                                   op_col    = "iop_op_end_dt",
-                                   pref_col  = "cntct_questionnaires_pref",
-                                   site_col  = "site_name",
-                                   lead_days = 7) {
+                                   id_col         = "record_id",
+                                   op_col         = "iop_op_end_dt",
+                                   pref_col       = "cntct_questionnaires_pref",
+                                   site_col       = "site_name",
+                                   baseline_event = "baseline_arm_1",
+                                   lead_days      = 7) {
 
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # Each col/event arg may be either a plain string or a reactive expression
+    # (so app.R can wire them to the active trial's config). Resolve both.
+    .resolve <- function(x) if (is.reactive(x)) x() else x
 
     # Ensure the table exists
     postal_db_init()
@@ -64,12 +69,13 @@ postal_tracking_server <- function(id, redcap_data,
       req(redcap_data())
 
       build_postal_tracking(
-        redcap_df = redcap_data(),
-        id_col    = id_col,
-        op_col    = op_col,
-        pref_col  = pref_col,
-        site_col  = site_col,
-        lead_days = lead_days
+        redcap_df      = redcap_data(),
+        id_col         = .resolve(id_col),
+        op_col         = .resolve(op_col),
+        pref_col       = .resolve(pref_col),
+        site_col       = .resolve(site_col),
+        baseline_event = .resolve(baseline_event),
+        lead_days      = lead_days
       )
     })
 
