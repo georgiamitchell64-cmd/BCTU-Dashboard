@@ -1,0 +1,8 @@
+time: 2026-05-03 12:42:01
+is_null: TRUE
+class: NULL
+nrow: NA
+ncol: NA
+has_pref: NA
+has_op: NA
+has_event: NA
