@@ -43,6 +43,17 @@ welcome_screen_ui <- function() {
                             placeholder = "e.g. Georgia Mitchell",
                             width = "100%")
               ),
+              div(style = "text-align:left;margin-bottom:12px;",
+                  div(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+                               text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;",
+                      "Choose a password"),
+                  passwordInput("welcome_password", label = NULL,
+                                placeholder = "At least 6 characters",
+                                width = "100%"),
+                  passwordInput("welcome_password_confirm", label = NULL,
+                                placeholder = "Confirm password",
+                                width = "100%")
+              ),
               div(style = "text-align:left;margin-bottom:16px;",
                   tags$label(style = "font-size:11px;font-weight:600;color:#1B4F6B;
                                       text-transform:uppercase;letter-spacing:.5px;",
@@ -70,6 +81,33 @@ welcome_screen_ui <- function() {
                                     background-size:200% 200%;animation:welcomeGrad 6s ease infinite;
                                     font-family:'Outfit',sans-serif;")
           ),
+
+          # ── Password prompt panel (shown after picking a returning profile) ──
+          shinyjs::hidden(div(id = "password_panel",
+              div(style = "text-align:left;margin-bottom:8px;",
+                  span(style = "font-size:13px;font-weight:600;color:#1B4F6B;",
+                       textOutput("password_prompt_name", inline = TRUE))),
+              div(style = "text-align:left;margin-bottom:12px;",
+                  div(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+                               text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;",
+                      "Password"),
+                  passwordInput("login_password", label = NULL,
+                                placeholder = "Enter password",
+                                width = "100%")),
+              uiOutput("login_set_password_panel"),
+              div(style = "display:grid;grid-template-columns:1fr 1fr;gap:8px;",
+                  actionButton("login_back", "← Back",
+                               class = "btn",
+                               style = "padding:12px;border:1.5px solid #d0dde6;
+                                        background:#fff;color:#475569;border-radius:12px;
+                                        font-weight:500;font-family:'Outfit',sans-serif;"),
+                  actionButton("login_go", "Sign in",
+                               class = "btn",
+                               style = "padding:12px;border:none;border-radius:12px;
+                                        font-weight:600;color:#fff;
+                                        background:linear-gradient(135deg,#4338CA,#8B5CF6);
+                                        font-family:'Outfit',sans-serif;"))
+          )),
 
           div(style = "margin-top:22px;font-size:12px;color:#9aa3ad;",
               "Your profile is stored locally on this computer.")

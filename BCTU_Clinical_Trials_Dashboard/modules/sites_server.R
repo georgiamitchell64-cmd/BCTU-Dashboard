@@ -249,6 +249,12 @@ sites_server <- function(input, output, session, state) {
       lat = ll$lat, lon = ll$lon
     ))
     showNotification(paste("Site", new_id, "added."), type = "message")
+    cfg <- rv$trial_config
+    log_activity("site_added",
+                 sprintf("Added site <strong>%s</strong>",
+                         htmltools::htmlEscape(trimws(input$ns_name))),
+                 username = rv$username,
+                 trial_code = if (!is.null(cfg)) cfg$code else NULL)
 
     updateSelectizeInput(session, "ns_name",       selected = "")
     updateTextInput(session,      "ns_id",         value = "")
@@ -258,11 +264,267 @@ sites_server <- function(input, output, session, state) {
     updateCheckboxInput(session,  "ns_siv_booked", value = FALSE)
   })
 
+  # ── Bulk add sites ────────────────────────────────────────────────────────
+  # Parses a paste string OR an uploaded CSV. Each row becomes a site row
+  # with sensible defaults. Skips duplicates (matched by site_name).
+
+  observeEvent(input$bulk_add_sites, {
+    if (!require_role(rv, "manager")) return()
+    showModal(modalDialog(
+      title = div(style = "display:flex;align-items:center;gap:10px;",
+                  span(style = "font-size:18px;color:#6366F1;", HTML("&#x1F4CB;")),
+                  span("Bulk add sites")),
+      size = "l", easyClose = TRUE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("bulk_add_preview", "Preview",
+                     class = "btn",
+                     style = "background:#FFFFFF;color:#1B4F6B;
+                              border:1px solid #DDE5EE;font-weight:500;"),
+        actionButton("bulk_add_go", "Add sites",
+                     class = "btn btn-primary",
+                     style = "background:#6366F1;border-color:#6366F1;font-weight:600;")
+      ),
+
+      tabsetPanel(
+        id = "bulk_add_mode",
+        tabPanel("Paste",
+          div(style = "padding:14px 0;",
+              div(style = "font-size:12.5px;color:#475569;line-height:1.7;
+                           margin-bottom:10px;",
+                  HTML("One site per line. Extra columns are optional, separated by
+                        <code>|</code> (pipe). Format:")),
+              tags$pre(style = "background:#F8FAFD;border:1px solid #EEF2F7;
+                                padding:10px 12px;border-radius:6px;font-size:11.5px;
+                                color:#475569;line-height:1.6;",
+                       "Site name | City | Country | Status | Monthly target | Overall target",
+                       "\nQueen Elizabeth Hospital Birmingham | Birmingham | United Kingdom",
+                       "\nLeeds General Infirmary | Leeds | United Kingdom | Recruiting | 3 | 60",
+                       "\nManchester Royal Infirmary"),
+              textAreaInput("bulk_paste", label = NULL,
+                            placeholder = "Paste site list here…",
+                            rows = 10, width = "100%"))),
+        tabPanel("CSV upload",
+          div(style = "padding:14px 0;",
+              div(style = "font-size:12.5px;color:#475569;line-height:1.7;
+                           margin-bottom:10px;",
+                  HTML("CSV with at least a <code>site_name</code> column.
+                        Optional columns: <code>city</code>, <code>region</code>,
+                        <code>country</code>, <code>status</code>,
+                        <code>monthly_target</code>, <code>target</code>.")),
+              fileInput("bulk_csv", label = NULL, accept = ".csv",
+                        buttonLabel = "Choose CSV"))),
+        tabPanel("Defaults",
+          div(style = "padding:14px 0;",
+              div(style = "font-size:12.5px;color:#475569;margin-bottom:14px;",
+                  "Applied to every site that doesn't specify these explicitly."),
+              div(style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;",
+                  selectInput("bulk_def_status", "Default status",
+                              choices = c("Identified", "Set-up", "Open",
+                                          "Recruiting", "Closed"),
+                              selected = "Identified"),
+                  numericInput("bulk_def_monthly", "Default monthly target",
+                               value = 0, min = 0),
+                  numericInput("bulk_def_target", "Default overall target",
+                               value = 0, min = 0)))
+        )
+      ),
+
+      div(style = "margin-top:16px;",
+          uiOutput("bulk_preview_ui"))
+    ))
+  })
+
+  .parse_bulk_paste <- function(txt) {
+    if (is.null(txt) || !nzchar(trimws(txt))) return(data.frame())
+    lines <- strsplit(txt, "\n", fixed = TRUE)[[1]]
+    lines <- trimws(lines)
+    lines <- lines[nzchar(lines)]
+    if (!length(lines)) return(data.frame())
+
+    rows <- lapply(lines, function(ln) {
+      parts <- trimws(strsplit(ln, "|", fixed = TRUE)[[1]])
+      data.frame(
+        site_name      = parts[1],
+        city           = if (length(parts) >= 2) parts[2] else NA_character_,
+        country        = if (length(parts) >= 3) parts[3] else NA_character_,
+        status         = if (length(parts) >= 4) parts[4] else NA_character_,
+        monthly_target = if (length(parts) >= 5) suppressWarnings(as.integer(parts[5])) else NA_integer_,
+        target         = if (length(parts) >= 6) suppressWarnings(as.integer(parts[6])) else NA_integer_,
+        stringsAsFactors = FALSE)
+    })
+    do.call(rbind, rows)
+  }
+
+  .parse_bulk_csv <- function(path) {
+    if (is.null(path) || !file.exists(path)) return(data.frame())
+    df <- tryCatch(read.csv(path, stringsAsFactors = FALSE,
+                            check.names = FALSE),
+                   error = function(e) data.frame())
+    if (!nrow(df)) return(df)
+    # Lowercase column names for matching
+    names(df) <- tolower(names(df))
+    if (!"site_name" %in% names(df)) {
+      showNotification("CSV is missing a site_name column.",
+                       type = "warning", duration = 6)
+      return(data.frame())
+    }
+    cols <- c("site_name", "city", "region", "country", "status",
+              "monthly_target", "target")
+    for (c in setdiff(cols, names(df))) df[[c]] <- NA
+    df[, cols, drop = FALSE]
+  }
+
+  bulk_parsed <- reactive({
+    mode <- input$bulk_add_mode
+    if (identical(mode, "Paste")) .parse_bulk_paste(input$bulk_paste)
+    else if (identical(mode, "CSV upload")) {
+      f <- input$bulk_csv
+      if (is.null(f)) data.frame() else .parse_bulk_csv(f$datapath)
+    } else data.frame()
+  })
+
+  output$bulk_preview_ui <- renderUI({
+    parsed <- bulk_parsed()
+    existing <- rv$sites$site_name %||% character(0)
+
+    if (!nrow(parsed)) {
+      return(div(style = "font-size:12px;color:#94A3B8;font-style:italic;
+                          padding:8px 0;",
+                 "Paste a site list or upload a CSV — preview will appear here."))
+    }
+
+    valid <- !is.na(parsed$site_name) & nzchar(trimws(parsed$site_name))
+    parsed <- parsed[valid, , drop = FALSE]
+    dups   <- parsed$site_name %in% existing
+    n_new  <- sum(!dups)
+    n_dup  <- sum(dups)
+
+    chip <- function(n, label, bg, fg) {
+      span(style = sprintf("display:inline-flex;align-items:center;gap:5px;
+                            background:%s;color:%s;padding:3px 9px;border-radius:999px;
+                            font-size:11px;font-weight:600;margin-right:6px;",
+                           bg, fg),
+           sprintf("%d %s", n, label))
+    }
+
+    div(style = "background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;
+                 padding:10px 14px;",
+        div(style = "display:flex;justify-content:space-between;align-items:center;
+                     margin-bottom:8px;",
+            div(chip(n_new, "new",      "#ECFDF5", "#15803D"),
+                if (n_dup) chip(n_dup, "duplicate", "#FEF3C7", "#92400E"),
+                if (sum(!valid)) chip(sum(!valid), "skipped", "#FEE2E2", "#B91C1C")),
+            span(style = "font-size:11px;color:#94A3B8;",
+                 sprintf("%d total parsed", nrow(parsed) + sum(!valid)))),
+        div(style = "max-height:160px;overflow-y:auto;font-size:11.5px;",
+            lapply(seq_len(nrow(parsed)), function(i) {
+              r <- parsed[i, ]
+              is_dup <- dups[i]
+              div(style = sprintf("padding:5px 0;border-top:1px solid #EEF2F7;
+                                   color:%s;",
+                                  if (is_dup) "#94A3B8" else "#0F172A"),
+                  span(style = "font-weight:500;", r$site_name),
+                  if (!is.na(r$city) && nzchar(r$city))
+                    span(style = "color:#64748B;",
+                         sprintf(" · %s", r$city)),
+                  if (is_dup)
+                    span(style = "color:#92400E;float:right;",
+                         "already exists"))
+            })))
+  })
+
+  observeEvent(input$bulk_add_preview, {
+    # No-op: previews update live; this just nudges users
+  })
+
+  observeEvent(input$bulk_add_go, {
+    if (!require_role(rv, "manager")) return()
+    parsed <- bulk_parsed()
+    if (!nrow(parsed)) {
+      showNotification("Nothing to add — paste site names or upload a CSV.",
+                       type = "warning")
+      return()
+    }
+    valid <- !is.na(parsed$site_name) & nzchar(trimws(parsed$site_name))
+    parsed <- parsed[valid, , drop = FALSE]
+    existing <- rv$sites$site_name %||% character(0)
+    new_rows <- parsed[!parsed$site_name %in% existing, , drop = FALSE]
+    if (!nrow(new_rows)) {
+      showNotification("All listed sites already exist.",
+                       type = "warning", duration = 5)
+      return()
+    }
+
+    def_status  <- input$bulk_def_status %||% "Identified"
+    def_monthly <- as.integer(input$bulk_def_monthly %||% 0)
+    def_target  <- as.integer(input$bulk_def_target %||% 0)
+
+    add_blocks <- lapply(seq_len(nrow(new_rows)), function(i) {
+      r <- new_rows[i, ]
+      country_val <- if (is.na(r$country) || !nzchar(r$country))
+        "United Kingdom" else r$country
+      lookup <- if (!is.na(r$city) && nzchar(r$city)) r$city else r$site_name
+      ll <- tryCatch(geocode_location(lookup, country_val),
+                     error = function(e) list(lat = NA_real_, lon = NA_real_))
+      tibble(
+        site_id        = next_site_id(rv$sites),
+        site_name      = trimws(r$site_name),
+        city           = if (!is.na(r$city) && nzchar(r$city))
+                           str_to_title(r$city) else NA_character_,
+        region         = NA_character_,
+        country        = country_val,
+        status         = if (!is.na(r$status) && nzchar(r$status))
+                           r$status else def_status,
+        site_open_date = as.Date(NA),
+        siv_booked     = FALSE,
+        siv_date       = as.Date(NA),
+        monthly_target = if (!is.na(r$monthly_target))
+                           r$monthly_target else def_monthly,
+        target         = if (!is.na(r$target)) r$target else def_target,
+        randomised     = 0L,
+        lat            = ll$lat,
+        lon            = ll$lon
+      )
+    })
+
+    # next_site_id is computed against rv$sites — but we're adding multiple
+    # in one batch. Re-id sequentially against the running total.
+    base <- nrow(rv$sites)
+    for (i in seq_along(add_blocks)) {
+      rv$sites <- bind_rows(rv$sites, add_blocks[[i]])
+    }
+
+    removeModal()
+    cfg <- rv$trial_config
+    log_activity("sites_bulk_added",
+                 sprintf("Bulk-added <strong>%d</strong> sites",
+                         nrow(new_rows)),
+                 username = rv$username,
+                 trial_code = if (!is.null(cfg)) cfg$code else NULL,
+                 metadata = list(skipped = nrow(parsed) - nrow(new_rows)))
+    showNotification(
+      sprintf("Added %d %s (%d skipped as duplicates).",
+              nrow(new_rows),
+              if (nrow(new_rows) == 1) "site" else "sites",
+              nrow(parsed) - nrow(new_rows)),
+      type = "message", duration = 6)
+  })
+
   observeEvent(input$delete_site, {
+    if (!require_role(rv, "manager")) return()
     sel <- input$manage_table__reactable__selected
     req(sel)
     if (sel < 1 || sel > nrow(rv$sites)) return()
-    showNotification(paste("Site", rv$sites$site_id[sel], "removed."), type = "warning")
+    deleted_id   <- rv$sites$site_id[sel]
+    deleted_name <- rv$sites$site_name[sel]
+    showNotification(paste("Site", deleted_id, "removed."), type = "warning")
     rv$sites <- rv$sites[-sel, , drop = FALSE]
+    cfg <- rv$trial_config
+    log_activity("site_deleted",
+                 sprintf("Removed site <strong>%s</strong>",
+                         htmltools::htmlEscape(deleted_name %||% deleted_id)),
+                 username = rv$username,
+                 trial_code = if (!is.null(cfg)) cfg$code else NULL)
   })
 }

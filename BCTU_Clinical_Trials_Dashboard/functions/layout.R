@@ -49,7 +49,8 @@ build_app_ui <- function() {
 
       span(class = "nav-section-label", "Navigation"),
       nav_btn("go_overview",       "Overview",          "chart-line"),
-      nav_btn("go_reports",        "Reports & Charts",  "chart-bar"),
+      nav_btn("go_charts",         "Charts",            "chart-bar"),
+      nav_btn("go_reports",        "Reports",           "file-lines"),
       nav_btn("go_randomisations", "Randomisations",    "users"),
       nav_btn("go_participants",   "Participant Data",  "clipboard-list"),
       div(id = "go_returns_wrap",
@@ -85,7 +86,7 @@ build_app_ui <- function() {
   # ── Welcome screen overlay (covers everything until user registers) ─────
   welcome_screen_ui(),
 
-  div(style = "padding:20px 22px;",
+  div(id = "app_main_wrap", style = "padding:20px 22px;",
 
       # Top bar — hidden until trial is selected
       shinyjs::hidden(div(id = "topbar_wrap", class = "topbar",
@@ -107,6 +108,7 @@ build_app_ui <- function() {
         div(id = "dashboard_panel",
             tabsetPanel(id = "active_tab", type = "hidden",
                         overview_tab_ui(),
+                        charts_tab_ui(),
                         reports_tab_ui(),
                         randomisations_tab_ui(),
                         participants_tab_ui(),

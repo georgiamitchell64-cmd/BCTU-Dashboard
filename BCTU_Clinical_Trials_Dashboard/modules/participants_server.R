@@ -58,105 +58,110 @@ participants_server <- function(input, output, session, state) {
     }
   })
   
-  # --- Demographics summary cards ---
-  # White-ethnicity codes & ethnicity labels come from the active trial config.
-  # Fall back to the NHS 19-category scheme that TONIC uses.
-  WHITE_CODES <- {
-    cfg <- current_trial_config()
-    as.integer(cfg$white_ethnicity_codes %||% as.character(13:17))
-  }
+  # ── Customisable demographic breakdowns ──────────────────────────────────
+  # Detect usable columns in the uploaded CSV and let the user pick which to
+  # render. Selection persists in overrides.json under participant_breakdowns.
 
-  demo_data <- reactive({
+  detected_breakdowns <- reactive({
+    cfg <- rv$trial_config
+    detect_breakdown_columns(rv$raw_redcap, cfg)
+  })
+
+  selected_breakdowns <- reactiveVal(NULL)
+
+  # Initialise from cfg (or auto-pick) when the trial / data changes
+  observeEvent(list(rv$trial_config, rv$raw_redcap), {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    saved <- cfg$participant_breakdowns
+    if (!is.null(saved) && length(saved) > 0) {
+      selected_breakdowns(as.character(saved))
+    } else {
+      det <- detected_breakdowns()
+      selected_breakdowns(default_breakdown_cols(det))
+    }
+  }, ignoreNULL = FALSE)
+
+  output$breakdowns_summary_txt <- renderText({
+    sel <- selected_breakdowns()
+    if (is.null(sel) || !length(sel)) return("None selected")
+    paste(length(sel), if (length(sel) == 1) "breakdown" else "breakdowns")
+  })
+
+  output$participant_breakdowns_ui <- renderUI({
     raw <- rv$raw_redcap
-    if (is.null(raw) || nrow(raw)==0) return(NULL)
-    bl <- raw %>% filter(event_type=="Baseline") %>% distinct(record_id, .keep_all=TRUE)
-    if (nrow(bl)==0) return(NULL)
+    cfg <- rv$trial_config
+    if (is.null(raw) || !nrow(raw))
+      return(div(class = "info-box-tonic",
+                 "No REDCap data — upload a CSV to populate demographics."))
 
-    c_age  <- fld("age",        default = "cae_age")
-    c_eth  <- fld("ethnicity",  default = "base_ethnic_gp")
-    c_nela <- fld("nela_score", default = "base_nela_score_mort")
+    sel <- selected_breakdowns() %||% character(0)
+    breakdowns <- lapply(sel, function(c) compute_breakdown(raw, c, cfg))
+    render_breakdowns_grid(breakdowns)
+  })
 
-    age  <- if (c_age  %in% names(bl)) suppressWarnings(as.numeric(bl[[c_age]]))  else rep(NA_real_,    nrow(bl))
-    eth  <- if (c_eth  %in% names(bl)) suppressWarnings(as.integer(bl[[c_eth]]))  else rep(NA_integer_, nrow(bl))
-    nela <- if (c_nela %in% names(bl)) suppressWarnings(as.numeric(bl[[c_nela]])) else rep(NA_real_,    nrow(bl))
+  # ── Configure modal ──────────────────────────────────────────────────────
+  observeEvent(input$configure_breakdowns, {
+    det <- detected_breakdowns()
+    sel <- selected_breakdowns() %||% character(0)
+    if (!nrow(det)) {
+      showNotification("No usable columns detected — upload a CSV first.",
+                       type = "warning", duration = 5)
+      return()
+    }
+    showModal(modalDialog(
+      title = div(style = "display:flex;align-items:center;gap:10px;",
+                  span(style = "font-size:18px;color:#6366F1;", HTML("&#x2699;")),
+                  span("Configure demographic breakdowns")),
+      size = "l", easyClose = TRUE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("save_breakdowns", "Save selection",
+                     class = "btn btn-primary",
+                     style = "background:#6366F1;border-color:#6366F1;font-weight:600;")
+      ),
 
-    list(age=age, eth=eth, nela=nela, n=nrow(bl))
+      div(style = "font-size:12.5px;color:#64748B;margin-bottom:14px;line-height:1.6;",
+          HTML(sprintf("Detected <strong>%d</strong> columns suitable for breakdowns
+                        from the latest CSV. Tick the ones you want to display.",
+                       nrow(det)))),
+
+      checkboxGroupInput(
+        "breakdowns_choice", label = NULL,
+        choiceNames = lapply(seq_len(nrow(det)), function(i) {
+          r <- det[i, ]
+          tagList(
+            span(style = "font-weight:600;color:#0F172A;", r$label),
+            span(style = "font-size:10.5px;color:#94A3B8;margin-left:6px;
+                          text-transform:uppercase;letter-spacing:.4px;",
+                 r$type),
+            span(style = "font-size:11px;color:#64748B;margin-left:6px;",
+                 sprintf("· %s · %d unique%s", r$column, r$n_unique,
+                         if (r$n_missing > 0)
+                           sprintf(" · %d missing", r$n_missing) else ""))
+          )
+        }),
+        choiceValues = det$column,
+        selected = intersect(sel, det$column))
+    ))
   })
-  
-  # Age outputs
-  output$demo_age_headline <- renderText({
-    d <- demo_data(); if (is.null(d)) return("No data")
-    n_valid <- sum(!is.na(d$age))
-    n_over75 <- sum(d$age >= 75, na.rm=TRUE)
-    pct <- if (n_valid>0) round(100*n_over75/n_valid) else 0
-    sprintf("%d%% aged 75+", pct)
-  })
-  output$demo_age_under75 <- renderText({
-    d <- demo_data(); if (is.null(d)) return("-")
-    n <- sum(d$age < 75, na.rm=TRUE); n_valid <- sum(!is.na(d$age))
-    pct <- if (n_valid>0) round(100*n/n_valid) else 0
-    sprintf("%d  (%d%%)", n, pct)
-  })
-  output$demo_age_over75 <- renderText({
-    d <- demo_data(); if (is.null(d)) return("-")
-    n <- sum(d$age >= 75, na.rm=TRUE); n_valid <- sum(!is.na(d$age))
-    pct <- if (n_valid>0) round(100*n/n_valid) else 0
-    sprintf("%d  (%d%%)", n, pct)
-  })
-  
-  # Ethnicity outputs
-  output$demo_eth_headline <- renderText({
-    d <- demo_data(); if (is.null(d)) return("No data")
-    n_valid <- sum(!is.na(d$eth))
-    n_nonwhite <- sum(!d$eth %in% WHITE_CODES, na.rm=TRUE)
-    pct <- if (n_valid>0) round(100*n_nonwhite/n_valid) else 0
-    sprintf("%d%% non-white", pct)
-  })
-  output$demo_eth_breakdown <- renderUI({
-    d <- demo_data()
-    if (is.null(d)) return(div(class="demo-label","No data"))
-    eth_valid <- d$eth[!is.na(d$eth)]
-    if (length(eth_valid)==0) return(div(class="demo-label","No ethnicity data"))
-    # Group into broad categories
-    broad <- dplyr::case_when(
-      eth_valid %in% 1:5   ~ "Asian or Asian British",
-      eth_valid %in% 6:8   ~ "Black, Black British or Caribbean",
-      eth_valid %in% 9:12  ~ "Mixed or multiple ethnic groups",
-      eth_valid %in% 13:17 ~ "White",
-      eth_valid %in% 18:19 ~ "Other ethnic group",
-      TRUE                 ~ "Unknown"
+
+  observeEvent(input$save_breakdowns, {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) { removeModal(); return() }
+    chosen <- input$breakdowns_choice %||% character(0)
+    selected_breakdowns(chosen)
+    # Persist to overrides.json
+    tryCatch(
+      update_overrides(cfg, participant_breakdowns = as.list(chosen)),
+      error = function(e) message("breakdown save: ", e$message)
     )
-    tbl <- sort(table(broad), decreasing=TRUE)
-    n_total <- length(eth_valid)
-    rows <- lapply(names(tbl), function(grp) {
-      n <- as.integer(tbl[grp])
-      pct <- round(100*n/n_total)
-      div(class="demo-row",
-          span(class="demo-label", grp),
-          span(class="demo-val", sprintf("%d  (%d%%)", n, pct)))
-    })
-    tagList(rows)
-  })
-  
-  # NELA outputs
-  output$demo_nela_headline <- renderText({
-    d <- demo_data(); if (is.null(d)) return("No data")
-    n_valid <- sum(!is.na(d$nela))
-    n_high <- sum(d$nela >= 5, na.rm=TRUE)
-    pct <- if (n_valid>0) round(100*n_high/n_valid) else 0
-    sprintf("%d%% NELA 5%%+", pct)
-  })
-  output$demo_nela_under5 <- renderText({
-    d <- demo_data(); if (is.null(d)) return("-")
-    n <- sum(d$nela < 5, na.rm=TRUE); n_valid <- sum(!is.na(d$nela))
-    pct <- if (n_valid>0) round(100*n/n_valid) else 0
-    sprintf("%d  (%d%%)", n, pct)
-  })
-  output$demo_nela_over5 <- renderText({
-    d <- demo_data(); if (is.null(d)) return("-")
-    n <- sum(d$nela >= 5, na.rm=TRUE); n_valid <- sum(!is.na(d$nela))
-    pct <- if (n_valid>0) round(100*n/n_valid) else 0
-    sprintf("%d  (%d%%)", n, pct)
+    rv$trial_config$participant_breakdowns <- chosen
+    removeModal()
+    showNotification(sprintf("Saved %d breakdown%s.",
+                             length(chosen),
+                             if (length(chosen) == 1) "" else "s"),
+                     type = "message", duration = 3)
   })
 
     output$participants_ui <- renderUI({

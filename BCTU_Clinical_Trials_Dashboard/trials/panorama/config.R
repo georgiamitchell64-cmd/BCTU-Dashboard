@@ -12,6 +12,7 @@ trial_config <- list(
   name         = "Surgery",
   short_name   = "Panorama",
   trial_target = 100L,
+  category     = "Surgery",
 
   # -- Branding --
   logo_file = NULL,

@@ -27,6 +27,15 @@ geocode_location <- function(city, country = NULL) {
     if (!is.null(uk) && !is.na(uk$lat)) return(uk)
   }
 
+  # Air-gap mode: skip Nominatim entirely if the user has disabled outbound
+  # geocoding. Set ALLOW_REMOTE_GEOCODING <- FALSE in any sourced file (or in
+  # globals/constants.R) to suppress the call. Default is FALSE for safety.
+  if (!isTRUE(getOption("BCTU_ALLOW_REMOTE_GEOCODING",
+                        if (exists("ALLOW_REMOTE_GEOCODING"))
+                          ALLOW_REMOTE_GEOCODING else FALSE))) {
+    return(list(lat = NA_real_, lon = NA_real_))
+  }
+
   # Cache key
   key <- tolower(paste(city_clean, ctry_clean, sep = "|"))
   if (exists(key, envir = .geocode_cache)) {

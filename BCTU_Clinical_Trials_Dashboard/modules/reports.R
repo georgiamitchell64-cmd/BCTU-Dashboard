@@ -43,9 +43,42 @@ reports_tab_ui <- function() {
                                )
                            ),
 
+                           # ── New Report Builder (Stage 10) ────────────────
+                           tonic_card(
+                             title = "Report builder",
+                             tools = tagList(
+                               span(style = "font-size:11px;color:#64748B;
+                                             font-style:italic;margin-right:10px;",
+                                    "Customise sections + order, save as a template"),
+                               downloadButton("rb_download",
+                                 HTML("&#x2B07; Generate"),
+                                 class = "btn btn-sm",
+                                 style = "background:#6366F1;color:#fff;border:none;
+                                          font-size:11px;font-weight:600;padding:6px 12px;
+                                          border-radius:6px;")
+                             ),
+                             div(style = "display:grid;grid-template-columns:1fr 1.4fr;
+                                          gap:18px;",
+                                 div(uiOutput("rb_template_picker_ui"),
+                                     div(style = "margin-top:14px;",
+                                         tags$label(style = "font-size:11px;font-weight:600;
+                                                              color:#1B4F6B;text-transform:uppercase;
+                                                              letter-spacing:.5px;",
+                                                    "Free text"),
+                                         textAreaInput("rb_custom_text", label = NULL,
+                                                       placeholder = "Notes for the Custom Text section…",
+                                                       rows = 3, width = "100%"),
+                                         textAreaInput("rb_next_period", label = NULL,
+                                                       placeholder = "Plans for next reporting period…",
+                                                       rows = 3, width = "100%"))),
+                                 div(uiOutput("rb_sections_ui"))
+                             )
+                           ),
+                           div(style = "margin-bottom:14px"),
+
                            # Report configuration card — report type selector + TSC panel
                            tonic_card(
-                             title = "Report options",
+                             title = "Classic report options",
                              div(
                                style = "padding:4px 2px;",
 
@@ -233,64 +266,20 @@ reports_tab_ui <- function() {
                            ),
 
                            # Chart 1
+                           # \u2500\u2500 Amendments editor (used by the Amendments report section) \u2500\u2500
                            tonic_card(
-                             title = uiOutput("c1_title"),
-                             tools = div(class = "d-flex gap-2 align-items-center",
-                                         span(style = "font-size:11px;color:var(--muted);font-style:italic",
-                                              HTML("&#x1F4F7; Camera icon saves as PNG")),
-                                         downloadButton("dl_c1_data", HTML("&#x2B07; Download data"),
-                                                        style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
-                                                        class = "dl-data-btn btn btn-sm")),
-                             withSpinner(echarts4rOutput("chart_recruit", height = "360px"),
-                                         type = 4, color = col_teal)
-                           ),
-
-                           div(class = "grid-2",
-                               tonic_card(
-                                 title = "Sites recruiting \u2014 by month",
-                                 tools = downloadButton("dl_c2_data", HTML("&#x2B07; Download"),
-                                                        style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
-                                                        class = "dl-data-btn btn btn-sm"),
-                                 withSpinner(echarts4rOutput("chart_sites_recruiting", height = "280px"),
-                                             type = 4, color = col_teal)
-                               ),
-                               tonic_card(
-                                 title = "Recruitment rate vs monthly target (%)",
-                                 tools = downloadButton("dl_c3_data", HTML("&#x2B07; Download"),
-                                                        style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
-                                                        class = "dl-data-btn btn btn-sm"),
-                                 withSpinner(echarts4rOutput("chart_rate", height = "280px"),
-                                             type = 4, color = col_teal)
-                               )
-                           ),
-                           div(style = "margin-bottom:15px"),
-
-                           # Heatmap
-                           tonic_card(
-                             title = "Monthly target achievement \u2014 site by site",
-                             tools = div(class = "d-flex gap-2 align-items-center flex-wrap",
-                                         span(style = "background:#DCFCE7;color:#166534;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600",
-                                              HTML("&check; Target met")),
-                                         span(style = "background:#FEF9C3;color:#854D0E;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600",
-                                              "~ Within 80%"),
-                                         span(style = "background:#FEE2E2;color:#991B1B;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600",
-                                              HTML("&cross; Below 80%")),
-                                         span(style = "background:#F8FAFC;color:#94A3B8;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600",
-                                              HTML("&middot; No data")),
-                                         downloadButton("dl_heatmap", HTML("&#x2B07; Download"),
-                                                        style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
-                                                        class = "dl-data-btn btn btn-sm")),
-                             div(style = "overflow-x:auto", uiOutput("heatmap_ui"))
-                           ),
-
-                           # Summary table
-                           tonic_card(
-                             title = "Per-site summary",
-                             tools = downloadButton("dl_summary", HTML("&#x2B07; Download"),
-                                                    style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
-                                                    class = "dl-data-btn btn btn-sm"),
-                             withSpinner(reactableOutput("summary_table"),
-                                         type = 4, color = col_teal)
+                             title = "Amendments",
+                             tools = actionButton("amend_add",
+                                                  HTML("&#x2795; Add amendment"),
+                                                  class = "btn btn-sm",
+                                                  style = "background:#6366F1;color:#fff;
+                                                           border:none;font-size:11px;
+                                                           font-weight:500;padding:6px 12px;"),
+                             div(style = "font-size:12px;color:#64748B;margin-bottom:10px;",
+                                 "Track substantial and non-substantial amendments. The
+                                  list below feeds the Amendments section of any report
+                                  template that includes it."),
+                             uiOutput("amendments_list_ui")
                            )
                   )
 }

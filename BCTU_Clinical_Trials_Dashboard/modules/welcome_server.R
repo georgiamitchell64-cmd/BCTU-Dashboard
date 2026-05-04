@@ -39,8 +39,8 @@ welcome_server <- function(input, output, session, state) {
                              background:linear-gradient(135deg,%s,%s);
                              display:flex;align-items:center;justify-content:center;
                              color:#fff;font-weight:700;font-size:14px;",
-                            if (p$role == "Trial Manager") "#1B4F6B" else "#64748B",
-                            if (p$role == "Trial Manager") "#2EC4A5" else "#94A3B8"),
+                            if (isTRUE(p$portfolio_role == "admin")) "#6366F1" else "#94A3B8",
+                            if (isTRUE(p$portfolio_role == "admin")) "#8B5CF6" else "#CBD5E1"),
             toupper(substr(p$fullname, 1, 1))),
 
         div(
@@ -74,47 +74,139 @@ welcome_server <- function(input, output, session, state) {
     shinyjs::show("new_user_panel")
   })
 
-  # ── Returning user clicked ──────────────────────────────────────────────
+  # ── Returning user clicked → show password prompt ───────────────────────
+  pending_login <- reactiveVal(NULL)
+
   observeEvent(input$returning_user, {
     profiles <- db_load_profiles()
     idx <- input$returning_user
     if (idx < 1 || idx > nrow(profiles)) return()
-
     p <- profiles[idx, ]
-    rv$username <- p$fullname
-    rv$role     <- p$role
 
-    # Apply role UI and proceed
+    pending_login(list(
+      fullname       = p$fullname,
+      role           = p$role,
+      portfolio_role = p$portfolio_role %||% "member",
+      has_password   = profile_has_password(p$fullname)
+    ))
+
+    # Hide profile picker + new-user form, show password panel
+    shinyjs::hide("welcome_profiles_ui")
+    shinyjs::hide("new_user_panel")
+    shinyjs::show("password_panel")
+    updateTextInput(session, "login_password", value = "")
+  })
+
+  output$password_prompt_name <- renderText({
+    p <- pending_login()
+    if (is.null(p)) return("")
+    paste0("Welcome back, ", p$fullname)
+  })
+
+  # If the chosen profile has no password yet (legacy migration), let the user
+  # set one inline.
+  output$login_set_password_panel <- renderUI({
+    p <- pending_login()
+    if (is.null(p) || isTRUE(p$has_password)) return(NULL)
+    div(style = "background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;
+                 padding:12px;margin-bottom:14px;font-size:12px;color:#78350F;
+                 line-height:1.6;",
+        HTML("<strong>Set a password to continue.</strong> Your profile was
+              created before passwords were enabled. Pick one now and it'll
+              be required from next time."),
+        passwordInput("login_password_confirm", label = NULL,
+                      placeholder = "Confirm password",
+                      width = "100%"))
+  })
+
+  observeEvent(input$login_back, {
+    pending_login(NULL)
+    shinyjs::hide("password_panel")
+    shinyjs::show("welcome_profiles_ui")
+    profiles <- db_load_profiles()
+    if (!nrow(profiles)) shinyjs::show("new_user_panel")
+  })
+
+  observeEvent(input$login_go, {
+    p <- pending_login()
+    if (is.null(p)) return()
+    pw <- input$login_password %||% ""
+
+    if (!nzchar(pw)) {
+      showNotification("Enter your password.", type = "warning")
+      return()
+    }
+
+    if (isTRUE(p$has_password)) {
+      # Standard login
+      if (!verify_password(p$fullname, pw)) {
+        showNotification("Incorrect password.", type = "error")
+        return()
+      }
+    } else {
+      # First-time password set
+      confirm <- input$login_password_confirm %||% ""
+      if (nchar(pw) < 6) {
+        showNotification("Pick at least 6 characters.", type = "warning")
+        return()
+      }
+      if (!identical(pw, confirm)) {
+        showNotification("Passwords don't match.", type = "warning")
+        return()
+      }
+      set_password(p$fullname, pw)
+    }
+
+    rv$username       <- p$fullname
+    rv$role           <- p$role
+    rv$portfolio_role <- p$portfolio_role
+    pending_login(NULL)
     complete_login(rv, session)
   })
 
   # ── New user: Get started ───────────────────────────────────────────────
   observeEvent(input$welcome_go, {
-    name <- trimws(input$welcome_name %||% "")
+    name    <- trimws(input$welcome_name %||% "")
+    pw      <- input$welcome_password %||% ""
+    confirm <- input$welcome_password_confirm %||% ""
+
     if (!nzchar(name)) {
       showNotification("Please enter your name.", type = "warning")
       return()
     }
+    if (nchar(pw) < 6) {
+      showNotification("Choose a password of at least 6 characters.",
+                       type = "warning")
+      return()
+    }
+    if (!identical(pw, confirm)) {
+      showNotification("Passwords don't match.", type = "warning")
+      return()
+    }
 
     role <- selected_role()
+    db_save_profile(name, role, password = pw)
 
-    # Save profile
-    db_save_profile(name, role)
-
-    rv$username <- name
-    rv$role     <- role
+    rv$username       <- name
+    rv$role           <- role
+    rv$portfolio_role <- user_portfolio_role(name)
 
     complete_login(rv, session)
   })
 }
 
 
-# ── Helper: complete login and show trial selector ────────────────────────────
+# ── Helper: complete login and show home screen ──────────────────────────────
 complete_login <- function(rv, session) {
-  is_tm <- isTRUE(rv$role == "Trial Manager")
+  # Per-trial role visibility is applied later when a trial is selected
+  # (see apply_trial_role_visibility).  At login we just hide the welcome.
+  shinyjs::hide("welcome_screen")
+}
 
-  # Apply role visibility
-  if (is_tm) {
+# Called from trial_selector_server when a trial is opened.
+apply_trial_role_visibility <- function(trial_role) {
+  is_manager <- isTRUE(trial_role == "manager")
+  if (is_manager) {
     shinyjs::runjs("$('.tm-only').show()")
     shinyjs::runjs("$('.dl-data-btn').show()")
     shinyjs::show("accounts_nav")
@@ -123,43 +215,7 @@ complete_login <- function(rv, session) {
     shinyjs::runjs("$('.dl-data-btn').hide()")
     shinyjs::hide("accounts_nav")
   }
-
-  # Hide welcome, show main app
-  shinyjs::hide("welcome_screen")
 }
 
 
-# ── SQLite profile storage ────────────────────────────────────────────────────
-
-db_init_profiles <- function() {
-  con <- db_connect()
-  on.exit(dbDisconnect(con))
-  dbExecute(con, "
-    CREATE TABLE IF NOT EXISTS profiles (
-      id       INTEGER PRIMARY KEY AUTOINCREMENT,
-      fullname TEXT NOT NULL,
-      role     TEXT NOT NULL,
-      created  TEXT NOT NULL
-    )
-  ")
-}
-
-db_load_profiles <- function() {
-  con <- db_connect()
-  on.exit(dbDisconnect(con))
-  tryCatch({
-    dbGetQuery(con, "SELECT * FROM profiles ORDER BY id")
-  }, error = function(e) {
-    data.frame(id = integer(), fullname = character(),
-               role = character(), created = character())
-  })
-}
-
-db_save_profile <- function(fullname, role) {
-  con <- db_connect()
-  on.exit(dbDisconnect(con))
-  dbExecute(con,
-    "INSERT INTO profiles (fullname, role, created) VALUES (?, ?, ?)",
-    params = list(fullname, role, format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-  )
-}
+# Profile storage now lives in functions/permissions.R (shared SQLite).

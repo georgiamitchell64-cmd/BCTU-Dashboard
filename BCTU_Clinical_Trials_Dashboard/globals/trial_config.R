@@ -106,6 +106,11 @@ discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
       cfg$db_path    <- cfg$db_path %||% file.path(cfg$data_dir, paste0(trial_code, ".sqlite"))
       cfg$logo_file  <- cfg$logo_file %||% file.path(folder, "www", "logo.jpg")
 
+      # Apply overrides.json if present (Stage 5 — JSON overlay)
+      if (exists("apply_overrides", mode = "function")) {
+        cfg <- apply_overrides(cfg)
+      }
+
       configs[[trial_code]] <- cfg
     }
   }

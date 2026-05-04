@@ -1,28 +1,82 @@
 trial_settings_server <- function(input, output, session, state) {
   rv <- state$rv
 
-  # ── Colour presets ────────────────────────────────────────────────────────
-  presets <- list(
-    navy_teal     = list(primary = "#1B4F6B", secondary = "#2EC4A5", accent = "#F59E0B"),
-    indigo_violet = list(primary = "#312E81", secondary = "#8B5CF6", accent = "#F59E0B"),
-    emerald       = list(primary = "#064E3B", secondary = "#10B981", accent = "#FBBF24"),
-    slate_coral   = list(primary = "#334155", secondary = "#F97316", accent = "#06B6D4"),
-    burgundy      = list(primary = "#7F1D1D", secondary = "#DC2626", accent = "#F59E0B"),
-    ocean         = list(primary = "#0C4A6E", secondary = "#06B6D4", accent = "#F97316")
-  )
+  # ── Theme picker ──────────────────────────────────────────────────────────
+  selected_theme <- reactiveVal("custom")
 
-  apply_preset <- function(preset) {
-    updateTextInput(session, "set_col_primary",   value = preset$primary)
-    updateTextInput(session, "set_col_secondary", value = preset$secondary)
-    updateTextInput(session, "set_col_accent",    value = preset$accent)
-  }
+  output$theme_picker_ui <- renderUI({
+    active <- selected_theme()
+    cards <- lapply(names(TRIAL_THEMES), function(key) {
+      th <- TRIAL_THEMES[[key]]
+      is_active <- identical(active, key)
+      border_col <- if (is_active) th$secondary else "#EEF2F7"
+      shadow <- if (is_active)
+        sprintf("box-shadow: 0 0 0 2px %s;", th$secondary) else ""
 
-  observeEvent(input$preset_navy_teal,     apply_preset(presets$navy_teal))
-  observeEvent(input$preset_indigo_violet, apply_preset(presets$indigo_violet))
-  observeEvent(input$preset_emerald,       apply_preset(presets$emerald))
-  observeEvent(input$preset_slate_coral,   apply_preset(presets$slate_coral))
-  observeEvent(input$preset_burgundy,      apply_preset(presets$burgundy))
-  observeEvent(input$preset_ocean,         apply_preset(presets$ocean))
+      div(
+        onclick = sprintf("Shiny.setInputValue('pick_theme', '%s', {priority:'event'})", key),
+        style = sprintf("border:1px solid %s; %s
+                         border-radius:12px; padding:12px; cursor:pointer;
+                         background:#FFFFFF; transition: all .15s;",
+                        border_col, shadow),
+
+        # Swatch row
+        div(style = "display:flex;gap:4px;margin-bottom:10px;",
+            div(style = sprintf("flex:2;height:24px;border-radius:5px;background:%s;", th$primary)),
+            div(style = sprintf("flex:1;height:24px;border-radius:5px;background:%s;", th$secondary)),
+            div(style = sprintf("flex:1;height:24px;border-radius:5px;background:%s;", th$accent))),
+
+        div(style = "display:flex;justify-content:space-between;align-items:center;",
+            div(style = "font-size:13px;font-weight:600;color:#0F172A;", th$label),
+            if (is_active)
+              span(style = sprintf("font-size:10px;color:%s;font-weight:700;
+                                    text-transform:uppercase;letter-spacing:.5px;", th$secondary),
+                   HTML("&#10003; Active"))
+        ),
+        div(style = "font-size:11px;color:#64748B;margin-top:2px;", th$sublabel),
+        div(style = "font-size:10px;color:#94A3B8;margin-top:4px;
+                     text-transform:uppercase;letter-spacing:.5px;",
+            sprintf("Sidebar: %s", th$sidebar))
+      )
+    })
+
+    custom_card <- div(
+      onclick = "Shiny.setInputValue('pick_theme', 'custom', {priority:'event'})",
+      style = sprintf("border:1px dashed %s;border-radius:12px;padding:12px;cursor:pointer;
+                       background:#FAFBFD;transition:all .15s;%s",
+                      if (identical(active, "custom")) "#6366F1" else "#CBD5E1",
+                      if (identical(active, "custom")) "box-shadow:0 0 0 2px #6366F1;" else ""),
+      div(style = "display:flex;gap:4px;margin-bottom:10px;",
+          div(style = "flex:2;height:24px;border-radius:5px;
+                       background:repeating-linear-gradient(45deg,#E2E8F0 0 4px,#F1F5F9 4px 8px);"),
+          div(style = "flex:1;height:24px;border-radius:5px;
+                       background:repeating-linear-gradient(45deg,#E2E8F0 0 4px,#F1F5F9 4px 8px);"),
+          div(style = "flex:1;height:24px;border-radius:5px;
+                       background:repeating-linear-gradient(45deg,#E2E8F0 0 4px,#F1F5F9 4px 8px);")),
+      div(style = "font-size:13px;font-weight:600;color:#0F172A;", "Custom"),
+      div(style = "font-size:11px;color:#64748B;margin-top:2px;",
+          "Set your own colours")
+    )
+
+    div(style = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;",
+        cards, custom_card)
+  })
+
+  observeEvent(input$pick_theme, {
+    key <- input$pick_theme
+    selected_theme(key)
+    if (key == "custom") {
+      shinyjs::show("custom_colors_panel")
+    } else {
+      shinyjs::hide("custom_colors_panel")
+      th <- TRIAL_THEMES[[key]]
+      if (!is.null(th)) {
+        updateTextInput(session, "set_col_primary",   value = th$primary)
+        updateTextInput(session, "set_col_secondary", value = th$secondary)
+        updateTextInput(session, "set_col_accent",    value = th$accent)
+      }
+    }
+  })
 
   # ── Live preview ──────────────────────────────────────────────────────────
   output$color_preview_bar <- renderUI({
@@ -30,7 +84,6 @@ trial_settings_server <- function(input, output, session, state) {
     s <- input$set_col_secondary %||% "#2EC4A5"
     a <- input$set_col_accent    %||% "#F59E0B"
 
-    # Update preview swatches
     runjs(sprintf("$('#preview_primary').css('background','%s')", p))
     runjs(sprintf("$('#preview_secondary').css('background','%s')", s))
     runjs(sprintf("$('#preview_accent').css('background','%s')", a))
@@ -57,6 +110,13 @@ trial_settings_server <- function(input, output, session, state) {
     updateTextInput(session, "set_col_secondary", value = cols$secondary)
     updateTextInput(session, "set_col_accent",    value = cols$accent)
 
+    # Theme: if cfg has one, use it; otherwise fall back to "custom".
+    saved_theme <- cfg$theme %||% "custom"
+    if (!saved_theme %in% c(names(TRIAL_THEMES), "custom")) saved_theme <- "custom"
+    selected_theme(saved_theme)
+    if (saved_theme == "custom") shinyjs::show("custom_colors_panel")
+    else                          shinyjs::hide("custom_colors_panel")
+
     feat <- cfg$features %||% list()
     updateCheckboxInput(session, "set_feat_projections", value = isTRUE(feat$projections))
     updateCheckboxInput(session, "set_feat_pilot",       value = isTRUE(feat$pilot_criteria))
@@ -68,133 +128,266 @@ trial_settings_server <- function(input, output, session, state) {
     updateTextInput(session,    "set_short_name", value = cfg$short_name %||% "")
     updateTextInput(session,    "set_full_name",  value = cfg$name %||% "")
     updateNumericInput(session, "set_target",     value = cfg$trial_target %||% 100)
+    updateSelectInput(session,  "set_category",   selected = trial_category(cfg))
     rd <- cfg$report_defaults %||% list()
     updateTextInput(session, "set_ci",      value = rd$ci %||% "")
     updateTextInput(session, "set_sponsor", value = rd$sponsor %||% "")
   })
 
-  # ── Config file path display ──────────────────────────────────────────────
+  # ── Config file path + override status ───────────────────────────────────
   output$settings_config_path <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg)) return(span("No trial selected."))
-    path <- file.path(cfg$trial_dir, "config.R")
-    div(HTML(paste0("Config file: <code>", path, "</code>")))
+    div(HTML(paste0("Config file: <code>",
+                    file.path(cfg$trial_dir, "config.R"), "</code>")))
   })
 
-  # ── Save colours ─────────────────────────────────────────────────────────
+  output$settings_overrides_status <- renderUI({
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(NULL)
+    rv$settings_changed   # invalidate when settings change
+    path <- overrides_path(cfg)
+    if (file.exists(path)) {
+      div(style = "color:#0F172A;",
+          HTML(paste0("Overrides: <code>", path, "</code> ",
+                      "<span style='color:#6366F1;font-weight:600;'>active</span>")))
+    } else {
+      div(HTML("Overrides: <em>none — using config.R as-is</em>"))
+    }
+  })
+
+  # ── Apply features live (called after save / reset) ──────────────────────
+  apply_features_live <- function(feat) {
+    if (isTRUE(feat$postal_tracking)) shinyjs::show("go_postal_wrap")
+    else                              shinyjs::hide("go_postal_wrap")
+    if (isTRUE(feat$return_rates))    shinyjs::show("go_returns_wrap")
+    else                              shinyjs::hide("go_returns_wrap")
+  }
+
+  # ── Save theme + colours ─────────────────────────────────────────────────
   observeEvent(input$settings_save_colors, {
+    if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
 
-    new_colors <- list(
-      primary   = input$set_col_primary   %||% "#1B4F6B",
-      secondary = input$set_col_secondary %||% "#2EC4A5",
-      accent    = input$set_col_accent    %||% "#F59E0B"
-    )
+    theme_key <- selected_theme()
+    if (theme_key %in% names(TRIAL_THEMES)) {
+      th <- TRIAL_THEMES[[theme_key]]
+      new_colors <- list(primary = th$primary, secondary = th$secondary, accent = th$accent)
+      sidebar_variant <- th$sidebar
+    } else {
+      new_colors <- list(
+        primary   = input$set_col_primary   %||% "#1B4F6B",
+        secondary = input$set_col_secondary %||% "#2EC4A5",
+        accent    = input$set_col_accent    %||% "#F59E0B"
+      )
+      sidebar_variant <- "dark"
+    }
 
-    save_config_field(cfg, "colors", new_colors)
-
-    # Update in-memory config and apply colours immediately (no restart)
+    update_overrides(cfg, theme = theme_key, colors = new_colors)
+    rv$trial_config$theme  <- theme_key
     rv$trial_config$colors <- new_colors
-    apply_trial_colours(new_colors)
+    apply_trial_colours(new_colors, sidebar = sidebar_variant)
+    rv$settings_changed <- Sys.time()
 
-    showNotification(HTML("&#x2714; Colours saved and applied."),
-                     type = "message", duration = 4)
+    msg <- if (theme_key == "custom") "Custom colours applied."
+           else sprintf("%s theme applied.", TRIAL_THEMES[[theme_key]]$label)
+    showNotification(HTML(paste0("&#x2714; ", msg)), type = "message", duration = 4)
   })
 
-  # ── Save features ────────────────────────────────────────────────────────
+  # ── Save identity + features ─────────────────────────────────────────────
   observeEvent(input$settings_save_features, {
+    if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
 
-    # Update identity fields
-    save_config_field(cfg, "short_name",    input$set_short_name %||% cfg$short_name)
-    save_config_field(cfg, "name",          input$set_full_name  %||% cfg$name)
-    save_config_field(cfg, "trial_target",  paste0(as.integer(input$set_target %||% 100), "L"))
+    new_target   <- as.integer(input$set_target %||% cfg$trial_target %||% 100L)
+    new_short    <- input$set_short_name %||% cfg$short_name %||% ""
+    new_full     <- input$set_full_name  %||% cfg$name       %||% ""
+    new_category <- input$set_category   %||% trial_category(cfg)
 
-    # Update features
-    save_config_field(cfg, "features", list(
+    new_features <- list(
       postal_tracking  = isTRUE(input$set_feat_postal),
       return_rates     = isTRUE(input$set_feat_returns),
       projections      = isTRUE(input$set_feat_projections),
       pilot_criteria   = isTRUE(input$set_feat_pilot),
       consort_flow     = isTRUE(input$set_feat_consort),
       baseline_table   = isTRUE(input$set_feat_baseline)
-    ))
+    )
 
-    # Apply target immediately
-    TRIAL_TARGET <<- as.integer(input$set_target %||% 100)
+    new_report_defaults <- list(
+      ci      = input$set_ci      %||% (cfg$report_defaults$ci      %||% ""),
+      sponsor = input$set_sponsor %||% (cfg$report_defaults$sponsor %||% "")
+    )
 
-    # Toggle tab visibility immediately
-    if (isTRUE(input$set_feat_postal)) shinyjs::show("go_postal_wrap") else shinyjs::hide("go_postal_wrap")
-    if (isTRUE(input$set_feat_returns)) shinyjs::show("go_returns_wrap") else shinyjs::hide("go_returns_wrap")
+    update_overrides(cfg,
+      short_name       = new_short,
+      name             = new_full,
+      trial_target     = new_target,
+      category         = new_category,
+      features         = new_features,
+      report_defaults  = new_report_defaults
+    )
 
+    # Update in-memory config so the rest of the app sees changes immediately.
+    rv$trial_config$short_name       <- new_short
+    rv$trial_config$name             <- new_full
+    rv$trial_config$trial_target     <- new_target
+    rv$trial_config$category         <- new_category
+    rv$trial_config$features         <- new_features
+    rv$trial_config$report_defaults  <- new_report_defaults
+
+    # Re-apply globals so TRIAL_TARGET etc. refresh.
+    apply_trial_globals(rv$trial_config)
+    apply_features_live(new_features)
+
+    # Update topbar title in case short_name changed.
+    runjs(sprintf("$('.topbar-title').text('%s Site Tracker')",
+                  gsub("'", "\\\\'", new_short)))
+    runjs(sprintf("document.title = '%s Dashboard'",
+                  gsub("'", "\\\\'", new_short)))
+
+    rv$settings_changed <- Sys.time()
+    rv$home_membership_changed <- Sys.time()  # refresh home cards too
+
+    log_activity("settings_saved",
+                 sprintf("Updated trial settings for <strong>%s</strong>",
+                         htmltools::htmlEscape(new_short)),
+                 username = rv$username, trial_code = cfg$code)
     showNotification(HTML("&#x2714; Settings saved."), type = "message", duration = 4)
   })
-}
 
+  # ── Reset to defaults (delete overrides.json) ────────────────────────────
+  observeEvent(input$settings_reset_overrides, {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
 
-# ── Helper: update a field in the trial's config.R ────────────────────────────
-# This does a targeted find-and-replace in the config file rather than
-# rewriting the whole thing, so comments and manual edits are preserved.
+    showModal(modalDialog(
+      title = div(style = "color:#DC2626;",
+                  HTML("&#x26A0; Reset to defaults?")),
+      size = "s", easyClose = TRUE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("settings_reset_confirm", "Yes, reset",
+                     class = "btn btn-danger",
+                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")
+      ),
+      div(style = "padding:6px 0;font-size:13px;line-height:1.6;",
+          HTML("This deletes the trial's <code>overrides.json</code> and reverts
+                identity, features, and colours to whatever's in <code>config.R</code>.
+                The original config file is not touched."))
+    ))
+  })
 
-save_config_field <- function(cfg, field_name, new_value) {
-  config_path <- file.path(cfg$trial_dir, "config.R")
-  if (!file.exists(config_path)) return()
+  # ── Danger zone (admin only) ─────────────────────────────────────────────
+  output$settings_danger_zone_ui <- renderUI({
+    if (!isTRUE(rv$portfolio_role == "admin")) return(NULL)
+    div(style = "background:#FFFFFF;border:1px solid #FEE2E2;border-radius:14px;
+                 padding:18px 22px;",
+        div(style = "display:flex;align-items:center;gap:10px;margin-bottom:8px;",
+            span(style = "color:#DC2626;font-size:18px;", HTML("&#x26A0;")),
+            span(style = "font-weight:600;color:#991B1B;font-size:14px;",
+                 "Danger zone")),
+        div(style = "font-size:12.5px;color:#7F1D1D;line-height:1.6;margin-bottom:12px;",
+            HTML("Deleting a trial removes its config, sites, randomisation log,
+                  and any uploaded REDCap exports. <strong>This cannot be undone.</strong>")),
+        actionButton("settings_delete_trial",
+                     HTML("&#x1F5D1; Delete this trial"),
+                     class = "btn btn-sm",
+                     style = "background:#FFFFFF;color:#DC2626;border:1px solid #FECACA;
+                              font-weight:600;"))
+  })
 
-  lines <- readLines(config_path, warn = FALSE)
+  observeEvent(input$settings_delete_trial, {
+    if (!isTRUE(rv$portfolio_role == "admin")) return()
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    showModal(modalDialog(
+      title = div(style = "color:#DC2626;",
+                  HTML("&#x26A0; Delete trial?")),
+      size = "m", easyClose = FALSE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("settings_delete_trial_confirm",
+                     "Yes, delete this trial",
+                     class = "btn btn-danger",
+                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")
+      ),
+      div(style = "padding:6px 0;font-size:13px;line-height:1.7;",
+          HTML(sprintf("You're about to permanently delete <strong>%s</strong>.<br><br>
+                        The trial folder <code>trials/%s/</code> will be removed,
+                        including its config, sites, randomisation log, and any
+                        REDCap CSVs. This action cannot be undone.",
+                       cfg$short_name %||% toupper(cfg$code),
+                       cfg$code)))
+    ))
+  })
 
-  # Format the new value as R code
-  format_value <- function(val) {
-    if (is.list(val)) {
-      # Format as list(key = value, ...)
-      items <- mapply(function(k, v) {
-        if (is.logical(v)) sprintf("    %-18s= %s", k, toupper(as.character(v)))
-        else if (is.numeric(v)) sprintf("    %-18s= %s", k, v)
-        else sprintf('    %-18s= "%s"', k, v)
-      }, names(val), val, SIMPLIFY = FALSE)
-      paste0("list(\n", paste(items, collapse = ",\n"), "\n  )")
-    } else if (is.numeric(new_value) || grepl("^\\d+L?$", as.character(new_value))) {
-      as.character(new_value)
+  observeEvent(input$settings_delete_trial_confirm, {
+    if (!isTRUE(rv$portfolio_role == "admin")) return()
+    if (!require_role(rv, "manager")) return()
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    code <- cfg$code
+
+    trial_dir <- file.path(getwd(), "trials", code)
+    success <- tryCatch({
+      unlink(trial_dir, recursive = TRUE, force = TRUE)
+      TRUE
+    }, error = function(e) FALSE)
+
+    logo_path <- file.path(getwd(), "www", "trial_logos", paste0(code, ".jpg"))
+    if (file.exists(logo_path)) file.remove(logo_path)
+
+    removeModal()
+
+    if (success) {
+      log_activity("trial_deleted",
+                   sprintf("Deleted trial <strong>%s</strong>",
+                           htmltools::htmlEscape(cfg$short_name %||% toupper(code))),
+                   username = rv$username, trial_code = code)
+      showNotification(sprintf("Trial '%s' deleted.",
+                               cfg$short_name %||% toupper(code)),
+                       type = "message", duration = 5)
+      # Send the user back to the home screen
+      rv$trial_config <- NULL
+      rv$trial_code   <- NULL
+      rv$trial_role   <- NULL
+      rv$home_membership_changed <- Sys.time()
+      shinyjs::hide("dashboard_panel")
+      shinyjs::hide("sidebar_nav_section")
+      shinyjs::hide("topbar_wrap")
+      shinyjs::show("trial_selector_panel")
+      shinyjs::runjs("document.body.classList.add('home-mode')")
     } else {
-      sprintf('"%s"', gsub('"', '\\\\"', as.character(val)))
+      showNotification("Could not delete trial folder. It may be in use.",
+                       type = "error", duration = 8)
     }
-  }
+  })
 
-  formatted <- format_value(new_value)
+  observeEvent(input$settings_reset_confirm, {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
 
-  # Strategy: find the line that starts the field assignment, replace it
-  # For simple fields: field_name = value,
-  # For list fields: field_name = list(...) spanning multiple lines
+    clear_overrides(cfg)
+    removeModal()
 
-  pattern <- sprintf("^(\\s*)%s\\s*=", field_name)
-  match_idx <- grep(pattern, lines)
-
-  if (length(match_idx) == 0) {
-    # Field not found — append before closing paren
-    close_idx <- max(grep("^\\)", lines))
-    if (length(close_idx) > 0) {
-      indent <- "  "
-      new_line <- sprintf("%s%s = %s,", indent, field_name, formatted)
-      lines <- append(lines, new_line, after = close_idx - 1)
+    # Reload original config from disk (without overrides) and refresh.
+    fresh <- discover_trials()[[cfg$code]]
+    if (!is.null(fresh)) {
+      rv$trial_config <- fresh
+      apply_trial_globals(fresh)
+      .tk <- fresh$theme %||% "custom"
+      .sv <- if (.tk %in% names(TRIAL_THEMES)) TRIAL_THEMES[[.tk]]$sidebar else "dark"
+      apply_trial_colours(
+        fresh$colors %||% list(primary = "#1B4F6B", secondary = "#2EC4A5", accent = "#F59E0B"),
+        sidebar = .sv)
+      apply_features_live(fresh$features %||% list())
     }
-  } else {
-    idx <- match_idx[1]
-    indent <- sub("^(\\s*).*", "\\1", lines[idx])
 
-    if (is.list(new_value)) {
-      # Find the end of the list block (closing paren + possible comma)
-      depth <- 0; end_idx <- idx
-      for (i in idx:length(lines)) {
-        depth <- depth + nchar(gsub("[^(]", "", lines[i])) - nchar(gsub("[^)]", "", lines[i]))
-        if (depth <= 0) { end_idx <- i; break }
-      }
-      replacement <- sprintf("%s%s = %s,", indent, field_name, formatted)
-      lines <- c(lines[1:(idx - 1)], replacement, lines[(end_idx + 1):length(lines)])
-    } else {
-      lines[idx] <- sprintf("%s%s = %s,", indent, field_name, formatted)
-    }
-  }
-
-  writeLines(lines, config_path)
+    rv$settings_changed <- Sys.time()
+    rv$home_membership_changed <- Sys.time()
+    showNotification(HTML("&#x2714; Overrides cleared."),
+                     type = "message", duration = 4)
+  })
 }

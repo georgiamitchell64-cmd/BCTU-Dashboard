@@ -47,9 +47,12 @@ sites_tab_ui <- function() {
           div(class = "form-field", numericInput("ns_rand", "Already randomised", value = 0, min = 0))
         ),
 
-        div(style = "display:flex;gap:10px",
+        div(style = "display:flex;gap:10px;flex-wrap:wrap",
           actionButton("add_site", HTML("+ Add site"),
             class = "btn btn-success"),
+          actionButton("bulk_add_sites", HTML("&#x1F4CB; Bulk add…"),
+            class = "btn",
+            style = "background:#6366F1;color:#fff;border:none;font-weight:500;"),
           actionButton("delete_site", HTML("&#x1F5D1; Delete selected"),
             class = "btn btn-danger")
         )

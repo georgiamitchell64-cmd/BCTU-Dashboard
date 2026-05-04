@@ -24,7 +24,9 @@ accounts_server <- function(input, output, session, state) {
   })
 
   output$accounts_table <- renderReactable({
-    rv$accounts %>%
+    df <- rv$accounts
+    req(!is.null(df), "role" %in% names(df), nrow(df) > 0)
+    df %>%
       mutate(
         Edit     = ifelse(role == "Trial Manager", "\u2713", "\u2717"),
         DataDL   = ifelse(role == "Trial Manager", "\u2713", "\u2717"),

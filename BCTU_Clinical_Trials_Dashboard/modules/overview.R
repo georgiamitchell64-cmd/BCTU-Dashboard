@@ -30,6 +30,16 @@ overview_tab_ui <- function() {
                            ),
                            div(style = "margin-bottom:14px"),
 
+                           # ── Smart Insights ──────────────────────────────
+                           tonic_card(
+                             title = "Smart Insights",
+                             tools = span(style = "font-size:11px;color:var(--muted);
+                                                   font-style:italic;",
+                                          "Auto-generated from trial data"),
+                             uiOutput("smart_insights_ui")
+                           ),
+                           div(style = "margin-bottom:14px"),
+
                            # ── Recruitment projection (chart + sliders) ────
                            tonic_card(
                              title = "Recruitment projection vs protocol plan",

@@ -24,16 +24,19 @@ tonic_theme <- bs_theme(
 )
 
 tonic_css <- "
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
-@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
+/* Air-gapped: external fonts/icons removed.
+   Outfit + Font Awesome CDN @imports were here before; Shiny's bundled
+   fontawesome package provides icons locally, and we use a system font stack. */
 
 :root {
   --navy:#1B4F6B;--navy-dk:#143D54;--teal:#2EC4A5;--teal-dk:#0FA88E;
   --teal-lt:#E0F7F3;--amber:#F59E0B;--red:#EF4444;--blue:#3B82F6;
   --bg:#EEF3F8;--card:#fff;--border:#DDE5EE;--text:#1E293B;--muted:#64748B;
-  --font:'Outfit',sans-serif;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
-body, .shiny-app { font-family: 'Outfit', sans-serif !important; }
+body, .shiny-app {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+}
 
 /* TOPBAR */
 .topbar{background:var(--navy);height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;box-shadow:0 2px 8px rgba(0,0,0,.12);flex-shrink:0;margin:-20px -22px 20px -22px;width:calc(100% + 44px)}
@@ -223,10 +226,7 @@ body, .shiny-app { font-family: 'Outfit', sans-serif !important; }
 # ═══════════════════════════════════════════════════════════════════════════
 
 auth_head <- tagList(
-  tags$link(rel = "preconnect", href = "https://fonts.googleapis.com"),
-  tags$link(rel = "preconnect", href = "https://fonts.gstatic.com", crossorigin = NA),
-  tags$link(rel = "stylesheet",
-            href = "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"),
+  # Air-gapped: external font preconnects removed.
 
   tags$style(HTML("
     /* ── Use body-level class (added by JS) for maximum compatibility ─── */

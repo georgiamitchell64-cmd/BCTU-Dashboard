@@ -2,6 +2,20 @@ overview_server <- function(input, output, session, state) {
   rv <- state$rv
   filtered <- state$filtered
 
+  # ── Smart Insights ──────────────────────────────────────────────────────
+  output$smart_insights_ui <- renderUI({
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(NULL)
+    insights <- tryCatch(
+      compute_insights(rv$raw_redcap, rv$sites, cfg),
+      error = function(e) {
+        message("Smart insights error: ", e$message)
+        list()
+      }
+    )
+    render_insights_panel(insights)
+  })
+
   output$meeting_label_txt <- renderText({
     req(input$last_meeting)
     paste("Dashboard highlights changes since", format(input$last_meeting, "%d %b %Y"))

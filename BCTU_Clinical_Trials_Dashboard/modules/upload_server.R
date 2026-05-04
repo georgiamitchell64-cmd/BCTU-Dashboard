@@ -161,6 +161,15 @@ upload_server <- function(input, output, session, state) {
              n_p, " participants · ", n_s, " sites"),
       type = "message", duration = 6)
 
+    cfg <- rv$trial_config
+    log_activity("csv_uploaded",
+                 sprintf("Loaded REDCap export <strong>%s</strong> (%d participants · %d sites)",
+                         htmltools::htmlEscape(basename(pending$filepath %||% "")),
+                         n_p, n_s),
+                 username = rv$username,
+                 trial_code = if (!is.null(cfg)) cfg$code else NULL,
+                 metadata = list(participants = n_p, sites = n_s))
+
     pending$raw <- NULL
   }
 
@@ -195,6 +204,15 @@ upload_server <- function(input, output, session, state) {
     )
     rv$trial_config <- new_cfg
     apply_trial_globals(new_cfg)
+
+    # Persist mapping to overrides.json so the modal doesn't reappear next
+    # time this trial is opened.
+    tryCatch(
+      update_overrides(new_cfg,
+        redcap_fields = new_cfg$redcap_fields,
+        redcap_events = new_cfg$redcap_events),
+      error = function(e) message("autodetect persist: ", e$message)
+    )
 
     n_filled <- sum(vapply(applied_fields, function(x) nzchar(x %||% ""), logical(1))) +
                 sum(vapply(applied_events, function(x) nzchar(x %||% ""), logical(1)))

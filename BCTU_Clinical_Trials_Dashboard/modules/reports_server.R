@@ -604,4 +604,388 @@ reports_server <- function(input, output, session, state) {
       })
     }
   )
+
+  # ════════════════════════════════════════════════════════════════════════
+  # Amendments editor (feeds the Amendments report section)
+  # ════════════════════════════════════════════════════════════════════════
+  amendments_state <- reactiveVal(list())
+
+  observeEvent(rv$trial_config, {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) { amendments_state(list()); return() }
+    saved <- cfg$amendments
+    amendments_state(if (is.null(saved)) list() else saved)
+  }, ignoreNULL = TRUE)
+
+  output$amendments_list_ui <- renderUI({
+    items <- amendments_state()
+    if (!length(items)) {
+      return(div(style = "padding:20px;text-align:center;color:#94A3B8;
+                          font-size:12.5px;font-style:italic;",
+                 "No amendments tracked yet — click Add amendment."))
+    }
+    rows <- lapply(seq_along(items), function(i) {
+      a <- items[[i]]
+      sev <- if (identical(a$type, "Substantial"))
+        list(bg = "#FEF2F2", fg = "#B91C1C", border = "#FECACA")
+      else
+        list(bg = "#F5F3FF", fg = "#6366F1", border = "#C7D2FE")
+
+      div(style = sprintf("display:grid;grid-template-columns:auto 1fr auto;
+                           gap:14px;padding:12px 14px;border:1px solid %s;
+                           border-radius:10px;margin-bottom:8px;background:%s;",
+                          sev$border, sev$bg),
+          div(style = sprintf("font-size:10.5px;font-weight:700;
+                               text-transform:uppercase;letter-spacing:.5px;
+                               color:%s;align-self:center;width:90px;",
+                              sev$fg),
+              a$type %||% "Amendment"),
+          div(div(style = "font-weight:600;color:#0F172A;font-size:13px;",
+                  sprintf("%s — %s",
+                          a$ref     %||% sprintf("Amendment %d", i),
+                          a$status  %||% "Pending")),
+              div(style = "font-size:11.5px;color:#64748B;margin-top:2px;",
+                  sprintf("Submitted %s",
+                          a$date %||% "—")),
+              div(style = "font-size:12.5px;color:#475569;margin-top:6px;
+                           line-height:1.5;",
+                  a$description %||% "")),
+          div(style = "display:flex;gap:6px;align-self:start;",
+              actionButton(paste0("amend_edit_", i),
+                           HTML("&#9998;"),
+                           class = "btn btn-sm",
+                           style = "padding:2px 8px;font-size:11px;
+                                    background:#FFFFFF;border:1px solid #DDE5EE;
+                                    color:#475569;"),
+              actionButton(paste0("amend_del_", i),
+                           HTML("&times;"),
+                           class = "btn btn-sm",
+                           style = "padding:2px 8px;font-size:13px;
+                                    background:#FFFFFF;border:1px solid #FECACA;
+                                    color:#B91C1C;"))
+      )
+    })
+    div(rows)
+  })
+
+  # Persist + reflect into rv$trial_config
+  .save_amendments <- function(items) {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    tryCatch(update_overrides(cfg, amendments = items),
+             error = function(e) message("amend save: ", e$message))
+    rv$trial_config$amendments <- items
+  }
+
+  amend_editing <- reactiveVal(NULL)   # NULL = adding new
+
+  show_amend_modal <- function(idx = NULL) {
+    items <- amendments_state()
+    a <- if (is.null(idx)) list() else items[[idx]]
+    showModal(modalDialog(
+      title = if (is.null(idx)) "Add amendment" else "Edit amendment",
+      size = "m", easyClose = TRUE,
+      footer = tagList(
+        if (!is.null(idx))
+          actionButton("amend_save", "Save changes",
+                       class = "btn btn-primary",
+                       style = "background:#6366F1;border-color:#6366F1;")
+        else
+          actionButton("amend_save", "Add",
+                       class = "btn btn-primary",
+                       style = "background:#6366F1;border-color:#6366F1;"),
+        modalButton("Cancel")
+      ),
+      div(style = "display:grid;grid-template-columns:1fr 1fr;gap:12px;",
+          selectInput("amend_type", "Type",
+                      choices = c("Substantial", "Non-substantial"),
+                      selected = a$type %||% "Substantial"),
+          dateInput("amend_date", "Date submitted",
+                    value = a$date %||% Sys.Date(),
+                    format = "d M yyyy")),
+      div(style = "display:grid;grid-template-columns:1fr 1fr;gap:12px;",
+          textInput("amend_ref", "Reference (e.g. Amendment 3)",
+                    value = a$ref %||% ""),
+          selectInput("amend_status", "Status",
+                      choices = c("Pending", "Approved", "Rejected", "Withdrawn"),
+                      selected = a$status %||% "Pending")),
+      textAreaInput("amend_description", "Description",
+                    value = a$description %||% "",
+                    rows = 4, width = "100%",
+                    placeholder = "Brief summary of the amendment…")
+    ))
+    amend_editing(idx)
+  }
+
+  observeEvent(input$amend_add, show_amend_modal(NULL))
+
+  observeEvent(input$amend_save, {
+    items <- amendments_state()
+    new_a <- list(
+      type        = input$amend_type %||% "Substantial",
+      date        = format(input$amend_date %||% Sys.Date(), "%Y-%m-%d"),
+      ref         = input$amend_ref %||% "",
+      status      = input$amend_status %||% "Pending",
+      description = input$amend_description %||% ""
+    )
+    idx <- amend_editing()
+    if (is.null(idx)) {
+      items[[length(items) + 1]] <- new_a
+    } else {
+      items[[idx]] <- new_a
+    }
+    amendments_state(items)
+    .save_amendments(items)
+    cfg <- rv$trial_config
+    log_activity(
+      if (is.null(idx)) "amendment_added" else "amendment_edited",
+      sprintf("%s amendment %s — %s",
+              if (is.null(idx)) "Added" else "Edited",
+              htmltools::htmlEscape(new_a$ref %||% "(unnamed)"),
+              htmltools::htmlEscape(new_a$type %||% "")),
+      username = rv$username,
+      trial_code = if (!is.null(cfg)) cfg$code else NULL)
+    removeModal()
+    showNotification("Amendment saved.", type = "message", duration = 3)
+  })
+
+  # Wire edit/delete buttons (one per amendment, up to 50 supported)
+  lapply(seq_len(50), function(i) {
+    observeEvent(input[[paste0("amend_edit_", i)]], {
+      show_amend_modal(i)
+    }, ignoreInit = TRUE)
+    observeEvent(input[[paste0("amend_del_", i)]], {
+      items <- amendments_state()
+      if (i <= length(items)) {
+        removed_ref <- items[[i]]$ref %||% sprintf("Amendment %d", i)
+        items[[i]] <- NULL
+        amendments_state(items)
+        .save_amendments(items)
+        cfg <- rv$trial_config
+        log_activity("amendment_removed",
+                     sprintf("Removed amendment <strong>%s</strong>",
+                             htmltools::htmlEscape(removed_ref)),
+                     username = rv$username,
+                     trial_code = if (!is.null(cfg)) cfg$code else NULL)
+        showNotification("Amendment removed.", type = "message", duration = 3)
+      }
+    }, ignoreInit = TRUE)
+  })
+
+  # ════════════════════════════════════════════════════════════════════════
+  # Stage 10: Report Builder
+  # ════════════════════════════════════════════════════════════════════════
+  rb_template_choice <- reactiveVal("TMG")
+  rb_section_order <- reactiveVal(REPORT_TEMPLATES$TMG$sections)
+
+  # Initialise from saved template overrides if present
+  observeEvent(rv$trial_config, {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    saved <- cfg$report_templates
+    pick <- rb_template_choice()
+    if (!is.null(saved) && !is.null(saved[[pick]]) &&
+        length(saved[[pick]]$sections)) {
+      rb_section_order(saved[[pick]]$sections)
+    } else if (!is.null(REPORT_TEMPLATES[[pick]])) {
+      rb_section_order(REPORT_TEMPLATES[[pick]]$sections)
+    }
+  }, ignoreNULL = TRUE)
+
+  # Template picker UI
+  output$rb_template_picker_ui <- renderUI({
+    cur <- rb_template_choice()
+    cards <- lapply(names(REPORT_TEMPLATES), function(k) {
+      t <- REPORT_TEMPLATES[[k]]
+      active <- identical(cur, k)
+      div(onclick = sprintf("Shiny.setInputValue('rb_pick_template','%s',{priority:'event'})", k),
+          style = sprintf("background:#FFFFFF;border:1px solid %s;border-radius:10px;
+                           padding:12px 14px;cursor:pointer;margin-bottom:8px;
+                           %s",
+                          if (active) "#6366F1" else "#EEF2F7",
+                          if (active) "box-shadow:0 0 0 2px #C7D2FE;" else ""),
+          div(style = "display:flex;justify-content:space-between;align-items:baseline;",
+              span(style = "font-weight:600;color:#0F172A;font-size:13.5px;", t$label),
+              if (active)
+                span(style = "font-size:10px;color:#6366F1;font-weight:700;
+                              text-transform:uppercase;letter-spacing:.5px;",
+                     HTML("&#10003; Active"))),
+          div(style = "font-size:11.5px;color:#64748B;margin-top:3px;",
+              t$description))
+    })
+    tagList(
+      tags$label(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+                          text-transform:uppercase;letter-spacing:.5px;",
+                 "Template"),
+      div(style = "margin-top:6px;", cards),
+      div(style = "margin-top:10px;display:flex;gap:8px;",
+          actionButton("rb_save_template", HTML("&#x1F4BE; Save as default for this trial"),
+                       class = "btn btn-sm",
+                       style = "font-size:11px;padding:5px 10px;background:#FFFFFF;
+                                color:#1B4F6B;border:1px solid #DDE5EE;font-weight:500;"),
+          actionButton("rb_reset_template", HTML("&#x21BA; Reset"),
+                       class = "btn btn-sm",
+                       style = "font-size:11px;padding:5px 10px;background:transparent;
+                                color:#64748B;border:1px solid #DDE5EE;"))
+    )
+  })
+
+  observeEvent(input$rb_pick_template, {
+    k <- input$rb_pick_template
+    if (!k %in% names(REPORT_TEMPLATES)) return()
+    rb_template_choice(k)
+    cfg <- rv$trial_config
+    saved <- cfg$report_templates
+    if (!is.null(saved) && !is.null(saved[[k]]) &&
+        length(saved[[k]]$sections)) {
+      rb_section_order(saved[[k]]$sections)
+    } else {
+      rb_section_order(REPORT_TEMPLATES[[k]]$sections)
+    }
+  })
+
+  observeEvent(input$rb_reset_template, {
+    k <- rb_template_choice()
+    rb_section_order(REPORT_TEMPLATES[[k]]$sections)
+    showNotification(sprintf("Reset to default %s sections.",
+                             REPORT_TEMPLATES[[k]]$label),
+                     type = "message", duration = 3)
+  })
+
+  # Sections UI: ordered list (reorderable) + checkboxes for off-list sections
+  output$rb_sections_ui <- renderUI({
+    chosen <- rb_section_order()
+    chosen <- chosen[chosen %in% vapply(REPORT_SECTIONS, function(s) s$id, character(1))]
+
+    chosen_block <- if (length(chosen) == 0) {
+      div(style = "padding:14px;color:#94A3B8;font-style:italic;font-size:12px;",
+          "No sections selected. Pick from below.")
+    } else {
+      rows <- lapply(seq_along(chosen), function(i) {
+        sec <- report_section_by_id(chosen[i])
+        div(style = "display:flex;align-items:center;gap:8px;
+                     padding:8px 10px;background:#FFFFFF;border:1px solid #EEF2F7;
+                     border-radius:8px;margin-bottom:6px;",
+            span(style = "color:#94A3B8;font-size:11px;font-weight:600;
+                          width:22px;text-align:center;", i),
+            div(style = "flex:1;",
+                div(style = "font-weight:500;color:#0F172A;font-size:13px;", sec$label),
+                div(style = "font-size:10.5px;color:#94A3B8;", sec$group)),
+            actionButton(paste0("rb_up_", chosen[i]), HTML("&uarr;"),
+                         class = "btn btn-sm",
+                         style = "padding:1px 7px;font-size:11px;background:#FFFFFF;
+                                  border:1px solid #DDE5EE;color:#475569;"),
+            actionButton(paste0("rb_down_", chosen[i]), HTML("&darr;"),
+                         class = "btn btn-sm",
+                         style = "padding:1px 7px;font-size:11px;background:#FFFFFF;
+                                  border:1px solid #DDE5EE;color:#475569;"),
+            actionButton(paste0("rb_remove_", chosen[i]), HTML("&times;"),
+                         class = "btn btn-sm",
+                         style = "padding:1px 7px;font-size:12px;background:#FFFFFF;
+                                  border:1px solid #FECACA;color:#B91C1C;")
+        )
+      })
+      tagList(rows)
+    }
+
+    avail <- setdiff(vapply(REPORT_SECTIONS, function(s) s$id, character(1)),
+                     chosen)
+    avail_chips <- if (length(avail)) {
+      lapply(avail, function(id) {
+        sec <- report_section_by_id(id)
+        actionButton(paste0("rb_add_", id),
+                     HTML(sprintf("&#43; %s", htmltools::htmlEscape(sec$label))),
+                     class = "btn btn-sm",
+                     style = "background:#F5F3FF;color:#6366F1;border:1px solid #C7D2FE;
+                              font-size:11px;font-weight:500;padding:4px 10px;
+                              margin:0 6px 6px 0;")
+      })
+    } else NULL
+
+    tagList(
+      tags$label(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+                          text-transform:uppercase;letter-spacing:.5px;",
+                 "Sections (in order)"),
+      div(style = "margin:6px 0 14px;", chosen_block),
+      if (length(avail)) tagList(
+        tags$label(style = "font-size:11px;font-weight:600;color:#64748B;
+                            text-transform:uppercase;letter-spacing:.5px;",
+                   "Add more"),
+        div(style = "margin-top:6px;display:flex;flex-wrap:wrap;",
+            avail_chips)
+      )
+    )
+  })
+
+  # Wire up + / - / up / down buttons (one observer per section id)
+  lapply(REPORT_SECTIONS, function(sec) {
+    id <- sec$id
+    observeEvent(input[[paste0("rb_add_", id)]], {
+      cur <- rb_section_order()
+      if (!id %in% cur) rb_section_order(c(cur, id))
+    }, ignoreInit = TRUE)
+    observeEvent(input[[paste0("rb_remove_", id)]], {
+      rb_section_order(setdiff(rb_section_order(), id))
+    }, ignoreInit = TRUE)
+    observeEvent(input[[paste0("rb_up_", id)]], {
+      cur <- rb_section_order()
+      i <- match(id, cur)
+      if (!is.na(i) && i > 1) {
+        cur[c(i - 1, i)] <- cur[c(i, i - 1)]
+        rb_section_order(cur)
+      }
+    }, ignoreInit = TRUE)
+    observeEvent(input[[paste0("rb_down_", id)]], {
+      cur <- rb_section_order()
+      i <- match(id, cur)
+      if (!is.na(i) && i < length(cur)) {
+        cur[c(i, i + 1)] <- cur[c(i + 1, i)]
+        rb_section_order(cur)
+      }
+    }, ignoreInit = TRUE)
+  })
+
+  # Save the current section order as the trial's default for this template
+  observeEvent(input$rb_save_template, {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    k <- rb_template_choice()
+    secs <- rb_section_order()
+    existing <- cfg$report_templates %||% list()
+    existing[[k]] <- list(sections = as.list(secs))
+    tryCatch(update_overrides(cfg, report_templates = existing),
+             error = function(e) message("rb save: ", e$message))
+    rv$trial_config$report_templates <- existing
+    showNotification(sprintf("Saved %s template for %s.",
+                             REPORT_TEMPLATES[[k]]$label,
+                             cfg$short_name %||% "this trial"),
+                     type = "message", duration = 4)
+  })
+
+  # Generate
+  output$rb_download <- downloadHandler(
+    filename = function() {
+      cfg <- rv$trial_config
+      slug <- gsub("[^A-Za-z0-9]", "_", cfg$short_name %||% "trial")
+      sprintf("%s_%s_%s.html",
+              slug, rb_template_choice(), format(Sys.Date(), "%Y-%m-%d"))
+    },
+    content = function(file) {
+      cfg <- rv$trial_config
+      ctx <- list(
+        rv = rv, cfg = cfg,
+        template_label = REPORT_TEMPLATES[[rb_template_choice()]]$label,
+        period_label = if (!is.null(input$rpt_dates))
+          sprintf("%s – %s",
+                  format(input$rpt_dates[1], "%d %b %Y"),
+                  format(input$rpt_dates[2], "%d %b %Y")) else "—",
+        prepared_by = input$prepared_by %||% rv$username,
+        reviewed_by = input$reviewed_by,
+        custom_text = input$rb_custom_text,
+        next_period_text = input$rb_next_period
+      )
+      html <- build_report_html(rb_section_order(), ctx)
+      writeLines(html, file)
+    }
+  )
 }

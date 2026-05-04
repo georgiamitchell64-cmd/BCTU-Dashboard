@@ -68,6 +68,7 @@ init_app_state <- function(input, output, session) {
     shinyjs::hide("dashboard_panel")
     shinyjs::hide("sidebar_nav_section")    # Hide sidebar nav
     shinyjs::hide("topbar_wrap")             # Hide topbar
+    runjs("document.body.classList.add('home-mode')")
 
     # Reset topbar
     runjs("$('.topbar-title').text('Clinical Trials Dashboard')")
@@ -99,6 +100,7 @@ init_app_state <- function(input, output, session) {
   }
   observeEvent(input$go_overview,       switch_tab("overview", "go_overview"))
   observeEvent(input$go_reports,        switch_tab("reports", "go_reports"))
+  observeEvent(input$go_charts,         switch_tab("charts",  "go_charts"))
   observeEvent(input$go_randomisations, switch_tab("randomisations", "go_randomisations"))
   observeEvent(input$go_participants,   switch_tab("participants", "go_participants"))
   observeEvent(input$go_sites,          switch_tab("sites", "go_sites"))

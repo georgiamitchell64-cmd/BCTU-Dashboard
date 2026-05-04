@@ -13,6 +13,7 @@ trial_config <- list(
   name         = "TONIC — Early Parenteral Nutrition vs Standard Care",
   short_name   = "TONIC",
   trial_target = 898L,
+  category     = "Surgery",
 
   # ── Branding ───────────────────────────────────────────────────────────────
   logo_file = NULL,   # will look for trials/tonic/www/TONIC_Logo.jpg

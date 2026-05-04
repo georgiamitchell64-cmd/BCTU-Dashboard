@@ -28,38 +28,21 @@ participants_tab_ui <- function() {
                                        icon_bg = "background:#D1FAE5;color:#059669")
                            ),
                            div(style = "margin-bottom:14px"),
-                           layout_columns(col_widths=c(4,4,4), gap="13px",
-                                          tonic_card(title="Age at randomisation",
-                                                     div(class="demo-card",
-                                                         div(class="demo-headline", textOutput("demo_age_headline", inline=TRUE)),
-                                                         tags$hr(style="border-color:#EEF3F8;margin:8px 0"),
-                                                         div(class="demo-row",
-                                                             span(class="demo-label","Under 75"),
-                                                             span(class="demo-val", textOutput("demo_age_under75", inline=TRUE))),
-                                                         div(class="demo-row",
-                                                             span(class="demo-label","75 and over"),
-                                                             span(class="demo-val", textOutput("demo_age_over75", inline=TRUE)))
-                                                     )
-                                          ),
-                                          tonic_card(title="Ethnicity",
-                                                     div(class="demo-card",
-                                                         div(class="demo-headline", textOutput("demo_eth_headline", inline=TRUE)),
-                                                         tags$hr(style="border-color:#EEF3F8;margin:8px 0"),
-                                                         uiOutput("demo_eth_breakdown")
-                                                     )
-                                          ),
-                                          tonic_card(title="NELA morbidity score",
-                                                     div(class="demo-card",
-                                                         div(class="demo-headline", textOutput("demo_nela_headline", inline=TRUE)),
-                                                         tags$hr(style="border-color:#EEF3F8;margin:8px 0"),
-                                                         div(class="demo-row",
-                                                             span(class="demo-label","Under 5%"),
-                                                             span(class="demo-val", textOutput("demo_nela_under5", inline=TRUE))),
-                                                         div(class="demo-row",
-                                                             span(class="demo-label","5% and above"),
-                                                             span(class="demo-val", textOutput("demo_nela_over5", inline=TRUE)))
-                                                     )
-                                          )
+                           # ── Customisable demographic breakdowns ──────────
+                           tonic_card(
+                             title = "Demographic breakdowns",
+                             tools = tagList(
+                               span(style = "font-size:11px;color:#64748B;
+                                             font-style:italic;margin-right:10px;",
+                                    textOutput("breakdowns_summary_txt", inline = TRUE)),
+                               actionButton("configure_breakdowns",
+                                            HTML("&#x2699; Configure"),
+                                            class = "btn btn-sm tm-only",
+                                            style = "background:#FFFFFF;color:#1B4F6B;
+                                                     border:1px solid #DDE5EE;font-size:11px;
+                                                     font-weight:500;")
+                             ),
+                             uiOutput("participant_breakdowns_ui")
                            ),
                            div(style="margin-bottom:14px"),
                            tonic_card(
