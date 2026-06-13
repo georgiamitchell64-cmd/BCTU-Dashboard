@@ -1,0 +1,8 @@
+{
+  "theme": "custom",
+  "colors": {
+    "primary": "#1B4F6B",
+    "secondary": "#2EC4A5",
+    "accent": "#F59E0B"
+  }
+}
