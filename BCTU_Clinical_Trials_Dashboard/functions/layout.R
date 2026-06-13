@@ -91,6 +91,8 @@ build_app_ui <- function() {
             actionButton("go_accounts",   "Accounts",          class = "sidebar-nav-btn")),
         div(id = "settings_nav",
             actionButton("go_settings",   "Trial Settings",    class = "sidebar-nav-btn")),
+        # Binding for the "All trials" home control rendered in the tab bar.
+        actionButton("back_to_selector",  "All trials",        class = "sidebar-nav-btn"),
         # Hidden sidebar outputs so server code doesn't error
         textOutput("sb_name"),
         textOutput("sb_role"),
@@ -122,12 +124,6 @@ build_app_ui <- function() {
                      textOutput("topbar_view_badge", inline = TRUE))
             ),
             div(class = "topbar-right",
-                actionButton("back_to_selector",
-                             label = tagList(
-                               HTML('<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5V13a1 1 0 001 1h3v-3.5h3V14h3a1 1 0 001-1V8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M1 8l7-6 7 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>'),
-                               span("Home")
-                             ),
-                             class = "topbar-home-btn"),
                 div(class = "topbar-bell", title = "Notifications",
                     HTML('<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6.5a4 4 0 018 0c0 2 1 3.5 1.5 4H2.5c.5-.5 1.5-2 1.5-4z" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/><path d="M6 10.5s.5 2 2 2 2-2 2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>'),
                     div(class = "topbar-bell-dot")
@@ -144,6 +140,14 @@ build_app_ui <- function() {
 
         # ═══ Horizontal tab bar (hidden until trial is selected) ═══════════
         shinyjs::hidden(div(id = "topnav_wrap", class = "topnav-bar topnav-pills",
+            # Prominent "back to all trials" control at the start of the nav —
+            # the obvious way out of a trial, separated from the in-trial tabs.
+            tags$button(id = "tn_home", class = "topnav-home", type = "button",
+                        title = "Back to all trials",
+                        onclick = "Shiny.setInputValue('back_to_selector', Math.random(), {priority:'event'});",
+                        HTML('<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>'),
+                        span("All trials")),
+            tags$span(class = "topnav-sep"),
             tags$button(id = "tn_overview",       class = "topnav-tab topnav-active", type = "button",
                         onclick = "Shiny.setInputValue('go_overview', Math.random(), {priority:'event'}); setActiveTab('tn_overview');",
                         "Overview"),

@@ -122,11 +122,26 @@
 }
 .topnav-pills .topnav-tab.topnav-active,
 .topnav-pills .topnav-tab.topnav-reports.topnav-active {
-  background: var(--hdr-accent-soft);
-  color: var(--hdr-accent);
+  background: var(--ov-navy);
+  color: #fff;
   font-weight: 600;
   border-bottom: none;
+  box-shadow: 0 2px 6px rgba(27,79,107,.22);
 }
+
+/* "All trials" home control — the obvious exit, sitting at the start of the
+   tab bar, separated from the in-trial tabs. Theme-aware via --ov-* tokens. */
+.topnav-home {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 8px; flex-shrink: 0;
+  border: 1px solid var(--ov-line); background: var(--ov-rail);
+  color: var(--ov-ink); font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.topnav-home:hover { background: var(--ov-navy); color: #fff; border-color: var(--ov-navy); }
+.topnav-home svg { display: block; }
+.topnav-sep { width: 1px; height: 22px; background: var(--ov-line); margin: 0 10px 0 6px; flex-shrink: 0; }
 
 /* ═══ Panorama-style refined topbar ════════════════════════════════════════ */
 .topbar {
