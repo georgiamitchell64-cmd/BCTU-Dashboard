@@ -13,6 +13,7 @@ source("globals/trial_config.R",   local = TRUE)
 source("globals/trial_templates.R", local = TRUE)
 
 source("functions/helpers.R",            local = TRUE)
+source("functions/help_tooltips.R",      local = TRUE)
 source("functions/theme.R",             local = TRUE)
 source("functions/ui_helpers.R",         local = TRUE)
 source("functions/database.R",          local = TRUE)

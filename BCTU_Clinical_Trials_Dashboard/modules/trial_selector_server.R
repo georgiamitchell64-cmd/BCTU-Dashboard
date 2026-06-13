@@ -1933,11 +1933,92 @@ trial_selector_server <- function(input, output, session, state) {
   # WIZARD: step navigation
   # ══════════════════════════════════════════════════════════════════════════
 
+  # Slugify a follow-up timepoint label into a redcap_events role key, e.g.
+  # "Day 30" -> "day_30", "6 months" -> "6_months". Shared by the dynamic
+  # event-name fields and the create handler.
+  .wiz_tp_slug <- function(s) {
+    s <- tolower(trimws(s))
+    s <- gsub("[^a-z0-9]+", "_", s)
+    gsub("^_+|_+$", "", s)
+  }
+
   # ── Multi-work-package wizard panel ─────────────────────────────────────
-  # Toggling the checkbox shows/hides the WP count + dynamic name fields.
+  # Toggling the checkbox shows/hides the WP count + dynamic name fields, and
+  # the "separate export per work package" option on the Data step.
   observeEvent(input$wiz_is_multi_wp, {
-    if (isTRUE(input$wiz_is_multi_wp)) shinyjs::show("wiz_wp_panel")
-    else                                shinyjs::hide("wiz_wp_panel")
+    on <- isTRUE(input$wiz_is_multi_wp)
+    shinyjs::toggle("wiz_wp_panel",         condition = on)
+    shinyjs::toggle("wiz_multi_export_wrap", condition = on)
+    if (!on) updateCheckboxInput(session, "wiz_multi_export", value = FALSE)
+  }, ignoreNULL = FALSE)
+
+  # Separate-export-per-WP toggle: show the per-WP folder fields and hide the
+  # single data-folder field when on.
+  observeEvent(input$wiz_multi_export, {
+    on <- isTRUE(input$wiz_multi_export) && isTRUE(input$wiz_is_multi_wp)
+    shinyjs::toggle("wiz_wp_export_panel",    condition = on)
+    shinyjs::toggle("wiz_single_export_wrap", condition = !on)
+  }, ignoreNULL = FALSE)
+
+  # One data-folder field per work package (multi-export). Preserves typed
+  # values across re-render via isolate(input[[id]]).
+  output$wiz_wp_export_fields_ui <- renderUI({
+    if (!isTRUE(input$wiz_is_multi_wp)) return(NULL)
+    n <- suppressWarnings(as.integer(input$wiz_n_wps))
+    if (is.na(n) || n < 1) n <- 1
+    if (n > 10) n <- 10
+    rows <- lapply(seq_len(n), function(i) {
+      id  <- paste0("wiz_wp_data_", i)
+      nm  <- trimws(input[[paste0("wiz_wp_name_", i)]] %||% "")
+      lbl <- if (nzchar(nm)) sprintf("WKP%d · %s", i, nm) else paste0("WKP", i)
+      div(class = "nt-field",
+          tags$label(lbl, style = "font-size:12px;font-weight:600;"),
+          textInput(id, label = NULL,
+                    value = isolate(input[[id]]) %||% "",
+                    placeholder = sprintf("K:/BCTU/Teams/MyTeam/MyTrial/WKP%d", i),
+                    width = "100%"))
+    })
+    tagList(
+      div(class = "nt-group-label", style = "margin-top:6px;", "Export folder per work package"),
+      rows)
+  })
+
+  # One REDCap-event-name box per chosen follow-up timepoint (step 3). The role
+  # key is the slugified label, matched by the create handler.
+  output$wiz_tp_fields_ui <- renderUI({
+    tps <- input$wiz_timepoints
+    if (is.null(tps) || !length(tps)) {
+      return(div(class = "nt-hint", "No follow-up timepoints selected — Baseline only."))
+    }
+    seen <- character(0)
+    rows <- lapply(tps, function(tp) {
+      key <- .wiz_tp_slug(tp)
+      if (!nzchar(key) || key %in% seen) return(NULL)
+      seen <<- c(seen, key)
+      id  <- paste0("wiz_tp_evt_", key)
+      div(style = "display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;margin-bottom:8px;",
+          tags$label(tp, style = "font-size:12px;font-weight:600;color:var(--ov-navy);
+                                  background:var(--ov-rail);border:1px solid var(--ov-line);
+                                  border-radius:6px;padding:7px 10px;text-align:center;margin:0;"),
+          textInput(id, label = NULL,
+                    value = isolate(input[[id]]) %||% "",
+                    placeholder = paste0(key, "_arm_1"),
+                    width = "100%"))
+    })
+    div(style = "margin-top:10px;", rows)
+  })
+
+  # Capture toggles on the Field-mapping step: default the procedure group on
+  # for Surgery and off otherwise, and show/hide each optional group.
+  observeEvent(input$wiz_category, {
+    is_surgery <- identical(input$wiz_category, "Surgery")
+    updateCheckboxInput(session, "wiz_cap_procedure", value = is_surgery)
+  })
+  observeEvent(input$wiz_cap_procedure, {
+    shinyjs::toggle("wiz_procedure_fields", condition = isTRUE(input$wiz_cap_procedure))
+  }, ignoreNULL = FALSE)
+  observeEvent(input$wiz_cap_demographics, {
+    shinyjs::toggle("wiz_demographics_fields", condition = isTRUE(input$wiz_cap_demographics))
   }, ignoreNULL = FALSE)
 
   # Render N labelled text inputs (WKP1 ... WKPN) when multi-WP is enabled.
@@ -2062,12 +2143,25 @@ trial_selector_server <- function(input, output, session, state) {
           span(style = "color:#1B4F6B;font-weight:600;", value))
     }
 
-    data_loc <- if (nzchar(input$wiz_data_path %||% ""))
+    multi_export <- isTRUE(input$wiz_is_multi_wp) && isTRUE(input$wiz_multi_export)
+    data_loc <- if (multi_export)
+      "Separate export per work package"
+    else if (nzchar(input$wiz_data_path %||% ""))
       input$wiz_data_path else paste0("trials/", code, "/data/")
     rr_loc <- if (nzchar(input$wiz_rr_path %||% ""))
       input$wiz_rr_path else "\u2014"
     logo_loc <- if (nzchar(input$wiz_logo_path %||% ""))
       input$wiz_logo_path else "\u2014"
+
+    # Follow-up timepoints chosen on step 3.
+    tps <- input$wiz_timepoints %||% character(0)
+    tp_label <- if (length(tps)) paste(tps, collapse = " \u00b7 ") else "Baseline only"
+
+    # Capture summary for the field-mapping step.
+    caps <- c("Demographics"[isTRUE(input$wiz_cap_demographics)],
+              "Procedure dates"[isTRUE(input$wiz_cap_procedure)])
+    caps <- caps[!is.na(caps)]
+    cap_label <- if (length(caps)) paste(caps, collapse = ", ") else "Core fields only"
 
     features_on <- c()
     if (isTRUE(input$wiz_feat_projections)) features_on <- c(features_on, "Projections")
@@ -2110,10 +2204,12 @@ trial_selector_server <- function(input, output, session, state) {
       row("Work packages",       wp_label),
       row("Target",              as.character(input$wiz_target %||% 100)),
       row("CI",                  input$wiz_ci %||% "\u2014"),
-      row("Data CSV folder",     data_loc),
+      row("REDCap data",         data_loc),
       row("Return rates folder", rr_loc),
       row("Trial logo",          logo_loc),
       row("Baseline event",      input$wiz_ev_baseline %||% "\u2014"),
+      row("Follow-up timepoints", tp_label),
+      row("Captures",            cap_label),
       row("Features",            paste(features_on, collapse = ", "))
     )
   })
@@ -2254,11 +2350,37 @@ trial_selector_server <- function(input, output, session, state) {
       else "NULL"
     } else "NULL"
 
-    # Build optional field lines
-    opt_field <- function(name, input_id) {
-      val <- trimws(input[[input_id]] %||% "")
-      if (nzchar(val)) sprintf('    %-28s= "%s",', name, val) else sprintf('    %-28s= NULL,', name)
+    # Build optional field lines, gated by the capture toggles on step 4 so a
+    # non-surgical trial doesn't get operation fields, etc.
+    opt_field <- function(name, input_id, enabled = TRUE) {
+      val <- if (isTRUE(enabled)) trimws(input[[input_id]] %||% "") else ""
+      if (nzchar(val)) sprintf('    %-28s= "%s",', name, val)
+      else             sprintf('    %-28s= NULL,', name)
     }
+    cap_proc <- isTRUE(input$wiz_cap_procedure)
+    cap_demo <- isTRUE(input$wiz_cap_demographics)
+    opt_fields_block <- paste(
+      opt_field("operation_date",     "wiz_fld_op_date",        cap_proc),
+      opt_field("operation_datetime", "wiz_fld_op_date",        cap_proc),
+      opt_field("discharge_date",     "wiz_fld_discharge_date", cap_proc),
+      opt_field("age",                "wiz_fld_age",            cap_demo),
+      opt_field("sex",                "wiz_fld_sex",            cap_demo),
+      opt_field("ethnicity",          "wiz_fld_ethnicity",      cap_demo),
+      sep = "\n")
+
+    # Build the redcap_events block: baseline + each chosen follow-up timepoint
+    # (keyed by its slug) + sub-form events.
+    ev_lines  <- sprintf("    %-10s = %s,", "baseline", rq(input$wiz_ev_baseline))
+    seen_keys <- "baseline"
+    for (tp in (input$wiz_timepoints %||% character(0))) {
+      key <- .wiz_tp_slug(tp)
+      if (!nzchar(key) || key %in% seen_keys) next
+      seen_keys <- c(seen_keys, key)
+      evname    <- input[[paste0("wiz_tp_evt_", key)]] %||% ""
+      ev_lines  <- c(ev_lines, sprintf("    %-10s = %s,", key, rq(evname)))
+    }
+    ev_lines <- c(ev_lines, sprintf("    %-10s = %s", "sub_forms", sf_vec))
+    events_block <- paste(ev_lines, collapse = "\n")
 
     # Build work_packages line from the structured wizard form. Each WP is
     # stored as a character with the literal label "WKP<n>: <name>" so
@@ -2278,6 +2400,25 @@ trial_selector_server <- function(input, output, session, state) {
               paste(sprintf('"%s"', gsub('"', '\\\\"', wp_names_raw)),
                     collapse = ", "))
     } else "  work_packages = NULL,"
+
+    # Build the data-paths block. When a trial keeps a separate export per work
+    # package, write work_package_data_dirs (aligned to work_packages) so the
+    # loader reads, tags and combines each WP's newest CSV.
+    multi_export <- isTRUE(input$wiz_is_multi_wp) &&
+                    isTRUE(input$wiz_multi_export) &&
+                    length(wp_names_raw) > 0
+    if (multi_export) {
+      wp_dirs <- vapply(seq_along(wp_names_raw), function(i)
+        gsub("\\\\", "/", trimws(input[[paste0("wiz_wp_data_", i)]] %||% "")),
+        character(1))
+      data_block <- paste(
+        "  data_dir = NULL,    # per-work-package exports below",
+        sprintf("  work_package_data_dirs = c(%s),",
+                paste(sprintf('"%s"', wp_dirs), collapse = ", ")),
+        rr_dir_line, sep = "\n")
+    } else {
+      data_block <- paste(data_dir_line, rr_dir_line, sep = "\n")
+    }
 
     trial_type_val <- input$wiz_trial_type %||% "randomised"
 
@@ -2311,15 +2452,10 @@ trial_config <- list(
 
   # -- Data paths --
 %s
-%s
 
   # -- REDCap events --
   redcap_events = list(
-    baseline  = %s,
-    discharge = %s,
-    day_30    = %s,
-    day_90    = %s,
-    sub_forms = %s
+%s
   ),
 
   # -- REDCap field mappings --
@@ -2328,11 +2464,6 @@ trial_config <- list(
     site_name               = "%s",
     randomisation_datetime  = "%s",
 
-%s
-%s
-%s
-%s
-%s
 %s
 
     follow_up_instruments = list(),
@@ -2374,7 +2505,7 @@ trial_config <- list(
 )
 ',
       toupper(sn),
-      format(Sys.Date(), "%%d %%B %%Y"),
+      format(Sys.Date(), "%d %B %Y"),
       code,
       rq(input$wiz_full_name),
       sn,
@@ -2386,22 +2517,12 @@ trial_config <- list(
       input$wiz_col_primary %||% "#1B4F6B",
       input$wiz_col_secondary %||% "#2EC4A5",
       input$wiz_col_accent %||% "#F59E0B",
-      data_dir_line,
-      rr_dir_line,
-      rq(input$wiz_ev_baseline),
-      rq(input$wiz_ev_discharge),
-      rq(input$wiz_ev_day30),
-      rq(input$wiz_ev_day90),
-      sf_vec,
+      data_block,
+      events_block,
       input$wiz_fld_record_id %||% "record_id",
       input$wiz_fld_site %||% "site_name",
       input$wiz_fld_rand_dt %||% "rand_dttm_s",
-      opt_field("operation_date",   "wiz_fld_op_date"),
-      opt_field("operation_datetime", "wiz_fld_op_date"),  # same field, both formats
-      opt_field("discharge_date",   "wiz_fld_discharge_date"),
-      opt_field("age",              "wiz_fld_age"),
-      opt_field("sex",              "wiz_fld_sex"),
-      opt_field("ethnicity",        "wiz_fld_ethnicity"),
+      opt_fields_block,
       rq(input$wiz_fld_cos_type),
       rq(input$wiz_ci),
       rq(input$wiz_sponsor),

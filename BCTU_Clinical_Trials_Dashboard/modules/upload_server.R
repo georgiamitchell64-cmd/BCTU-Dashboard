@@ -17,6 +17,7 @@ upload_server <- function(input, output, session, state) {
     raw         = NULL,
     detected    = NULL,
     filepath    = NULL,
+    filelabel   = NULL,
     reset_sites = FALSE
   )
 
@@ -48,36 +49,70 @@ upload_server <- function(input, output, session, state) {
       return()
     }
 
-    filepath <- find_latest_csv()
-    if (is.null(filepath)) {
-      removeModal()
-      showNotification(
-        HTML(paste0("No CSV found in:<br><code>",
-                    normalizePath(DATA_DIR, mustWork = FALSE),
-                    "</code><br>The dashboard is ready — upload a REDCap export to populate it.")),
-        type = "warning", duration = 8)
-      return()
-    }
+    cfg     <- rv$trial_config
+    wp_dirs <- cfg$work_package_data_dirs
+    multi   <- !is.null(wp_dirs) && length(wp_dirs) > 0 &&
+               any(nzchar(trimws(wp_dirs)))
 
-    # Large REDCap exports (20MB+) freeze the UI during read+autodetect.
-    # withProgress gives the user immediate feedback that the import is alive.
-    fsize <- tryCatch(file.info(filepath)$size, error = function(e) NA_real_)
-    fsize_lbl <- if (is.finite(fsize)) sprintf(" (%.1f MB)", fsize / 1024 / 1024) else ""
+    filelabel <- NULL   # human label for the "currently loaded" status
 
-    raw <- withProgress(
-      message = "Importing REDCap export",
-      detail  = paste0("Reading ", basename(filepath), fsize_lbl, "…"),
-      value   = 0.1,
-      tryCatch(
-        read_redcap_file(filepath),
-        error = function(e) {
-          removeModal()
-          showNotification(paste("Read error:", e$message), type = "error", duration = 12)
-          NULL
-        }
+    if (multi) {
+      # Platform / multi-WP trial: one REDCap export per work package.
+      res <- withProgress(
+        message = "Importing REDCap exports",
+        detail  = "Reading one export per work package…",
+        value   = 0.2,
+        tryCatch(read_wp_exports(wp_dirs, cfg$work_packages),
+                 error = function(e) {
+                   message("WP export read error: ", e$message); NULL
+                 })
       )
-    )
-    if (is.null(raw)) return()
+      if (is.null(res) || is.null(res$raw)) {
+        removeModal()
+        showNotification(
+          HTML("No CSVs found in the work-package export folders.<br>
+                Add a REDCap export to each folder set up for this trial."),
+          type = "warning", duration = 8)
+        return()
+      }
+      raw       <- res$raw
+      filepath  <- res$first_path           # representative file for autodetect
+      filelabel <- sprintf("%d work-package export%s (%s)",
+                           res$n_wp, if (res$n_wp == 1) "" else "s",
+                           paste(res$files, collapse = ", "))
+    } else {
+      filepath <- find_latest_csv()
+      if (is.null(filepath)) {
+        removeModal()
+        showNotification(
+          HTML(paste0("No CSV found in:<br><code>",
+                      normalizePath(DATA_DIR, mustWork = FALSE),
+                      "</code><br>The dashboard is ready — upload a REDCap export to populate it.")),
+          type = "warning", duration = 8)
+        return()
+      }
+
+      # Large REDCap exports (20MB+) freeze the UI during read+autodetect.
+      # withProgress gives the user immediate feedback that the import is alive.
+      fsize <- tryCatch(file.info(filepath)$size, error = function(e) NA_real_)
+      fsize_lbl <- if (is.finite(fsize)) sprintf(" (%.1f MB)", fsize / 1024 / 1024) else ""
+
+      raw <- withProgress(
+        message = "Importing REDCap export",
+        detail  = paste0("Reading ", basename(filepath), fsize_lbl, "…"),
+        value   = 0.1,
+        tryCatch(
+          read_redcap_file(filepath),
+          error = function(e) {
+            removeModal()
+            showNotification(paste("Read error:", e$message), type = "error", duration = 12)
+            NULL
+          }
+        )
+      )
+      if (is.null(raw)) return()
+      filelabel <- basename(filepath)
+    }
 
     detected <- withProgress(
       message = "Importing REDCap export",
@@ -91,6 +126,7 @@ upload_server <- function(input, output, session, state) {
     pending$raw         <- raw
     pending$detected    <- detected
     pending$filepath    <- filepath
+    pending$filelabel   <- filelabel
     pending$reset_sites <- reset_sites
 
     cfg <- rv$trial_config
@@ -167,19 +203,20 @@ upload_server <- function(input, output, session, state) {
     rv$participants <- result$participants
     rv$sites        <- result$sites
     rv$raw_redcap   <- result$raw_data
-    rv$loaded_file  <- basename(pending$filepath %||% "")
+    load_label      <- pending$filelabel %||% basename(pending$filepath %||% "")
+    rv$loaded_file  <- load_label
 
     n_p <- length(unique(result$participants$record_id))
     n_s <- nrow(result$sites)
     showNotification(
-      paste0("Loaded: ", basename(pending$filepath), "\n",
+      paste0("Loaded: ", load_label, "\n",
              n_p, " participants · ", n_s, " sites"),
       type = "message", duration = 6)
 
     cfg <- rv$trial_config
     log_activity("csv_uploaded",
                  sprintf("Loaded REDCap export <strong>%s</strong> (%d participants · %d sites)",
-                         htmltools::htmlEscape(basename(pending$filepath %||% "")),
+                         htmltools::htmlEscape(load_label),
                          n_p, n_s),
                  username = rv$username,
                  trial_code = if (!is.null(cfg)) cfg$code else NULL,

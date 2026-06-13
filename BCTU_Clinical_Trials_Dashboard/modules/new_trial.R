@@ -37,6 +37,8 @@ new_trial_setup_ui <- function() {
 
   shinyjs::hidden(div(id = "new_trial_panel", class = "nt-root",
 
+    tooltip_styles(),
+
     # ── Top bar ──────────────────────────────────────────────────────────
     div(class = "nt-topbar",
         div(class = "nt-topbar-left",
@@ -120,16 +122,30 @@ new_trial_setup_ui <- function() {
                   step_head("2", "Data & branding",
                             "Where your data lives, and how the trial looks."),
                   div(class = "nt-card",
-                      group_label("Data folders"),
-                      hint("Paste the K: drive (or network) paths. Use forward slashes. Leave blank to use the local app folder."),
-                      div(class = "nt-field",
-                          tags$label(HTML("REDCap data CSV folder &#x1F4C1;")),
+                      group_label("REDCap exports"),
+                      hint("Paste the K: drive (or network) folder paths. Use forward slashes. Leave blank to use the local app folder. The app loads the newest CSV in each folder."),
+
+                      # Single-export field (default). Hidden when a separate
+                      # export per work package is chosen.
+                      div(id = "wiz_single_export_wrap", class = "nt-field",
+                          tags$label(help_label(HTML("REDCap data CSV folder &#x1F4C1;"),
+                              "The folder your REDCap CSV exports are saved to. The dashboard always reads the most recently modified .csv in it.")),
                           textInput("wiz_data_path", label = NULL,
                                     placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/Data",
-                                    width = "100%"),
-                          hint("Folder containing your REDCap CSV exports — the app picks the newest file.")),
-                      div(class = "nt-field",
-                          tags$label(HTML("Return rates CSV folder &#x1F4C1;")),
+                                    width = "100%")),
+
+                      # Multi-export option — only meaningful for multi-WP trials.
+                      shinyjs::hidden(div(id = "wiz_multi_export_wrap", class = "nt-subcard",
+                          checkboxInput("wiz_multi_export",
+                                        "This trial has a separate REDCap export per work package",
+                                        value = FALSE),
+                          hint("Platform / multi-WP trials are often exported one work package at a time. Tick to give each WP its own folder — the app loads, tags and combines them automatically."),
+                          shinyjs::hidden(div(id = "wiz_wp_export_panel",
+                              uiOutput("wiz_wp_export_fields_ui"))))),
+
+                      div(class = "nt-field", style = "margin-top:14px;",
+                          tags$label(help_label(HTML("Return rates CSV folder &#x1F4C1;"),
+                              "Optional. Folder of questionnaire return-rate CSVs, if your trial tracks postal questionnaire returns.")),
                           textInput("wiz_rr_path", label = NULL,
                                     placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/ReturnRates",
                                     width = "100%"),
@@ -149,43 +165,104 @@ new_trial_setup_ui <- function() {
                           .nt_color("wiz_col_accent",    "Accent",    "#F59E0B")))
               )),
 
-              # ── Step 3 — REDCap events ────────────────────────────────
+              # ── Step 3 — Follow-up schedule (events) ──────────────────
               shinyjs::hidden(div(class = "nt-step", id = "wiz_step_3",
-                  step_head("3", "REDCap events",
-                            "Map your trial's REDCap event names to the dashboard's roles."),
+                  step_head("3", "Follow-up schedule",
+                            "Which REDCap events make up your trial's timeline?"),
                   div(class = "nt-callout",
-                      HTML("Only <strong>Baseline</strong> is required. The more you map, the more dashboard features light up — but you can also let the app auto-detect these the first time you upload a CSV.")),
+                      HTML("For each timepoint, enter its <strong>REDCap event name</strong> — the value in the <code>redcap_event_name</code> column of your export (e.g. <code>baseline_arm_1</code>). Only Baseline is required. Not sure of the names? Leave them as-is and let the app auto-detect them on your first upload.")),
+
                   div(class = "nt-card",
-                      div(class = "nt-grid-2",
-                          textInput("wiz_ev_baseline",  "Baseline event *", value = "baseline_arm_1"),
-                          textInput("wiz_ev_discharge", "Discharge event",  value = "discharge_arm_1"),
-                          textInput("wiz_ev_day30",     "Day 30 event",     placeholder = "day_30_arm_1"),
-                          textInput("wiz_ev_day90",     "Day 90 event",     placeholder = "day_90_arm_1")),
-                      textInput("wiz_ev_subforms", "Sub-forms / SAE events (comma-separated)",
-                                value = "sub_forms_arm_1, ad_hoc_arm_1", width = "100%"))
+                      div(class = "nt-field",
+                          tags$label(help_label("Baseline / randomisation event *",
+                              "The event participants are randomised or enrolled at — this is what the dashboard counts as 'randomised'. Usually baseline_arm_1.")),
+                          textInput("wiz_ev_baseline", label = NULL,
+                                    value = "baseline_arm_1", width = "100%"))),
+
+                  div(class = "nt-card",
+                      group_label("Follow-up timepoints"),
+                      div(class = "nt-field",
+                          tags$label(help_label("Which follow-ups does this trial collect?",
+                              "Pick the common ones or type your own (e.g. '6 months', 'End of treatment') and press enter. Surgical trials often have Discharge + Day 30/90; others may have 3/6/12-month visits. Each choice gets a box below for its REDCap event name.")),
+                          selectizeInput("wiz_timepoints", label = NULL,
+                              choices  = c("Discharge", "Day 30", "Day 90", "Week 6",
+                                           "Month 3", "Month 6", "Month 12", "Month 24"),
+                              selected = c("Discharge", "Day 30", "Day 90"),
+                              multiple = TRUE, width = "100%",
+                              options = list(create = TRUE,
+                                             placeholder = "Add timepoints…",
+                                             plugins = list("remove_button")))),
+                      uiOutput("wiz_tp_fields_ui")),
+
+                  div(class = "nt-card",
+                      div(class = "nt-field",
+                          tags$label(help_label("Sub-form / safety events (optional)",
+                              "Events that hold SAEs, protocol deviations, withdrawals or change-of-status forms. Comma-separated, e.g. sub_forms_arm_1, ad_hoc_arm_1.")),
+                          textInput("wiz_ev_subforms", label = NULL,
+                                    value = "sub_forms_arm_1, ad_hoc_arm_1", width = "100%")))
               )),
 
               # ── Step 4 — Field mapping ────────────────────────────────
               shinyjs::hidden(div(class = "nt-step", id = "wiz_step_4",
                   step_head("4", "Field mapping",
-                            "Map the key REDCap variable names from your project."),
+                            "Map the REDCap variable names your export uses."),
+                  div(class = "nt-callout",
+                      HTML("Enter <strong>variable names</strong> (the column headers in your export), not their labels. The optional groups below adapt to what your trial captures — switch off anything that doesn't apply, so you're not asked for fields you don't collect.")),
+
                   div(class = "nt-card",
                       group_label("Required"),
                       div(class = "nt-grid-3",
-                          textInput("wiz_fld_record_id", "Record ID",              value = "record_id"),
-                          textInput("wiz_fld_site",      "Site name",              value = "site_name"),
-                          textInput("wiz_fld_rand_dt",   "Randomisation datetime", value = "rand_dttm_s")))
-                  ,
+                          div(class = "nt-field",
+                              tags$label(help_label("Record ID",
+                                  "The unique participant identifier column. Almost always record_id.")),
+                              textInput("wiz_fld_record_id", label = NULL, value = "record_id", width = "100%")),
+                          div(class = "nt-field",
+                              tags$label(help_label("Site name",
+                                  "Column holding the site / centre name — often the REDCap Data Access Group, or a dedicated site field. Drives all the sites views.")),
+                              textInput("wiz_fld_site", label = NULL, value = "site_name", width = "100%")),
+                          div(class = "nt-field",
+                              tags$label(help_label("Randomisation datetime",
+                                  "Column with the date (or date-time) the participant was randomised / enrolled. Drives recruitment-over-time and projections.")),
+                              textInput("wiz_fld_rand_dt", label = NULL, value = "rand_dttm_s", width = "100%")))),
+
+                  # Demographics — relevant to most trials.
                   div(class = "nt-card",
-                      group_label("Optional"),
-                      hint("Leave blank if not applicable — these unlock extra cards and breakdowns."),
-                      div(class = "nt-grid-3",
-                          textInput("wiz_fld_op_date",        "Operation date",   placeholder = "iop_op_end_dt"),
-                          textInput("wiz_fld_discharge_date", "Discharge date",   placeholder = "dis_discharge_day"),
-                          textInput("wiz_fld_age",            "Age",              placeholder = "cae_age"),
-                          textInput("wiz_fld_sex",            "Sex",              placeholder = "base_sex"),
-                          textInput("wiz_fld_ethnicity",      "Ethnicity",        placeholder = "base_ethnic_gp"),
-                          textInput("wiz_fld_cos_type",       "Change of status", placeholder = "cos_type")))
+                      checkboxInput("wiz_cap_demographics",
+                                    "This trial captures patient demographics", value = TRUE),
+                      hint("Age, sex and ethnicity — powers the demographic breakdown cards on the Data tab."),
+                      div(id = "wiz_demographics_fields", class = "nt-grid-3",
+                          div(class = "nt-field",
+                              tags$label(help_label("Age", "Variable holding age at baseline, e.g. cae_age or dem_age.")),
+                              textInput("wiz_fld_age", label = NULL, placeholder = "dem_age", width = "100%")),
+                          div(class = "nt-field",
+                              tags$label(help_label("Sex", "Variable holding sex, e.g. base_sex or dem_sex.")),
+                              textInput("wiz_fld_sex", label = NULL, placeholder = "dem_sex", width = "100%")),
+                          div(class = "nt-field",
+                              tags$label(help_label("Ethnicity", "Variable holding ethnicity, e.g. base_ethnic_gp or dem_ethnicity.")),
+                              textInput("wiz_fld_ethnicity", label = NULL, placeholder = "dem_ethnicity", width = "100%")))),
+
+                  # Procedure — surgical / interventional trials only.
+                  div(class = "nt-card",
+                      checkboxInput("wiz_cap_procedure",
+                                    "This trial involves an operation / procedure", value = TRUE),
+                      hint("For surgical or procedural trials — adds operation and discharge date handling. Leave off for observational, registry or drug trials with no procedure."),
+                      div(id = "wiz_procedure_fields", class = "nt-grid-2",
+                          div(class = "nt-field",
+                              tags$label(help_label("Operation / procedure date",
+                                  "Variable with the date of the operation or main procedure, e.g. iop_op_end_dt or surgery_date.")),
+                              textInput("wiz_fld_op_date", label = NULL, placeholder = "surgery_date", width = "100%")),
+                          div(class = "nt-field",
+                              tags$label(help_label("Discharge date",
+                                  "Variable with the hospital discharge date, e.g. dis_discharge_day or discharge_dt.")),
+                              textInput("wiz_fld_discharge_date", label = NULL, placeholder = "discharge_dt", width = "100%")))),
+
+                  # Withdrawals — general.
+                  div(class = "nt-card",
+                      group_label("Withdrawals & change of status"),
+                      div(class = "nt-field", style = "max-width:340px;",
+                          tags$label(help_label("Change-of-status field",
+                              "Variable that flags withdrawals, deaths or loss to follow-up (often cos_type). Powers the withdrawals donut and safety tiles.")),
+                          textInput("wiz_fld_cos_type", label = NULL, placeholder = "cos_type", width = "100%")))
               )),
 
               # ── Step 5 — Features ─────────────────────────────────────

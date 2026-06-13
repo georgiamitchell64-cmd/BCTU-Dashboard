@@ -626,6 +626,38 @@ read_redcap_file <- function(filepath) {
   stop("Could not parse file. Export from REDCap as CSV.")
 }
 
+#' Read one REDCap export per work package and combine them.
+#' For platform / multi-WP trials configured with `work_package_data_dirs`
+#' (one folder per work package). Reads the newest CSV in each folder, tags
+#' every row with its work-package index (and name), then row-binds them into a
+#' single frame that process_redcap() handles like any other export.
+#' @param wp_dirs   Character vector of folder paths, aligned to work_packages.
+#' @param wp_labels Optional labels (cfg$work_packages) for work_package_name.
+#' @return list(raw, files, first_path, n_wp). raw is NULL if nothing loaded.
+read_wp_exports <- function(wp_dirs, wp_labels = NULL) {
+  dfs <- list(); files <- character(0); first_path <- NULL
+  for (i in seq_along(wp_dirs)) {
+    d <- trimws(wp_dirs[i] %||% "")
+    if (!nzchar(d) || !dir.exists(d)) next
+    fp <- find_latest_csv(d)
+    if (is.null(fp)) next
+    df_i <- tryCatch(read_redcap_file(fp), error = function(e) NULL)
+    if (is.null(df_i) || !nrow(df_i)) next
+    # Tag rows with the work package this export belongs to. Overwrites any
+    # existing column so a per-WP export is always attributed correctly.
+    df_i$work_package <- i
+    if (!is.null(wp_labels) && length(wp_labels) >= i)
+      df_i$work_package_name <- as.character(wp_labels[i])
+    dfs[[length(dfs) + 1]] <- df_i
+    files <- c(files, basename(fp))
+    if (is.null(first_path)) first_path <- fp
+  }
+  if (!length(dfs))
+    return(list(raw = NULL, files = character(0), first_path = NULL, n_wp = 0L))
+  list(raw = dplyr::bind_rows(dfs), files = files,
+       first_path = first_path, n_wp = length(dfs))
+}
+
 process_redcap <- function(raw_df, current_sites) {
   df   <- clean_df_names(raw_df)
   orig <- names(raw_df)
