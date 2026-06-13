@@ -1698,15 +1698,106 @@ trial_selector_server <- function(input, output, session, state) {
   # ── User management console (master-detail) ──────────────────────────────
   mu_selected_user <- reactiveVal(NULL)
   mu_last_temp      <- reactiveVal(NULL)   # list(user, pw) — one-time temp display
+  mu_mode           <- reactiveVal("detail")  # "detail" | "create"
 
   # Open the console: default-select the first user, clear transient state.
   open_user_management <- function() {
     users <- tryCatch(list_all_users(), error = function(e) data.frame())
     mu_selected_user(if (nrow(users)) users$fullname[1] else NULL)
     mu_last_temp(NULL)
+    mu_mode("detail")
     shinyjs::runjs("Shiny.setInputValue('mu_search', '');")
     showModal(manage_users_modal())
   }
+
+  # Enter / leave the "create user" form.
+  observeEvent(input$mu_new_user, {
+    mu_selected_user(NULL); mu_last_temp(NULL); mu_mode("create")
+  })
+  observeEvent(input$mu_cancel_create, { mu_mode("detail") })
+
+  # Build the create-user form shown in the detail pane.
+  .mu_create_form <- function() {
+    div(class = "mu-create",
+        div(class = "mu-detail-head",
+            span(class = "mu-avatar mu-avatar-lg", HTML("&#43;")),
+            div(div(class = "mu-detail-name", "New user"),
+                div(class = "mu-detail-sub",
+                    "Create a profile and set their starting password"))),
+        div(class = "mu-section",
+            div(class = "mu-section-label", "Details"),
+            div(class = "mu-form-grid",
+                div(class = "mu-field", tags$label("Full name *"),
+                    textInput("mu_new_name", NULL, placeholder = "e.g. Jane Smith", width = "100%")),
+                div(class = "mu-field", tags$label("Email *"),
+                    textInput("mu_new_email", NULL, placeholder = "jane.smith@bham.ac.uk", width = "100%")),
+                div(class = "mu-field", tags$label("Job title"),
+                    textInput("mu_new_jobtitle", NULL, placeholder = "e.g. Trial Manager", width = "100%")),
+                div(class = "mu-field", tags$label("Portfolio role"),
+                    selectInput("mu_new_portrole", NULL,
+                                c("Member" = "member", "Admin" = "admin"), width = "100%")))),
+        div(class = "mu-section",
+            div(class = "mu-section-label", "Starting password"),
+            div(class = "mu-field",
+                passwordInput("mu_new_initpw", NULL,
+                              placeholder = "Leave blank to auto-generate", width = "100%")),
+            div(class = "mu-hint",
+                "Leave blank and a temporary one is generated and shown to you. Either way the user sets their own password at first login.")),
+        div(class = "mu-create-actions",
+            actionButton("mu_cancel_create", "Cancel", class = "mu-btn mu-btn-ghost"),
+            actionButton("mu_create_user", HTML("&#43; Create user"), class = "mu-btn mu-btn-navy")))
+  }
+
+  observeEvent(input$mu_create_user, {
+    name   <- trimws(input$mu_new_name %||% "")
+    email  <- trimws(input$mu_new_email %||% "")
+    jobt   <- trimws(input$mu_new_jobtitle %||% "")
+    prole  <- input$mu_new_portrole %||% "member"
+    initpw <- input$mu_new_initpw %||% ""
+
+    if (!nzchar(name)) { showNotification("Enter a full name.", type = "warning"); return() }
+    users <- list_all_users()
+    if (tolower(name) %in% tolower(users$fullname)) {
+      showNotification("A user with that name already exists.", type = "warning"); return()
+    }
+    if (!.is_valid_email(email)) {
+      showNotification("Enter a valid email address.", type = "warning"); return()
+    }
+    if (!is.null(find_profile_by_email(email))) {
+      showNotification("That email is already linked to a profile.", type = "warning"); return()
+    }
+    if (nzchar(initpw) && nchar(initpw) < 6) {
+      showNotification("Password must be at least 6 characters.", type = "warning"); return()
+    }
+
+    ok <- tryCatch({
+      db_save_profile(name, role = if (nzchar(jobt)) jobt else "Member",
+                      password = NULL, email = email)
+      TRUE
+    }, error = function(e) {
+      showNotification(paste("Couldn't create user:", e$message), type = "error", duration = 8)
+      FALSE
+    })
+    if (!ok) return()
+
+    # Set the starting password (typed or auto-generated) and force a change at
+    # first login. Promote to admin if requested.
+    res <- tryCatch(
+      admin_reset_password(name, admin_fullname = rv$username,
+                           new_password = if (nzchar(initpw)) initpw else NULL),
+      error = function(e) list(success = FALSE))
+    if (identical(prole, "admin")) set_portfolio_role(name, "admin")
+
+    log_activity("user_created",
+                 sprintf("Created user <strong>%s</strong>", htmltools::htmlEscape(name)),
+                 username = rv$username)
+
+    mu_selected_user(name)
+    mu_mode("detail")
+    mu_last_temp(if (isTRUE(res$success)) list(user = name, pw = res$temp_password) else NULL)
+    rv$home_membership_changed <- Sys.time()
+    showNotification(sprintf("Created %s.", name), type = "message", duration = 4)
+  })
 
   .mu_initials <- function(name) {
     parts <- strsplit(trimws(name), "\\s+")[[1]]
@@ -1750,6 +1841,7 @@ trial_selector_server <- function(input, output, session, state) {
   observeEvent(input$mu_select, {
     mu_selected_user(input$mu_select$user)
     mu_last_temp(NULL)   # don't carry a temp password across users
+    mu_mode("detail")
   })
 
   observeEvent(input$home_set_portrole, {
@@ -1770,11 +1862,12 @@ trial_selector_server <- function(input, output, session, state) {
   # Right pane: the selected user's role, per-trial access and password actions.
   output$mu_detail_ui <- renderUI({
     rv$home_membership_changed
+    if (identical(mu_mode(), "create")) return(.mu_create_form())
     u <- mu_selected_user()
     if (is.null(u))
       return(div(class = "mu-detail-empty",
                  HTML('<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'),
-                 div("Select a user to manage their access and password.")))
+                 div("Select a user, or create a new one.")))
 
     users <- list_all_users()
     urow  <- users[users$fullname == u, , drop = FALSE]
