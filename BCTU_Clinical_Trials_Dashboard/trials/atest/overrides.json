@@ -1,0 +1,27 @@
+{
+  "redcap_fields": {
+    "record_id": "record_id",
+    "site_name": "site_name",
+    "randomisation_datetime": "rand_dttm_s",
+    "operation_date": "surgery_date",
+    "operation_datetime": {},
+    "discharge_date": "discharge_dt",
+    "age": "dem_age",
+    "sex": "dem_sex",
+    "ethnicity": "dem_ethnicity",
+    "follow_up_instruments": {
+      "cci": "cci_complete",
+      "eq5d": "eq5d_complete",
+      "clavien": "clavien_complete"
+    },
+    "cos_type": "cos_type",
+    "nela_score": "nela_score"
+  },
+  "redcap_events": {
+    "baseline": "baseline_arm_1",
+    "discharge": "discharge_arm_1",
+    "day_30": {},
+    "day_90": {},
+    "sub_forms": ["sub_forms_arm_1", "ad_hoc_arm_1"]
+  }
+}
