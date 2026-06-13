@@ -1878,7 +1878,9 @@ trial_selector_server <- function(input, output, session, state) {
     reset_req <- tryCatch(is_password_reset_required(u),  error = function(e) FALSE)
     trials    <- discover_trials()
     mems      <- list_user_memberships_for(u)
-    mem_lookup <- setNames(mems$trial_role, mems$trial_code)
+    # A list (not a named vector) so mem_lookup[[tcode]] returns NULL — not a
+    # "subscript out of bounds" error — for trials the user isn't a member of.
+    mem_lookup <- setNames(as.list(mems$trial_role), mems$trial_code)
 
     portrole_btn <- function(val, label) {
       tags$button(type = "button",
