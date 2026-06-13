@@ -1,5 +1,10 @@
 reports_server <- function(input, output, session, state) {
   rv <- state$rv
+  # WP-scoped views drive the Charts tab (rpt_monthly). Generated reports
+  # (TMG / TSC documents) deliberately stay on the full rv$ stores — a report
+  # is a whole-trial artefact, not a per-WP view.
+  redcap_wp <- state$redcap_wp
+  sites_wp  <- state$sites_wp
   rpt_filter <- reactive({
     s <- input$rpt_sites
     if (is.null(s) || length(s) == 0) NULL else s
@@ -18,7 +23,7 @@ reports_server <- function(input, output, session, state) {
   })
   
   rpt_monthly <- reactive({
-    raw   <- rv$raw_redcap
+    raw   <- redcap_wp()
     dates <- input$rpt_dates
     rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
     site_col <- fld("site_name",              default = "site_name")
@@ -44,7 +49,7 @@ reports_server <- function(input, output, session, state) {
     
     if (nrow(rands) == 0) return(NULL)
     
-    site_meta <- rv$sites %>%
+    site_meta <- sites_wp() %>%
       transmute(.matched_id = site_id, monthly_target,
                 .jk = tolower(trimws(site_name)))
 

@@ -102,6 +102,9 @@ overview_tab_ui <- function() {
         )
       ),
 
+      # ── Work-package summary (multi-WP trials, "all WPs" view only) ──
+      uiOutput("wp_summary_ui"),
+
       # ── Smart Insights ───────────────────────────────────────────────
       tags$section(class = "pov-card",
         div(class = "pov-card-head",

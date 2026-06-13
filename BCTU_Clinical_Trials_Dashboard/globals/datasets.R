@@ -10,4 +10,5 @@ empty_log <- tibble(
   timestamp = as.POSIXct(character()), site_id = character(),
   action = character(), note = character()
 )
-empty_participants <- tibble(record_id = character(), event_type = character(), site_dag = character())
+empty_participants <- tibble(record_id = character(), event_type = character(),
+                             site_dag = character(), work_package = integer())

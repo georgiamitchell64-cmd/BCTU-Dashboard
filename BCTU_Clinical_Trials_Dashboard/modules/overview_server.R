@@ -1,6 +1,12 @@
 overview_server <- function(input, output, session, state) {
   rv <- state$rv
   filtered <- state$filtered
+  # WP-scoped views: follow the work-package picker. When "all WPs" is selected
+  # these return the full trial data, so the Overview doubles as the roll-up
+  # summary tab.
+  redcap_wp <- state$redcap_wp
+  sites_wp  <- state$sites_wp
+  parts_wp  <- state$parts_wp
 
   # ── Smart Insights ──────────────────────────────────────────────────────
   # compute_insights() walks raw REDCap + sites every render; without caching
@@ -10,7 +16,7 @@ overview_server <- function(input, output, session, state) {
     cfg <- rv$trial_config
     req(cfg)
     tryCatch(
-      compute_insights(rv$raw_redcap, rv$sites, cfg),
+      compute_insights(redcap_wp(), sites_wp(), cfg),
       error = function(e) {
         message("Smart insights error: ", e$message)
         list()
@@ -18,14 +24,103 @@ overview_server <- function(input, output, session, state) {
     )
   }) %>% bindCache(
     rv$trial_config$code %||% "",
-    nrow(rv$raw_redcap %||% data.frame()),
-    nrow(rv$sites %||% data.frame()),
-    digest::digest(rv$sites$randomised)
+    rv$active_wp %||% 0L,
+    nrow(redcap_wp() %||% data.frame()),
+    nrow(sites_wp() %||% data.frame()),
+    digest::digest(sites_wp()$randomised)
   )
 
   output$smart_insights_ui <- renderUI({
     if (is.null(rv$trial_config)) return(NULL)
     render_insights_panel(insights_cached())
+  })
+
+  # ── Per-work-package roll-up ──────────────────────────────────────────────
+  # Computed from the full (unscoped) participant table so the "all WPs" summary
+  # can compare every work package side by side, regardless of which pill is
+  # currently active.
+  wp_rollup <- reactive({
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(NULL)
+    wps <- cfg$work_packages
+    if (is.null(wps) || !length(wps)) return(NULL)
+    p <- rv$participants
+    if (is.null(p) || !"work_package" %in% names(p)) return(NULL)
+
+    base <- p %>% filter(event_type == "Baseline",
+                         !is.na(record_id), nchar(trimws(record_id)) > 0)
+    rc       <- rv$raw_redcap
+    rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
+    wpt      <- cfg$work_package_targets
+
+    lapply(seq_along(wps), function(i) {
+      bi      <- base %>% filter(!is.na(work_package), work_package == i)
+      rand_n  <- dplyr::n_distinct(bi$record_id)
+      sites_n <- dplyr::n_distinct(bi$site_dag[!is.na(bi$site_dag) &
+                                                nchar(trimws(bi$site_dag)) > 0])
+      tgt <- if (!is.null(wpt) && length(wpt) >= i)
+               suppressWarnings(as.integer(wpt[[i]])) else NA_integer_
+      last_d <- as.Date(NA)
+      if (!is.null(rc) && rand_col %in% names(rc) && "work_package" %in% names(rc)) {
+        dd <- suppressWarnings(as.Date(
+          rc[[rand_col]][suppressWarnings(as.integer(rc$work_package)) == i]))
+        dd <- dd[!is.na(dd)]
+        if (length(dd)) last_d <- max(dd)
+      }
+      list(i = i, label = as.character(wps[i]), rand = rand_n,
+           sites = sites_n, target = tgt, last = last_d)
+    })
+  })
+
+  output$wp_summary_ui <- renderUI({
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(NULL)
+    wps <- cfg$work_packages
+    if (is.null(wps) || !length(wps)) return(NULL)   # single-WP trial — skip
+    if (!is.null(rv$active_wp))       return(NULL)    # only on the roll-up view
+    roll <- wp_rollup()
+    if (is.null(roll)) return(NULL)
+
+    total_rand <- sum(vapply(roll, function(x) x$rand, integer(1)))
+    pretty <- function(s) sub("^WKP[0-9]+\\s*[:.·-]?\\s*", "", as.character(s))
+
+    cards <- lapply(roll, function(x) {
+      has_tgt <- !is.na(x$target) && x$target > 0
+      pct     <- if (has_tgt) min(100, round(100 * x$rand / x$target))
+                 else if (total_rand > 0) round(100 * x$rand / total_rand) else 0
+      bar_lbl <- if (has_tgt) sprintf("%d%% of %d target", pct, x$target)
+                 else sprintf("%d%% of trial total", pct)
+      last_lbl <- if (inherits(x$last, "Date") && !is.na(x$last))
+                    paste("Last:", format(x$last, "%d %b %Y")) else "No randomisations yet"
+      nm <- pretty(x$label); if (!nzchar(nm)) nm <- paste0("Work package ", x$i)
+
+      tags$button(
+        class = "wp-sum-card",
+        onclick = sprintf(
+          "Shiny.setInputValue('wp_pick', %d, {priority:'event'}); setActiveWp('wp_pill_%d');",
+          x$i, x$i),
+        div(class = "wp-sum-card-top",
+            span(class = "wp-sum-badge", paste0("WKP", x$i)),
+            span(class = "wp-sum-name", title = nm, nm)),
+        div(class = "wp-sum-num", x$rand,
+            tags$small(if (x$rand == 1) "participant" else "participants")),
+        div(class = "wp-sum-bar", tags$i(style = sprintf("width:%d%%;", pct))),
+        div(class = "wp-sum-meta",
+            span(bar_lbl),
+            span(sprintf("%d %s", x$sites, if (x$sites == 1) "site" else "sites"))),
+        div(class = "wp-sum-meta", span(last_lbl)),
+        div(class = "wp-sum-cta", "Open dashboard →")
+      )
+    })
+
+    tags$section(class = "pov-card wp-summary",
+      div(class = "wp-summary-head",
+          tags$h3("Work packages"),
+          span(class = "wp-summary-sub",
+               sprintf("%d work packages · %d participants total · click to open",
+                       length(roll), total_rand))),
+      div(class = "wp-sum-grid", cards)
+    )
   })
 
   output$meeting_label_txt <- renderText({
@@ -99,7 +194,11 @@ overview_server <- function(input, output, session, state) {
   })
   # Read the target from rv$trial_config (reactive) rather than the
   # TRIAL_TARGET global so these update when the user switches trials.
-  trial_target_r <- reactive({ rv$trial_config$trial_target %||% 0L })
+  # When a work package is active, use its per-WP target if the config defines
+  # work_package_targets; otherwise fall back to the whole-trial target.
+  trial_target_r <- reactive({
+    wp_effective_target(rv$trial_config, rv$active_wp)
+  })
   output$n_pct <- renderText({
     r <- tryCatch(sum(filtered()$randomised, na.rm = TRUE),
                   error = function(e) 0)
@@ -160,7 +259,7 @@ overview_server <- function(input, output, session, state) {
 
     # Try to derive smart defaults from actuals if ≥3 months of data
     smart <- tryCatch(
-      .projection_smart_defaults(rv$raw_redcap, rv$sites),
+      .projection_smart_defaults(redcap_wp(), sites_wp()),
       error = function(e) NULL
     )
     if (!is.null(smart)) {
@@ -242,18 +341,19 @@ overview_server <- function(input, output, session, state) {
       target_sites      = input$proj_target_sites      %||% 24
     )
 
-    # Actuals
+    # Actuals (scoped to the active work package via redcap_wp / sites_wp)
+    rc <- redcap_wp()
     rand_dates <- tryCatch({
       rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
-      if (rand_col %in% names(rv$raw_redcap)) {
-        d <- suppressWarnings(as.Date(rv$raw_redcap[[rand_col]]))
+      if (!is.null(rc) && rand_col %in% names(rc)) {
+        d <- suppressWarnings(as.Date(rc[[rand_col]]))
         d[!is.na(d)]
       } else {
         as.Date(character(0))
       }
     }, error = function(e) as.Date(character(0)))
 
-    n_open <- sum(rv$sites$status %in% c("Open", "Recruiting"), na.rm = TRUE)
+    n_open <- sum(sites_wp()$status %in% c("Open", "Recruiting"), na.rm = TRUE)
 
     .build_projection_series(rand_dates, n_open_now = n_open, settings = s,
                              trial_target = trial_target_r())

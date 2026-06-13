@@ -638,6 +638,10 @@ process_redcap <- function(raw_df, current_sites) {
   if (is.na(dag_col)) dag_col <- names(df)[str_detect(names(df), "^dag$")][1]
   if (is.na(dag_col)) dag_col <- names(df)[str_detect(names(df), "site|dag")][1]
   rand_col <- names(df)[str_detect(names(df), "rand_dttm|rand_date")][1]
+  # Work-package column (platform / multi-WP trials). The export carries an
+  # integer index that matches cfg$work_packages order; NA for single-WP trials.
+  wp_col   <- names(df)[names(df) == "work_package"][1]
+  if (is.na(wp_col)) wp_col <- names(df)[str_detect(names(df), "^work_package$|^workpackage$|^wp_code$|^wp$")][1]
   diag <- list(ncol = ncol(df), nrow = nrow(df), all_cols = paste(orig, collapse = ", "),
                rec_col = rec_col %||% "NOT FOUND", evt_col = evt_col %||% "NOT FOUND",
                dag_col = dag_col %||% "NOT FOUND", rand_col = rand_col %||% "NOT FOUND")
@@ -677,14 +681,23 @@ process_redcap <- function(raw_df, current_sites) {
       record_id  = trimws(as.character(record_id)),
       event_type = vapply(.data[[evt_col]], classify_event, character(1)),
       site_dag   = if (!is.na(dag_col)) trimws(as.character(.data[[dag_col]])) else NA_character_,
+      work_package = if (!is.na(wp_col)) suppressWarnings(as.integer(.data[[wp_col]])) else NA_integer_,
       .rand_dttm = if (!is.na(rand_col)) .data[[rand_col]] else NA_character_
     ) %>%
     filter(!is.na(record_id), nchar(record_id) > 0, record_id != "NA") %>%
     arrange(record_id) %>%
     group_by(record_id) %>%
-    mutate(site_dag = dplyr::first(site_dag[!is.na(site_dag) & nchar(site_dag) > 0])) %>%
+    mutate(
+      site_dag = dplyr::first(site_dag[!is.na(site_dag) & nchar(site_dag) > 0]),
+      # A participant's WP is fixed; carry the first non-NA value across all
+      # their event rows so baseline/discharge/sub-form rows agree.
+      work_package = {
+        wpv <- work_package[!is.na(work_package)]
+        if (length(wpv)) wpv[1] else NA_integer_
+      }
+    ) %>%
     ungroup()
-  participants <- df %>% select(record_id, event_type, site_dag) %>% distinct()
+  participants <- df %>% select(record_id, event_type, site_dag, work_package) %>% distinct()
   dag_summary  <- df %>%
     filter(!is.na(site_dag), nchar(trimws(site_dag)) > 0) %>%
     group_by(site_dag) %>%

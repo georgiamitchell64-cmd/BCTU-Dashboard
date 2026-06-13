@@ -67,6 +67,23 @@ evt <- function(name, default = name, cfg = .TRIAL_CFG) {
 #' Get the active trial config (or NULL if none selected yet).
 current_trial_config <- function() .TRIAL_CFG
 
+#' Effective recruitment target for the current dashboard view.
+#' Returns the per-work-package target when a WP is active and the config
+#' defines `work_package_targets` (an integer vector aligned to
+#' `work_packages`); otherwise the whole-trial target. Used so per-WP
+#' dashboards show a meaningful denominator.
+wp_effective_target <- function(cfg, active_wp = NULL) {
+  if (is.null(cfg)) return(0L)
+  base <- cfg$trial_target %||% 0L
+  if (is.null(active_wp)) return(base)
+  wpt <- cfg$work_package_targets
+  if (!is.null(wpt) && length(wpt) >= active_wp) {
+    v <- suppressWarnings(as.integer(wpt[[active_wp]]))
+    if (!is.na(v) && v > 0) return(v)
+  }
+  base
+}
+
 
 #' Discover all available trial configs
 #' @return Named list of trial config lists, keyed by trial code

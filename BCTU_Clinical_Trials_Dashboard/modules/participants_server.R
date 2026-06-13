@@ -15,6 +15,11 @@
 
 participants_server <- function(input, output, session, state) {
   rv <- state$rv
+  # WP-scoped views — the Data tab's cards, donuts, safety tiles and demographic
+  # breakdowns all follow the active work package. File exports below stay on the
+  # full rv$ stores so a download is never a silent partial export.
+  parts_wp  <- state$parts_wp
+  redcap_wp <- state$redcap_wp
 
   # Which safety tile is currently expanded ("sae" / "dev" / "wd" / "preg" /
   # NULL for nothing open). One-open-at-a-time.
@@ -27,12 +32,12 @@ participants_server <- function(input, output, session, state) {
   # (REDCap *_complete == 2), resolved through the trial config so it works for
   # any trial.
   n_event <- function(et) {
-    df <- rv$participants
+    df <- parts_wp()
     if (is.null(df) || nrow(df) == 0) return(0L)
     length(unique(df$record_id[df$event_type == et]))
   }
   total_p <- function() {
-    df <- rv$participants
+    df <- parts_wp()
     if (is.null(df) || nrow(df) == 0) return(0L)
     length(unique(df$record_id))
   }
@@ -42,7 +47,7 @@ participants_server <- function(input, output, session, state) {
   # reports_server's recruitment logic). Falls back to total participants only
   # if the randomisation column can't be found.
   n_randomised <- function() {
-    raw <- rv$raw_redcap
+    raw <- redcap_wp()
     if (is.null(raw) || nrow(raw) == 0 || !"record_id" %in% names(raw))
       return(0L)
     rc <- fld("randomisation_datetime", "rand_dttm_s")
@@ -64,7 +69,7 @@ participants_server <- function(input, output, session, state) {
   # and day_90_arm_1 — without the event filter Day 30 and Day 90 would count
   # each other's completions.
   n_complete <- function(field_role, event_role, fallback_event) {
-    raw <- rv$raw_redcap
+    raw <- redcap_wp()
     if (is.null(raw) || nrow(raw) == 0 || !"record_id" %in% names(raw))
       return(n_event(fallback_event))
     col <- fld(field_role, NA_character_)
@@ -146,15 +151,17 @@ participants_server <- function(input, output, session, state) {
   # All cached per raw_redcap fingerprint so we don't recompute on every UI
   # render (the tile bodies subscribe to them).
   fp <- function() {
-    raw <- rv$raw_redcap
-    if (is.null(raw)) "" else paste(nrow(raw), length(raw), sep = ":")
+    raw <- redcap_wp()
+    paste(rv$active_wp %||% 0L,
+          if (is.null(raw)) 0L else nrow(raw),
+          if (is.null(raw)) 0L else length(raw), sep = ":")
   }
 
-  sae_df    <- reactive({ sae_events(rv$raw_redcap) })       %>% bindCache(fp())
-  dev_df    <- reactive({ deviation_events(rv$raw_redcap) }) %>% bindCache(fp())
-  wd_df     <- reactive({ withdrawal_events(rv$raw_redcap) })%>% bindCache(fp())
-  pn_df     <- reactive({ preg_notif_events(rv$raw_redcap) })%>% bindCache(fp())
-  po_df     <- reactive({ preg_out_events(rv$raw_redcap) })  %>% bindCache(fp())
+  sae_df    <- reactive({ sae_events(redcap_wp()) })       %>% bindCache(fp())
+  dev_df    <- reactive({ deviation_events(redcap_wp()) }) %>% bindCache(fp())
+  wd_df     <- reactive({ withdrawal_events(redcap_wp()) })%>% bindCache(fp())
+  pn_df     <- reactive({ preg_notif_events(redcap_wp()) })%>% bindCache(fp())
+  po_df     <- reactive({ preg_out_events(redcap_wp()) })  %>% bindCache(fp())
 
   # Combined pregnancy view for the drill-down (notif + outcome).
   preg_df   <- reactive({ dplyr::bind_rows(pn_df(), po_df()) })
@@ -361,6 +368,8 @@ participants_server <- function(input, output, session, state) {
   })
 
   # ── Demographic breakdowns (preserves existing config-driven machinery) ─
+  # Column detection runs against the full export (column set is the same across
+  # work packages, and the full data is the most robust for detection).
   detected_breakdowns <- reactive({
     cfg <- rv$trial_config
     detect_breakdown_columns(rv$raw_redcap, cfg)
@@ -392,7 +401,7 @@ participants_server <- function(input, output, session, state) {
   })
 
   output$participant_breakdowns_ui <- renderUI({
-    raw <- rv$raw_redcap
+    raw <- redcap_wp()
     cfg <- rv$trial_config
     if (is.null(raw) || !nrow(raw))
       return(div(class = "info-box-tonic",

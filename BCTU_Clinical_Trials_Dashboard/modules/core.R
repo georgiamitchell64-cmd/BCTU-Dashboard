@@ -234,8 +234,55 @@ init_app_state <- function(input, output, session) {
     updateSelectInput(session, "bd_site", choices = choices)
   })
 
+  # ── Work-package-scoped data views ────────────────────────────────────────
+  # When a WP pill is active (rv$active_wp set) these return only that work
+  # package's records; with "Overview · all WPs" selected (active_wp = NULL)
+  # they return the full trial data — the roll-up summary. Dashboard modules
+  # read from these so the whole dashboard follows the WP picker.
+  #
+  # The canonical rv$sites / rv$participants / rv$raw_redcap stores are never
+  # filtered here, so the DB save paths always persist the complete dataset.
+
+  parts_wp <- reactive({
+    p  <- rv$participants
+    wp <- rv$active_wp
+    if (is.null(wp) || is.null(p) || !"work_package" %in% names(p)) return(p)
+    p %>% filter(!is.na(work_package), work_package == wp)
+  })
+
+  redcap_wp <- reactive({
+    d  <- rv$raw_redcap
+    wp <- rv$active_wp
+    if (is.null(wp) || is.null(d) || !"work_package" %in% names(d)) return(d)
+    d %>% filter(!is.na(work_package),
+                 suppressWarnings(as.integer(work_package)) == wp)
+  })
+
+  # Per-WP randomised count per site (one Baseline row per participant). Used to
+  # rescale the site list so KPIs / maps / tables reflect the active WP.
+  .wp_site_counts <- reactive({
+    wp <- rv$active_wp
+    if (is.null(wp) || !"work_package" %in% names(rv$participants)) return(NULL)
+    rv$participants %>%
+      filter(!is.na(work_package), work_package == wp,
+             event_type == "Baseline",
+             !is.na(site_dag), nchar(trimws(site_dag)) > 0) %>%
+      count(site_dag, name = "wp_rand")
+  })
+
+  sites_wp <- reactive({
+    s   <- rv$sites
+    cnt <- .wp_site_counts()
+    if (is.null(cnt) || is.null(s) || !nrow(s)) return(s)
+    s %>%
+      left_join(cnt, by = c("site_name" = "site_dag")) %>%
+      mutate(randomised = coalesce(as.integer(wp_rand), 0L)) %>%
+      select(-wp_rand) %>%
+      filter(site_name %in% cnt$site_dag)
+  })
+
   filtered <- reactive({
-    df <- rv$sites
+    df <- sites_wp()
     q <- tolower(trimws(input$search_txt %||% ""))
     if (nzchar(q)) {
       df <- df %>% filter(
@@ -250,5 +297,6 @@ init_app_state <- function(input, output, session) {
     df
   })
 
-  list(rv = rv, filtered = filtered)
+  list(rv = rv, filtered = filtered,
+       parts_wp = parts_wp, redcap_wp = redcap_wp, sites_wp = sites_wp)
 }

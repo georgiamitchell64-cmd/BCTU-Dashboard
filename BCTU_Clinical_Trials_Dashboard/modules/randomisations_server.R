@@ -1,5 +1,9 @@
 randomisations_server <- function(input, output, session, state) {
   rv <- state$rv
+  # WP-scoped views — randomisation charts, KPIs and the site table follow the
+  # active work package. rv$log (manual activity log) stays trial-wide.
+  redcap_wp <- state$redcap_wp
+  sites_wp  <- state$sites_wp
 
   # Resolve the randomisation-date column from the trial config, with the
   # same fallbacks the portfolio-review chart uses. Returns NA when nothing
@@ -23,7 +27,7 @@ randomisations_server <- function(input, output, session, state) {
   # All randomisation dates from the latest REDCap export. Returns Date(0)
   # if no data is loaded — never errors.
   rand_dates <- reactive({
-    df <- rv$raw_redcap
+    df <- redcap_wp()
     if (is.null(df) || !nrow(df)) return(as.Date(character(0)))
     col <- .rand_col(df)
     if (is.na(col)) return(as.Date(character(0)))
@@ -48,12 +52,13 @@ randomisations_server <- function(input, output, session, state) {
 
   # ── KPI strip ───────────────────────────────────────────────────────────
   output$rand_kpi_strip <- renderUI({
-    df  <- rv$sites
+    df  <- sites_wp()
     d   <- rand_dates()
 
     total_rand    <- length(d)
     n_recruiting  <- sum(df$status == "Recruiting", na.rm = TRUE)
-    trial_target  <- rv$trial_config$trial_target %||% 100L
+    trial_target  <- wp_effective_target(rv$trial_config, rv$active_wp)
+    if (trial_target <= 0) trial_target <- 100L
 
     month_start <- as.Date(format(Sys.Date(), "%Y-%m-01"))
     this_month  <- sum(d >= month_start)
@@ -111,7 +116,8 @@ randomisations_server <- function(input, output, session, state) {
     d <- rand_dates()
     if (!length(d)) return(.empty_chart("No randomisation data — upload a REDCap CSV"))
 
-    trial_target <- rv$trial_config$trial_target %||% 100L
+    trial_target <- wp_effective_target(rv$trial_config, rv$active_wp)
+    if (trial_target <= 0) trial_target <- 100L
 
     daily <- as.data.frame(table(d), stringsAsFactors = FALSE)
     names(daily) <- c("date", "n")
@@ -138,7 +144,7 @@ randomisations_server <- function(input, output, session, state) {
   })
 
   output$rand_table <- renderReactable({
-    df <- rv$sites
+    df <- sites_wp()
     if (nrow(df) == 0) return(empty_reactable("No sites loaded."))
     df <- df %>%
       mutate(
