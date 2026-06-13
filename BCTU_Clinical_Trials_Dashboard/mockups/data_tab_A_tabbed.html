@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data tab — Version A: Tabbed & compact</title>
+<style>
+  :root{
+    --navy:#1B4F6B;--navy-dk:#143D54;--teal:#2EC4A5;--teal-dk:#0FA88E;
+    --amber:#F59E0B;--red:#EF4444;--blue:#3B82F6;--violet:#7C3AED;
+    --bg:#EEF3F8;--card:#fff;--border:#DDE5EE;--text:#1E293B;--muted:#64748B;
+    --font:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:var(--font);color:var(--text);font-size:13px}
+  .shell{max-width:1400px;margin:0 auto;padding:20px}
+  h1{font-size:18px;color:var(--navy);margin:0 0 4px}
+  .crumb{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+
+  /* Sub-tab bar */
+  .subtabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;background:#fff;border-radius:8px 8px 0 0;padding:0 8px}
+  .subtab{padding:12px 18px;font-size:13px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:8px}
+  .subtab.active{color:var(--navy);border-bottom-color:var(--teal);font-weight:600}
+  .subtab .count{background:#F1F5F9;color:var(--muted);font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600}
+  .subtab.active .count{background:#E0F7F3;color:var(--teal-dk)}
+
+  /* Compact completeness header */
+  .compl-strip{background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px 18px;display:flex;align-items:center;gap:24px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .compl-title{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0}
+  .compl-bars{display:flex;gap:18px;flex:1}
+  .compl-item{display:flex;flex-direction:column;gap:4px;min-width:120px}
+  .compl-item .lbl{font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
+  .compl-item .lbl b{color:var(--navy)}
+  .compl-track{height:6px;background:#E2EAF0;border-radius:3px;overflow:hidden}
+  .compl-fill{height:100%;border-radius:3px}
+  .fill-bl{background:linear-gradient(90deg,#A78BFA,#7C3AED)}
+  .fill-dc{background:linear-gradient(90deg,#60A5FA,#2563EB)}
+  .fill-d30{background:linear-gradient(90deg,#34D399,#10B981)}
+  .fill-d90{background:linear-gradient(90deg,#10B981,#059669)}
+
+  /* Filter bar */
+  .filterbar{background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .filterbar .grp{display:flex;flex-direction:column;gap:3px}
+  .filterbar label{font-size:10px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.6px}
+  .filterbar select,.filterbar input{padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:12px;color:var(--text);background:#fff;font-family:inherit;min-width:160px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-left:auto}
+  .chip{padding:5px 11px;border:1px solid var(--border);background:#fff;border-radius:999px;font-size:11px;color:var(--muted);cursor:pointer;font-weight:500}
+  .chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .chip.warn.on{background:var(--amber);color:#fff;border-color:var(--amber)}
+
+  /* Hero completion table */
+  .hero{background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;border-top:3px solid var(--teal);box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .hero-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .hero-head h2{font-size:14px;color:var(--navy);margin:0;font-weight:600}
+  .hero-head .meta{font-size:11px;color:var(--muted);font-style:italic}
+
+  table.grid{width:100%;border-collapse:collapse;font-size:12px}
+  table.grid thead tr.tp{background:#F8FAFD}
+  table.grid thead tr.tp th{padding:9px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;text-align:center;border-bottom:1px solid var(--border)}
+  table.grid thead tr.tp th.bl{color:#7C3AED;border-bottom:3px solid #7C3AED;background:#F5F3FF}
+  table.grid thead tr.tp th.dc{color:#2563EB;border-bottom:3px solid #3B82F6;background:#EFF6FF}
+  table.grid thead tr.tp th.d30{color:#065F46;border-bottom:3px solid var(--teal);background:#ECFDF5}
+  table.grid thead tr.tp th.d90{color:#065F46;border-bottom:3px solid #059669;background:#ECFDF5}
+  table.grid thead tr.sub th{font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;padding:7px 8px;border-bottom:1px solid var(--border);background:#F8FAFD}
+  table.grid tbody td{padding:9px 8px;text-align:center;border-bottom:1px solid #EEF3F8;font-size:12px}
+  table.grid tbody td.lbl{text-align:left;font-weight:600;color:var(--navy);padding-left:18px}
+  table.grid tbody td.site{text-align:left;color:var(--muted);font-size:11px;padding-left:14px}
+  table.grid tbody tr:hover{background:rgba(46,196,165,.04)}
+  table.grid tbody tr.row-incomplete{background:#FFFBEB}
+  .c-c{color:#059669;font-weight:700;font-size:14px}
+  .c-p{color:#D97706;font-weight:700}
+  .c-u{color:#D97706;font-weight:600}
+  .c-n{color:#CBD5E1}
+
+  .drill{padding:14px 18px;background:#F8FAFD;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+  .drill b{color:var(--navy)}
+
+  .footer-actions{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#F8FAFD;border-top:1px solid var(--border)}
+  .pager{display:flex;gap:4px;align-items:center;font-size:11px;color:var(--muted)}
+  .pager button{background:#fff;border:1px solid var(--border);border-radius:4px;padding:3px 9px;cursor:pointer;font-size:11px}
+  .legend{font-size:11px;color:var(--muted)}
+  .dl-btn{background:var(--navy);color:#fff;border:none;padding:7px 14px;border-radius:5px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="crumb">TONIC › Data</div>
+  <h1>Trial data</h1>
+
+  <!-- Sub-tabs -->
+  <div class="subtabs">
+    <div class="subtab active">Patient questionnaires <span class="count">147</span></div>
+    <div class="subtab">Safety &amp; regulatory <span class="count">23</span></div>
+    <div class="subtab">Demographics</div>
+    <div class="subtab">Postal tracking <span class="count">12</span></div>
+  </div>
+
+  <!-- Compact completeness header (replaces 4 big KPI cards) -->
+  <div class="compl-strip">
+    <div class="compl-title">Completion overview<br><span style="text-transform:none;letter-spacing:0;font-weight:400;color:#94A3B8">147 participants</span></div>
+    <div class="compl-bars">
+      <div class="compl-item">
+        <div class="lbl">Baseline <b>92%</b></div>
+        <div class="compl-track"><div class="compl-fill fill-bl" style="width:92%"></div></div>
+        <div style="font-size:10px;color:var(--muted)">135 of 147</div>
+      </div>
+      <div class="compl-item">
+        <div class="lbl">Discharge <b>83%</b></div>
+        <div class="compl-track"><div class="compl-fill fill-dc" style="width:83%"></div></div>
+        <div style="font-size:10px;color:var(--muted)">122 of 147</div>
+      </div>
+      <div class="compl-item">
+        <div class="lbl">Day 30 <b>71%</b></div>
+        <div class="compl-track"><div class="compl-fill fill-d30" style="width:71%"></div></div>
+        <div style="font-size:10px;color:var(--muted)">104 of 147</div>
+      </div>
+      <div class="compl-item">
+        <div class="lbl">Day 90 <b>54%</b></div>
+        <div class="compl-track"><div class="compl-fill fill-d90" style="width:54%"></div></div>
+        <div style="font-size:10px;color:var(--muted)">79 of 147</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter bar with quick filters as chips -->
+  <div class="filterbar">
+    <div class="grp">
+      <label>Site</label>
+      <select><option>All sites (24)</option><option>Birmingham QE</option><option>Manchester Royal</option></select>
+    </div>
+    <div class="grp">
+      <label>Record ID</label>
+      <input placeholder="e.g. 1001" style="min-width:120px">
+    </div>
+    <div class="chips">
+      <div class="chip on">All</div>
+      <div class="chip warn">Incomplete only</div>
+      <div class="chip">Started, not finished</div>
+      <div class="chip">No data 30 d+</div>
+    </div>
+  </div>
+
+  <!-- Hero per-participant grid -->
+  <div class="hero">
+    <div class="hero-head">
+      <h2>Patient questionnaire completion — by participant</h2>
+      <div class="meta">Showing 25 of 147 · sorted by site, then ID</div>
+    </div>
+    <table class="grid">
+      <thead>
+        <tr class="tp">
+          <th colspan="2" style="text-align:left;padding-left:18px;background:#F8FAFD;border-bottom:1px solid var(--border)">Participant</th>
+          <th class="bl" colspan="5">Baseline</th>
+          <th class="dc" colspan="2">Discharge</th>
+          <th class="d30" colspan="5">Day 30</th>
+          <th class="d90" colspan="5">Day 90</th>
+        </tr>
+        <tr class="sub">
+          <th>ID</th><th>Site</th>
+          <th>EQ-5D</th><th>HRUQ</th><th>PRODIGI</th><th>QoR-15</th><th>VAS</th>
+          <th>EQ-5D</th><th>VAS</th>
+          <th>EQ-5D</th><th>HRUQ</th><th>PRODIGI</th><th>QoR-15</th><th>VAS</th>
+          <th>EQ-5D</th><th>HRUQ</th><th>PRODIGI</th><th>QoR-15</th><th>VAS</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="lbl">1001</td><td class="site">Birmingham QE</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td></tr>
+        <tr class="row-incomplete"><td class="lbl">1002</td><td class="site">Birmingham QE</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-p">●</td><td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-p">●</td><td class="c-u">?</td>
+          <td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td></tr>
+        <tr><td class="lbl">1003</td><td class="site">Birmingham QE</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td></tr>
+        <tr class="row-incomplete"><td class="lbl">2014</td><td class="site">Manchester Royal</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-p">●</td><td class="c-n">—</td><td class="c-p">●</td><td class="c-n">—</td><td class="c-n">—</td>
+          <td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td></tr>
+        <tr><td class="lbl">2015</td><td class="site">Manchester Royal</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+          <td class="c-u">?</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td></tr>
+        <tr class="row-incomplete"><td class="lbl">3007</td><td class="site">Leeds St James</td>
+          <td class="c-c">✓</td><td class="c-p">●</td><td class="c-c">✓</td><td class="c-p">●</td><td class="c-c">✓</td>
+          <td class="c-p">●</td><td class="c-c">✓</td>
+          <td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td>
+          <td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td></tr>
+      </tbody>
+    </table>
+    <div class="drill"><b>Selected: 1002 · Birmingham QE.</b>  Missing at Day 90: EQ-5D, HRUQ, PRODIGI, QoR-15, VAS. <span style="color:#94A3B8">Last contact: 14 days ago. Click row to open postal-tracking record.</span></div>
+    <div class="footer-actions">
+      <div class="legend"><span class="c-c">✓</span> Complete &nbsp;<span class="c-p">●</span> Started &nbsp;<span class="c-u">?</span> Unverified &nbsp;<span class="c-n">—</span> Not started</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="pager">
+          <button>‹</button><span>Page 1 of 6</span><button>›</button>
+        </div>
+        <button class="dl-btn">⬇ Download all</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -2,6 +2,34 @@ welcome_server <- function(input, output, session, state) {
   rv <- state$rv
   selected_role <- reactiveVal("Trial Manager")
 
+  # ── Inline error / message reactives ────────────────────────────────────
+  # Each panel that has a uiOutput("..._msg") writes here, and the corresponding
+  # renderUI consumes it. Storing as a list lets us also tag severity (error /
+  # warn / info / ok) so the styling matches the message kind.
+  login_msg          <- reactiveVal(NULL)   # password panel error
+  welcome_msg        <- reactiveVal(NULL)   # new-user form error
+  change_pw_msg      <- reactiveVal(NULL)   # force-change panel error
+  pending_change_pw  <- reactiveVal(NULL)   # profile waiting on a forced change
+
+  inline_render <- function(rv_val) {
+    m <- rv_val()
+    if (is.null(m)) return(NULL)
+    sev <- m$severity %||% "error"
+    icon <- switch(sev,
+      "error" = HTML("&times;"),
+      "warn"  = HTML("&#9888;"),
+      "ok"    = HTML("&check;"),
+      "info"  = HTML("&#9432;"),
+      HTML("&times;"))
+    div(class = paste("login-inline-msg", sev),
+        span(class = "login-inline-msg-ic", icon),
+        span(m$text))
+  }
+
+  output$welcome_error_msg     <- renderUI(inline_render(welcome_msg))
+  output$login_error_msg       <- renderUI(inline_render(login_msg))
+  output$change_pw_msg         <- renderUI(inline_render(change_pw_msg))
+
   # ── Role button toggle ──────────────────────────────────────────────────
   role_map <- c(role_tm = "Trial Manager", role_ci = "CI",
                 role_tl = "Team Leader", role_guest = "Guest")
@@ -95,6 +123,7 @@ welcome_server <- function(input, output, session, state) {
     shinyjs::hide("new_user_panel")
     shinyjs::show("password_panel")
     updateTextInput(session, "login_password", value = "")
+    login_msg(NULL)   # clear any stale error from a previous profile
   })
 
   output$password_prompt_name <- renderText({
@@ -121,6 +150,7 @@ welcome_server <- function(input, output, session, state) {
 
   observeEvent(input$login_back, {
     pending_login(NULL)
+    login_msg(NULL)
     shinyjs::hide("password_panel")
     shinyjs::show("welcome_profiles_ui")
     profiles <- db_load_profiles()
@@ -133,28 +163,45 @@ welcome_server <- function(input, output, session, state) {
     pw <- input$login_password %||% ""
 
     if (!nzchar(pw)) {
-      showNotification("Enter your password.", type = "warning")
+      login_msg(list(severity = "warn", text = "Enter your password to continue."))
       return()
     }
 
     if (isTRUE(p$has_password)) {
       # Standard login
       if (!verify_password(p$fullname, pw)) {
-        showNotification("Incorrect password.", type = "error")
+        login_msg(list(severity = "error",
+                       text = "That password isn't right. Ask a Trial Manager to issue you a temporary one from the Accounts tab."))
         return()
       }
     } else {
       # First-time password set
       confirm <- input$login_password_confirm %||% ""
       if (nchar(pw) < 6) {
-        showNotification("Pick at least 6 characters.", type = "warning")
+        login_msg(list(severity = "warn",
+                       text = "Pick at least 6 characters."))
         return()
       }
       if (!identical(pw, confirm)) {
-        showNotification("Passwords don't match.", type = "warning")
+        login_msg(list(severity = "warn",
+                       text = "Passwords don't match."))
         return()
       }
       set_password(p$fullname, pw)
+    }
+
+    login_msg(NULL)
+
+    # If an admin reset this user's password, intercept before we drop them
+    # into the app — they must pick a personal password first.
+    if (isTRUE(p$has_password) && is_password_reset_required(p$fullname)) {
+      pending_change_pw(p)
+      pending_login(NULL)
+      updateTextInput(session, "change_pw_new",     value = "")
+      updateTextInput(session, "change_pw_confirm", value = "")
+      change_pw_msg(NULL)
+      show_panel("change_password_panel")
+      return()
     }
 
     rv$username       <- p$fullname
@@ -164,28 +211,53 @@ welcome_server <- function(input, output, session, state) {
     complete_login(rv, session)
   })
 
+  # Clear error as soon as the user changes the password input
+  observeEvent(input$login_password, {
+    if (!is.null(login_msg())) login_msg(NULL)
+  }, ignoreInit = TRUE)
+
   # ── New user: Get started ───────────────────────────────────────────────
   observeEvent(input$welcome_go, {
     name    <- trimws(input$welcome_name %||% "")
+    email   <- trimws(input$welcome_email %||% "")
     pw      <- input$welcome_password %||% ""
     confirm <- input$welcome_password_confirm %||% ""
 
     if (!nzchar(name)) {
-      showNotification("Please enter your name.", type = "warning")
+      welcome_msg(list(severity = "warn", text = "Please enter your full name."))
+      return()
+    }
+    if (!.is_valid_email(email)) {
+      welcome_msg(list(severity = "warn",
+                       text = "Enter a valid email address (used for password reset)."))
+      return()
+    }
+    # Email already in use? Cheaper to fail-fast than discover at INSERT time.
+    if (!is.null(find_profile_by_email(email))) {
+      welcome_msg(list(severity = "warn",
+                       text = "That email is already linked to a profile. Use Forgot password? to recover access."))
       return()
     }
     if (nchar(pw) < 6) {
-      showNotification("Choose a password of at least 6 characters.",
-                       type = "warning")
+      welcome_msg(list(severity = "warn",
+                       text = "Choose a password of at least 6 characters."))
       return()
     }
     if (!identical(pw, confirm)) {
-      showNotification("Passwords don't match.", type = "warning")
+      welcome_msg(list(severity = "warn", text = "Passwords don't match."))
       return()
     }
 
+    welcome_msg(NULL)
     role <- selected_role()
-    db_save_profile(name, role, password = pw)
+    tryCatch(
+      db_save_profile(name, role, password = pw, email = email),
+      error = function(e) {
+        welcome_msg(list(severity = "error",
+                         text = paste0("Couldn't create profile: ", e$message)))
+      }
+    )
+    if (!is.null(welcome_msg())) return()
 
     rv$username       <- name
     rv$role           <- role
@@ -193,6 +265,69 @@ welcome_server <- function(input, output, session, state) {
 
     complete_login(rv, session)
   })
+
+  observeEvent(list(input$welcome_name, input$welcome_email,
+                    input$welcome_password, input$welcome_password_confirm), {
+    if (!is.null(welcome_msg())) welcome_msg(NULL)
+  }, ignoreInit = TRUE)
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Force-change-password flow:
+  #   password_panel  --(login_go, flag set)-->  change_password_panel
+  #                                                 | (pick new password)
+  #                                                 v
+  #                                              complete_login()
+  # ══════════════════════════════════════════════════════════════════════════
+
+  show_panel <- function(id) {
+    for (p in c("welcome_profiles_ui", "new_user_panel",
+                "password_panel", "change_password_panel")) {
+      if (p == id) shinyjs::show(p) else shinyjs::hide(p)
+    }
+  }
+
+  observeEvent(input$change_pw_submit, {
+    p <- pending_change_pw()
+    if (is.null(p)) {
+      change_pw_msg(list(severity = "error",
+                         text = "Session expired. Sign in again."))
+      return()
+    }
+    new_pw  <- input$change_pw_new     %||% ""
+    confirm <- input$change_pw_confirm %||% ""
+
+    if (nchar(new_pw) < 6) {
+      change_pw_msg(list(severity = "warn",
+                         text = "Pick at least 6 characters."))
+      return()
+    }
+    if (!identical(new_pw, confirm)) {
+      change_pw_msg(list(severity = "warn",
+                         text = "Passwords don't match."))
+      return()
+    }
+
+    set_password(p$fullname, new_pw)
+    clear_password_reset_required(p$fullname)
+    if (exists("log_activity", mode = "function")) {
+      tryCatch(
+        log_activity("password_changed",
+          sprintf("<strong>%s</strong> set a new password after admin reset",
+                  htmltools::htmlEscape(p$fullname))),
+        error = function(e) message("activity log: ", e$message))
+    }
+
+    pending_change_pw(NULL)
+    change_pw_msg(NULL)
+    rv$username       <- p$fullname
+    rv$role           <- p$role
+    rv$portfolio_role <- p$portfolio_role
+    complete_login(rv, session)
+  })
+
+  observeEvent(list(input$change_pw_new, input$change_pw_confirm), {
+    if (!is.null(change_pw_msg())) change_pw_msg(NULL)
+  }, ignoreInit = TRUE)
 }
 
 

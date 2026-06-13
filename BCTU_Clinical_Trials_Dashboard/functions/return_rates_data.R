@@ -1,59 +1,55 @@
 # ── return_rates_data.R ──────────────────────────────────────────────────────
 #
-# Locates and loads the most recent TONIC return-rate CSV from the
-# shared K: drive folder. Files are named TONIC_return_rate_YYYYMMDD-HHMMSS.csv
-# and accumulate over time — this picks the newest by timestamp in the
-# filename (falling back to file mtime if the filename doesn't parse).
+# Locates and loads the most recent return-rate CSV.
 #
-# Usage:
-#   rr_data <- reactive({
-#     invalidateLater(5 * 60 * 1000)   # re-check every 5 min (optional)
-#     load_return_rates()
-#   })
+# Search order:
+#   1. Trial-specific: trials/<code>/data/*_return_rate*.csv
+#   2. Legacy K: drive: TONIC_return_rate_YYYYMMDD-HHMMSS.csv
+#
+# CSV columns expected:
+#   Site, Event, Form, Expected, Due, Entered, "% Due Entered", "% Expected Entered"
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
 RR_DIR <- "K:/BCTU/BCTU/Teams/Coloproctology/CURRENT TRIALS/TONIC/TONIC Meeting Organiser/TONIC TMG Report/TONIC_app/return rates"
 
-# ── Find the newest CSV ──────────────────────────────────────────────────────
-latest_return_rate_file <- function(dir = RR_DIR) {
+# ── Find the newest CSV in a given directory ────────────────────────────────
+.find_newest_rr_file <- function(dir, pattern = "return_rate.*\\.csv$") {
+  if (!dir.exists(dir)) return(NULL)
 
-  if (!dir.exists(dir)) {
-    warning("Return rates folder not found: ", dir)
-    return(NULL)
-  }
-
-  files <- list.files(
-    dir,
-    pattern    = "^TONIC_return_rate.*\\.csv$",
-    full.names = TRUE,
-    ignore.case = TRUE
-  )
-
-  if (length(files) == 0) {
-    warning("No TONIC_return_rate_*.csv files found in: ", dir)
-    return(NULL)
-  }
+  files <- list.files(dir, pattern = pattern, full.names = TRUE, ignore.case = TRUE)
+  if (length(files) == 0) return(NULL)
 
   # Prefer timestamp from filename (YYYYMMDD-HHMMSS)
-  stamps <- sub(".*TONIC_return_rate_(\\d{8}-\\d{6}).*", "\\1", basename(files))
+  stamps <- sub(".*_(\\d{8}-\\d{6}).*", "\\1", basename(files))
   parsed <- suppressWarnings(as.POSIXct(stamps, format = "%Y%m%d-%H%M%S"))
 
   if (all(is.na(parsed))) {
-    # Fallback: file modification time
     parsed <- file.mtime(files)
   } else {
-    # Fill any failed parses with mtime so nothing is dropped
     parsed[is.na(parsed)] <- file.mtime(files[is.na(parsed)])
   }
 
   files[which.max(parsed)]
 }
 
-# ── Load it ──────────────────────────────────────────────────────────────────
-load_return_rates <- function(dir = RR_DIR) {
+# ── Find file (trial-aware) ────────────────────────────────────────────────
+latest_return_rate_file <- function(dir = RR_DIR, trial_code = NULL) {
+  # 1. Try trial-specific data folder
+  if (!is.null(trial_code) && nzchar(trial_code)) {
+    trial_data_dir <- file.path("trials", trial_code, "data")
+    found <- .find_newest_rr_file(trial_data_dir)
+    if (!is.null(found)) return(found)
+  }
 
-  path <- latest_return_rate_file(dir)
+  # 2. Fall back to legacy K: drive
+  .find_newest_rr_file(dir)
+}
+
+# ── Load it ──────────────────────────────────────────────────────────────────
+load_return_rates <- function(dir = RR_DIR, trial_code = NULL) {
+
+  path <- latest_return_rate_file(dir, trial_code)
   if (is.null(path)) return(NULL)
 
   df <- tryCatch(

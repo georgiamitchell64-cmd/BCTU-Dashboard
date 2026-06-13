@@ -75,7 +75,7 @@ shared_db_init <- function() {
     )
   ")
 
-  # Migration: add portfolio_role + password_hash + password_salt to legacy profiles
+  # Migration: add portfolio_role + password_hash + password_salt + email to legacy profiles
   cols <- tryCatch(dbGetQuery(con, "PRAGMA table_info(profiles)")$name,
                    error = function(e) character(0))
   if (length(cols) > 0 && !"portfolio_role" %in% cols) {
@@ -87,6 +87,20 @@ shared_db_init <- function() {
   if (length(cols) > 0 && !"password_salt" %in% cols) {
     dbExecute(con, "ALTER TABLE profiles ADD COLUMN password_salt TEXT")
   }
+  if (length(cols) > 0 && !"email" %in% cols) {
+    dbExecute(con, "ALTER TABLE profiles ADD COLUMN email TEXT")
+  }
+  # Force-change flag — set by admin_reset_password() so the next login
+  # interrupts the user with a "set a new password" panel before the
+  # temporary password becomes their permanent one.
+  if (length(cols) > 0 && !"password_reset_required" %in% cols) {
+    dbExecute(con,
+      "ALTER TABLE profiles ADD COLUMN password_reset_required INTEGER NOT NULL DEFAULT 0")
+  }
+
+  # Drop legacy one-time-code table from the email-based forgot-password flow
+  # we no longer ship. Admins now reset passwords from the Accounts tab.
+  dbExecute(con, "DROP TABLE IF EXISTS password_reset_codes")
 
   # Bring in any profiles still living in the legacy per-trial DBs
   .migrate_legacy_profiles(con)
@@ -155,7 +169,7 @@ db_load_profiles <- function() {
   )
 }
 
-db_save_profile <- function(fullname, role, password = NULL) {
+db_save_profile <- function(fullname, role, password = NULL, email = NULL) {
   con <- shared_db_connect()
   on.exit(dbDisconnect(con))
   # First profile registered becomes admin (bootstraps the system).
@@ -163,13 +177,43 @@ db_save_profile <- function(fullname, role, password = NULL) {
   portfolio_role <- if (n == 0) "admin" else "member"
 
   pw <- .hash_password(password)
+  email_val <- if (is.null(email) || !nzchar(trimws(email))) NA_character_
+               else trimws(tolower(email))
   dbExecute(con,
     "INSERT INTO profiles (fullname, role, portfolio_role, created,
-                            password_hash, password_salt)
-     VALUES (?, ?, ?, ?, ?, ?)",
+                            password_hash, password_salt, email)
+     VALUES (?, ?, ?, ?, ?, ?, ?)",
     params = list(fullname, role, portfolio_role,
                   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-                  pw$hash, pw$salt))
+                  pw$hash, pw$salt, email_val))
+}
+
+# Basic email format check — a single @ with a dot in the domain.
+.is_valid_email <- function(s) {
+  if (is.null(s)) return(FALSE)
+  s <- trimws(s)
+  if (!nzchar(s)) return(FALSE)
+  grepl("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", s, perl = TRUE)
+}
+
+set_email <- function(fullname, email) {
+  if (!.is_valid_email(email)) return(invisible(FALSE))
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  dbExecute(con, "UPDATE profiles SET email = ? WHERE fullname = ?",
+            params = list(trimws(tolower(email)), fullname))
+  invisible(TRUE)
+}
+
+find_profile_by_email <- function(email) {
+  if (!.is_valid_email(email)) return(NULL)
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  row <- tryCatch(
+    dbGetQuery(con,
+      "SELECT fullname, email FROM profiles WHERE LOWER(email) = ?",
+      params = list(trimws(tolower(email)))),
+    error = function(e) NULL)
+  if (is.null(row) || !nrow(row)) return(NULL)
+  list(fullname = row$fullname[1], email = row$email[1])
 }
 
 # ── Password hashing ────────────────────────────────────────────────────────
@@ -227,6 +271,88 @@ set_password <- function(fullname, new_password) {
   dbExecute(con,
     "UPDATE profiles SET password_hash = ?, password_salt = ? WHERE fullname = ?",
     params = list(pw$hash, pw$salt, fullname))
+  invisible(TRUE)
+}
+
+# ── Admin password reset ───────────────────────────────────────────────────
+# No email — an admin types in (or auto-generates) a temporary password for
+# another user. The flag forces a change on the user's next login so the
+# temp password is never their permanent secret.
+
+#' Generate a memorable temporary password — 3 short words + 2 digits.
+#' (Easier to read out over the phone than a random string.)
+.generate_temp_password <- function() {
+  words <- c("river","sunset","quiet","apple","cedar","north","amber","tiger",
+             "harbor","ivory","linen","maple","ocean","peach","raven","spruce",
+             "thistle","violet","willow","zephyr")
+  paste0(paste(sample(words, 2), collapse = "-"),
+         sprintf("%02d", sample.int(99, 1)))
+}
+
+#' Reset another user's password (admin action). Returns the plaintext
+#' temporary password so the caller can show it to the admin to relay.
+#' @param target_fullname  user whose password is being reset
+#' @param admin_fullname   admin doing the reset (used for audit logging)
+#' @param new_password     optional explicit password; otherwise auto-generated
+#' @return list(success = logical, temp_password = string, message = string)
+admin_reset_password <- function(target_fullname,
+                                 admin_fullname = NA_character_,
+                                 new_password   = NULL) {
+  if (is.null(target_fullname) || !nzchar(target_fullname)) {
+    return(list(success = FALSE, temp_password = NA,
+                message = "No target user supplied."))
+  }
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  exists <- dbGetQuery(con,
+    "SELECT 1 FROM profiles WHERE fullname = ?",
+    params = list(target_fullname))
+  if (nrow(exists) == 0) {
+    return(list(success = FALSE, temp_password = NA,
+                message = paste0("No profile named '", target_fullname, "'.")))
+  }
+  pw_plain <- if (!is.null(new_password) && nzchar(new_password))
+    new_password else .generate_temp_password()
+  pw <- .hash_password(pw_plain)
+  dbExecute(con,
+    "UPDATE profiles
+       SET password_hash = ?, password_salt = ?, password_reset_required = 1
+     WHERE fullname = ?",
+    params = list(pw$hash, pw$salt, target_fullname))
+
+  # Audit trail — uses log_activity() from functions/activity_log.R if loaded.
+  if (exists("log_activity", mode = "function")) {
+    tryCatch(
+      log_activity("password_reset_by_admin",
+        sprintf("Admin <strong>%s</strong> reset password for <strong>%s</strong>",
+                htmltools::htmlEscape(admin_fullname %||% "(unknown)"),
+                htmltools::htmlEscape(target_fullname))),
+      error = function(e) message("activity log: ", e$message))
+  }
+  list(success = TRUE, temp_password = pw_plain,
+       message = paste0("Temporary password set for ", target_fullname, "."))
+}
+
+#' Read the force-change flag.
+is_password_reset_required <- function(fullname) {
+  if (is.null(fullname) || !nzchar(fullname)) return(FALSE)
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  row <- tryCatch(
+    dbGetQuery(con,
+      "SELECT password_reset_required FROM profiles WHERE fullname = ?",
+      params = list(fullname)),
+    error = function(e) data.frame())
+  if (nrow(row) == 0) return(FALSE)
+  isTRUE(as.integer(row$password_reset_required[1]) == 1L)
+}
+
+#' Clear the force-change flag — called when the user picks a new password
+#' on the post-login interrupt screen.
+clear_password_reset_required <- function(fullname) {
+  if (is.null(fullname) || !nzchar(fullname)) return(invisible(FALSE))
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  dbExecute(con,
+    "UPDATE profiles SET password_reset_required = 0 WHERE fullname = ?",
+    params = list(fullname))
   invisible(TRUE)
 }
 

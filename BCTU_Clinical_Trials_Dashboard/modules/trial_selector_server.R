@@ -37,8 +37,79 @@ trial_selector_server <- function(input, output, session, state) {
                                    tags$span(class = "dot"), "On track")
     else if (pct >= 0.25) tags$span(class = "home-status warning",
                                     tags$span(class = "dot"), "Behind")
-    else                  tags$span(class = "home-status at-risk",
-                                    tags$span(class = "dot"), "At risk")
+    else                  tags$span(class = "home-status warning",
+                                    tags$span(class = "dot"), "Below 25%")
+  }
+
+  # New: redesigned status pill (.stat-pill) for rich-card layout
+  .stat_pill_v2 <- function(pct, size = "md") {
+    if (pct >= 0.5) {
+      cls <- "on-track"; lbl <- "On track"
+    } else if (pct >= 0.25) {
+      cls <- "warning"; lbl <- "Behind pace"
+    } else {
+      cls <- "warning"; lbl <- "Below 25%"
+    }
+    tags$span(class = paste("stat-pill", cls, if (size == "sm") "sm"),
+              tags$span(class = "stat-pill-dot"),
+              lbl)
+  }
+
+  # Pick a stable colour pair for a trial mark (logo tile)
+  .trial_mark_colors <- function(cfg) {
+    pal <- list(
+      list("#1B4F6B", "#2EC4A5"),
+      list("#0E7490", "#67E8F9"),
+      list("#7C2D12", "#FED7AA"),
+      list("#BE185D", "#FBCFE8"),
+      list("#0F766E", "#5EEAD4"),
+      list("#4338CA", "#A78BFA"),
+      list("#B45309", "#FBBF24")
+    )
+    code <- cfg$short_name %||% cfg$code %||% "X"
+    idx  <- (sum(utf8ToInt(toupper(code))) %% length(pal)) + 1
+    pal[[idx]]
+  }
+
+  # Resolve the URL path to a trial's logo in www/trial_logos/, if one was
+  # copied there at startup (see app.R). Returns NULL when there's no logo
+  # so callers can fall back to the gradient initials tile.
+  .trial_logo_url <- function(cfg) {
+    code <- cfg$code %||% ""
+    if (!nzchar(code)) return(NULL)
+    dir <- file.path(getwd(), "www", "trial_logos")
+    if (!dir.exists(dir)) return(NULL)
+    for (ext in c("png", "svg", "jpg", "jpeg", "webp", "gif")) {
+      f <- file.path(dir, paste0(code, ".", ext))
+      if (file.exists(f)) return(paste0("trial_logos/", code, ".", ext))
+    }
+    NULL
+  }
+
+  .trial_mark <- function(cfg, size = 44) {
+    cols <- .trial_mark_colors(cfg)
+    code <- toupper(cfg$short_name %||% cfg$code %||% "?")
+    logo_url <- .trial_logo_url(cfg)
+    if (!is.null(logo_url)) {
+      # Real logo — render the image inside a square frame so the visual
+      # weight matches the gradient initials tile used elsewhere.
+      return(tags$div(
+        class = "trial-mark2 trial-mark2-img",
+        style = sprintf(
+          "width:%spx;height:%spx;background:#fff;border:1px solid #E2E8EE;
+           display:flex;align-items:center;justify-content:center;
+           border-radius:8px;overflow:hidden;",
+          size, size),
+        tags$img(src = logo_url,
+                 style = "max-width:88%;max-height:88%;object-fit:contain;",
+                 alt = code)
+      ))
+    }
+    tags$div(class = "trial-mark2",
+             style = sprintf(
+               "width:%spx;height:%spx;font-size:%spx;background:linear-gradient(135deg,%s 0%%,%s 140%%);",
+               size, size, round(size * 0.32), cols[[1]], cols[[2]]),
+             substr(code, 1, 4))
   }
 
   # All trials in the system (admin view).
@@ -79,9 +150,10 @@ trial_selector_server <- function(input, output, session, state) {
   # "Add Trial" button (admin only)
   output$home_add_button_ui <- renderUI({
     if (isTRUE(rv$portfolio_role == "admin")) {
-      tags$button(class = "home-add-btn",
+      tags$button(class = "sec-head2-act",
                   onclick = "Shiny.setInputValue('open_wizard', Math.random(), {priority:'event'})",
-                  HTML("&#43; Add Trial"))
+                  style = "padding:6px 10px;border:1px solid #E2E8EE;border-radius:8px;background:#fff;",
+                  HTML("&#43; Add trial"))
     }
   })
 
@@ -89,48 +161,95 @@ trial_selector_server <- function(input, output, session, state) {
   observe({
     is_admin <- isTRUE(rv$portfolio_role == "admin")
     shinyjs::runjs(sprintf(
-      "document.querySelectorAll('.home-tab').forEach(function(t){
+      "document.querySelectorAll('.home-root .htab').forEach(function(t){
          var label = t.textContent.trim();
+         // strip count badges (e.g. 'My Trials3')
+         label = label.replace(/[0-9]+$/, '').trim();
          if (label === 'All Trials' || label === 'Activity' || label === 'Sites') {
            t.style.display = %s ? '' : 'none';
          }
        });", if (is_admin) "true" else "false"))
   })
 
-  # \u2500\u2500 My Trials cards (grouped by portfolio category) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  # \u2500\u2500 Rich trial card (new redesign \u2014 .rcard) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   .render_trial_card <- function(r, is_tm) {
-    cfg <- r$cfg
+    cfg     <- r$cfg
     ci      <- cfg$report_defaults$ci      %||% "\u2014"
     sponsor <- cfg$report_defaults$sponsor %||% "\u2014"
-    pct_w   <- sprintf("%.0f%%", r$pct * 100)
+    phase   <- cfg$phase                   %||% "\u2014"
+    cat     <- r$category                  %||% "\u2014"
+    pct_w   <- sprintf("%d%%", round(r$pct * 100))
+    bar_col <- .trial_mark_colors(cfg)[[1]]
 
-    div(class = "home-card",
+    full_name <- cfg$full_name %||% cfg$name %||% (cfg$short_name %||% toupper(r$code))
+
+    last_rand <- cfg$last_rand %||% "\u2014"
+    sites_open <- cfg$sites_open %||% NA_integer_
+    sites_total <- cfg$sites_total %||% NA_integer_
+    queries <- cfg$open_queries %||% 0
+
+    sites_txt <- if (!is.na(sites_open) && !is.na(sites_total))
+      tagList(sites_open, tags$span(class = "rcard-foot-sub", sprintf(" / %d", sites_total)))
+    else "\u2014"
+
+    tags$button(class = "rcard",
         onclick = sprintf("Shiny.setInputValue('select_trial', '%s', {priority:'event'})", r$code),
 
-        div(class = "home-card-head",
-            div(class = "home-card-title",
-                cfg$short_name %||% toupper(r$code)),
-            .status_pill(r$pct)
+        div(class = "rcard-head",
+            .trial_mark(cfg),
+            div(class = "rcard-titleblock",
+                div(class = "rcard-code", cfg$short_name %||% toupper(r$code)),
+                div(class = "rcard-name", full_name)),
+            .stat_pill_v2(r$pct)
         ),
-        div(class = "home-card-meta",
-            HTML(sprintf("CI: %s &middot; Sponsor: %s", ci, sponsor))),
 
-        div(class = "home-progress",
-            div(class = "home-progress-fill", style = sprintf("width:%s;", pct_w))),
-        div(class = "home-progress-row",
-            span(tags$strong(r$n), " / ", r$target, " recruited"),
-            span(pct_w))
+        div(class = "rcard-meta",
+            div(class = "rcard-meta-row",
+                tags$span(class = "rcard-meta-k", "CI"),
+                tags$span(class = "rcard-meta-v", ci)),
+            div(class = "rcard-meta-row",
+                tags$span(class = "rcard-meta-k", "Sponsor"),
+                tags$span(class = "rcard-meta-v", sponsor)),
+            div(class = "rcard-meta-row",
+                tags$span(class = "rcard-meta-k", "Phase"),
+                tags$span(class = "rcard-meta-v", paste(phase, "\u00b7", cat)))
+        ),
+
+        div(class = "rcard-progressblock",
+            div(class = "rcard-progress-top",
+                tags$span(class = "rcard-recruited", format(r$n, big.mark = ",")),
+                tags$span(class = "rcard-target",
+                          sprintf("/ %s recruited", format(r$target, big.mark = ","))),
+                tags$span(class = "rcard-pct", pct_w)),
+            div(class = "rcard-bar",
+                div(class = "rcard-bar-fill",
+                    style = sprintf("width:%s;background:%s;", pct_w, bar_col)))
+        ),
+
+        div(class = "rcard-foot",
+            div(class = "rcard-foot-cell",
+                tags$span(class = "rcard-foot-k", "Sites"),
+                tags$span(class = "rcard-foot-v", sites_txt)),
+            div(class = "rcard-foot-cell",
+                tags$span(class = "rcard-foot-k", "Last rand."),
+                tags$span(class = "rcard-foot-v", last_rand)),
+            div(class = "rcard-foot-cell",
+                tags$span(class = "rcard-foot-k", "Queries"),
+                tags$span(class = paste("rcard-foot-v", if (queries > 10) "warn" else ""),
+                          as.character(queries)))
+        )
     )
   }
 
+  # \u2500\u2500 Category divider (new design \u2014 .cat-head) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   .category_header <- function(cat, n) {
     icon <- TRIAL_CATEGORY_ICONS[[cat]] %||% TRIAL_CATEGORY_ICONS[["Other"]]
-    div(class = "home-category",
-        div(class = "home-category-icon", HTML(icon)),
-        div(class = "home-category-label", cat),
-        div(class = "home-category-count",
+    div(class = "cat-head",
+        div(class = "cat-icon", HTML(icon)),
+        div(class = "cat-label", cat),
+        div(class = "cat-count",
             paste(n, if (n == 1) "trial" else "trials")),
-        div(class = "home-category-divider"))
+        div(class = "cat-divider"))
   }
 
   # Order categories in TRIAL_CATEGORIES order, with Uncategorised last.
@@ -149,20 +268,22 @@ trial_selector_server <- function(input, output, session, state) {
     is_tm <- isTRUE(rv$portfolio_role == "admin")
 
     add_card <- if (is_tm) {
-      div(class = "home-card home-add-card",
+      tags$button(class = "add-card",
           onclick = "Shiny.setInputValue('open_wizard', Math.random(), {priority:'event'})",
-          div(class = "plus", HTML("&#43;")),
-          div(class = "label", "Add New Trial"))
+          div(class = "add-card-plus", HTML("&#43;")),
+          div(class = "add-card-l1", "Add a new trial"),
+          div(class = "add-card-l2", "Wizard takes ~3 min"))
     }
 
     if (length(rows) == 0 && is.null(add_card)) {
-      return(div(class = "home-empty",
-                 div(class = "icon", HTML("&#x1F4CB;")),
-                 div("No trials available yet.")))
+      return(div(class = "empty-tab",
+                 div(class = "empty-tab-i", HTML("&#x2299;")),
+                 div(class = "empty-tab-t", "No trials yet"),
+                 div(class = "empty-tab-s", "No trials available — ask an admin to add you to a trial.")))
     }
 
     if (length(rows) == 0) {
-      return(div(class = "home-grid", add_card))
+      return(div(class = "rgrid", add_card))
     }
 
     cats_seen <- unique(vapply(rows, function(r) r$category, character(1)))
@@ -170,27 +291,312 @@ trial_selector_server <- function(input, output, session, state) {
       group <- Filter(function(r) identical(r$category, cat), rows)
       tagList(
         .category_header(cat, length(group)),
-        div(class = "home-grid",
+        div(class = "rgrid",
             lapply(group, function(r) .render_trial_card(r, is_tm)))
       )
     })
 
-    # The "Add New Trial" card sits in its own footer row after all categories.
     if (!is.null(add_card)) {
       blocks <- c(blocks, list(
-        div(class = "home-category",
-            div(class = "home-category-icon",
-                style = "background:#F8FAFD;color:#94A3B8;",
-                HTML("&#43;")),
-            div(class = "home-category-label",
-                style = "color:var(--muted);font-weight:500;",
-                "Add a new trial"),
-            div(class = "home-category-divider")),
-        div(class = "home-grid", add_card)
+        div(class = "rgrid", style = "margin-top:14px;", add_card)
       ))
     }
 
     do.call(tagList, blocks)
+  })
+
+  # ── Topbar pieces: profile initials, my-trials count, activity dot ────
+  output$home_user_initials <- renderText({
+    nm <- rv$username %||% "U"
+    parts <- strsplit(nm, "\\s+")[[1]]
+    if (length(parts) >= 2) toupper(paste0(substr(parts[1], 1, 1), substr(parts[2], 1, 1)))
+    else                    toupper(substr(nm, 1, 2))
+  })
+
+  output$home_my_trials_count <- renderText({
+    rows <- tryCatch(trials_data(), error = function(e) list())
+    as.character(length(rows))
+  })
+
+  output$home_activity_dot <- renderUI({
+    feed <- tryCatch(activity_feed(), error = function(e) NULL)
+    if (!is.null(feed) && nrow(feed) > 0) tags$span(class = "htab-dot")
+  })
+
+  output$home_trials_section_title <- renderText({
+    rows <- tryCatch(trials_data(), error = function(e) list())
+    sprintf("%d active %s", length(rows),
+            if (length(rows) == 1) "trial" else "trials")
+  })
+
+  # ── Portfolio summary strip (My Trials hero header) ───────────────────
+  output$home_summary_strip_ui <- renderUI({
+    rows <- tryCatch(trials_data(), error = function(e) list())
+    if (length(rows) == 0) return(NULL)
+
+    n_trials <- length(rows)
+    pcts <- vapply(rows, function(r) r$pct, numeric(1))
+    on_track <- sum(pcts >= 0.5)
+    at_risk  <- sum(pcts < 0.25)
+
+    sites_open <- sum(vapply(rows, function(r) r$cfg$sites_open %||% 0L, integer(1)))
+    sites_total <- sum(vapply(rows, function(r) r$cfg$sites_total %||% 0L, integer(1)))
+    this_week <- sum(vapply(rows, function(r) r$cfg$this_week %||% 0L, integer(1)))
+    queries  <- sum(vapply(rows, function(r) r$cfg$open_queries %||% 0L, integer(1)))
+
+    greet_hr <- as.integer(format(Sys.time(), "%H"))
+    greeting <- if (greet_hr < 12) "Good morning" else if (greet_hr < 18) "Good afternoon" else "Good evening"
+    fname <- strsplit(rv$username %||% "there", "\\s+")[[1]][1]
+
+    div(class = "psum",
+        div(class = "psum-head",
+            div(class = "psum-eye", "Portfolio · last 7 days"),
+            div(class = "psum-greet",
+                sprintf("%s, %s — ", greeting, fname),
+                tags$span(class = "psum-greet-sub",
+                          sprintf("%d %s across %d %s",
+                                  this_week,
+                                  if (this_week == 1) "new randomisation this week" else "new randomisations this week",
+                                  n_trials,
+                                  if (n_trials == 1) "trial" else "trials")))
+        ),
+        div(class = "psum-grid",
+            div(class = "psum-stat accent",
+                div(class = "psum-stat-k", "Active trials"),
+                div(class = "psum-stat-v", n_trials),
+                div(class = "psum-stat-s",
+                    sprintf("%d on track at 50%%+ of target", on_track))),
+            div(class = "psum-stat pos",
+                div(class = "psum-stat-k", "This week"),
+                div(class = "psum-stat-v", sprintf("+%d", this_week)),
+                div(class = "psum-stat-s", "randomisations across portfolio")),
+            div(class = paste("psum-stat", if (queries > 50) "warn"),
+                div(class = "psum-stat-k", "Open queries"),
+                div(class = "psum-stat-v", queries),
+                div(class = "psum-stat-s", "across all trials"))
+        ),
+        div(class = "psum-trials",
+            div(class = "psum-trials-head",
+                tags$span(class = "psum-trials-eye", "Per-trial recruitment & sites"),
+                tags$span(class = "psum-trials-leg",
+                          tags$span(class = "psum-trials-leg-sw"),
+                          " recruited vs target")),
+            div(class = "psum-trials-list",
+                lapply(rows, function(r) {
+                  cfg <- r$cfg
+                  pct <- r$pct
+                  s_open <- cfg$sites_open %||% 0L
+                  s_total <- cfg$sites_total %||% 0L
+                  s_pct <- if (s_total > 0) min(1, s_open / s_total) else 0
+                  bar_col <- .trial_mark_colors(cfg)[[1]]
+                  dot_col <- if (pct >= 0.5) "#10B981" else if (pct >= 0.25) "#F59E0B" else "#EF4444"
+                  div(class = "psum-trow",
+                      div(class = "psum-trow-id",
+                          tags$span(class = "psum-trow-dot",
+                                    style = sprintf("background:%s;", dot_col)),
+                          tags$span(class = "psum-trow-code",
+                                    cfg$short_name %||% toupper(r$code))),
+                      div(class = "psum-trow-met",
+                          div(class = "psum-trow-met-k", "Randomised"),
+                          div(class = "psum-trow-met-v",
+                              format(r$n, big.mark = ","),
+                              tags$span(class = "psum-trow-met-of",
+                                        sprintf(" / %s", format(r$target, big.mark = ",")))),
+                          div(class = "psum-trow-bar",
+                              div(class = "psum-trow-bar-f",
+                                  style = sprintf("width:%d%%;background:%s;",
+                                                  round(pct * 100), bar_col))),
+                          div(class = "psum-trow-met-s",
+                              sprintf("%d%% of target", round(pct * 100)))),
+                      div(class = "psum-trow-met",
+                          div(class = "psum-trow-met-k", "Sites"),
+                          div(class = "psum-trow-met-v",
+                              s_open,
+                              tags$span(class = "psum-trow-met-of",
+                                        sprintf(" / %d", s_total))),
+                          div(class = "psum-trow-bar",
+                              div(class = "psum-trow-bar-f",
+                                  style = sprintf("width:%d%%;background:#27384A;opacity:.55;",
+                                                  round(s_pct * 100)))),
+                          div(class = "psum-trow-met-s",
+                              sprintf("%d pending open", max(0L, s_total - s_open))))
+                  )
+                })))
+    )
+  })
+
+  # ── Activity preview (small list under My Trials) ─────────────────────
+  output$home_activity_preview_ui <- renderUI({
+    feed <- tryCatch(activity_feed(), error = function(e) NULL)
+    if (is.null(feed) || nrow(feed) == 0) {
+      return(div(class = "act-list",
+                 div(style = "padding:20px;text-align:center;color:#64748B;font-size:12.5px;",
+                     "No recent activity yet.")))
+    }
+    trials <- discover_trials()
+    rows <- head(feed, 6)
+    div(class = "act-list",
+        lapply(seq_len(nrow(rows)), function(i) {
+          r <- rows[i, ]
+          ev <- as.character(r$event_type %||% "info")
+          map <- list(
+            trial_created    = list(c = "#10B981", l = "TRIAL"),
+            trial_deleted    = list(c = "#EF4444", l = "TRIAL"),
+            site_added       = list(c = "#3B82F6", l = "SITE"),
+            sites_bulk_added = list(c = "#3B82F6", l = "SITE"),
+            site_deleted     = list(c = "#EF4444", l = "SITE"),
+            csv_uploaded     = list(c = "#0EA5E9", l = "DATA"),
+            amendment_added  = list(c = "#A855F7", l = "AMEND"),
+            amendment_edited = list(c = "#A855F7", l = "AMEND"),
+            settings_saved   = list(c = "#64748B", l = "SET"),
+            membership_changed = list(c = "#F59E0B", l = "USER"),
+            portfolio_role_changed = list(c = "#F59E0B", l = "ROLE")
+          )
+          k <- map[[ev]] %||% list(c = "#10B981", l = "INFO")
+          tcode <- as.character(r$trial_code %||% "—")
+          tshort <- if (!is.null(trials[[tcode]]))
+            (trials[[tcode]]$short_name %||% toupper(tcode)) else tcode
+          when <- as.character(r$happened_at %||% r$timestamp %||% "")
+          when_s <- if (nchar(when)) format(as.POSIXct(when), "%d %b %H:%M") else ""
+          div(class = "act-row",
+              div(class = "act-tag",
+                  style = sprintf("background:%s;", k$c), k$l),
+              div(class = "act-trial", tshort),
+              div(class = "act-text", as.character(r$summary %||% r$description %||% "")),
+              div(class = "act-time", when_s))
+        }))
+  })
+
+  # ── Quick actions: New trial → wizard ─────────────────────────────────
+  observeEvent(input$qa_new_trial, {
+    if (isTRUE(rv$portfolio_role == "admin")) {
+      session$sendCustomMessage("trigger_open_wizard", list())
+      shinyjs::runjs("Shiny.setInputValue('open_wizard', Math.random(), {priority:'event'});")
+    } else {
+      showModal(modalDialog(
+        title = "Admins only",
+        easyClose = TRUE, footer = modalButton("OK"),
+        "Only portfolio admins can create new trials."
+      ))
+    }
+  })
+
+  # ── Quick actions: Run a report → trial picker → reports module ───────
+  observeEvent(input$qa_run_report, {
+    rows <- tryCatch(trials_data(), error = function(e) list())
+    if (length(rows) == 0) {
+      showModal(modalDialog(
+        title = "No trials available",
+        easyClose = TRUE, footer = modalButton("Close"),
+        "You need at least one trial to run a report."))
+      return()
+    }
+    choices <- setNames(
+      vapply(rows, function(r) r$code, character(1)),
+      vapply(rows, function(r) r$cfg$short_name %||% toupper(r$code), character(1))
+    )
+    showModal(modalDialog(
+      title = "Run a report",
+      size = "s", easyClose = TRUE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("qa_run_report_go", "Open report builder",
+                     class = "btn btn-primary",
+                     style = "background:#1B4F6B;border-color:#1B4F6B;")),
+      div(style = "padding:6px 0;",
+          tags$label(style = "font-size:11px;font-weight:600;color:#64748B;
+                              text-transform:uppercase;letter-spacing:.5px;",
+                     "Trial"),
+          selectInput("qa_run_report_trial", label = NULL,
+                      choices = choices, width = "100%"),
+          div(style = "font-size:12px;color:#64748B;margin-top:8px;",
+              "Opens the report builder where you'll choose format
+               (Word / PDF / HTML) and sections."))
+    ))
+  })
+
+  observeEvent(input$qa_run_report_go, {
+    code <- input$qa_run_report_trial
+    removeModal()
+    if (!is.null(code) && nzchar(code)) {
+      shinyjs::runjs(sprintf(
+        "Shiny.setInputValue('select_trial', '%s', {priority:'event'});", code))
+      # Switch to reports tab once trial is loaded
+      shinyjs::runjs("setTimeout(function(){
+        var btn = document.getElementById('nav_reports');
+        if (btn) btn.click();
+      }, 600);")
+    }
+  })
+
+  # ── Quick actions: Switch theme ───────────────────────────────────────
+  observeEvent(input$qa_switch_theme, {
+    showModal(modalDialog(
+      title = "Switch theme",
+      size = "s", easyClose = TRUE,
+      footer = modalButton("Close"),
+      div(style = "display:grid;gap:10px;padding:6px 0;",
+          tags$button(class = "qa-tile",
+                      onclick = "Shiny.setInputValue('qa_theme_pick','light',{priority:'event'})",
+                      div(class = "qa-icon", HTML("&#x2600;")),
+                      div(class = "qa-text",
+                          div(class = "qa-label", "Light"),
+                          div(class = "qa-desc", "Default BCTU navy & teal"))),
+          tags$button(class = "qa-tile",
+                      onclick = "Shiny.setInputValue('qa_theme_pick','dark',{priority:'event'})",
+                      div(class = "qa-icon", HTML("&#x263D;")),
+                      div(class = "qa-text",
+                          div(class = "qa-label", "Dark"),
+                          div(class = "qa-desc", "Reduced glare for evening work"))),
+          tags$button(class = "qa-tile",
+                      onclick = "Shiny.setInputValue('qa_theme_pick','system',{priority:'event'})",
+                      div(class = "qa-icon", HTML("&#x1F5A5;")),
+                      div(class = "qa-text",
+                          div(class = "qa-label", "System"),
+                          div(class = "qa-desc", "Follow OS preference"))))
+    ))
+  })
+
+  observeEvent(input$qa_theme_pick, {
+    pick <- input$qa_theme_pick
+    removeModal()
+    shinyjs::runjs(sprintf("
+      document.documentElement.setAttribute('data-theme','%s');
+      try { localStorage.setItem('bctu_theme','%s'); } catch(e){}
+    ", pick, pick))
+    showNotification(sprintf("Theme set to %s.", pick), duration = 2)
+  })
+
+  # ── Quick actions: Portfolio settings → manage users ──────────────────
+  observeEvent(input$qa_portfolio_settings, {
+    if (isTRUE(rv$portfolio_role == "admin")) {
+      showModal(manage_users_modal())
+    } else {
+      showModal(modalDialog(
+        title = "Admins only",
+        easyClose = TRUE, footer = modalButton("OK"),
+        "Only portfolio admins can change portfolio settings."))
+    }
+  })
+
+  # ── Help button ───────────────────────────────────────────────────────
+  observeEvent(input$home_help_open, {
+    showModal(modalDialog(
+      title = "Help",
+      size = "m", easyClose = TRUE, footer = modalButton("Close"),
+      div(style = "font-size:13px;line-height:1.6;color:#27384A;",
+          tags$p(tags$strong("BCTU Clinical Trials Dashboard")),
+          tags$p("Click any trial card to open its dashboard. Use the tabs at the top
+                  to switch between My Trials, Portfolio, All Trials, Sites and Activity."),
+          tags$p("Quick actions row:"),
+          tags$ul(
+            tags$li(tags$strong("New trial"), " — wizard to spin up a new dashboard (admin)."),
+            tags$li(tags$strong("Run a report"), " — pick a trial and open the report builder."),
+            tags$li(tags$strong("Switch theme"), " — light, dark, or system."),
+            tags$li(tags$strong("Portfolio settings"), " — manage users, roles and access (admin).")),
+          tags$p(style = "color:#64748B;font-size:12px;",
+                 "Need more help? Contact the BCTU support team."))
+    ))
   })
 
   # \u2500\u2500 Overview tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -206,6 +612,26 @@ trial_selector_server <- function(input, output, session, state) {
                  div(class = "icon", HTML("&#x1F4CA;")),
                  div("No trials yet \u2014 create one to see portfolio stats.")))
     }
+
+    # \u2500\u2500 Pre-compute v2 status for each trial (avoids reading raw twice) \u2500\u2500
+    # Each row picks up $status_v2 \u2208 {on, warn, risk, setup, closed}
+    rows <- lapply(rows, function(r) {
+      r$status_v2 <- tryCatch(trial_status_v2(r),
+                              error = function(e) "setup")
+      r
+    })
+
+    # Aggregate status counts \u2014 these are countable across trials
+    n_on    <- sum(vapply(rows, function(r) r$status_v2 == "on",    logical(1)))
+    n_warn  <- sum(vapply(rows, function(r) r$status_v2 == "warn",  logical(1)))
+    n_risk  <- sum(vapply(rows, function(r) r$status_v2 == "risk",  logical(1)))
+    n_setup <- sum(vapply(rows, function(r) r$status_v2 == "setup", logical(1)))
+    n_closed<- sum(vapply(rows, function(r) r$status_v2 == "closed",logical(1)))
+    n_trials <- length(rows)
+    # Average progress (mean of per-trial %), not summed/blended ratios
+    avg_pct <- if (n_trials > 0)
+      round(mean(vapply(rows, function(r) r$pct %||% 0, numeric(1))) * 100)
+    else 0L
 
     # \u2500\u2500 Smart Insights cards (inlined \u2014 was a nested uiOutput) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     smart_section <- tryCatch({
@@ -277,83 +703,159 @@ trial_selector_server <- function(input, output, session, state) {
                    padding:12px 14px;font-size:12px;color:#78350F;",
           sprintf("Smart Insights couldn't load: %s", e$message))
     })
-    n_trials  <- length(rows)
-    n_at_risk <- sum(vapply(rows, function(r) r$pct < 0.25, logical(1)))
-    n_on      <- sum(vapply(rows, function(r) r$pct >= 0.5, logical(1)))
     cats_seen <- unique(vapply(rows, function(r) r$category, character(1)))
 
-    stat <- function(label, value, sub = NULL) {
-      div(class = "home-stat",
-          div(class = "home-stat-label", label),
-          div(class = "home-stat-value", value),
-          if (!is.null(sub)) div(class = "home-stat-sub", sub))
+    # ── KPI cards (portfolio health, not summed totals) ────────────────────
+    kpi <- function(lbl, value, sub, trend = NULL, accent = "var(--bctu-deep)") {
+      div(class = "pf-kpi",
+        div(class = "pf-kpi-lbl", lbl),
+        div(class = "pf-kpi-v", style = sprintf("color:%s", accent), value),
+        div(class = "pf-kpi-sub",
+            tags$span(sub),
+            if (!is.null(trend)) tags$span(class = "pf-kpi-trend", trend)))
     }
+    kpi_row <- div(class = "pf-kpi-row",
+      kpi("Active trials", n_trials,
+          if (n_trials == 1) "live trial" else "live trials",
+          NULL, "var(--bctu-deep)"),
+      kpi("On track",
+          tagList(n_on, tags$span(style = "font-size:16px;color:var(--muted);font-weight:500;",
+                                  sprintf(" / %d", n_trials))),
+          "at or above target pace", NULL, "var(--green-dk)"),
+      kpi("Need attention",
+          tagList(n_warn + n_risk,
+                  tags$span(style = "font-size:16px;color:var(--muted);font-weight:500;",
+                            sprintf(" / %d", n_trials))),
+          sprintf("%d behind · %d stalled", n_warn, n_risk),
+          NULL, "var(--amber-dk)"),
+      kpi("Avg. recruitment progress", paste0(avg_pct, "%"),
+          "mean across all trials", NULL, "var(--bctu-deep)"))
 
-    # Per-trial recruitment status (each trial standalone, not summed)
-    trial_rows <- lapply(rows, function(r) {
-      pct_w <- sprintf("%.0f%%", r$pct * 100)
-      cfg <- r$cfg
-      div(style = "display:grid;grid-template-columns:1.5fr 1fr 0.6fr 0.4fr;
-                   gap:14px;align-items:center;
-                   padding:14px 0;border-bottom:1px solid #EEF2F7;",
-          # Trial name + category
-          div(div(style = "font-weight:600;color:#0F172A;font-size:14px;",
-                  cfg$short_name %||% toupper(r$code)),
-              div(style = "font-size:11px;color:#64748B;", r$category)),
-          # Mini progress bar
-          div(class = "home-progress", style = "margin:0;width:100%;",
-              div(class = "home-progress-fill", style = sprintf("width:%s;", pct_w))),
-          # Counts
-          div(style = "font-size:13px;color:#475569;text-align:right;",
-              sprintf("%d / %d", r$n, r$target)),
-          # Status pill
-          div(style = "text-align:right;", .status_pill(r$pct))
+    # ── Recruitment-by-trial: horizontal bars, sorted by % ────────────────
+    sorted_rows <- rows[order(-vapply(rows, function(r) r$pct %||% 0, numeric(1)))]
+    rec_rows <- lapply(sorted_rows, function(r) {
+      cfg  <- r$cfg
+      pct  <- max(0, min(1, r$pct %||% 0))
+      pct_w <- sprintf("%.0f%%", pct * 100)
+      lbl  <- trial_status_label(r$status_v2)
+      div(class = "pf-rec-row",
+          onclick = sprintf("Shiny.setInputValue('select_trial','%s',{priority:'event'})", r$code),
+          div(div(class = "pf-rec-name", cfg$short_name %||% toupper(r$code)),
+              div(class = "pf-rec-cat", r$category)),
+          div(class = "pf-rec-bar",
+              div(class = sprintf("pf-rec-bar-f s-%s", lbl$cls),
+                  style = sprintf("width:%s;", pct_w))),
+          div(class = "pf-rec-count",
+              tags$b(format(r$n, big.mark = ",")),
+              if (r$target > 0)
+                tags$span(style = "color:var(--muted);font-weight:500;",
+                          sprintf(" / %s", format(r$target, big.mark = ","))),
+              tags$br(),
+              tags$span(style = "font-size:10.5px;color:var(--muted);",
+                        sprintf("%s of target", pct_w))),
+          div(class = sprintf("pf-rec-pill s-%s", lbl$cls), lbl$text)
       )
     })
 
-    # Per-category trial counts (no recruitment summing)
-    cat_rows <- lapply(.ordered_categories(cats_seen), function(cat) {
-      group   <- Filter(function(r) identical(r$category, cat), rows)
-      icon    <- TRIAL_CATEGORY_ICONS[[cat]] %||% TRIAL_CATEGORY_ICONS[["Other"]]
-      div(style = "display:grid;grid-template-columns:auto 1fr auto;
-                   gap:14px;align-items:center;
-                   padding:12px 0;border-bottom:1px solid #EEF2F7;",
-          div(class = "home-category-icon", HTML(icon)),
-          div(style = "font-weight:600;color:#0F172A;font-size:13.5px;", cat),
-          div(style = "font-size:13px;color:var(--accent);font-weight:600;",
-              paste(length(group),
-                    if (length(group) == 1) "trial" else "trials")))
+    # ── Status donut (server-rendered SVG) ────────────────────────────────
+    donut_svg <- local({
+      slices <- list(
+        list(n = n_on,    col = "#10B981", lbl = "On track"),
+        list(n = n_warn,  col = "#F59E0B", lbl = "Behind"),
+        list(n = n_risk,  col = "#EF4444", lbl = "Stalled"),
+        list(n = n_setup, col = "#3B82F6", lbl = "Set-up"),
+        list(n = n_closed,col = "#A693AF", lbl = "Closed"))
+      slices <- Filter(function(s) s$n > 0, slices)
+      circ <- 377  # 2 * pi * 60
+      offset <- 0
+      paths <- vapply(slices, function(s) {
+        dash <- round(circ * s$n / max(1, n_trials), 1)
+        out <- sprintf(
+'<circle cx="80" cy="80" r="60" stroke="%s" stroke-width="22" fill="none"
+         stroke-dasharray="%s %s" stroke-dashoffset="%s"/>',
+          s$col, dash, circ, -offset)
+        offset <<- offset + dash
+        out
+      }, character(1))
+      HTML(sprintf(
+'<svg viewBox="0 0 160 160" width="160" height="160" style="transform:rotate(-90deg)">
+  <circle cx="80" cy="80" r="60" stroke="#F4ECF1" stroke-width="22" fill="none"/>
+  %s
+</svg>
+<div class="pf-donut-ctr"><b>%d</b><small>TRIALS</small></div>',
+        paste(paths, collapse = ""), n_trials))
+    })
+
+    donut_legend <- div(class = "pf-donut-legend",
+      .pf_leg_row("On track", n_on,    n_trials, "#10B981"),
+      .pf_leg_row("Behind",   n_warn,  n_trials, "#F59E0B"),
+      .pf_leg_row("Stalled",  n_risk,  n_trials, "#EF4444"),
+      .pf_leg_row("Set-up",   n_setup, n_trials, "#3B82F6"),
+      .pf_leg_row("Closed",   n_closed,n_trials, "#A693AF"))
+
+    # ── By-category panel — average progress + status mix per category ───
+    cat_rows_html <- lapply(.ordered_categories(cats_seen), function(cat) {
+      group <- Filter(function(r) identical(r$category, cat), rows)
+      icon  <- TRIAL_CATEGORY_ICONS[[cat]] %||% TRIAL_CATEGORY_ICONS[["Other"]]
+      cat_avg <- round(mean(vapply(group, function(r) r$pct %||% 0, numeric(1))) * 100)
+      mix_parts <- c(
+        if (sum(vapply(group, function(r) r$status_v2 == "on",    logical(1))) > 0)
+          sprintf("%d on track", sum(vapply(group, function(r) r$status_v2 == "on",    logical(1)))),
+        if (sum(vapply(group, function(r) r$status_v2 == "warn",  logical(1))) > 0)
+          sprintf("%d behind",   sum(vapply(group, function(r) r$status_v2 == "warn",  logical(1)))),
+        if (sum(vapply(group, function(r) r$status_v2 == "risk",  logical(1))) > 0)
+          sprintf("%d stalled",  sum(vapply(group, function(r) r$status_v2 == "risk",  logical(1)))),
+        if (sum(vapply(group, function(r) r$status_v2 == "setup", logical(1))) > 0)
+          sprintf("%d set-up",   sum(vapply(group, function(r) r$status_v2 == "setup", logical(1)))),
+        if (sum(vapply(group, function(r) r$status_v2 == "closed",logical(1))) > 0)
+          sprintf("%d closed",   sum(vapply(group, function(r) r$status_v2 == "closed",logical(1)))))
+      div(class = "pf-cat-row",
+        div(class = "pf-cat-icon", HTML(icon)),
+        div(div(class = "pf-cat-name", cat),
+            div(class = "pf-cat-sub",
+                paste(length(group),
+                      if (length(group) == 1) "trial" else "trials",
+                      "·", paste(mix_parts, collapse = " · ")))),
+        div(class = "pf-cat-bar",
+            div(class = "pf-cat-bar-f",
+                style = sprintf("width:%d%%;", cat_avg))),
+        div(class = "pf-cat-n", paste0(cat_avg, "%")))
     })
 
     tagList(
       smart_section,
-
-      div(class = "home-stat-grid", style = "margin-top:18px;",
-          stat("Trials in portfolio", n_trials,
-               if (n_trials == 1) "live trial" else "live trials"),
-          stat("On track", n_on, "at 50%+ of target"),
-          stat("At risk", n_at_risk, "below 25% of target"),
-          stat("Categories", length(cats_seen),
-               if (length(cats_seen) == 1) "category" else "distinct categories")
-      ),
-
-      div(style = "display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-top:8px;",
-          div(style = "background:#FFFFFF;border:1px solid #EEF2F7;border-radius:14px;
-                       padding:8px 24px 4px;",
-              div(style = "font-size:11px;font-weight:600;color:var(--muted);
-                           text-transform:uppercase;letter-spacing:.6px;
-                           padding:14px 0 4px;",
-                  "Per-trial progress"),
-              div(trial_rows)),
-          div(style = "background:#FFFFFF;border:1px solid #EEF2F7;border-radius:14px;
-                       padding:8px 24px 4px;",
-              div(style = "font-size:11px;font-weight:600;color:var(--muted);
-                           text-transform:uppercase;letter-spacing:.6px;
-                           padding:14px 0 4px;",
-                  "By category"),
-              div(cat_rows)))
+      kpi_row,
+      div(class = "pf-two-col",
+        div(class = "pf-panel",
+          div(class = "pf-panel-head",
+            tags$span(class = "pf-panel-title", "Recruitment by trial"),
+            tags$span(class = "pf-panel-meta", "sorted by % of target · click any trial to open")),
+          div(class = "pf-rec-list", rec_rows)),
+        div(class = "pf-panel",
+          div(class = "pf-panel-head",
+            tags$span(class = "pf-panel-title", "Trial status")),
+          div(class = "pf-donut-flex",
+            div(class = "pf-donut-wrap", donut_svg),
+            donut_legend))),
+      div(class = "pf-panel",
+        div(class = "pf-panel-head",
+          tags$span(class = "pf-panel-title", "By category"),
+          tags$span(class = "pf-panel-meta",
+                    "Mean progress and status mix per category")),
+        div(class = "pf-cat-grid", cat_rows_html))
     )
   })
+
+  # Tiny helper for the donut legend rows
+  .pf_leg_row <- function(name, n, total, color) {
+    pct <- if (total > 0) round(100 * n / total) else 0
+    div(class = "pf-leg-row",
+        div(class = "pf-leg-l",
+            div(class = "pf-leg-dot", style = sprintf("background:%s;", color)),
+            tags$span(class = "pf-leg-name", name)),
+        div(tags$span(class = "pf-leg-n", n),
+            tags$span(class = "pf-leg-pct", sprintf("%d%%", pct))))
+  }
 
   # ── Portfolio insight computation (cached, refreshes on data changes) ────
   portfolio_summary <- reactive({
@@ -603,37 +1105,166 @@ trial_selector_server <- function(input, output, session, state) {
   })
 
   # \u2500\u2500 All Trials table (grouped by category) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  output$home_all_trials_ui <- renderUI({
-    rows <- tryCatch(all_trials_data(), error = function(e) {
-      message("all_trials rows err: ", e$message)
-      list()
+  # Cached enriched-row data for All Trials \u2014 pulls site counts + recent
+  # activity per trial. Heavier than trials_data() because it reads each
+  # trial's CSV + SQLite, so we memoise on data fingerprints.
+  all_trials_enriched <- reactive({
+    rv$home_membership_changed
+    rv$settings_changed
+    rows <- tryCatch(all_trials_data(), error = function(e) list())
+    lapply(rows, function(r) {
+      sites_df <- tryCatch(.read_trial_sites(r$cfg), error = function(e) NULL)
+      raw      <- tryCatch(.read_trial_raw(r$cfg),   error = function(e) NULL)
+      r$status_v2     <- tryCatch(trial_status_v2(r, sites_df, raw),
+                                  error = function(e) "setup")
+      r$site_counts   <- tryCatch(trial_site_counts(r$cfg, sites_df),
+                                  error = function(e) list(open=0L,total=0L,not_recruiting=0L))
+      r$recent        <- tryCatch(trial_recent_activity(r$cfg, raw),
+                                  error = function(e) list(label="\u2014", detail="", cls="cold"))
+      r
     })
+  })
+
+  output$all_trials_count_lbl <- renderText({
+    rows <- tryCatch(all_trials_enriched(), error = function(e) list())
+    n <- length(rows)
+    sprintf("%d %s", n, if (n == 1) "trial" else "trials")
+  })
+
+  output$home_all_trials_ui <- renderUI({
+    rows <- tryCatch(all_trials_enriched(), error = function(e) list())
     if (length(rows) == 0) {
       return(div(class = "home-empty",
                  div(class = "icon", HTML("&#x1F4CB;")),
                  div("No trials yet.")))
     }
 
+    # \u2500\u2500 Apply toolbar filters \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    filt <- input$all_trials_filter %||% "all"
+    if (!identical(filt, "all")) {
+      rows <- Filter(function(r) identical(r$status_v2, filt), rows)
+    }
+    search <- tolower(trimws(input$all_trials_search %||% ""))
+    if (nzchar(search)) {
+      rows <- Filter(function(r) {
+        cfg <- r$cfg
+        hay <- tolower(paste(
+          cfg$short_name %||% r$code, cfg$name %||% "",
+          cfg$report_defaults$ci %||% "", cfg$report_defaults$sponsor %||% "",
+          r$category %||% "", collapse = " "))
+        grepl(search, hay, fixed = TRUE)
+      }, rows)
+    }
+
+    # \u2500\u2500 Sort within each group \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    sort_by <- input$all_trials_sort %||% "pct"
+    sort_rows <- function(xs) {
+      if (!length(xs)) return(xs)
+      key <- switch(sort_by,
+        "name"   = vapply(xs, function(r) tolower(r$cfg$short_name %||% r$code), character(1)),
+        "recent" = -vapply(xs, function(r) {
+                     # warm > warm-light > cool > cold
+                     match(r$recent$cls, c("warm","warm-light","cool","cold"), nomatch = 5)
+                   }, integer(1)),
+        "status" = vapply(xs, function(r) {
+                     # risk > warn > setup > on > closed
+                     match(r$status_v2, c("risk","warn","setup","on","closed"),
+                           nomatch = 9)
+                   }, integer(1)),
+                 -vapply(xs, function(r) r$pct %||% 0, numeric(1)))
+      xs[order(key)]
+    }
+
+    if (length(rows) == 0) {
+      return(div(class = "home-empty",
+                 div(class = "icon", HTML("&#x1F50D;")),
+                 div("No trials match the current filters.")))
+    }
+
     cats_seen <- unique(vapply(rows, function(r) r$category, character(1)))
     blocks <- lapply(.ordered_categories(cats_seen), function(cat) {
-      group <- Filter(function(r) identical(r$category, cat), rows)
-      body <- lapply(group, function(r) {
+      group <- sort_rows(Filter(function(r) identical(r$category, cat), rows))
+      icon  <- TRIAL_CATEGORY_ICONS[[cat]] %||% TRIAL_CATEGORY_ICONS[["Other"]]
+
+      # Category status mix for the group header
+      mix <- function(code, label) {
+        n <- sum(vapply(group, function(r) r$status_v2 == code, logical(1)))
+        if (n == 0) NULL
+        else tags$span(tagList(tags$b(n), " ", label))
+      }
+      head_stats <- div(class = "at-cat-head-stats",
+        mix("on", "on track"), mix("warn", "behind"),
+        mix("risk", "stalled"), mix("setup", "set-up"),
+        mix("closed", "closed"))
+
+      row_html <- lapply(group, function(r) {
         cfg <- r$cfg
-        tags$tr(class = "clickable",
-                onclick = sprintf("Shiny.setInputValue('select_trial','%s',{priority:'event'})", r$code),
-                tags$td(tags$strong(cfg$short_name %||% toupper(r$code))),
-                tags$td(cfg$report_defaults$ci      %||% "\u2014"),
-                tags$td(cfg$report_defaults$sponsor %||% "\u2014"),
-                tags$td(sprintf("%d / %d", r$n, r$target)),
-                tags$td(.status_pill(r$pct)))
+        lbl <- trial_status_label(r$status_v2)
+        pct <- max(0, min(1, r$pct %||% 0))
+        site <- r$site_counts
+        site_sub <- if (site$total == 0) "no sites yet"
+                    else if (site$open == site$total) "all recruiting"
+                    else if (site$not_recruiting > 0)
+                      tags$span(tags$span(class = "neg", site$not_recruiting),
+                                " not recruiting")
+                    else
+                      sprintf("%d in set-up", site$total - site$open)
+        tags$div(class = sprintf("at-trial-row s-%s", lbl$cls),
+                 onclick = sprintf("Shiny.setInputValue('select_trial','%s',{priority:'event'})", r$code),
+          # Col 1 \u2014 Name
+          div(class = "at-name",
+            div(class = "at-name-row",
+                tags$b(cfg$short_name %||% toupper(r$code)),
+                tags$span(class = "at-tag", r$category %||% "\u2014")),
+            tags$div(class = "at-name-full", cfg$name %||% "")),
+          # Col 2 \u2014 Recruitment progress
+          div(class = "at-progress",
+            div(class = "at-bar-wrap",
+                div(class = sprintf("at-bar-f s-%s", lbl$cls),
+                    style = sprintf("width:%.0f%%;", pct * 100))),
+            div(class = "at-bar-label",
+                tags$span(tags$b(format(r$n, big.mark = ",")),
+                          if (r$target > 0)
+                            sprintf(" / %s randomised", format(r$target, big.mark = ","))
+                          else " randomised"),
+                tags$span(sprintf("%.0f%%", pct * 100)))),
+          # Col 3 \u2014 Sites
+          div(class = "at-stat",
+            div(class = "at-stat-l", "Sites"),
+            div(class = "at-stat-v",
+                site$open,
+                tags$span(style = "font-size:11px;color:var(--muted);font-weight:500;",
+                          sprintf(" / %d", site$total))),
+            div(class = "at-stat-s", site_sub)),
+          # Col 4 \u2014 CI / Sponsor
+          div(class = "at-meta",
+            div(class = "role", "CI"),
+            cfg$report_defaults$ci %||% tags$span(style = "color:var(--muted-2)", "\u2014"),
+            tags$div(style = "margin-top:4px",
+                     tags$span(class = "role", "Sponsor"), " ",
+                     cfg$report_defaults$sponsor %||% tags$span(style = "color:var(--muted-2)", "\u2014"))),
+          # Col 5 \u2014 Recent activity
+          div(class = "at-recent",
+            tags$span(class = sprintf("at-dot %s", r$recent$cls), r$recent$label),
+            if (nzchar(r$recent$detail))
+              tags$span(style = "font-size:10px;color:var(--muted-2)", r$recent$detail)),
+          # Col 6 \u2014 Status pill + arrow
+          div(class = "at-action",
+            tags$div(class = sprintf("at-status s-%s", lbl$cls), lbl$text),
+            tags$div(class = "at-arrow", HTML("&rarr;")))
+        )
       })
+
       tagList(
-        .category_header(cat, length(group)),
-        tags$table(class = "home-table",
-          tags$thead(tags$tr(
-            tags$th("Trial"), tags$th("CI"), tags$th("Sponsor"),
-            tags$th("Recruitment"), tags$th("Status"))),
-          tags$tbody(body))
+        div(class = "at-cat-head",
+          div(class = "at-cat-head-icon", HTML(icon)),
+          div(class = "at-cat-head-title", cat),
+          div(class = "at-cat-head-count",
+              paste(length(group),
+                    if (length(group) == 1) "trial" else "trials")),
+          head_stats
+        ),
+        div(class = "at-trial-list", row_html)
       )
     })
 
@@ -1238,6 +1869,10 @@ trial_selector_server <- function(input, output, session, state) {
     rv$trial_role   <- role_here
 
     apply_trial_globals(cfg)
+    # Lazy-seed the trial's report templates if they're not yet on disk
+    # (legacy trials that pre-date the per-trial report templates flow).
+    tryCatch(seed_trial_report_templates(cfg, overwrite = FALSE),
+             error = function(e) message("Template seed failed: ", e$message))
     apply_trial_role_visibility(role_here)
     if (!dir.exists(dirname(DB_PATH))) dir.create(dirname(DB_PATH), recursive = TRUE)
     db_init()
@@ -1246,21 +1881,42 @@ trial_selector_server <- function(input, output, session, state) {
     rv$log   <- db_load_log()
 
     trial_name <- cfg$short_name %||% toupper(code)
-    runjs(sprintf("$('.topbar-title').text('%s Site Tracker')", trial_name))
+    runjs(sprintf("$('.topbar-title').text('%s')", trial_name))
     runjs(sprintf("document.title = '%s Dashboard'", trial_name))
 
     shinyjs::hide("trial_selector_panel")
     shinyjs::show("dashboard_panel")
     shinyjs::show("sidebar_nav_section")    # Show the sidebar nav
     shinyjs::show("topbar_wrap")            # Show the topbar
+    shinyjs::show("topnav_wrap")            # Show the top tab bar
     shinyjs::runjs("document.body.classList.remove('home-mode')")
 
     rv$trigger_data_load <- Sys.time()
 
     # Apply feature flags — show/hide tabs based on config
     feat <- cfg$features %||% list()
-    if (isTRUE(feat$postal_tracking)) shinyjs::show("go_postal_wrap") else shinyjs::hide("go_postal_wrap")
-    if (isTRUE(feat$return_rates))    shinyjs::show("go_returns_wrap") else shinyjs::hide("go_returns_wrap")
+    if (isTRUE(feat$postal_tracking)) {
+      shinyjs::show("go_postal_wrap")
+      shinyjs::show("tn_postal")
+    } else {
+      shinyjs::hide("go_postal_wrap")
+      shinyjs::hide("tn_postal")
+    }
+    if (isTRUE(feat$return_rates)) {
+      shinyjs::show("go_returns_wrap")
+      shinyjs::show("tn_returns")
+    } else {
+      shinyjs::hide("go_returns_wrap")
+      shinyjs::hide("tn_returns")
+    }
+    # PROMs section on the Data tab — defaults to TRUE for legacy configs
+    if (isTRUE(feat$participant_questionnaires %||% TRUE)) {
+      shinyjs::show("participant_questionnaire_section")
+      shinyjs::show("participant_questionnaire_grid")
+    } else {
+      shinyjs::hide("participant_questionnaire_section")
+      shinyjs::hide("participant_questionnaire_grid")
+    }
 
     # Apply trial colours dynamically
     .theme_key <- cfg$theme %||% "custom"
@@ -1276,6 +1932,38 @@ trial_selector_server <- function(input, output, session, state) {
   # ══════════════════════════════════════════════════════════════════════════
   # WIZARD: step navigation
   # ══════════════════════════════════════════════════════════════════════════
+
+  # ── Multi-work-package wizard panel ─────────────────────────────────────
+  # Toggling the checkbox shows/hides the WP count + dynamic name fields.
+  observeEvent(input$wiz_is_multi_wp, {
+    if (isTRUE(input$wiz_is_multi_wp)) shinyjs::show("wiz_wp_panel")
+    else                                shinyjs::hide("wiz_wp_panel")
+  }, ignoreNULL = FALSE)
+
+  # Render N labelled text inputs (WKP1 ... WKPN) when multi-WP is enabled.
+  # Re-rendering preserves user-typed values via input[[id]] lookup so users
+  # don't lose edits when bumping the count up or down.
+  output$wiz_wp_fields_ui <- renderUI({
+    if (!isTRUE(input$wiz_is_multi_wp)) return(NULL)
+    n <- suppressWarnings(as.integer(input$wiz_n_wps))
+    if (is.na(n) || n < 1) n <- 1
+    if (n > 10) n <- 10
+    rows <- lapply(seq_len(n), function(i) {
+      id  <- paste0("wiz_wp_name_", i)
+      lbl <- paste0("WKP", i, " name")
+      div(style = "display:grid;grid-template-columns:80px 1fr;gap:10px;
+                   align-items:center;margin-bottom:6px;",
+          tags$label(paste0("WKP", i),
+                     style = "font-size:12px;font-weight:600;color:#1B4F6B;
+                              background:#EEF3F8;border-radius:6px;
+                              padding:6px 10px;text-align:center;margin:0;"),
+          textInput(id, label = NULL,
+                    value = isolate(input[[id]]) %||% "",
+                    placeholder = "e.g. Surgery cohort",
+                    width = "100%"))
+    })
+    div(style = "margin-top:4px;", rows)
+  })
 
   wiz_step <- reactiveVal(1L)
   WIZ_TOTAL <- 6L
@@ -1359,8 +2047,12 @@ trial_selector_server <- function(input, output, session, state) {
           span(style = "color:#1B4F6B;font-weight:600;", value))
     }
 
-    data_loc <- if (input$wiz_data_source == "network" && nzchar(input$wiz_data_path %||% ""))
+    data_loc <- if (nzchar(input$wiz_data_path %||% ""))
       input$wiz_data_path else paste0("trials/", code, "/data/")
+    rr_loc <- if (nzchar(input$wiz_rr_path %||% ""))
+      input$wiz_rr_path else "\u2014"
+    logo_loc <- if (nzchar(input$wiz_logo_path %||% ""))
+      input$wiz_logo_path else "\u2014"
 
     features_on <- c()
     if (isTRUE(input$wiz_feat_projections)) features_on <- c(features_on, "Projections")
@@ -1371,14 +2063,41 @@ trial_selector_server <- function(input, output, session, state) {
     if (isTRUE(input$wiz_feat_baseline))    features_on <- c(features_on, "Baseline table")
     if (length(features_on) == 0) features_on <- "None"
 
+    type_label <- c(
+      "randomised"    = "Randomised (open label)",
+      "single_blind"  = "Randomised (single blind)",
+      "double_blind"  = "Randomised (double blind)",
+      "observational" = "Observational",
+      "single_arm"    = "Single-arm / cohort",
+      "platform"      = "Platform / umbrella",
+      "other"         = "Other"
+    )[input$wiz_trial_type %||% "randomised"]
+
+    # Collect the structured WP names from the form, if multi-WP is enabled.
+    wp_names <- character(0)
+    if (isTRUE(input$wiz_is_multi_wp)) {
+      n <- suppressWarnings(as.integer(input$wiz_n_wps))
+      if (!is.na(n) && n > 0) {
+        wp_names <- vapply(seq_len(min(n, 10L)), function(i) {
+          v <- trimws(input[[paste0("wiz_wp_name_", i)]] %||% "")
+          if (nzchar(v)) sprintf("WKP%d: %s", i, v) else sprintf("WKP%d", i)
+        }, character(1))
+      }
+    }
+    wp_label <- if (length(wp_names)) paste(wp_names, collapse = " \u00b7 ") else "Single (no work packages)"
+
     tagList(
       row("Trial code",          code),
       row("Short name",          sn),
       row("Full name",           input$wiz_full_name %||% "\u2014"),
       row("Category",            input$wiz_category %||% "Other"),
+      row("Trial type",          type_label %||% "Randomised"),
+      row("Work packages",       wp_label),
       row("Target",              as.character(input$wiz_target %||% 100)),
       row("CI",                  input$wiz_ci %||% "\u2014"),
-      row("Data location",       data_loc),
+      row("Data CSV folder",     data_loc),
+      row("Return rates folder", rr_loc),
+      row("Trial logo",          logo_loc),
       row("Baseline event",      input$wiz_ev_baseline %||% "\u2014"),
       row("Features",            paste(features_on, collapse = ", "))
     )
@@ -1491,10 +2210,24 @@ trial_selector_server <- function(input, output, session, state) {
     }
 
     # Build data_dir line
-    data_dir_line <- if (input$wiz_data_source == "network" && nzchar(input$wiz_data_path %||% "")) {
+    data_dir_line <- if (nzchar(trimws(input$wiz_data_path %||% ""))) {
       sprintf('  data_dir = "%s",', gsub("\\\\", "/", input$wiz_data_path))
     } else {
       "  data_dir = NULL,    # uses trials/<code>/data/"
+    }
+
+    # Build return_rates_dir line
+    rr_dir_line <- if (nzchar(trimws(input$wiz_rr_path %||% ""))) {
+      sprintf('  return_rates_dir = "%s",', gsub("\\\\", "/", input$wiz_rr_path))
+    } else {
+      "  return_rates_dir = NULL,"
+    }
+
+    # Build logo_file line
+    logo_line <- if (nzchar(trimws(input$wiz_logo_path %||% ""))) {
+      sprintf('  logo_file = "%s",', gsub("\\\\", "/", input$wiz_logo_path))
+    } else {
+      "  logo_file = NULL,"
     }
 
     # Build sub_forms events
@@ -1512,6 +2245,27 @@ trial_selector_server <- function(input, output, session, state) {
       if (nzchar(val)) sprintf('    %-28s= "%s",', name, val) else sprintf('    %-28s= NULL,', name)
     }
 
+    # Build work_packages line from the structured wizard form. Each WP is
+    # stored as a character with the literal label "WKP<n>: <name>" so
+    # downstream UI can split label/name cleanly.
+    wp_names_raw <- character(0)
+    if (isTRUE(input$wiz_is_multi_wp)) {
+      n <- suppressWarnings(as.integer(input$wiz_n_wps))
+      if (!is.na(n) && n > 0) {
+        wp_names_raw <- vapply(seq_len(min(n, 10L)), function(i) {
+          v <- trimws(input[[paste0("wiz_wp_name_", i)]] %||% "")
+          if (nzchar(v)) sprintf("WKP%d: %s", i, v) else sprintf("WKP%d", i)
+        }, character(1))
+      }
+    }
+    wp_line <- if (length(wp_names_raw) > 0) {
+      sprintf('  work_packages = c(%s),',
+              paste(sprintf('"%s"', gsub('"', '\\\\"', wp_names_raw)),
+                    collapse = ", "))
+    } else "  work_packages = NULL,"
+
+    trial_type_val <- input$wiz_trial_type %||% "randomised"
+
     config_text <- sprintf('# ===========================================================================
 # Trial Configuration: %s
 # ===========================================================================
@@ -1528,15 +2282,20 @@ trial_config <- list(
   trial_target = %dL,
   category     = "%s",
 
+  # -- Design --
+  trial_type   = "%s",   # randomised / single_blind / double_blind / observational / single_arm / platform / other
+%s
+
   # -- Branding --
-  logo_file = NULL,
+%s
   colors = list(
     primary   = "%s",
     secondary = "%s",
     accent    = "%s"
   ),
 
-  # -- Data source --
+  # -- Data paths --
+%s
 %s
 
   # -- REDCap events --
@@ -1589,12 +2348,13 @@ trial_config <- list(
 
   # -- Feature flags --
   features = list(
-    postal_tracking  = %s,
-    return_rates     = %s,
-    projections      = %s,
-    pilot_criteria   = %s,
-    consort_flow     = %s,
-    baseline_table   = %s
+    postal_tracking          = %s,
+    return_rates             = %s,
+    projections              = %s,
+    pilot_criteria           = %s,
+    consort_flow             = %s,
+    baseline_table           = %s,
+    participant_questionnaires = %s
   )
 )
 ',
@@ -1605,10 +2365,14 @@ trial_config <- list(
       sn,
       as.integer(input$wiz_target %||% 100),
       input$wiz_category %||% "Other",
+      trial_type_val,
+      wp_line,
+      logo_line,
       input$wiz_col_primary %||% "#1B4F6B",
       input$wiz_col_secondary %||% "#2EC4A5",
       input$wiz_col_accent %||% "#F59E0B",
       data_dir_line,
+      rr_dir_line,
       rq(input$wiz_ev_baseline),
       rq(input$wiz_ev_discharge),
       rq(input$wiz_ev_day30),
@@ -1626,17 +2390,38 @@ trial_config <- list(
       rq(input$wiz_fld_cos_type),
       rq(input$wiz_ci),
       rq(input$wiz_sponsor),
-      if (isTRUE(input$wiz_feat_postal))      "TRUE" else "FALSE",
-      if (isTRUE(input$wiz_feat_returns))     "TRUE" else "FALSE",
-      if (isTRUE(input$wiz_feat_projections)) "TRUE" else "FALSE",
-      if (isTRUE(input$wiz_feat_pilot))       "TRUE" else "FALSE",
-      if (isTRUE(input$wiz_feat_consort))     "TRUE" else "FALSE",
-      if (isTRUE(input$wiz_feat_baseline))    "TRUE" else "FALSE"
+      if (isTRUE(input$wiz_feat_postal))         "TRUE" else "FALSE",
+      if (isTRUE(input$wiz_feat_returns))        "TRUE" else "FALSE",
+      if (isTRUE(input$wiz_feat_projections))    "TRUE" else "FALSE",
+      if (isTRUE(input$wiz_feat_pilot))          "TRUE" else "FALSE",
+      if (isTRUE(input$wiz_feat_consort))        "TRUE" else "FALSE",
+      if (isTRUE(input$wiz_feat_baseline))       "TRUE" else "FALSE",
+      if (isTRUE(input$wiz_feat_questionnaires %||% TRUE)) "TRUE" else "FALSE"
     )
 
     # Write config file
     tryCatch({
       writeLines(config_text, file.path(trial_dir, "config.R"))
+
+      # Seed the trial's reports/ folder with copies of the canonical Rmd
+      # templates. Trial managers can edit them via Trial Settings → Report
+      # templates without touching other trials.
+      seed_trial_report_templates(
+        list(trial_dir = trial_dir, code = code),
+        overwrite = FALSE)
+
+      # Copy logo to www/trial_logos/ if a path was provided
+      logo_src <- trimws(input$wiz_logo_path %||% "")
+      if (nzchar(logo_src) && file.exists(logo_src)) {
+        logos_dir <- file.path(getwd(), "www", "trial_logos")
+        dir.create(logos_dir, recursive = TRUE, showWarnings = FALSE)
+        ext <- tolower(tools::file_ext(logo_src))
+        if (!ext %in% c("png", "jpg", "jpeg", "svg")) ext <- "png"
+        dest <- file.path(logos_dir, paste0(code, ".", ext))
+        tryCatch(file.copy(logo_src, dest, overwrite = TRUE),
+                 error = function(e) message("Logo copy failed: ", e$message))
+      }
+
       removeModal()
       showNotification(
         HTML(sprintf("Trial <strong>%s</strong> created successfully!<br>

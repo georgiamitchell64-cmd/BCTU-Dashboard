@@ -1,0 +1,97 @@
+Site,Event,Form,Expected,Due,Entered,% Due Entered,% Expected Entered
+.Overall,Baseline,Demographics,120,120,118,98.3,98.3
+.Overall,Baseline,Medical history,120,120,115,95.8,95.8
+.Overall,Baseline,Surgical details,120,118,112,94.9,93.3
+.Overall,Baseline,QoL (EQ-5D),120,120,108,90.0,90.0
+.Overall,Baseline,Consent form,120,120,120,100.0,100.0
+.Overall,Discharge,Post-op complications,120,112,105,93.8,87.5
+.Overall,Discharge,Medication log,120,112,98,87.5,81.7
+.Overall,Discharge,Discharge summary,120,112,110,98.2,91.7
+.Overall,Day 30,Follow-up assessment,120,95,82,86.3,68.3
+.Overall,Day 30,QoL (EQ-5D),120,95,78,82.1,65.0
+.Overall,Day 30,Adverse events,120,95,88,92.6,73.3
+.Overall,Day 30,Wound assessment,120,95,75,78.9,62.5
+.Overall,Day 90,Follow-up assessment,120,68,52,76.5,43.3
+.Overall,Day 90,QoL (EQ-5D),120,68,48,70.6,40.0
+.Overall,Day 90,Adverse events,120,68,55,80.9,45.8
+.Overall,Day 90,Patient satisfaction,120,68,44,64.7,36.7
+Queen Elizabeth Hospital Birmingham,Baseline,Demographics,32,32,32,100.0,100.0
+Queen Elizabeth Hospital Birmingham,Baseline,Medical history,32,32,31,96.9,96.9
+Queen Elizabeth Hospital Birmingham,Baseline,Surgical details,32,31,30,96.8,93.8
+Queen Elizabeth Hospital Birmingham,Baseline,QoL (EQ-5D),32,32,30,93.8,93.8
+Queen Elizabeth Hospital Birmingham,Baseline,Consent form,32,32,32,100.0,100.0
+Queen Elizabeth Hospital Birmingham,Discharge,Post-op complications,32,30,28,93.3,87.5
+Queen Elizabeth Hospital Birmingham,Discharge,Medication log,32,30,26,86.7,81.3
+Queen Elizabeth Hospital Birmingham,Discharge,Discharge summary,32,30,30,100.0,93.8
+Queen Elizabeth Hospital Birmingham,Day 30,Follow-up assessment,32,25,22,88.0,68.8
+Queen Elizabeth Hospital Birmingham,Day 30,QoL (EQ-5D),32,25,21,84.0,65.6
+Queen Elizabeth Hospital Birmingham,Day 30,Adverse events,32,25,24,96.0,75.0
+Queen Elizabeth Hospital Birmingham,Day 30,Wound assessment,32,25,20,80.0,62.5
+Queen Elizabeth Hospital Birmingham,Day 90,Follow-up assessment,32,18,14,77.8,43.8
+Queen Elizabeth Hospital Birmingham,Day 90,QoL (EQ-5D),32,18,13,72.2,40.6
+Queen Elizabeth Hospital Birmingham,Day 90,Adverse events,32,18,15,83.3,46.9
+Queen Elizabeth Hospital Birmingham,Day 90,Patient satisfaction,32,18,12,66.7,37.5
+Leeds General Infirmary,Baseline,Demographics,28,28,28,100.0,100.0
+Leeds General Infirmary,Baseline,Medical history,28,28,27,96.4,96.4
+Leeds General Infirmary,Baseline,Surgical details,28,28,26,92.9,92.9
+Leeds General Infirmary,Baseline,QoL (EQ-5D),28,28,25,89.3,89.3
+Leeds General Infirmary,Baseline,Consent form,28,28,28,100.0,100.0
+Leeds General Infirmary,Discharge,Post-op complications,28,26,24,92.3,85.7
+Leeds General Infirmary,Discharge,Medication log,28,26,22,84.6,78.6
+Leeds General Infirmary,Discharge,Discharge summary,28,26,25,96.2,89.3
+Leeds General Infirmary,Day 30,Follow-up assessment,28,22,18,81.8,64.3
+Leeds General Infirmary,Day 30,QoL (EQ-5D),28,22,17,77.3,60.7
+Leeds General Infirmary,Day 30,Adverse events,28,22,20,90.9,71.4
+Leeds General Infirmary,Day 30,Wound assessment,28,22,16,72.7,57.1
+Leeds General Infirmary,Day 90,Follow-up assessment,28,15,11,73.3,39.3
+Leeds General Infirmary,Day 90,QoL (EQ-5D),28,15,10,66.7,35.7
+Leeds General Infirmary,Day 90,Adverse events,28,15,12,80.0,42.9
+Leeds General Infirmary,Day 90,Patient satisfaction,28,15,9,60.0,32.1
+Manchester Royal Infirmary,Baseline,Demographics,22,22,22,100.0,100.0
+Manchester Royal Infirmary,Baseline,Medical history,22,22,21,95.5,95.5
+Manchester Royal Infirmary,Baseline,Surgical details,22,22,20,90.9,90.9
+Manchester Royal Infirmary,Baseline,QoL (EQ-5D),22,22,19,86.4,86.4
+Manchester Royal Infirmary,Baseline,Consent form,22,22,22,100.0,100.0
+Manchester Royal Infirmary,Discharge,Post-op complications,22,20,19,95.0,86.4
+Manchester Royal Infirmary,Discharge,Medication log,22,20,17,85.0,77.3
+Manchester Royal Infirmary,Discharge,Discharge summary,22,20,20,100.0,90.9
+Manchester Royal Infirmary,Day 30,Follow-up assessment,22,18,16,88.9,72.7
+Manchester Royal Infirmary,Day 30,QoL (EQ-5D),22,18,15,83.3,68.2
+Manchester Royal Infirmary,Day 30,Adverse events,22,18,17,94.4,77.3
+Manchester Royal Infirmary,Day 30,Wound assessment,22,18,14,77.8,63.6
+Manchester Royal Infirmary,Day 90,Follow-up assessment,22,12,10,83.3,45.5
+Manchester Royal Infirmary,Day 90,QoL (EQ-5D),22,12,9,75.0,40.9
+Manchester Royal Infirmary,Day 90,Adverse events,22,12,10,83.3,45.5
+Manchester Royal Infirmary,Day 90,Patient satisfaction,22,12,8,66.7,36.4
+John Radcliffe Hospital,Baseline,Demographics,20,20,19,95.0,95.0
+John Radcliffe Hospital,Baseline,Medical history,20,20,19,95.0,95.0
+John Radcliffe Hospital,Baseline,Surgical details,20,19,18,94.7,90.0
+John Radcliffe Hospital,Baseline,QoL (EQ-5D),20,20,18,90.0,90.0
+John Radcliffe Hospital,Baseline,Consent form,20,20,20,100.0,100.0
+John Radcliffe Hospital,Discharge,Post-op complications,20,18,17,94.4,85.0
+John Radcliffe Hospital,Discharge,Medication log,20,18,16,88.9,80.0
+John Radcliffe Hospital,Discharge,Discharge summary,20,18,18,100.0,90.0
+John Radcliffe Hospital,Day 30,Follow-up assessment,20,15,13,86.7,65.0
+John Radcliffe Hospital,Day 30,QoL (EQ-5D),20,15,12,80.0,60.0
+John Radcliffe Hospital,Day 30,Adverse events,20,15,14,93.3,70.0
+John Radcliffe Hospital,Day 30,Wound assessment,20,15,13,86.7,65.0
+John Radcliffe Hospital,Day 90,Follow-up assessment,20,12,9,75.0,45.0
+John Radcliffe Hospital,Day 90,QoL (EQ-5D),20,12,8,66.7,40.0
+John Radcliffe Hospital,Day 90,Adverse events,20,12,10,83.3,50.0
+John Radcliffe Hospital,Day 90,Patient satisfaction,20,12,8,66.7,40.0
+Royal London Hospital,Baseline,Demographics,18,18,17,94.4,94.4
+Royal London Hospital,Baseline,Medical history,18,18,17,94.4,94.4
+Royal London Hospital,Baseline,Surgical details,18,18,18,100.0,100.0
+Royal London Hospital,Baseline,QoL (EQ-5D),18,18,16,88.9,88.9
+Royal London Hospital,Baseline,Consent form,18,18,18,100.0,100.0
+Royal London Hospital,Discharge,Post-op complications,18,18,17,94.4,94.4
+Royal London Hospital,Discharge,Medication log,18,18,17,94.4,94.4
+Royal London Hospital,Discharge,Discharge summary,18,18,17,94.4,94.4
+Royal London Hospital,Day 30,Follow-up assessment,18,15,13,86.7,72.2
+Royal London Hospital,Day 30,QoL (EQ-5D),18,15,13,86.7,72.2
+Royal London Hospital,Day 30,Adverse events,18,15,13,86.7,72.2
+Royal London Hospital,Day 30,Wound assessment,18,15,12,80.0,66.7
+Royal London Hospital,Day 90,Follow-up assessment,18,11,8,72.7,44.4
+Royal London Hospital,Day 90,QoL (EQ-5D),18,11,8,72.7,44.4
+Royal London Hospital,Day 90,Adverse events,18,11,8,72.7,44.4
+Royal London Hospital,Day 90,Patient satisfaction,18,11,7,63.6,38.9

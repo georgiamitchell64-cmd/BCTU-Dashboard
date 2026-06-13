@@ -76,7 +76,7 @@ trial_config <- list(
   # -- Feature flags --
   features = list(
     postal_tracking  = FALSE,
-    return_rates     = FALSE,
+    return_rates     = TRUE,
     projections      = TRUE,
     pilot_criteria   = TRUE,
     consort_flow     = TRUE,

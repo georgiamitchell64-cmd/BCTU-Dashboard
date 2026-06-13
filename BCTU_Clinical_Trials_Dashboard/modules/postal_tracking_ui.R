@@ -9,27 +9,25 @@ postal_tracking_tab_ui <- function() {
 postal_tracking_ui <- function(id) {
   ns <- NS(id)
 
-  tagList(
+  tags$div(class = "pt-view",
 
     # ── KPI cards ────────────────────────────────────────────────────────────
     uiOutput(ns("kpi_cards")),
 
-    tags$hr(style = "margin: 16px 0;"),
-
-    # ── Controls ─────────────────────────────────────────────────────────────
-    fluidRow(
-      column(3,
+    # ── Controls strip ───────────────────────────────────────────────────────
+    tags$div(class = "pt-controls",
+      tags$div(style = "min-width:170px;",
         radioButtons(
           ns("status_filter"),
           label    = "Show",
-          choices  = c("Action needed" = "action",
-                       "All postal participants" = "all",
-                       "Sent only" = "sent"),
+          choices  = c("Action needed"            = "action",
+                       "All postal participants"  = "all",
+                       "Sent only"                = "sent"),
           selected = "action",
           inline   = FALSE
         )
       ),
-      column(3,
+      tags$div(style = "min-width:170px;",
         checkboxGroupInput(
           ns("timepoint_filter"),
           label    = "Timepoints",
@@ -38,49 +36,41 @@ postal_tracking_ui <- function(id) {
           inline   = TRUE
         )
       ),
-      column(3,
+      tags$div(style = "flex:1; min-width:200px;",
         textInput(
           ns("search"),
           label       = "Search ID or site",
-          placeholder = "e.g. TON001 or QEHB"
+          placeholder = "e.g. TON001 or QEHB",
+          width       = "100%"
         )
       ),
-      column(3,
-        tags$div(
-          style = "padding-top: 26px; display: flex; gap: 8px;",
-          downloadButton(
-            ns("export_xlsx"),
-            "Export audit log",
-            class = "btn btn-sm",
-            style = paste0("background-color: #1B4F6B; color: white; border: none;")
-          )
+      tags$div(style = "margin-left:auto; align-self:flex-end;",
+        downloadButton(
+          ns("export_xlsx"),
+          HTML("&darr; Export audit log"),
+          class = "pt-export-btn"
         )
       )
     ),
 
-    tags$hr(style = "margin: 8px 0 16px;"),
-
-    # ── Main table ───────────────────────────────────────────────────────────
-    tags$div(
-      style = "background: white; border-radius: 8px; padding: 4px;",
-      reactable::reactableOutput(ns("postal_table"))
-    ),
-
-    # ── Legend ───────────────────────────────────────────────────────────────
-    tags$div(
-      style = "margin-top: 14px; font-size: 0.8rem; color: #6c757d;
-               display: flex; gap: 18px; flex-wrap: wrap;",
-      tags$span(tags$span(style = "display:inline-block;width:10px;height:10px;border-radius:50%;background:#e05c3a;margin-right:6px;vertical-align:middle;"), "Overdue"),
-      tags$span(tags$span(style = "display:inline-block;width:10px;height:10px;border-radius:50%;background:#f0a500;margin-right:6px;vertical-align:middle;"), "Due now (within 7 days)"),
-      tags$span(tags$span(style = "display:inline-block;width:10px;height:10px;border-radius:50%;background:#1B4F6B;margin-right:6px;vertical-align:middle;"), "Upcoming (next 14 days)"),
-      tags$span(tags$span(style = "display:inline-block;width:10px;height:10px;border-radius:50%;background:#2EC4A5;margin-right:6px;vertical-align:middle;"), "Sent"),
-      tags$span(tags$span(style = "display:inline-block;width:10px;height:10px;border-radius:50%;background:#adb5bd;margin-right:6px;vertical-align:middle;"), "Future (>3 weeks away)")
+    # ── Table card (table + legend) ──────────────────────────────────────────
+    tags$div(class = "pt-table-card",
+      reactable::reactableOutput(ns("postal_table")),
+      tags$div(class = "pt-legend",
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#e05c3a;"), "Overdue"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#f0a500;"), "Due now (within 7 days)"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#1B4F6B;"), "Upcoming (next 14 days)"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#2EC4A5;"), "Sent"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#10B981;"), "Returned"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#6366F1;"), "Transcribed"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#94A3B8;"), "Not sent / Future"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#DC2626;"),
+                  "Excluded (deceased / withdrawn / lost to follow-up — do not send)")
+      )
     ),
 
     # ── Source footer ────────────────────────────────────────────────────────
-    tags$div(
-      style = "margin-top: 24px; padding-top: 12px; border-top: 1px solid #e9ecef;
-               font-size: 0.75rem; color: #868e96; text-align: right;",
+    tags$div(class = "pt-footer",
       uiOutput(ns("source_info"))
     )
   )

@@ -50,6 +50,127 @@ trial_insight_summary <- function(cfg, raw = NULL, sites_df = NULL) {
   )
 }
 
+# ── Status classification (research-informed) ──────────────────────────────
+# Based on risk-based monitoring conventions (ICH E6 R3). Returns one of
+#   "on"     — at or above expected pace
+#   "warn"   — behind expected pace but actively recruiting
+#   "risk"   — stalled (no randomisation in 30+ days) or critically behind
+#   "setup"  — in set-up: open but not yet recruiting at any site
+#   "closed" — recruitment closed (sites all closed, or status mark)
+#
+# Uses three signals — % of target, site activity, and recency of the last
+# randomisation. We deliberately avoid summing across trials anywhere.
+trial_status_v2 <- function(row, sites_df = NULL, raw = NULL,
+                            stalled_days = 30L) {
+  pct    <- row$pct    %||% 0
+  n      <- row$n      %||% 0L
+  cfg    <- row$cfg
+  target <- row$target %||% 0L
+
+  if (is.null(sites_df)) sites_df <- .read_trial_sites(cfg)
+  if (is.null(raw))      raw      <- .read_trial_raw(cfg)
+
+  open_sites <- 0L; closed_sites <- 0L; total_sites <- 0L
+  if (!is.null(sites_df) && nrow(sites_df) > 0) {
+    total_sites  <- nrow(sites_df)
+    open_sites   <- sum(sites_df$status %in% c("Open", "Recruiting"), na.rm = TRUE)
+    closed_sites <- sum(sites_df$status %in% c("Closed"), na.rm = TRUE)
+  }
+
+  # Closed: every site closed, or trial config explicitly flags closure
+  if (total_sites > 0 && closed_sites == total_sites) return("closed")
+  if (isTRUE(cfg$status %in% c("Closed", "Completed"))) return("closed")
+
+  # Set-up: 0 randomised AND no sites currently recruiting
+  if (n == 0L && open_sites == 0L) return("setup")
+
+  # Stalled: no randomisation in last 30 days despite open sites
+  rand_field <- fld("randomisation_datetime", "rand_dttm_s")
+  recent_n <- 0L
+  if (!is.null(raw) && rand_field %in% names(raw)) {
+    dts <- suppressWarnings(as.POSIXct(trimws(raw[[rand_field]]),
+                                       format = "%d/%m/%Y %H:%M", tz = "UTC"))
+    if (!all(is.na(dts))) {
+      cutoff <- Sys.time() - stalled_days * 24 * 3600
+      recent_n <- sum(dts >= cutoff, na.rm = TRUE)
+    }
+  }
+  if (n > 0L && open_sites > 0L && recent_n == 0L) return("risk")
+
+  # Critically behind: <25% of target after several months — RBM "alert"
+  if (pct < 0.25 && n > 0L) return("warn")
+
+  # Expected pace check: %recruited vs %time-elapsed of planned recruitment
+  # window. Without a planned end date we use a soft threshold of 50%
+  # recruitment as the cut between on track / behind.
+  if (pct < 0.5) return("warn")
+  "on"
+}
+
+# Pretty label + colour token for a v2 status code
+trial_status_label <- function(code) {
+  switch(code %||% "setup",
+    "on"     = list(text = "On track", cls = "on",
+                    bg = "#D1FAE5", fg = "#065F46",  bar = "var(--green)"),
+    "warn"   = list(text = "Behind",   cls = "warn",
+                    bg = "#FEF3C7", fg = "#B45309",  bar = "var(--amber)"),
+    "risk"   = list(text = "Stalled",  cls = "risk",
+                    bg = "#FEE2E2", fg = "#991B1B",  bar = "var(--red)"),
+    "setup"  = list(text = "Set-up",   cls = "setup",
+                    bg = "#DBEAFE", fg = "#1D4ED8",  bar = "#3B82F6"),
+    "closed" = list(text = "Closed",   cls = "closed",
+                    bg = "#F1F5F9", fg = "#475569",  bar = "#A693AF")
+  )
+}
+
+# Open / recruiting / total site counts for a trial.
+trial_site_counts <- function(cfg, sites_df = NULL) {
+  if (is.null(sites_df)) sites_df <- .read_trial_sites(cfg)
+  if (is.null(sites_df) || !nrow(sites_df))
+    return(list(open = 0L, total = 0L, not_recruiting = 0L))
+  list(
+    open  = sum(sites_df$status %in% c("Open", "Recruiting"), na.rm = TRUE),
+    total = nrow(sites_df),
+    not_recruiting = sum(sites_df$status %in% c("Open") &
+                           (sites_df$randomised %||% 0L) == 0L, na.rm = TRUE)
+  )
+}
+
+# Recent activity for the All Trials row. Returns a label + freshness class
+# ("warm" — today, "cool" — this week, "cold" — older / none).
+trial_recent_activity <- function(cfg, raw = NULL) {
+  if (is.null(raw)) raw <- .read_trial_raw(cfg)
+  rand_field <- fld("randomisation_datetime", "rand_dttm_s")
+  if (is.null(raw) || !(rand_field %in% names(raw)))
+    return(list(label = "No data", detail = "", cls = "cold"))
+  dts <- suppressWarnings(as.POSIXct(trimws(raw[[rand_field]]),
+                                     format = "%d/%m/%Y %H:%M", tz = "UTC"))
+  dts <- dts[!is.na(dts)]
+  if (!length(dts)) return(list(label = "No randomisations yet",
+                                detail = "", cls = "cold"))
+  last  <- max(dts)
+  age_d <- as.numeric(difftime(Sys.time(), last, units = "days"))
+  label <- if (age_d < 1)       "Active today"
+           else if (age_d < 7)  "Active this week"
+           else if (age_d < 14) sprintf("%d days ago", as.integer(age_d))
+           else                 sprintf("%d days ago — stalled?", as.integer(age_d))
+  cls <- if (age_d < 1)  "warm"
+         else if (age_d < 7)  "warm-light"
+         else if (age_d < 14) "cool"
+         else "cold"
+  # Count last 24h randomisations for the detail line
+  recent_24h <- sum(dts >= (Sys.time() - 24 * 3600), na.rm = TRUE)
+  detail <- if (recent_24h > 0)
+    sprintf("%d rand%s · last %s ago", recent_24h,
+            if (recent_24h == 1) "" else "s",
+            if (age_d < 1) sprintf("%dh", as.integer(age_d * 24))
+            else sprintf("%dd", as.integer(age_d)))
+  else
+    sprintf("Last %s ago", if (age_d < 1) sprintf("%dh", as.integer(age_d * 24))
+            else sprintf("%dd", as.integer(age_d)))
+  list(label = label, detail = detail, cls = cls)
+}
+
 .read_trial_sites <- function(cfg) {
   db <- cfg$db_path %||% file.path(cfg$trial_dir, "data",
                                    paste0(cfg$code, ".sqlite"))

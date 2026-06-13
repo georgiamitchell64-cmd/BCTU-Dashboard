@@ -17,6 +17,12 @@ prepare_report_data <- function(df,
 
   cfg <- current_trial_config()
 
+  # Guard against missing / empty input. Without this, `names(df) <- ...` below
+  # blows up with "attempt to set an attribute on NULL" when the trial has no
+  # data loaded yet.
+  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0)
+    stop("No data loaded for this trial. Upload a REDCap CSV from the Data tab before generating a report.")
+
   # ── 1. Clean column names ──────────────────────────────────────────────────
   names(df) <- gsub("^\xef\xbb\xbf", "", names(df))
   names(df) <- trimws(names(df))

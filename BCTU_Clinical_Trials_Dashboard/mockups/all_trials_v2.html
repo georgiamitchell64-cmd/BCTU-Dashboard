@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>All Trials tab — redesign</title>
+<style>
+  :root{
+    --bctu-deep:#6E2B6B; --bctu-mid:#9A4A93; --bctu-light:#C485AF;
+    --bctu-pale:#E8D2E5; --bctu-paler:#F7EEF4;
+    --green:#10B981; --green-dk:#059669; --amber:#F59E0B; --amber-dk:#B45309;
+    --red:#EF4444; --red-dk:#991B1B; --blue:#3B82F6; --blue-dk:#1D4ED8;
+    --violet:#7C3AED;
+    --ink:#1F1226; --ink-2:#3A2542; --muted:#6B5874; --muted-2:#A693AF;
+    --line:#EADCE6; --line-2:#F4ECF1;
+    --bg:#FAF6F9; --card:#fff;
+    --font:'Inter',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:var(--font);color:var(--ink);font-size:13px}
+  .shell{max-width:1280px;margin:0 auto;padding:24px}
+  h1{font-size:22px;color:var(--bctu-deep);margin:0 0 4px;font-weight:700;letter-spacing:-.3px}
+  .lead{font-size:13px;color:var(--muted);margin-bottom:18px}
+
+  /* Toolbar: search + filters + sort + view toggle */
+  .toolbar{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;box-shadow:0 1px 3px rgba(110,43,107,.04)}
+  .search-wrap{position:relative;flex:1;min-width:220px}
+  .search-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted-2)}
+  .search{width:100%;padding:9px 12px 9px 34px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff;font-family:inherit;color:var(--ink);outline:none}
+  .search:focus{border-color:var(--bctu-mid);box-shadow:0 0 0 3px rgba(154,74,147,.16)}
+  .pill-group{display:flex;gap:4px;background:var(--bctu-paler);padding:3px;border-radius:8px}
+  .pill-btn{padding:6px 12px;font-size:11.5px;font-weight:500;color:var(--muted);background:transparent;border:none;border-radius:6px;cursor:pointer;font-family:inherit}
+  .pill-btn.on{background:#fff;color:var(--bctu-deep);font-weight:600;box-shadow:0 1px 2px rgba(110,43,107,.10)}
+  .filter-sel{padding:8px 28px 8px 12px;border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--ink);background:#fff;font-family:inherit;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='%239A4A93' stroke-width='1.4' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 9px center}
+  .toolbar-spacer{flex:1}
+  .result-count{font-size:11.5px;color:var(--muted);font-style:italic}
+
+  /* Category header */
+  .cat-head{display:flex;align-items:center;gap:12px;margin:18px 0 8px;cursor:pointer;user-select:none}
+  .cat-head-icon{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--bctu-pale),var(--bctu-paler));display:flex;align-items:center;justify-content:center;font-size:16px}
+  .cat-head-title{font-size:14px;font-weight:700;color:var(--bctu-deep)}
+  .cat-head-count{font-size:11px;font-weight:600;color:var(--muted);background:var(--bctu-paler);padding:2px 9px;border-radius:10px;letter-spacing:.3px}
+  .cat-head-stats{font-size:11px;color:var(--muted);margin-left:auto;display:flex;gap:14px;align-items:center}
+  .cat-head-stats b{color:var(--bctu-mid);font-weight:700;font-size:12px}
+  .cat-head-caret{color:var(--muted-2);font-size:11px}
+
+  /* Trial rows */
+  .trial-list{display:flex;flex-direction:column;gap:8px}
+  .trial-row{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:1.3fr 1fr 0.9fr 0.9fr 0.7fr 80px;gap:18px;align-items:center;cursor:pointer;transition:all .15s;border-left:4px solid var(--bctu-light)}
+  .trial-row:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(110,43,107,.10);border-color:var(--bctu-mid)}
+  .trial-row.s-on    { border-left-color: var(--green);   }
+  .trial-row.s-warn  { border-left-color: var(--amber);   }
+  .trial-row.s-risk  { border-left-color: var(--red);     }
+  .trial-row.s-setup { border-left-color: var(--blue);    }
+  .trial-row.s-closed{ border-left-color: var(--muted-2); opacity:.78 }
+
+  /* Name col */
+  .t-name{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .t-name-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .t-name b{font-size:14.5px;font-weight:700;color:var(--ink);letter-spacing:-.2px}
+  .t-name-full{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .t-tag{font-size:10px;font-weight:600;background:var(--bctu-paler);color:var(--bctu-mid);padding:1px 7px;border-radius:9px;letter-spacing:.3px}
+
+  /* Progress col */
+  .t-progress{display:flex;flex-direction:column;gap:5px;min-width:0}
+  .t-bar-wrap{background:var(--line-2);height:8px;border-radius:4px;overflow:hidden;position:relative}
+  .t-bar-f{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--bctu-mid),var(--bctu-light));transition:width .3s}
+  .t-bar-f.warn{background:linear-gradient(90deg,var(--amber),#FCD34D)}
+  .t-bar-f.risk{background:linear-gradient(90deg,var(--red),#F87171)}
+  .t-bar-f.on  {background:linear-gradient(90deg,var(--green-dk),var(--green))}
+  .t-bar-target{position:absolute;top:-2px;width:2px;height:12px;background:var(--bctu-deep);opacity:.4}
+  .t-bar-label{font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
+  .t-bar-label b{color:var(--ink);font-weight:600}
+
+  /* Stat col (sites, recruitment, etc.) */
+  .t-stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .t-stat-l{font-size:9.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .t-stat-v{font-size:14px;font-weight:700;color:var(--bctu-deep);line-height:1.1;font-variant-numeric:tabular-nums}
+  .t-stat-s{font-size:11px;color:var(--muted);margin-top:1px}
+  .t-stat-s .pos{color:var(--green-dk);font-weight:600}
+  .t-stat-s .neg{color:var(--red);font-weight:600}
+
+  /* CI / sponsor col */
+  .t-meta{font-size:12px;color:var(--ink-2);min-width:0;line-height:1.45}
+  .t-meta .role{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+
+  /* Activity dot col */
+  .t-recent{font-size:11px;color:var(--muted);text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+  .t-recent .dot{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--bctu-mid)}
+  .t-recent .dot::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--bctu-mid)}
+  .t-recent .dot.warm::before{background:var(--green)}
+  .t-recent .dot.warm{color:var(--green-dk)}
+  .t-recent .dot.cold::before{background:var(--muted-2)}
+  .t-recent .dot.cold{color:var(--muted)}
+
+  /* Status pill + arrow */
+  .t-action{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+  .t-status{font-size:11px;font-weight:600;padding:4px 12px;border-radius:12px;text-align:center;white-space:nowrap}
+  .s-on .t-status   {background:#D1FAE5;color:var(--green-dk)}
+  .s-warn .t-status {background:#FEF3C7;color:var(--amber-dk)}
+  .s-risk .t-status {background:#FEE2E2;color:var(--red-dk)}
+  .s-setup .t-status{background:#DBEAFE;color:var(--blue-dk)}
+  .s-closed .t-status{background:#F1F5F9;color:#64748B}
+  .t-arrow{color:var(--bctu-mid);font-size:16px;transition:transform .12s}
+  .trial-row:hover .t-arrow{transform:translateX(3px)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <h1>All Trials</h1>
+  <div class="lead">Every trial in the BCTU portfolio · click any to open its dashboard</div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+      <input class="search" placeholder="Search by trial name, CI, sponsor, site…">
+    </div>
+    <div class="pill-group">
+      <button class="pill-btn on">All</button>
+      <button class="pill-btn">On track</button>
+      <button class="pill-btn">Behind</button>
+      <button class="pill-btn">Stalled</button>
+      <button class="pill-btn">Set-up</button>
+      <button class="pill-btn">Closed</button>
+    </div>
+    <select class="filter-sel">
+      <option>Sort: Recruitment %</option>
+      <option>Sort: Trial name</option>
+      <option>Sort: Recent activity</option>
+      <option>Sort: Date opened</option>
+    </select>
+    <select class="filter-sel">
+      <option>View: Grouped by category</option>
+      <option>View: Flat list</option>
+      <option>View: Card grid</option>
+    </select>
+    <span class="result-count">12 trials</span>
+  </div>
+
+  <!-- ── SURGERY ──────────────────────────────────────────────────────────── -->
+  <div class="cat-head">
+    <div class="cat-head-icon">🩺</div>
+    <div class="cat-head-title">Surgery</div>
+    <div class="cat-head-count">3 trials</div>
+    <div class="cat-head-stats">
+      <span><b>2</b> on track</span>
+      <span><b>1</b> set-up</span>
+      <span class="cat-head-caret">▾</span>
+    </div>
+  </div>
+  <div class="trial-list">
+
+    <div class="trial-row s-on">
+      <div class="t-name">
+        <div class="t-name-row"><b>TONIC</b><span class="t-tag">Surgery</span></div>
+        <div class="t-name-full">Trial of Outpatient Non-surgical Intervention</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f on" style="width:92%"></div><div class="t-bar-target" style="left:80%"></div></div>
+        <div class="t-bar-label"><span><b>552</b> / 600 randomised</span><span>92%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">24 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 24</span></div>
+        <div class="t-stat-s">all recruiting</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Prof. Sarah Whitfield
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;Univ. of Birmingham</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot warm">Active today</span>
+        <span style="font-size:10px;color:var(--muted-2)">3 rands · 2h ago</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">On track</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="trial-row s-on">
+      <div class="t-name">
+        <div class="t-name-row"><b>VESTA</b><span class="t-tag">Surgery</span></div>
+        <div class="t-name-full">Vascular Elective Surgery Trial Assessment</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f on" style="width:65%"></div><div class="t-bar-target" style="left:60%"></div></div>
+        <div class="t-bar-label"><span><b>650</b> / 1000 randomised</span><span>65%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">31 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 35</span></div>
+        <div class="t-stat-s"><span class="pos">+2</span> opened this month</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Mr. Daniel Hargreaves
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;UHB NHS Trust</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot warm">Active today</span>
+        <span style="font-size:10px;color:var(--muted-2)">5 rands · 4h ago</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">On track</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="trial-row s-setup">
+      <div class="t-name">
+        <div class="t-name-row"><b>ATLAS</b><span class="t-tag">Surgery</span></div>
+        <div class="t-name-full">Anastomotic Leak Surveillance</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f" style="width:8%"></div><div class="t-bar-target" style="left:10%"></div></div>
+        <div class="t-bar-label"><span><b>24</b> / 300 randomised</span><span>8%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">6 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 18</span></div>
+        <div class="t-stat-s">12 in set-up</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Dr. Anne Sutton
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;Univ. of Birmingham</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot">Active this week</span>
+        <span style="font-size:10px;color:var(--muted-2)">1 rand · 2d ago</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">Set-up</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── WOMEN'S HEALTH ───────────────────────────────────────────────────── -->
+  <div class="cat-head">
+    <div class="cat-head-icon">🌸</div>
+    <div class="cat-head-title">Women's Health</div>
+    <div class="cat-head-count">2 trials</div>
+    <div class="cat-head-stats">
+      <span><b>2</b> on track</span>
+      <span class="cat-head-caret">▾</span>
+    </div>
+  </div>
+  <div class="trial-list">
+
+    <div class="trial-row s-on">
+      <div class="t-name">
+        <div class="t-name-row"><b>PANORAMA</b><span class="t-tag">Women's Health</span></div>
+        <div class="t-name-full">Pelvic Outcomes after Reconstructive Approaches</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f on" style="width:71%"></div><div class="t-bar-target" style="left:70%"></div></div>
+        <div class="t-bar-label"><span><b>426</b> / 600 randomised</span><span>71%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">14 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 14</span></div>
+        <div class="t-stat-s">all recruiting</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Prof. Helena Carrington
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;Imperial College London</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot warm">Active today</span>
+        <span style="font-size:10px;color:var(--muted-2)">2 rands · 5h ago</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">On track</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="trial-row s-on">
+      <div class="t-name">
+        <div class="t-name-row"><b>BLOOM</b><span class="t-tag">Women's Health</span></div>
+        <div class="t-name-full">Birth Labour Outcomes Optimisation Model</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f on" style="width:64%"></div><div class="t-bar-target" style="left:60%"></div></div>
+        <div class="t-bar-label"><span><b>388</b> / 600 randomised</span><span>64%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">9 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 10</span></div>
+        <div class="t-stat-s"><span class="pos">+1</span> opened this month</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Dr. Naomi Patel
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;Univ. of Birmingham</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot">Active yesterday</span>
+        <span style="font-size:10px;color:var(--muted-2)">4 rands · 1d ago</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">On track</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ONCOLOGY ─────────────────────────────────────────────────────────── -->
+  <div class="cat-head">
+    <div class="cat-head-icon">🧬</div>
+    <div class="cat-head-title">Oncology</div>
+    <div class="cat-head-count">2 trials</div>
+    <div class="cat-head-stats">
+      <span><b>1</b> on track</span>
+      <span><b>1</b> closed</span>
+      <span class="cat-head-caret">▾</span>
+    </div>
+  </div>
+  <div class="trial-list">
+
+    <div class="trial-row s-on">
+      <div class="t-name">
+        <div class="t-name-row"><b>MERIDIAN</b><span class="t-tag">Oncology</span></div>
+        <div class="t-name-full">Multimodal Evaluation in Refractory Disease</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f on" style="width:78%"></div><div class="t-bar-target" style="left:75%"></div></div>
+        <div class="t-bar-label"><span><b>312</b> / 400 randomised</span><span>78%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">11 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 12</span></div>
+        <div class="t-stat-s">1 paused</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Prof. James Okonkwo
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;UCL Cancer Institute</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot warm">Active today</span>
+        <span style="font-size:10px;color:var(--muted-2)">1 rand · 30m ago</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">On track</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="trial-row s-closed">
+      <div class="t-name">
+        <div class="t-name-row"><b>HARVEST</b><span class="t-tag">Oncology</span></div>
+        <div class="t-name-full">Haematology Adjuvant Response Validation</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f on" style="width:100%"></div></div>
+        <div class="t-bar-label"><span><b>300</b> / 300 randomised</span><span>100%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">8 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 8</span></div>
+        <div class="t-stat-s">all closed-out</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Dr. Elaine Brookfield
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;Christie NHS Trust</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot cold">Recruitment closed</span>
+        <span style="font-size:10px;color:var(--muted-2)">Follow-up only</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">Closed</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CARDIOVASCULAR ───────────────────────────────────────────────────── -->
+  <div class="cat-head">
+    <div class="cat-head-icon">❤</div>
+    <div class="cat-head-title">Cardiovascular</div>
+    <div class="cat-head-count">2 trials</div>
+    <div class="cat-head-stats">
+      <span><b>1</b> behind</span>
+      <span><b>1</b> set-up</span>
+      <span class="cat-head-caret">▾</span>
+    </div>
+  </div>
+  <div class="trial-list">
+
+    <div class="trial-row s-warn">
+      <div class="t-name">
+        <div class="t-name-row"><b>HARBOUR</b><span class="t-tag">Cardiovascular</span></div>
+        <div class="t-name-full">Heart Attack Recovery — Behaviour Outcomes Under Rehabilitation</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f warn" style="width:54%"></div><div class="t-bar-target" style="left:80%"></div></div>
+        <div class="t-bar-label"><span><b>189</b> / 350 randomised</span><span>54%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">7 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 11</span></div>
+        <div class="t-stat-s"><span class="neg">2</span> not recruiting</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Prof. Michael Tan
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;Univ. of Manchester</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot">Active this week</span>
+        <span style="font-size:10px;color:var(--muted-2)">2 rands · 3d ago</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">Behind</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="trial-row s-setup">
+      <div class="t-name">
+        <div class="t-name-row"><b>EMBER</b><span class="t-tag">Cardiovascular</span></div>
+        <div class="t-name-full">Early Myocardial Biomarker Evaluation Registry</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f" style="width:3%"></div><div class="t-bar-target" style="left:5%"></div></div>
+        <div class="t-bar-label"><span><b>9</b> / 280 randomised</span><span>3%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">2 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 14</span></div>
+        <div class="t-stat-s">12 in set-up</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Dr. Priya Acharya
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;UHB NHS Trust</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot cold">Active last month</span>
+        <span style="font-size:10px;color:var(--muted-2)">SIVs in progress</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">Set-up</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MENTAL HEALTH (stalled) ──────────────────────────────────────────── -->
+  <div class="cat-head">
+    <div class="cat-head-icon">🧠</div>
+    <div class="cat-head-title">Mental Health</div>
+    <div class="cat-head-count">1 trial</div>
+    <div class="cat-head-stats">
+      <span><b>1</b> stalled</span>
+      <span class="cat-head-caret">▾</span>
+    </div>
+  </div>
+  <div class="trial-list">
+
+    <div class="trial-row s-risk">
+      <div class="t-name">
+        <div class="t-name-row"><b>SOLACE</b><span class="t-tag">Mental Health</span></div>
+        <div class="t-name-full">Self-Management of Outpatient Anxiety with Cognitive Education</div>
+      </div>
+      <div class="t-progress">
+        <div class="t-bar-wrap"><div class="t-bar-f risk" style="width:18%"></div><div class="t-bar-target" style="left:50%"></div></div>
+        <div class="t-bar-label"><span><b>54</b> / 300 randomised</span><span>18%</span></div>
+      </div>
+      <div class="t-stat">
+        <div class="t-stat-l">Sites</div>
+        <div class="t-stat-v">5 <span style="font-size:11px;color:var(--muted);font-weight:500;">/ 9</span></div>
+        <div class="t-stat-s"><span class="neg">4</span> not recruiting</div>
+      </div>
+      <div class="t-meta">
+        <div class="role">CI</div>Dr. Marcus O'Connell
+        <div style="margin-top:4px"><span class="role">Sponsor</span> &nbsp;Univ. of Birmingham</div>
+      </div>
+      <div class="t-recent">
+        <span class="dot cold">No rands in 14 days</span>
+        <span style="font-size:10px;color:var(--red-dk);font-weight:600">⚠ Needs review</span>
+      </div>
+      <div class="t-action">
+        <div class="t-status">Stalled</div>
+        <div class="t-arrow">→</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

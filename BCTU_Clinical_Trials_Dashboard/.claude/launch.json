@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Shiny dashboard",
+      "runtimeExecutable": "Rscript",
+      "runtimeArgs": [
+        "-e",
+        "shiny::runApp('.', host='127.0.0.1', port=3838, launch.browser=FALSE)"
+      ],
+      "port": 3838
+    },
+    {
+      "name": "Mockups (static)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8000",
+        "--directory",
+        "mockups"
+      ],
+      "port": 8000
+    }
+  ]
+}

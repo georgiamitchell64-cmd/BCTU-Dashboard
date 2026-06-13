@@ -59,17 +59,32 @@ upload_server <- function(input, output, session, state) {
       return()
     }
 
-    raw <- tryCatch(
-      read_redcap_file(filepath),
-      error = function(e) {
-        removeModal()
-        showNotification(paste("Read error:", e$message), type = "error", duration = 12)
-        NULL
-      }
+    # Large REDCap exports (20MB+) freeze the UI during read+autodetect.
+    # withProgress gives the user immediate feedback that the import is alive.
+    fsize <- tryCatch(file.info(filepath)$size, error = function(e) NA_real_)
+    fsize_lbl <- if (is.finite(fsize)) sprintf(" (%.1f MB)", fsize / 1024 / 1024) else ""
+
+    raw <- withProgress(
+      message = "Importing REDCap export",
+      detail  = paste0("Reading ", basename(filepath), fsize_lbl, "…"),
+      value   = 0.1,
+      tryCatch(
+        read_redcap_file(filepath),
+        error = function(e) {
+          removeModal()
+          showNotification(paste("Read error:", e$message), type = "error", duration = 12)
+          NULL
+        }
+      )
     )
     if (is.null(raw)) return()
 
-    detected <- tryCatch(autodetect_redcap(filepath), error = function(e) NULL)
+    detected <- withProgress(
+      message = "Importing REDCap export",
+      detail  = "Auto-detecting events, instruments, fields…",
+      value   = 0.6,
+      tryCatch(autodetect_redcap(filepath), error = function(e) NULL)
+    )
     # Stash full column list for the amend dropdowns.
     if (!is.null(detected)) detected$.all_cols <- names(raw)
 

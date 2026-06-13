@@ -1,6 +1,42 @@
 sites_server <- function(input, output, session, state) {
   rv <- state$rv
 
+  # ── Summary stats tiles ─────────────────────────────────────────────────
+  output$sites_summary_stats <- renderUI({
+    df <- rv$sites
+    if (nrow(df) == 0) return(NULL)
+
+    n_recruiting <- sum(df$status == "Recruiting", na.rm = TRUE)
+    n_setup      <- sum(df$status %in% c("Set-up", "Identified"), na.rm = TRUE)
+    n_paused     <- sum(df$status == "Paused", na.rm = TRUE)
+    n_closed     <- sum(df$status == "Closed", na.rm = TRUE)
+    total_rand   <- sum(df$randomised, na.rm = TRUE)
+
+    # Flag sites missing key fields (city or open date)
+    n_flagged <- sum(is.na(df$city) | is.na(df$site_open_date), na.rm = TRUE)
+
+    make_stat <- function(value, label, color) {
+      div(class = "sites-stat",
+          div(class = "sites-stat-v", style = sprintf("color:%s;", color), value),
+          div(class = "sites-stat-l", label))
+    }
+
+    div(class = "sites-stats-row",
+        make_stat(n_recruiting, "Recruiting", "#10B981"),
+        make_stat(n_setup,      "In set-up",  "#94A3B8"),
+        make_stat(n_paused,     "Paused",     "#F59E0B"),
+        make_stat(n_closed,     "Closed",     "#64748B"),
+        make_stat(total_rand,   "Randomised", "#1B4F6B"),
+        if (n_flagged > 0)
+          make_stat(n_flagged, "Incomplete", "#DC2626")
+    )
+  })
+
+  # ── Toggle add-site form ────────────────────────────────────────────────
+  observeEvent(input$toggle_add_form, {
+    shinyjs::toggle("add_site_box")
+  })
+
   # ── Auto-fill city when a known UK hospital is selected ──────────────────
   observeEvent(input$ns_name, {
     req(nzchar(trimws(input$ns_name %||% "")))
@@ -20,8 +56,30 @@ sites_server <- function(input, output, session, state) {
     if (!"siv_booked" %in% names(df)) df$siv_booked <- FALSE
     if (!"siv_date"   %in% names(df)) df$siv_date   <- as.Date(NA)
 
+    # Editable status dropdown — fires Shiny.setInputValue("status_edit", ...)
+    # on change. Options match status_cols in globals/constants.R plus
+    # "Paused" which the summary stats already recognise. The pill colour
+    # follows the selected value via a per-status CSS class.
+    site_status_opts <- c("Identified", "Set-up", "Open", "Recruiting",
+                          "Paused", "Closed")
+    status_class_for <- function(s) switch(
+      s %||% "",
+      "Recruiting" = "sp-r", "Open" = "sp-o", "Set-up" = "sp-s",
+      "Paused"     = "sp-s", "Closed" = "sp-c", "sp-i"
+    )
+
     df <- df %>% mutate(
-      Status = vapply(status, status_pill_html, character(1)),
+      Status = vapply(seq_len(n()), function(i) {
+        sid <- site_id[i]
+        cur <- status[i] %||% "Identified"
+        opts <- vapply(site_status_opts, function(o)
+          sprintf('<option value="%s"%s>%s</option>',
+                  o, if (identical(o, cur)) " selected" else "", o),
+          character(1))
+        sprintf(
+          '<select class="status-edit spill %s" onchange="Shiny.setInputValue(&quot;status_edit&quot;,{id:&quot;%s&quot;,val:this.value},{priority:&quot;event&quot;})">%s</select>',
+          status_class_for(cur), sid, paste(opts, collapse = ""))
+      }, character(1)),
 
       mo_edit = paste0(
         '<input type="number" class="editable-num" min="0" value="', monthly_target,
@@ -78,6 +136,8 @@ sites_server <- function(input, output, session, state) {
                     mo_edit, target_edit, randomised, open_date_edit),
       striped = TRUE, highlight = TRUE, compact = TRUE,
       selection = "single", onClick = "select",
+      defaultPageSize = 25, showPageSizeOptions = TRUE,
+      pageSizeOptions = c(10, 25, 50, 100),
       defaultColDef = colDef(style = list(fontFamily = "Outfit", fontSize = "12.5px")),
       columns = list(
         site_id_edit    = colDef(name = "Site ID",        html = TRUE, minWidth = 100),
@@ -97,6 +157,25 @@ sites_server <- function(input, output, session, state) {
   })
 
   # ── Edit handlers ─────────────────────────────────────────────────────────
+  observeEvent(input$status_edit, {
+    req(input$status_edit$id, input$status_edit$val)
+    idx <- which(rv$sites$site_id == input$status_edit$id)
+    if (!length(idx)) return()
+    old <- rv$sites$status[idx]
+    new <- trimws(input$status_edit$val)
+    if (identical(old, new)) return()
+    rv$sites$status[idx] <- new
+    tryCatch(
+      log_activity("site_status_changed",
+        sprintf("Site <strong>%s</strong> status: %s → %s",
+                htmltools::htmlEscape(rv$sites$site_name[idx] %||% input$status_edit$id),
+                htmltools::htmlEscape(old %||% "—"),
+                htmltools::htmlEscape(new))),
+      error = function(e) message("activity log: ", e$message))
+    showNotification(sprintf("Status updated: %s → %s", old %||% "—", new),
+                     type = "message", duration = 2)
+  })
+
   observeEvent(input$mo_tgt_edit, {
     req(input$mo_tgt_edit$id)
     idx <- which(rv$sites$site_id == input$mo_tgt_edit$id)
@@ -460,11 +539,21 @@ sites_server <- function(input, output, session, state) {
     def_monthly <- as.integer(input$bulk_def_monthly %||% 0)
     def_target  <- as.integer(input$bulk_def_target %||% 0)
 
-    add_blocks <- lapply(seq_len(nrow(new_rows)), function(i) {
+    # Geocoding is rate-limited to ~1 req/sec; for bulk adds (e.g. 50 sites)
+    # this would otherwise look like a frozen UI. withProgress streams a
+    # per-site status to the user so they know it's working.
+    n_new <- nrow(new_rows)
+    add_blocks <- withProgress(
+      message = "Adding sites",
+      detail  = sprintf("Geocoding %d location%s…", n_new, if (n_new == 1) "" else "s"),
+      value   = 0,
+      lapply(seq_len(n_new), function(i) {
       r <- new_rows[i, ]
       country_val <- if (is.na(r$country) || !nzchar(r$country))
         "United Kingdom" else r$country
       lookup <- if (!is.na(r$city) && nzchar(r$city)) r$city else r$site_name
+      incProgress(1 / n_new,
+                  detail = sprintf("(%d/%d) %s", i, n_new, trimws(r$site_name)))
       ll <- tryCatch(geocode_location(lookup, country_val),
                      error = function(e) list(lat = NA_real_, lon = NA_real_))
       tibble(
@@ -486,7 +575,7 @@ sites_server <- function(input, output, session, state) {
         lat            = ll$lat,
         lon            = ll$lon
       )
-    })
+    }))
 
     # next_site_id is computed against rv$sites — but we're adding multiple
     # in one batch. Re-id sequentially against the running total.

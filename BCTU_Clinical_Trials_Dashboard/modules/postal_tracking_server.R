@@ -20,6 +20,8 @@ postal_tracking_server <- function(id, redcap_data,
                                    op_col         = "iop_op_end_dt",
                                    pref_col       = "cntct_questionnaires_pref",
                                    site_col       = "site_name",
+                                   rand_col       = "rand_dttm_s",
+                                   cos_col        = "cos_type",
                                    baseline_event = "baseline_arm_1",
                                    lead_days      = 7) {
 
@@ -33,13 +35,16 @@ postal_tracking_server <- function(id, redcap_data,
     # Ensure the table exists
     postal_db_init()
 
-    # Brand colours
-    NAVY   <- "#1B4F6B"
-    TEAL   <- "#2EC4A5"
-    AMBER  <- "#f0a500"
-    CORAL  <- "#e05c3a"
-    GREY   <- "#adb5bd"
-    LTGREY <- "#f4f6f8"
+    # Brand colours (status palette mirrors the Postal Tracking design)
+    NAVY      <- "#1B4F6B"
+    TEAL      <- "#2EC4A5"
+    AMBER     <- "#f0a500"
+    CORAL     <- "#e05c3a"
+    GREY      <- "#adb5bd"
+    LTGREY    <- "#f4f6f8"
+    GREEN     <- "#10B981"   # Returned
+    INDIGO    <- "#6366F1"   # Transcribed
+    SLATE     <- "#94A3B8"   # Not sent
 
     # Trigger that re-reads the DB after each upsert
     refresh_trigger <- reactiveVal(0)
@@ -47,24 +52,6 @@ postal_tracking_server <- function(id, redcap_data,
     # ── Build the master dataset ────────────────────────────────────────────
     postal_data <- reactive({
       refresh_trigger()      # take a dependency so edits refresh the table
-
-      # Diagnostic: write state to a file that persists after reactives run
-      rd <- tryCatch(redcap_data(), error = function(e) NULL)
-      diag <- list(
-        time          = format(Sys.time()),
-        is_null       = is.null(rd),
-        class         = paste(class(rd), collapse = "/"),
-        nrow          = if (is.data.frame(rd)) nrow(rd) else NA,
-        ncol          = if (is.data.frame(rd)) ncol(rd) else NA,
-        has_pref      = if (is.data.frame(rd)) "cntct_questionnaires_pref" %in% names(rd) else NA,
-        has_op        = if (is.data.frame(rd)) "iop_op_end_dt" %in% names(rd) else NA,
-        has_event     = if (is.data.frame(rd)) "redcap_event_name" %in% names(rd) else NA
-      )
-      writeLines(
-        paste0(names(diag), ": ", unlist(diag), collapse = "\n"),
-        file.path("data", "POSTAL_DIAG.txt")
-      )
-      message("POSTAL DIAG written to data/POSTAL_DIAG.txt")
 
       req(redcap_data())
 
@@ -74,6 +61,8 @@ postal_tracking_server <- function(id, redcap_data,
         op_col         = .resolve(op_col),
         pref_col       = .resolve(pref_col),
         site_col       = .resolve(site_col),
+        rand_col       = .resolve(rand_col),
+        cos_col        = .resolve(cos_col),
         baseline_event = .resolve(baseline_event),
         lead_days      = lead_days
       )
@@ -86,8 +75,8 @@ postal_tracking_server <- function(id, redcap_data,
 
       # Status filter
       df <- switch(input$status_filter,
-        "action" = df %>% dplyr::filter(status %in% c("Overdue", "Due now")),
-        "sent"   = df %>% dplyr::filter(status == "Sent"),
+        "action" = df %>% dplyr::filter(status %in% c("Overdue", "Due now", "Upcoming")),
+        "sent"   = df %>% dplyr::filter(status %in% c("Sent", "Returned", "Transcribed")),
         df
       )
 
@@ -114,54 +103,55 @@ postal_tracking_server <- function(id, redcap_data,
       df <- postal_data()
       req(df)
 
-      overdue  <- sum(df$status == "Overdue",  na.rm = TRUE)
-      due_now  <- sum(df$status == "Due now",  na.rm = TRUE)
-      upcoming <- sum(df$status == "Upcoming", na.rm = TRUE)
-      sent_ct  <- sum(df$status == "Sent",     na.rm = TRUE)
+      overdue     <- sum(df$status == "Overdue",     na.rm = TRUE)
+      due_now     <- sum(df$status == "Due now",     na.rm = TRUE)
+      upcoming    <- sum(df$status == "Upcoming",    na.rm = TRUE)
+      sent_ct     <- sum(df$status == "Sent",        na.rm = TRUE)
+      returned_ct <- sum(df$status == "Returned",    na.rm = TRUE)
+      trans_ct    <- sum(df$status == "Transcribed", na.rm = TRUE)
+      not_sent_ct <- sum(df$status == "Not sent",    na.rm = TRUE)
+      excluded_ct <- sum(df$status == "Excluded",    na.rm = TRUE)
 
-      make_card <- function(label, value, colour, sub = NULL) {
-        column(3,
-          tags$div(
-            style = paste0(
-              "border-left: 4px solid ", colour, ";",
-              "padding: 12px 16px; margin-bottom: 8px;",
-              "background: #f9fafb; border-radius: 4px;"
-            ),
-            tags$div(
-              style = "font-size:0.78rem; color:#6c757d;
-                       text-transform:uppercase; letter-spacing:.04em;",
-              label
-            ),
-            tags$div(
-              style = paste0("font-size:1.8rem; font-weight:700; color:", colour, ";"),
-              value
-            ),
-            if (!is.null(sub))
-              tags$div(style = "font-size:0.8rem; color:#6c757d; margin-top:2px;", sub)
-          )
+      make_card <- function(label, value, colour, sub = NULL, alert = FALSE) {
+        tags$div(
+          class = if (isTRUE(alert)) "pt-kpi alert" else "pt-kpi",
+          tags$div(class = "pt-kpi-bar", style = paste0("background:", colour, ";")),
+          tags$div(class = "pt-kpi-k", label),
+          tags$div(class = "pt-kpi-v", style = paste0("color:", colour, ";"), value),
+          if (!is.null(sub)) tags$div(class = "pt-kpi-sub", sub)
         )
       }
 
-      fluidRow(
-        make_card("Overdue",  overdue,  CORAL,  "Past due date, not sent"),
-        make_card("Due now",  due_now,  AMBER,  "Within next 7 days"),
-        make_card("Upcoming", upcoming, NAVY,   "Within next 3 weeks"),
-        make_card("Sent",     sent_ct,  TEAL,   "Total marked as sent")
+      tags$div(class = "pt-kpis",
+        make_card("Overdue",     overdue,     CORAL,    "past due date",            alert = overdue > 0),
+        make_card("Due now",     due_now,     AMBER,    "within 7 days"),
+        make_card("Upcoming",    upcoming,    NAVY,     "next 14 days"),
+        make_card("Sent",        sent_ct,     TEAL,     "awaiting return"),
+        make_card("Returned",    returned_ct, GREEN,    "awaiting transcription"),
+        make_card("Transcribed", trans_ct,    INDIGO,   "entered on database"),
+        make_card("Not sent",    not_sent_ct, SLATE,    "with reason"),
+        make_card("Excluded",    excluded_ct, EXCL_RED, "do not send")
       )
     })
 
     # ── Status badge renderer ───────────────────────────────────────────────
+    EXCL_RED <- "#DC2626"
+
     status_badge <- function(status) {
       colour <- switch(status,
-        "Overdue"  = CORAL,
-        "Due now"  = AMBER,
-        "Upcoming" = NAVY,
-        "Sent"     = TEAL,
+        "Overdue"     = CORAL,
+        "Due now"     = AMBER,
+        "Upcoming"    = NAVY,
+        "Sent"        = TEAL,
+        "Returned"    = GREEN,
+        "Transcribed" = INDIGO,
+        "Not sent"    = SLATE,
+        "Excluded"    = EXCL_RED,
         GREY
       )
       sprintf(
-        '<span style="background:%s;color:white;font-weight:600;font-size:0.75rem;padding:3px 10px;border-radius:10px;display:inline-block;">%s</span>',
-        colour, status
+        '<span style="display:inline-flex;align-items:center;gap:5px;background:%s18;color:%s;font-weight:600;font-size:11px;padding:3px 9px;border-radius:10px;white-space:nowrap;"><span style="width:6px;height:6px;border-radius:50%%;background:%s;display:inline-block;"></span>%s</span>',
+        colour, colour, colour, status
       )
     }
 
@@ -186,10 +176,7 @@ postal_tracking_server <- function(id, redcap_data,
       df <- display_data()
 
       if (is.null(df) || nrow(df) == 0) {
-        return(reactable::reactable(
-          data.frame(Message = "No participants match the current filters."),
-          bordered = FALSE, pagination = FALSE
-        ))
+        return(empty_reactable("No participants match the current filters."))
       }
 
       # Add a row identifier we can read in the checkbox handler
@@ -235,17 +222,34 @@ postal_tracking_server <- function(id, redcap_data,
           ),
           status = reactable::colDef(
             name     = "Status",
-            minWidth = 100,
+            minWidth = 120,
             align    = "center",
             html     = TRUE,
-            cell     = function(v) status_badge(v)
+            cell     = function(v, idx) {
+              # For excluded rows, show the human reason inside the pill
+              # (Deceased / Withdrew from follow-up / Lost to follow-up /
+              # Part withdrawal) instead of the generic "Excluded".
+              if (identical(v, "Excluded")) {
+                er <- df$excluded_reason[idx] %||% "Excluded"
+                colour <- EXCL_RED
+                return(sprintf(
+                  '<span style="display:inline-flex;align-items:center;gap:5px;background:%s18;color:%s;font-weight:600;font-size:11px;padding:3px 9px;border-radius:10px;white-space:nowrap;"><span style="width:6px;height:6px;border-radius:50%%;background:%s;display:inline-block;"></span>%s</span>',
+                  colour, colour, colour, htmltools::htmlEscape(er)))
+              }
+              status_badge(v)
+            }
           ),
+          excluded_reason = reactable::colDef(show = FALSE),
           sent = reactable::colDef(
             name     = "Sent?",
             minWidth = 70,
             align    = "center",
             html     = TRUE,
             cell     = function(v, idx) {
+              # Excluded participants must not be sent post — show a
+              # locked dash instead of an editable checkbox.
+              if (identical(df$status[idx], "Excluded"))
+                return('<span style="color:#94A3B8;">—</span>')
               rk <- df$row_key[idx]
               checked <- if (!is.na(v) && v == 1) "checked" else ""
               sprintf(
@@ -263,6 +267,8 @@ postal_tracking_server <- function(id, redcap_data,
             minWidth = 130,
             html     = TRUE,
             cell     = function(v, idx) {
+              if (identical(df$status[idx], "Excluded"))
+                return('<span style="color:#94A3B8;">—</span>')
               rk    <- df$row_key[idx]
               value <- if (is.na(v) || v == "") "" else substr(v, 1, 10)
               sprintf(
@@ -274,6 +280,71 @@ postal_tracking_server <- function(id, redcap_data,
                           border:1px solid #ced4da; border-radius:4px; width:100%%;"/>',
                 value, ns("update_date"), rk
               )
+            }
+          ),
+          date_returned = reactable::colDef(
+            name     = "Returned",
+            minWidth = 130,
+            html     = TRUE,
+            cell     = function(v, idx) {
+              rk  <- df$row_key[idx]
+              st  <- df$status[idx]
+              if (!is.na(v) && nzchar(v))
+                return(sprintf('<span class="muted" style="color:#64748B;">%s</span>',
+                               format(as.Date(v), "%d %b %Y")))
+              if (identical(st, "Sent"))
+                return(sprintf(
+                  '<button class="pt-action-btn returned"
+                     onclick="Shiny.setInputValue(\'%s\',{row:\'%s\',nonce:Math.random()},{priority:\'event\'})">Mark returned</button>',
+                  ns("mark_returned"), rk))
+              '<span style="color:#94A3B8;">—</span>'
+            }
+          ),
+          date_transcribed = reactable::colDef(
+            name     = "Transcribed",
+            minWidth = 130,
+            html     = TRUE,
+            cell     = function(v, idx) {
+              rk <- df$row_key[idx]
+              st <- df$status[idx]
+              if (!is.na(v) && nzchar(v))
+                return(sprintf('<span class="muted" style="color:#64748B;">%s</span>',
+                               format(as.Date(v), "%d %b %Y")))
+              if (identical(st, "Returned"))
+                return(sprintf(
+                  '<button class="pt-action-btn transcribed"
+                     onclick="Shiny.setInputValue(\'%s\',{row:\'%s\',nonce:Math.random()},{priority:\'event\'})">Mark transcribed</button>',
+                  ns("mark_transcribed"), rk))
+              '<span style="color:#94A3B8;">—</span>'
+            }
+          ),
+          reason_not_sent = reactable::colDef(
+            name     = "Reason not sent",
+            minWidth = 180,
+            html     = TRUE,
+            cell     = function(v, idx) {
+              rk <- df$row_key[idx]
+              st <- df$status[idx]
+              if (!is.na(v) && nzchar(v))
+                return(sprintf('<span class="pt-reason">%s</span>',
+                               htmltools::htmlEscape(v)))
+              if (identical(st, "Excluded"))
+                return('<span style="color:#94A3B8;">—</span>')
+              if (st %in% c("Overdue","Due now","Upcoming","Future")) {
+                reasons <- c("Nurse rang instead","Participant withdrawn",
+                             "Participant deceased","Address unknown",
+                             "Returned to sender","Other")
+                opts <- paste0(
+                  '<option value="" disabled selected>Add reason…</option>',
+                  paste(sprintf('<option value="%s">%s</option>', reasons, reasons),
+                        collapse = ""))
+                return(sprintf(
+                  '<select class="pt-action-btn reason"
+                     style="height:28px;padding:0 24px 0 8px;"
+                     onchange="if(this.value){Shiny.setInputValue(\'%s\',{row:\'%s\',reason:this.value,nonce:Math.random()},{priority:\'event\'})}">%s</select>',
+                  ns("set_reason"), rk, opts))
+              }
+              '<span style="color:#94A3B8;">—</span>'
             }
           ),
           notes = reactable::colDef(
@@ -293,7 +364,9 @@ postal_tracking_server <- function(id, redcap_data,
                 value, ns("update_notes"), rk
               )
             }
-          )
+          ),
+          returned         = reactable::colDef(show = FALSE),
+          transcribed      = reactable::colDef(show = FALSE)
         ),
         columnGroups = list(
           reactable::colGroup(name = "Participant",
@@ -301,8 +374,12 @@ postal_tracking_server <- function(id, redcap_data,
           reactable::colGroup(name = "Questionnaire",
             columns = c("timepoint", "due_date", "days_to_due", "status")),
           reactable::colGroup(name = "Action log",
-            columns = c("sent", "date_sent", "notes"))
+            columns = c("sent", "date_sent", "date_returned",
+                        "date_transcribed", "reason_not_sent", "notes"))
         ),
+        rowClass        = reactable::JS(sprintf(
+          "function(rowInfo){ if(rowInfo.values.status === 'Excluded') return 'pt-row-excluded'; return ''; }"
+        )),
         bordered        = FALSE,
         striped         = TRUE,
         highlight       = TRUE,
@@ -391,15 +468,56 @@ postal_tracking_server <- function(id, redcap_data,
     observeEvent(input$update_notes, {
       ev    <- input$update_notes
       keys  <- split_row_key(ev$row)
-      exist <- get_existing(keys$participant_id, keys$timepoint)
-
       postal_db_upsert(
         participant_id = keys$participant_id,
         timepoint      = keys$timepoint,
-        sent           = exist$sent,
-        date_sent      = exist$date_sent,
+        sent           = NULL,  # preserve via existing-row read in upsert
         notes          = ev$notes,
         modified_by    = current_user()
+      )
+      refresh_trigger(refresh_trigger() + 1)
+    }, ignoreInit = TRUE)
+
+    # Mark returned (Sent → Returned)
+    observeEvent(input$mark_returned, {
+      ev   <- input$mark_returned
+      keys <- split_row_key(ev$row)
+      postal_db_upsert(
+        participant_id = keys$participant_id,
+        timepoint      = keys$timepoint,
+        sent           = NULL,
+        returned       = TRUE,
+        date_returned  = as.character(Sys.Date()),
+        modified_by    = current_user()
+      )
+      refresh_trigger(refresh_trigger() + 1)
+    }, ignoreInit = TRUE)
+
+    # Mark transcribed (Returned → Transcribed)
+    observeEvent(input$mark_transcribed, {
+      ev   <- input$mark_transcribed
+      keys <- split_row_key(ev$row)
+      postal_db_upsert(
+        participant_id   = keys$participant_id,
+        timepoint        = keys$timepoint,
+        sent             = NULL,
+        transcribed      = TRUE,
+        date_transcribed = as.character(Sys.Date()),
+        modified_by      = current_user()
+      )
+      refresh_trigger(refresh_trigger() + 1)
+    }, ignoreInit = TRUE)
+
+    # Set reason-not-sent (any pending → Not sent)
+    observeEvent(input$set_reason, {
+      ev   <- input$set_reason
+      keys <- split_row_key(ev$row)
+      postal_db_upsert(
+        participant_id  = keys$participant_id,
+        timepoint       = keys$timepoint,
+        sent            = NULL,
+        reason_not_sent = ev$reason,
+        modified_by     = current_user()
       )
       refresh_trigger(refresh_trigger() + 1)
     }, ignoreInit = TRUE)
@@ -449,18 +567,24 @@ postal_tracking_server <- function(id, redcap_data,
 
         export_df <- df %>%
           dplyr::transmute(
-            `Participant ID` = sanitise_text(participant_id),
-            `Site`           = sanitise_text(site_name),
-            `Op date`        = fmt_date(op_date),
-            `Timepoint`      = sanitise_text(timepoint),
-            `Due date`       = fmt_date(due_date),
-            `Days to due`    = suppressWarnings(as.integer(days_to_due)),
-            `Status`         = sanitise_text(status),
-            `Sent`           = dplyr::if_else(!is.na(sent) & sent == 1, "Yes", "No"),
-            `Date sent`      = fmt_date(date_sent),
-            `Notes`          = sanitise_text(notes),
-            `Last modified`  = sanitise_text(last_modified),
-            `Modified by`    = sanitise_text(modified_by)
+            `Participant ID`     = sanitise_text(participant_id),
+            `Site`               = sanitise_text(site_name),
+            `Op date`            = fmt_date(op_date),
+            `Timepoint`          = sanitise_text(timepoint),
+            `Due date`           = fmt_date(due_date),
+            `Days to due`        = suppressWarnings(as.integer(days_to_due)),
+            `Status`             = sanitise_text(status),
+            `Excluded reason`    = sanitise_text(excluded_reason),
+            `Sent`               = dplyr::if_else(!is.na(sent)        & sent        == 1, "Yes", "No"),
+            `Date sent`          = fmt_date(date_sent),
+            `Returned`           = dplyr::if_else(!is.na(returned)    & returned    == 1, "Yes", "No"),
+            `Date returned`      = fmt_date(date_returned),
+            `Transcribed`        = dplyr::if_else(!is.na(transcribed) & transcribed == 1, "Yes", "No"),
+            `Date transcribed`   = fmt_date(date_transcribed),
+            `Reason not sent`    = sanitise_text(reason_not_sent),
+            `Notes`              = sanitise_text(notes),
+            `Last modified`      = sanitise_text(last_modified),
+            `Modified by`        = sanitise_text(modified_by)
           )
 
         # Coerce to a plain data.frame to avoid any tibble surprises

@@ -3,37 +3,90 @@ overview_server <- function(input, output, session, state) {
   filtered <- state$filtered
 
   # ── Smart Insights ──────────────────────────────────────────────────────
-  output$smart_insights_ui <- renderUI({
+  # compute_insights() walks raw REDCap + sites every render; without caching
+  # it re-runs whenever anything in the overview reactive graph fires. Cache
+  # on a fingerprint of the inputs so it only recomputes when data changes.
+  insights_cached <- reactive({
     cfg <- rv$trial_config
-    if (is.null(cfg)) return(NULL)
-    insights <- tryCatch(
+    req(cfg)
+    tryCatch(
       compute_insights(rv$raw_redcap, rv$sites, cfg),
       error = function(e) {
         message("Smart insights error: ", e$message)
         list()
       }
     )
-    render_insights_panel(insights)
+  }) %>% bindCache(
+    rv$trial_config$code %||% "",
+    nrow(rv$raw_redcap %||% data.frame()),
+    nrow(rv$sites %||% data.frame()),
+    digest::digest(rv$sites$randomised)
+  )
+
+  output$smart_insights_ui <- renderUI({
+    if (is.null(rv$trial_config)) return(NULL)
+    render_insights_panel(insights_cached())
   })
 
   output$meeting_label_txt <- renderText({
-    req(input$last_meeting)
-    paste("Dashboard highlights changes since", format(input$last_meeting, "%d %b %Y"))
+    req(input$date_from, input$date_to)
+    sprintf("Range: %s → %s",
+            format(input$date_from, "%d %b %Y"),
+            format(input$date_to,   "%d %b %Y"))
   })
 
+  # Stable cache-key for rv$log — max(empty) warns and returns -Inf, so
+  # guard against an empty/all-NA log explicitly. Same shape used by both
+  # rand_at_meeting and rand_at_to.
+  log_fp <- function() {
+    df <- rv$log
+    if (is.null(df) || !nrow(df) ||
+        !"timestamp" %in% names(df) || all(is.na(df$timestamp))) {
+      return("empty")
+    }
+    suppressWarnings(as.character(max(df$timestamp, na.rm = TRUE)))
+  }
+  sites_fp <- function() {
+    df <- rv$sites
+    if (is.null(df) || !nrow(df)) return("empty")
+    digest::digest(df$site_open_date)
+  }
+
+  # Count of randomisations recorded on or before `date_from`
+  # (i.e. baseline against which to measure the delta over the range).
+  # bindCache keys on the date + a cheap fingerprint of the log so we skip
+  # the filter when neither has changed (was re-running on every input tick).
   rand_at_meeting <- reactive({
-    req(input$last_meeting)
+    req(input$date_from)
     rv$log %>%
-      filter(action == "+1", as.Date(timestamp) <= as.Date(input$last_meeting)) %>%
+      filter(action == "+1", as.Date(timestamp) <= as.Date(input$date_from)) %>%
       nrow()
-  })
+  }) %>% bindCache(input$date_from, nrow(rv$log), log_fp())
 
+  # Sites already open at `date_from`.
   sites_at_meeting <- reactive({
-    req(input$last_meeting)
+    req(input$date_from)
     rv$sites %>%
-      filter(!is.na(site_open_date), as.Date(site_open_date) <= as.Date(input$last_meeting)) %>%
+      filter(!is.na(site_open_date),
+             as.Date(site_open_date) <= as.Date(input$date_from)) %>%
       nrow()
-  })
+  }) %>% bindCache(input$date_from, nrow(rv$sites), sites_fp())
+
+  # "Current" totals are clamped to date_to so the range is symmetric.
+  rand_at_to <- reactive({
+    req(input$date_to)
+    rv$log %>%
+      filter(action == "+1", as.Date(timestamp) <= as.Date(input$date_to)) %>%
+      nrow()
+  }) %>% bindCache(input$date_to, nrow(rv$log), log_fp())
+
+  sites_at_to <- reactive({
+    req(input$date_to)
+    rv$sites %>%
+      filter(!is.na(site_open_date),
+             as.Date(site_open_date) <= as.Date(input$date_to)) %>%
+      nrow()
+  }) %>% bindCache(input$date_to, nrow(rv$sites), sites_fp())
 
   # ── KPI outputs (preserve original IDs: n_sites, n_rand, n_pct, n_rand_sub) ──
   output$n_sites <- renderText({
@@ -44,24 +97,31 @@ overview_server <- function(input, output, session, state) {
                   error = function(e) 0)
     as.character(r)
   })
+  # Read the target from rv$trial_config (reactive) rather than the
+  # TRIAL_TARGET global so these update when the user switches trials.
+  trial_target_r <- reactive({ rv$trial_config$trial_target %||% 0L })
   output$n_pct <- renderText({
     r <- tryCatch(sum(filtered()$randomised, na.rm = TRUE),
                   error = function(e) 0)
-    paste0(round(100 * r / TRIAL_TARGET, 1), "%")
+    tgt <- trial_target_r()
+    if (tgt <= 0) return("\u2014")
+    paste0(round(100 * r / tgt, 1), "%")
   })
-  output$n_rand_sub <- renderText({ paste0("of ", TRIAL_TARGET, " trial target") })
+  output$n_rand_sub <- renderText({ paste0("of ", trial_target_r(), " trial target") })
 
   output$delta_sites <- renderUI({
-    delta_badge_ui(nrow(filtered()), sites_at_meeting(), " site")
+    delta_badge_ui(sites_at_to(), sites_at_meeting(), " site")
   })
   output$delta_rand <- renderUI({
-    delta_badge_ui(sum(filtered()$randomised, na.rm = TRUE), rand_at_meeting())
+    delta_badge_ui(rand_at_to(), rand_at_meeting())
   })
   output$delta_pct <- renderUI({
-    current <- sum(filtered()$randomised, na.rm = TRUE)
+    current <- rand_at_to()
     prev    <- rand_at_meeting()
-    if (is.null(prev)) return(NULL)
-    diff <- round((current - prev) / TRIAL_TARGET * 100, 1)
+    if (is.null(prev) || is.null(current)) return(NULL)
+    tgt <- trial_target_r()
+    if (tgt <= 0) return(NULL)
+    diff <- round((current - prev) / tgt * 100, 1)
     delta_badge_ui(diff, 0, "%")
   })
 
@@ -123,6 +183,15 @@ overview_server <- function(input, output, session, state) {
   # ── Settings panel toggle ────────────────────────────────────────────────
   observeEvent(input$toggle_proj_settings, {
     shinyjs::toggle("proj_settings_panel", anim = TRUE, animType = "slide")
+  })
+
+  # ── Portfolio review panel toggle (collapsed by default) ────────────────
+  pr_panel_open <- reactiveVal(FALSE)
+  observeEvent(input$toggle_pr_panel, {
+    pr_panel_open(!pr_panel_open())
+    shinyjs::toggle("pr_panel", anim = TRUE, animType = "slide")
+    shinyjs::html("pr_toggle_lbl",
+                  if (pr_panel_open()) "Hide chart" else "Show chart")
   })
 
   # ── Reset to defaults ────────────────────────────────────────────────────
@@ -187,7 +256,7 @@ overview_server <- function(input, output, session, state) {
     n_open <- sum(rv$sites$status %in% c("Open", "Recruiting"), na.rm = TRUE)
 
     .build_projection_series(rand_dates, n_open_now = n_open, settings = s,
-                             trial_target = TRIAL_TARGET)
+                             trial_target = trial_target_r())
   })
 
   # ── The chart ────────────────────────────────────────────────────────────
@@ -284,7 +353,7 @@ overview_server <- function(input, output, session, state) {
                  nameGap       = 42,
                  nameTextStyle = list(fontSize = 11, color = "#64748B"),
                  axisLabel     = list(fontSize = 10, color = "#64748B"),
-                 max           = TRIAL_TARGET,
+                 max           = trial_target_r(),
                  splitLine     = list(lineStyle = list(color = "#EEF3F8"))) %>%
         e_x_axis(axisLabel = list(rotate = 45,
                                    fontSize = 10,
@@ -303,7 +372,7 @@ overview_server <- function(input, output, session, state) {
     if (is.null(pd) || nrow(pd) == 0) return("")
 
     # Find first month where central projection >= target
-    hit_row <- which(pd$central >= TRIAL_TARGET)[1]
+    hit_row <- which(pd$central >= trial_target_r())[1]
     if (is.na(hit_row)) return("Target not reached within protocol window")
     est_date <- pd$month_date[hit_row]
     months_from_now <- as.integer(round(
@@ -425,6 +494,8 @@ overview_server <- function(input, output, session, state) {
       df %>% select(site_id, site_name, city, country, region, status_html,
                     siv_html, randomised, target, prog_html, monthly_target),
       striped = TRUE, highlight = TRUE, bordered = FALSE, compact = TRUE,
+      defaultPageSize = 25, showPageSizeOptions = TRUE,
+      pageSizeOptions = c(10, 25, 50, 100),
       defaultColDef = colDef(style = list(fontFamily = "Outfit", fontSize = "13px")),
       columns = list(
         site_id        = colDef(name = "Site ID", minWidth = 90,
@@ -443,4 +514,689 @@ overview_server <- function(input, output, session, state) {
       )
     )
   })
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Portfolio review chart (monthly schedule)
+  # ══════════════════════════════════════════════════════════════════════════
+  # Six series, layout matches the BCTU Portfolio Review Table workbook:
+  #   col B  Pts — original projection, monthly       (imported from Excel)
+  #   col C  Pts — actual, monthly                    (auto: rv$raw_redcap)
+  #   col D  Pts — original projection, cumulative    (imported)
+  #   col E  Pts — actual, cumulative                 (auto: cumulative of C)
+  #   col F  Sites — projected, cumulative            (imported)
+  #   col G  Sites — actual, cumulative               (auto: rv$sites)
+  # Projected series come from the imported Excel — no manual entry.
+  # Actuals are computed live from dashboard data each render.
+
+  PR_PROJECTED_DEFS <- list(
+    list(key   = "proj_pts_monthly",
+         label = "Pts — original projection, monthly",
+         color = "#0F172A", lty = "solid", lw = 1.5,
+         match = c("pts - original projection, monthly",
+                   "pts.*projection.*monthly",
+                   "projected.*monthly",
+                   "original.*monthly")),
+    list(key   = "proj_pts_cum",
+         label = "Pts — original projection, cumulative",
+         color = "#7C3AED", lty = "solid", lw = 2.5,
+         match = c("pts - original projection, cumulative",
+                   "pts.*projection.*cumulative",
+                   "projected.*cumulative",
+                   "original.*cumulative")),
+    list(key   = "proj_sites_cum",
+         label = "Sites — projected, cumulative",
+         color = "#0EA5E9", lty = "solid", lw = 1.5,
+         match = c("sites - projected, cumulative",
+                   "sites.*projected.*cumulative",
+                   "sites.*projection.*cumulative",
+                   "centres.*projected.*cumulative"))
+  )
+
+  # Auto-computed series — derived from rv$raw_redcap / rv$sites at chart time.
+  PR_ACTUAL_DEFS <- list(
+    list(key   = "actual_pts_monthly",
+         label = "Pts — actual, monthly",
+         color = "#10B981", lty = "dashed", lw = 1.5,
+         source = "Auto from REDCap randomisation dates"),
+    list(key   = "actual_pts_cum",
+         label = "Pts — actual, cumulative",
+         color = "#059669", lty = "dashed", lw = 2.0,
+         source = "Auto: cumulative actual recruits"),
+    list(key   = "actual_sites_cum",
+         label = "Sites — actual, cumulative",
+         color = "#F59E0B", lty = "dashed", lw = 1.5,
+         source = "Auto from Sites tab — date centre opened")
+  )
+
+  # Order on chart matches the workbook column order: proj-monthly, actual-
+  # monthly, proj-cum, actual-cum, proj-sites, actual-sites.
+  PR_SERIES_DEFS <- list(
+    PR_PROJECTED_DEFS[[1]],   # proj_pts_monthly
+    PR_ACTUAL_DEFS[[1]],      # actual_pts_monthly
+    PR_PROJECTED_DEFS[[2]],   # proj_pts_cum
+    PR_ACTUAL_DEFS[[2]],      # actual_pts_cum
+    PR_PROJECTED_DEFS[[3]],   # proj_sites_cum
+    PR_ACTUAL_DEFS[[3]]       # actual_sites_cum
+  )
+
+  # Default month sequence — 27 months starting March of the current year.
+  .pr_default_months <- function(n_months = 27, start = NULL) {
+    if (is.null(start) || !inherits(start, "Date")) {
+      start <- as.Date(sprintf("%d-03-01", as.integer(format(Sys.Date(), "%Y"))))
+    }
+    seq(start, by = "month", length.out = n_months)
+  }
+
+  # Parse the BCTU Portfolio Review Table workbook (column-oriented). The
+  # file has one row per month and one column per series:
+  #   col A  Month (Excel date serial — converted to Date)
+  #   col B  Pts - original projection, monthly
+  #   col C  Pts - actual, monthly
+  #   col D  Pts - original projection, cumulative
+  #   col E  Pts - actual, cumulative
+  #   col F  Sites - projected, cumulative
+  #   col G  Sites - actual, cumulative
+  # Returns: list(start_date, n_months, series = named list of numeric vectors,
+  # months = Date vector). Errors with a helpful message on bad input.
+  .pr_import_excel <- function(path) {
+    if (is.null(path) || !nzchar(trimws(path)))
+      stop("Enter the path to your Excel project plan first.")
+    path <- trimws(path)
+    if (!file.exists(path))
+      stop("File not found: ", path)
+    ext <- tolower(tools::file_ext(path))
+    if (!ext %in% c("xlsx", "xls", "xlsm"))
+      stop("Not an Excel file (expected .xlsx/.xls/.xlsm)")
+    if (!requireNamespace("readxl", quietly = TRUE))
+      stop("readxl package not installed (install.packages('readxl'))")
+
+    # Read with col_names = TRUE so column headers come back as names.
+    raw <- tryCatch(
+      readxl::read_excel(path, col_names = TRUE, .name_repair = "minimal",
+                         sheet = 1),
+      error = function(e) stop("Couldn't read the workbook: ", e$message)
+    )
+    raw <- as.data.frame(raw, stringsAsFactors = FALSE)
+    if (!nrow(raw) || ncol(raw) < 2)
+      stop("Workbook is empty or has fewer than 2 columns.")
+
+    # Column 1 = months. Excel serial numbers come back as numeric on read;
+    # explicit dates come back as POSIXct. Handle both.
+    raw_months <- raw[[1]]
+    if (is.numeric(raw_months)) {
+      months <- as.Date(raw_months, origin = "1899-12-30")
+    } else if (inherits(raw_months, c("POSIXct", "POSIXt"))) {
+      months <- as.Date(raw_months)
+    } else {
+      months <- suppressWarnings(as.Date(as.character(raw_months)))
+    }
+    keep <- !is.na(months)
+    if (!any(keep))
+      stop("Couldn't parse any dates from column A.")
+    months <- months[keep]
+    raw    <- raw[keep, , drop = FALSE]
+
+    # Match each projected series against the column headers (regex on tolower).
+    headers <- tolower(trimws(as.character(names(raw))))
+    found <- list()
+    for (def in PR_PROJECTED_DEFS) {
+      hit <- NA_integer_
+      for (j in seq_along(headers)) {
+        h <- headers[j]
+        if (!nzchar(h)) next
+        if (any(vapply(def$match,
+                       function(p) grepl(p, h, perl = TRUE,
+                                          ignore.case = TRUE),
+                       logical(1)))) {
+          hit <- j; break
+        }
+      }
+      if (!is.na(hit)) {
+        v <- suppressWarnings(as.numeric(raw[[hit]]))
+        v[is.na(v)] <- 0
+        found[[def$key]] <- v
+      }
+    }
+    if (!length(found))
+      stop("No matching projected-series columns found. Headers seen: ",
+           paste(headers, collapse = " | "))
+
+    list(
+      start_date = min(months),
+      n_months   = length(months),
+      months     = months,
+      series     = found
+    )
+  }
+
+  # Try multiple plausible column names for the randomisation datetime.
+  # `fld()` reads from the active trial config; we then try common fall-backs.
+  .pr_rand_col <- function(df) {
+    if (is.null(df) || !ncol(df)) return(NA_character_)
+    cands <- character(0)
+    cfg_col <- tryCatch(fld("randomisation_datetime",
+                            default = "rand_dttm_s"),
+                        error = function(e) NULL)
+    if (!is.null(cfg_col)) cands <- c(cands, cfg_col)
+    cands <- c(cands, "rand_dttm_s", "rand_dttm", "rand_date",
+               "randomisation_date", "randomization_date",
+               "date_randomised", "date_of_randomisation")
+    for (c in cands) if (c %in% names(df)) return(c)
+    # Last-ditch: any column containing "rand" + "dt" / "date".
+    nm <- tolower(names(df))
+    hit <- which(grepl("rand", nm) & grepl("dt|date", nm))
+    if (length(hit)) return(names(df)[hit[1]])
+    NA_character_
+  }
+
+  # Bucket a Date vector into month indices relative to start_date (1-based).
+  .pr_month_index <- function(d, start_date) {
+    (as.integer(format(d, "%Y")) - as.integer(format(start_date, "%Y"))) * 12L +
+    (as.integer(format(d, "%m")) - as.integer(format(start_date, "%m"))) + 1L
+  }
+
+  # Pts — actual, monthly: count of randomisations falling in each month.
+  .pr_actual_pts_monthly <- function(start_date, n_months) {
+    out <- rep(0L, n_months)
+    df  <- rv$raw_redcap
+    if (is.null(df) || !nrow(df)) return(out)
+    rand_col <- .pr_rand_col(df)
+    if (is.na(rand_col)) return(out)
+    d <- suppressWarnings(as.Date(df[[rand_col]]))
+    d <- d[!is.na(d)]
+    if (!length(d)) return(out)
+    idx  <- .pr_month_index(d, start_date)
+    keep <- idx >= 1L & idx <= n_months
+    if (any(keep)) out <- as.integer(tabulate(idx[keep], nbins = n_months))
+    out
+  }
+
+  # Pts — actual, cumulative: any pre-window randomisations + cumsum within.
+  .pr_actual_pts_cumulative <- function(start_date, n_months) {
+    monthly <- .pr_actual_pts_monthly(start_date, n_months)
+    pre <- 0L
+    df  <- rv$raw_redcap
+    if (!is.null(df) && nrow(df)) {
+      rand_col <- .pr_rand_col(df)
+      if (!is.na(rand_col)) {
+        d <- suppressWarnings(as.Date(df[[rand_col]]))
+        pre <- sum(!is.na(d) & d < start_date)
+      }
+    }
+    as.integer(pre + cumsum(monthly))
+  }
+
+  # Sites — actual, cumulative: count of sites whose site_open_date is on or
+  # before the last day of each month in the window.
+  .pr_actual_sites_cumulative <- function(start_date, n_months) {
+    out <- rep(0L, n_months)
+    df  <- rv$sites
+    if (is.null(df) || !nrow(df)) return(out)
+    if (!"site_open_date" %in% names(df)) return(out)
+    d <- suppressWarnings(as.Date(df$site_open_date))
+    d <- d[!is.na(d)]
+    if (!length(d)) return(out)
+    starts <- seq(start_date, by = "month", length.out = n_months + 1)
+    eom <- starts[-1] - 1L
+    for (i in seq_len(n_months)) out[i] <- sum(d <= eom[i])
+    as.integer(out)
+  }
+
+  # ── Reactive state ───────────────────────────────────────────────────────
+  # Projected series are populated by Excel import (no manual entry).
+  # Stored as a list keyed by series id; loaded from overrides.json on trial
+  # change. Always coerced to numeric so format()/round() never errors.
+  pr_n_months   <- reactiveVal(27L)
+  pr_start_date <- reactiveVal(.pr_default_months(1)[1])
+  pr_excel_path_state <- reactiveVal("")
+  pr_proj <- reactiveVal(list())   # named list of numeric vectors
+
+  observeEvent(rv$trial_config, {
+    cfg   <- rv$trial_config
+    saved <- cfg$portfolio_review %||% list()
+
+    n <- suppressWarnings(as.integer(saved$n_months %||% 27L))
+    if (is.na(n) || n < 1) n <- 27L
+    if (n > 120) n <- 120L
+    pr_n_months(n)
+
+    sd <- tryCatch(as.Date(saved$start_month %||% NA), error = function(e) NA)
+    if (is.na(sd)) sd <- .pr_default_months(1)[1]
+    pr_start_date(sd)
+
+    pr_excel_path_state(as.character(saved$excel_path %||% ""))
+
+    # Coerce loaded series to numeric (JSON may bring them back as character).
+    raw_series <- saved$series %||% list()
+    cleaned <- lapply(raw_series, function(v) {
+      v <- suppressWarnings(as.numeric(unlist(v)))
+      v[is.na(v)] <- 0
+      v
+    })
+    pr_proj(cleaned)
+  }, ignoreNULL = FALSE)
+
+  # ── Form (import-only — no manual data entry) ────────────────────────────
+  output$pr_form_ui <- renderUI({
+    n   <- pr_n_months()
+    sd  <- pr_start_date()
+    saved_path  <- pr_excel_path_state()
+    proj_state  <- pr_proj()
+
+    # One small read-only line per series, showing whether data is loaded
+    # and (where applicable) the highest value reached.
+    series_summary <- function(def, vals, source = NULL) {
+      pill_cls   <- "pr-summary-empty"
+      pill_text  <- "—"
+      vals_safe  <- suppressWarnings(as.numeric(vals))
+      vals_safe  <- vals_safe[!is.na(vals_safe)]
+      if (length(vals_safe) > 0 && any(vals_safe != 0)) {
+        pill_cls  <- "pr-summary-ok"
+        pill_text <- sprintf("%d values · max %s",
+                             length(vals_safe),
+                             format(max(vals_safe), big.mark = ","))
+      }
+      div(class = "pr-summary-row",
+          tags$span(class = "pr-color-dot",
+                    style = sprintf("background:%s;", def$color)),
+          div(class = "pr-summary-meta",
+              div(class = "pr-summary-label", def$label),
+              if (!is.null(source))
+                div(class = "pr-summary-source", source)),
+          tags$span(class = paste("pr-summary-pill", pill_cls), pill_text))
+    }
+
+    proj_rows <- lapply(PR_PROJECTED_DEFS, function(s)
+      series_summary(s, proj_state[[s$key]]))
+    actual_rows <- lapply(PR_ACTUAL_DEFS, function(s)
+      series_summary(s, NULL, source = s$source))
+
+    div(
+      tags$style(HTML("
+        .pr-import-card {
+          background:#F8FAFD; border:1px solid #DDE5EE; border-radius:10px;
+          padding:12px 14px; margin-bottom:14px;
+        }
+        .pr-import-row { display:grid; grid-template-columns:1fr auto; gap:8px;
+                         align-items:center; }
+        .pr-controls { display:grid; grid-template-columns:1fr 1fr; gap:10px;
+                       margin-bottom:12px; }
+        .pr-section-eye {
+          font-size:10px; font-weight:700; color:#1B4F6B;
+          text-transform:uppercase; letter-spacing:.6px; margin:14px 0 8px;
+        }
+        .pr-summary-row {
+          display:flex; align-items:center; gap:10px; padding:8px 10px;
+          background:#FFFFFF; border:1px solid #EEF3F8; border-radius:8px;
+          margin-bottom:6px;
+        }
+        .pr-color-dot {
+          width:11px; height:11px; border-radius:50%; flex-shrink:0;
+          border:1px solid rgba(15,23,42,.15);
+        }
+        .pr-summary-meta { flex:1; min-width:0; }
+        .pr-summary-label { font-size:12px; font-weight:600; color:#0F172A; }
+        .pr-summary-source { font-size:10.5px; color:#64748B; font-style:italic;
+                             margin-top:1px; }
+        .pr-summary-pill {
+          font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px;
+          letter-spacing:.3px; flex-shrink:0; white-space:nowrap;
+        }
+        .pr-summary-empty { background:#F1F5F9; color:#94A3B8; }
+        .pr-summary-ok    { background:#D4F5EC; color:#0F6E56; }
+      ")),
+
+      # Excel import card — the only way data enters this chart.
+      div(class = "pr-import-card",
+        div(style = "font-size:11.5px;font-weight:600;color:#0F172A;margin-bottom:6px;",
+            HTML("&#128193; Excel project plan")),
+        div(class = "pr-import-row",
+            textInput("pr_excel_path", label = NULL,
+                      value = saved_path, width = "100%",
+                      placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/Portfolio Review.xlsx"),
+            actionButton("pr_excel_import", "Import",
+                         class = "btn-primary-sm")),
+        div(style = "font-size:10.5px;color:#64748B;margin-top:6px;line-height:1.5;",
+            "Workbook must have one row per month. Column A = month dates, ",
+            "with one column per series labelled like ",
+            tags$em("Pts - original projection, monthly"), ", ",
+            tags$em("Pts - original projection, cumulative"), ", ",
+            tags$em("Sites - projected, cumulative"), ".")
+      ),
+
+      div(class = "pr-controls",
+          div(tags$label("Start month",
+                         style = "font-size:11px;font-weight:600;color:#0F172A;
+                                  margin-bottom:3px;display:block;"),
+              div(style = "padding:7px 10px;background:#F8FAFD;border:1px solid #E2E8EE;
+                           border-radius:6px;font-size:12px;color:#0F172A;
+                           font-variant-numeric:tabular-nums;",
+                  format(sd, "%b %Y"))),
+          div(tags$label("Number of months",
+                         style = "font-size:11px;font-weight:600;color:#0F172A;
+                                  margin-bottom:3px;display:block;"),
+              div(style = "padding:7px 10px;background:#F8FAFD;border:1px solid #E2E8EE;
+                           border-radius:6px;font-size:12px;color:#0F172A;
+                           font-variant-numeric:tabular-nums;", n))),
+
+      div(class = "pr-section-eye", "Projected (from Excel)"),
+      proj_rows,
+
+      div(class = "pr-section-eye", "Actual (auto-computed)"),
+      actual_rows,
+
+      div(style = "margin-top:14px;",
+          downloadButton("pr_download_png",
+                         HTML("&#x21E9; Download PNG (chart + table)"),
+                         class = "btn-primary-sm",
+                         style = "background:#1B4F6B;color:#fff;border-color:#1B4F6B;
+                                  font-weight:600;width:100%;"))
+    )
+  })
+
+  # ── Reactive bundling all 6 series + months ──────────────────────────────
+  # Projected series: pr_proj() (loaded from JSON or import).
+  # Actual series:    computed from rv$raw_redcap / rv$sites every render
+  #                   (so the chain auto-invalidates when CSV is uploaded).
+  pr_data <- reactive({
+    n  <- pr_n_months()
+    sd <- pr_start_date()
+    months_seq <- .pr_default_months(n, sd)
+    months_lbl <- format(months_seq, "%b-%y")
+    df <- data.frame(month = months_lbl, stringsAsFactors = FALSE)
+
+    proj <- pr_proj()
+    pad_or_zero <- function(v, n) {
+      v <- suppressWarnings(as.numeric(unlist(v)))
+      v[is.na(v)] <- 0
+      if (length(v) >= n) v[seq_len(n)] else c(v, rep(0, n - length(v)))
+    }
+    df$proj_pts_monthly <- pad_or_zero(proj$proj_pts_monthly, n)
+    df$proj_pts_cum     <- pad_or_zero(proj$proj_pts_cum,     n)
+    df$proj_sites_cum   <- pad_or_zero(proj$proj_sites_cum,   n)
+
+    df$actual_pts_monthly  <- .pr_actual_pts_monthly(sd, n)
+    df$actual_pts_cum      <- .pr_actual_pts_cumulative(sd, n)
+    df$actual_sites_cum    <- .pr_actual_sites_cumulative(sd, n)
+
+    df$month <- factor(df$month, levels = df$month)
+    df
+  })
+
+  output$pr_chart <- renderEcharts4r({
+    df <- pr_data()
+    if (is.null(df) || !nrow(df))
+      return(empty_echart("Import an Excel project plan to populate the chart"))
+    cfg <- rv$trial_config
+    title <- sprintf("%s — Projected and actual recruitment",
+                     cfg$short_name %||% toupper(cfg$code %||% "Trial"))
+    chart <- df |> echarts4r::e_charts(month)
+    for (s in PR_SERIES_DEFS) {
+      chart <- chart |> echarts4r::e_line_(
+        serie       = s$key,
+        name        = s$label,
+        symbol      = if (s$lty == "solid") "rect" else "circle",
+        symbolSize  = 5,
+        showSymbol  = TRUE,
+        connectNulls = TRUE,
+        lineStyle   = list(color = s$color, width = s$lw,
+                           type  = if (s$lty == "dashed") "dashed" else "solid"),
+        itemStyle   = list(color = s$color)
+      )
+    }
+    chart |>
+      echarts4r::e_title(title, left = "center",
+                         textStyle = list(color = "#1B4F6B", fontSize = 16,
+                                          fontWeight = 700)) |>
+      echarts4r::e_tooltip(trigger = "axis") |>
+      echarts4r::e_legend(top = 30,
+                          textStyle = list(fontSize = 11, color = "#475569")) |>
+      echarts4r::e_grid(left = 60, right = 30, top = 110, bottom = 60) |>
+      echarts4r::e_x_axis(axisLabel = list(rotate = 45, fontSize = 10,
+                                           color = "#64748B"),
+                          axisLine = list(lineStyle = list(color = "#CBD5E1"))) |>
+      echarts4r::e_y_axis(axisLabel = list(fontSize = 10, color = "#64748B"),
+                          splitLine = list(lineStyle = list(color = "#EEF3F8")))
+  })
+
+  # ── Data table that mirrors the Excel layout (rows = series, cols = months)
+  # Rendered below the chart so what the user sees is exactly what gets baked
+  # into the downloaded PNG.
+  output$pr_data_table <- renderUI({
+    df <- pr_data()
+    if (is.null(df) || !nrow(df)) return(NULL)
+    months <- as.character(df$month)
+    header <- tags$tr(
+      tags$th(class = "pr-tbl-rowhead", "Series"),
+      lapply(months, function(m) tags$th(class = "pr-tbl-mhead", m)))
+    body_rows <- lapply(PR_SERIES_DEFS, function(s) {
+      vals <- df[[s$key]]
+      tags$tr(
+        tags$td(class = "pr-tbl-rowhead",
+          tags$span(class = "pr-color-dot",
+                    style = sprintf("background:%s;margin-right:6px;
+                                     display:inline-block;vertical-align:middle;",
+                                    s$color)),
+          s$label),
+        lapply(vals, function(v) tags$td(class = "pr-tbl-val",
+          if (is.na(v)) "" else format(round(v, 1), big.mark = ",",
+                                       trim = TRUE, scientific = FALSE))))
+    })
+    div(class = "pr-tbl-wrap",
+        tags$style(HTML("
+          .pr-tbl-wrap { overflow-x:auto; border:1px solid #E2E8EE;
+                         border-radius:8px; background:#fff; margin-top:10px; }
+          .pr-tbl { border-collapse:collapse; font-size:11.5px;
+                    font-family:-apple-system, system-ui, sans-serif;
+                    white-space:nowrap; min-width:100%; }
+          .pr-tbl th, .pr-tbl td { padding:6px 10px; }
+          .pr-tbl-rowhead { background:#F8FAFD; color:#0F172A; font-weight:600;
+                            text-align:left; border-bottom:1px solid #E2E8EE;
+                            border-right:1px solid #E2E8EE; position:sticky;
+                            left:0; }
+          .pr-tbl-mhead { background:#1B4F6B; color:#fff; font-weight:600;
+                          text-align:center; font-size:11px; }
+          .pr-tbl-val { text-align:right; color:#1B4F6B; font-weight:500;
+                        font-variant-numeric:tabular-nums;
+                        border-bottom:1px solid #EEF3F8; }
+          .pr-tbl tr:last-child td { border-bottom:none; }
+        ")),
+        tags$table(class = "pr-tbl",
+                   tags$thead(header),
+                   tags$tbody(body_rows)))
+  })
+
+  # ── Save / Reset / Excel import / PNG download ──────────────────────────
+  observeEvent(input$pr_save, {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    n <- pr_n_months()
+    proj <- pr_proj()
+    series <- setNames(
+      lapply(PR_PROJECTED_DEFS, function(s) {
+        v <- suppressWarnings(as.numeric(unlist(proj[[s$key]])))
+        v[is.na(v)] <- 0
+        if (length(v) >= n) v[seq_len(n)] else c(v, rep(0, n - length(v)))
+      }),
+      vapply(PR_PROJECTED_DEFS, `[[`, character(1), "key"))
+    payload <- list(
+      n_months    = n,
+      start_month = format(pr_start_date(), "%Y-%m-%d"),
+      excel_path  = trimws(input$pr_excel_path %||% pr_excel_path_state()),
+      series      = series
+    )
+    tryCatch({
+      update_overrides(cfg, portfolio_review = payload)
+      rv$trial_config$portfolio_review <- payload
+      pr_excel_path_state(payload$excel_path)
+      showNotification(HTML("&check; Portfolio review chart saved."),
+                       type = "message", duration = 4)
+    }, error = function(e) {
+      showNotification(paste("Save failed:", e$message),
+                       type = "error", duration = 8)
+    })
+  })
+
+  observeEvent(input$pr_reset, {
+    pr_n_months(27L)
+    pr_start_date(.pr_default_months(1)[1])
+    pr_proj(list())
+    pr_excel_path_state("")
+    showNotification("Portfolio review chart reset.",
+                     type = "message", duration = 3)
+  })
+
+  observeEvent(input$pr_excel_import, {
+    path <- input$pr_excel_path %||% ""
+    res <- tryCatch(.pr_import_excel(path),
+                    error = function(e) {
+                      showNotification(paste("Import failed:", e$message),
+                                       type = "error", duration = 10)
+                      NULL
+                    })
+    if (is.null(res)) return()
+
+    pr_n_months(max(1L, as.integer(res$n_months)))
+    if (!is.null(res$start_date) && !is.na(res$start_date))
+      pr_start_date(res$start_date)
+    pr_proj(res$series)
+    pr_excel_path_state(trimws(path))
+
+    showNotification(
+      HTML(sprintf("&check; Imported %d projected series from <code>%s</code>.
+                    Window: %d months from %s.",
+                   length(res$series),
+                   htmltools::htmlEscape(basename(path)),
+                   res$n_months, format(res$start_date, "%b %Y"))),
+      type = "message", duration = 7)
+  })
+
+  # ── PNG download (chart + table baked into a single image) ──────────────
+  output$pr_download_png <- downloadHandler(
+    filename = function() {
+      cfg  <- rv$trial_config
+      slug <- gsub("[^A-Za-z0-9]", "_", cfg$short_name %||% "trial")
+      sprintf("%s_portfolio_review_%s.png", slug, format(Sys.Date(), "%Y-%m-%d"))
+    },
+    content = function(file) {
+      df <- pr_data()
+      if (is.null(df) || !nrow(df)) {
+        showNotification("Nothing to render — import the Excel project plan first.",
+                         type = "warning", duration = 6)
+        return()
+      }
+      cfg   <- rv$trial_config
+      title <- sprintf("%s — Projected and actual recruitment",
+                       cfg$short_name %||% toupper(cfg$code %||% "Trial"))
+
+      ok <- tryCatch({
+        .pr_render_png(file = file, df = df, title = title,
+                       series_defs = PR_SERIES_DEFS)
+        TRUE
+      }, error = function(e) {
+        showNotification(paste("PNG generation failed:", e$message),
+                         type = "error", duration = 10)
+        FALSE
+      })
+      if (!isTRUE(ok)) return()
+    }
+  )
+}
+
+# =============================================================================
+# Render a portfolio-review PNG: chart on top, data table beneath. Uses ggplot2
+# (always available) for the chart and gridExtra::tableGrob (preferred) for
+# the table. Falls back to a chart-only PNG when gridExtra isn't installed.
+# Standalone so it's testable outside the Shiny session.
+# =============================================================================
+.pr_render_png <- function(file, df, title, series_defs,
+                            width = 14, height = 9, dpi = 150) {
+  if (!requireNamespace("ggplot2", quietly = TRUE))
+    stop("ggplot2 not installed (install.packages('ggplot2'))")
+  if (!requireNamespace("tidyr", quietly = TRUE) &&
+      !requireNamespace("reshape2", quietly = TRUE))
+    stop("tidyr or reshape2 needed for long-form reshape")
+
+  # Long-format for ggplot
+  series_keys  <- vapply(series_defs, `[[`, character(1), "key")
+  series_lbls  <- vapply(series_defs, `[[`, character(1), "label")
+  series_cols  <- vapply(series_defs, `[[`, character(1), "color")
+  series_lty   <- vapply(series_defs, `[[`, character(1), "lty")
+  series_lw    <- vapply(series_defs, `[[`, numeric(1),   "lw")
+
+  long <- if (requireNamespace("tidyr", quietly = TRUE)) {
+    tidyr::pivot_longer(df, cols = all_of(series_keys),
+                        names_to = "series", values_to = "value")
+  } else {
+    do.call(rbind, lapply(series_keys, function(k)
+      data.frame(month = df$month, series = k, value = df[[k]],
+                 stringsAsFactors = FALSE)))
+  }
+  long$series <- factor(long$series, levels = series_keys, labels = series_lbls)
+
+  p <- ggplot2::ggplot(long, ggplot2::aes(x = month, y = value, group = series,
+                                          colour = series, linetype = series)) +
+    ggplot2::geom_line(linewidth = 0.7) +
+    ggplot2::geom_point(size = 1.4) +
+    ggplot2::scale_colour_manual(values = setNames(series_cols, series_lbls)) +
+    ggplot2::scale_linetype_manual(values = setNames(
+      ifelse(series_lty == "dashed", "dashed", "solid"), series_lbls)) +
+    ggplot2::labs(title = title, x = NULL, y = NULL,
+                  colour = NULL, linetype = NULL) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      plot.title         = ggplot2::element_text(face = "bold", colour = "#1B4F6B",
+                                                 size = 14, hjust = 0.5),
+      legend.position    = "top",
+      legend.text        = ggplot2::element_text(size = 9, colour = "#475569"),
+      panel.grid.minor   = ggplot2::element_blank(),
+      panel.grid.major   = ggplot2::element_line(colour = "#EEF3F8"),
+      axis.text.x        = ggplot2::element_text(angle = 45, hjust = 1,
+                                                 size = 8, colour = "#64748B"),
+      axis.text.y        = ggplot2::element_text(size = 8, colour = "#64748B"),
+      plot.margin        = ggplot2::margin(10, 14, 6, 14)) +
+    ggplot2::guides(colour   = ggplot2::guide_legend(nrow = 2),
+                    linetype = ggplot2::guide_legend(nrow = 2))
+
+  # Table grob — rows = series, cols = months. Falls back to chart-only if
+  # gridExtra is missing.
+  if (requireNamespace("gridExtra", quietly = TRUE) &&
+      requireNamespace("grid", quietly = TRUE)) {
+    tbl <- as.data.frame(t(df[, series_keys, drop = FALSE]),
+                         stringsAsFactors = FALSE)
+    colnames(tbl) <- as.character(df$month)
+    tbl <- cbind(Series = series_lbls, tbl)
+    # Format numeric cells nicely
+    for (j in 2:ncol(tbl)) {
+      tbl[[j]] <- vapply(tbl[[j]], function(v) {
+        v <- suppressWarnings(as.numeric(v))
+        if (is.na(v)) "" else format(round(v, 1), big.mark = ",",
+                                     trim = TRUE, scientific = FALSE)
+      }, character(1))
+    }
+    tt <- gridExtra::ttheme_minimal(
+      core = list(fg_params = list(cex = 0.62, hjust = 1, x = 0.95),
+                  bg_params = list(fill = c("#FFFFFF", "#F8FAFD"))),
+      colhead = list(fg_params = list(cex = 0.62, col = "#FFFFFF",
+                                       fontface = "bold"),
+                     bg_params = list(fill = "#1B4F6B")),
+      rowhead = list(fg_params = list(cex = 0.62, hjust = 0, x = 0.02,
+                                       fontface = "bold", col = "#0F172A"),
+                     bg_params = list(fill = "#F1F5F9"))
+    )
+    g_table <- gridExtra::tableGrob(tbl[, -1, drop = FALSE],
+                                    rows = tbl$Series, theme = tt)
+    grDevices::png(file, width = width, height = height, units = "in",
+                   res = dpi, type = "cairo")
+    on.exit(grDevices::dev.off(), add = TRUE)
+    gridExtra::grid.arrange(p, g_table, ncol = 1, heights = c(2.2, 1))
+  } else {
+    grDevices::png(file, width = width, height = height, units = "in",
+                   res = dpi, type = "cairo")
+    on.exit(grDevices::dev.off(), add = TRUE)
+    print(p)
+    message("gridExtra not installed — saved chart only without the table. ",
+            "Install with: install.packages('gridExtra')")
+  }
+  invisible(file)
 }

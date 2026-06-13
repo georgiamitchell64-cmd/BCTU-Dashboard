@@ -16,7 +16,7 @@ trial_config <- list(
   category     = "Surgery",
 
   # ── Branding ───────────────────────────────────────────────────────────────
-  logo_file = NULL,   # will look for trials/tonic/www/TONIC_Logo.jpg
+  logo_file = "trials/tonic/www/logo.png",
   colors = list(
     primary   = "#1B4F6B",
     secondary = "#2EC4A5",
@@ -77,6 +77,16 @@ trial_config <- list(
     randomisation_complete  = "randomisation_complete",
     consent_complete        = "consent_eligibility_complete",
     discharge_complete      = "discharge_complete",
+
+    # Timepoint form-completion fields driving the Data-tab donut NUMERATORS.
+    # The donut shows "<forms complete> / <number randomised>".
+    # The post-operation form is LONGITUDINAL — the same `post_operation_complete`
+    # variable is recorded at both the day_30_arm_1 and day_90_arm_1 events — so
+    # participants_server counts it per redcap_event_name (see redcap_events
+    # above) to keep Day 30 and Day 90 separate. discharge_complete (above)
+    # drives the Discharge donut.
+    day30_complete          = "post_operation_complete",
+    day90_complete          = "post_operation_complete",
 
     # Sub-form completion / safety fields
     sae_complete                    = "sae_complete",

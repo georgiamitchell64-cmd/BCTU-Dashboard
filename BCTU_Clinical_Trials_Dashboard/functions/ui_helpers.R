@@ -14,12 +14,24 @@ tonic_card <- function(..., title = NULL, amber = FALSE, tools = NULL, full_scre
   )
 }
 
+# Single source of truth for Font Awesome icon tags.
+# Accepts a bare FA name ("hospital"), an explicit class ("fa-solid fa-hospital"),
+# or a Shiny icon() result — returns a normalised <i> tag with the fixed-width
+# modifier. Use this anywhere you'd previously call tags$i(class = "fa-...") or
+# shiny::icon(): keeps look + DOM consistent across all modules.
+fa_icon <- function(name, style = "solid", fw = TRUE) {
+  if (inherits(name, "shiny.tag")) return(name)
+  cls <- if (grepl("^fa-", name, fixed = FALSE)) name else sprintf("fa-%s fa-%s", style, name)
+  if (fw && !grepl("fa-fw", cls)) cls <- paste(cls, "fa-fw")
+  tags$i(class = cls)
+}
+
 vbox_html <- function(icon_class, label, value_id, sub, top_color = "#2EC4A5", delta_id = NULL, icon_bg = "background:#E8F0F5;color:#1B4F6B") {
   delta_span <- if (!is.null(delta_id)) span(uiOutput(delta_id, inline = TRUE)) else NULL
   div(
     class = "tonic-vbox",
     style = paste0("border-top-color:", top_color),
-    div(class = "tonic-vbox-icon", style = icon_bg, tags$i(class = icon_class)),
+    div(class = "tonic-vbox-icon", style = icon_bg, fa_icon(icon_class)),
     div(class = "tonic-vbox-label", label),
     div(style = "display:flex;align-items:baseline;gap:6px", div(class = "tonic-vbox-value", textOutput(value_id, inline = TRUE)), delta_span),
     div(class = "tonic-vbox-sub", sub)
@@ -27,7 +39,7 @@ vbox_html <- function(icon_class, label, value_id, sub, top_color = "#2EC4A5", d
 }
 
 nav_btn <- function(id, label, fa_class) {
-  actionButton(id, icon = tags$i(class = paste("fa-solid fa-fw", fa_class)), label, class = "sidebar-nav-btn", width = "100%")
+  actionButton(id, icon = fa_icon(fa_class), label, class = "sidebar-nav-btn", width = "100%")
 }
 
 status_pill_html <- function(status) {
@@ -45,11 +57,30 @@ prog_bar_html <- function(actual, target) {
 }
 
 empty_reactable <- function(msg = "No data") {
-  reactable(data.frame(Message = msg), columns = list(Message = colDef(minWidth = 300)))
+  reactable::reactable(
+    data.frame(Message = msg),
+    columns = list(
+      Message = reactable::colDef(
+        minWidth = 300,
+        style = list(color = "#94A3B8", fontStyle = "italic",
+                     fontFamily = "Outfit, sans-serif", fontSize = "12px")
+      )
+    ),
+    bordered = FALSE, highlight = FALSE, compact = TRUE
+  )
 }
 
 empty_echart <- function(msg = "No data") {
-  e_charts() %>%
+  # A bare e_charts() (no series) makes echarts' renderer throw
+  # "Cannot read properties of undefined (reading 'group')" in the browser,
+  # so plot a single transparent bar to give it something to initialise with.
+  data.frame(x = "—", y = 0) %>%
+    e_charts(x) %>%
+    e_bar(y, legend = FALSE, itemStyle = list(color = "transparent")) %>%
     e_title(subtext = msg, subtextStyle = list(color = col_muted, fontFamily = "Outfit", fontSize = 13)) %>%
+    e_x_axis(show = FALSE) %>%
+    e_y_axis(show = FALSE) %>%
+    e_legend(show = FALSE) %>%
+    e_tooltip(show = FALSE) %>%
     e_grid(top = "30%")
 }

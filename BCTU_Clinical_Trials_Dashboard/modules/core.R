@@ -7,6 +7,10 @@ init_app_state <- function(input, output, session) {
     available_trials = available_trials,
     trial_config     = NULL,
     trial_code       = NULL,
+    # ── Multi-WP state ─────────────────────────────────────────────────────
+    # NULL means "Overview / All work packages". Otherwise an integer index
+    # into cfg$work_packages so downstream code can look up the WP label.
+    active_wp        = NULL,
 
     # ── Per-trial data (loaded after trial selection) ─────────────────────
     sites        = empty_sites,
@@ -23,6 +27,18 @@ init_app_state <- function(input, output, session) {
     # ── Triggers ───────────────────────────────────────────────────────────
     trigger_data_load = NULL
   )
+
+  # ── Session-scope the trial globals ────────────────────────────────────────
+  # apply_trial_globals() sets process-wide globals (TRIAL_TARGET, DATA_DIR,
+  # DB_PATH, .TRIAL_CFG). With several concurrent users on different trials,
+  # whoever selected a trial last would win and other sessions would read —
+  # and worse, db_save to — the wrong trial's database. Shiny runs one
+  # session's flush at a time, so re-applying this session's config before
+  # every flush makes the globals effectively session-scoped.
+  session$onFlush(function() {
+    cfg <- isolate(rv$trial_config)
+    if (!is.null(cfg)) apply_trial_globals(cfg)
+  }, once = FALSE)
 
   # ── Sidebar logo (dynamic per trial) ──────────────────────────────────────
   output$sidebar_logo_ui <- renderUI({
@@ -68,6 +84,7 @@ init_app_state <- function(input, output, session) {
     shinyjs::hide("dashboard_panel")
     shinyjs::hide("sidebar_nav_section")    # Hide sidebar nav
     shinyjs::hide("topbar_wrap")             # Hide topbar
+    shinyjs::hide("topnav_wrap")             # Hide top tab bar
     runjs("document.body.classList.add('home-mode')")
 
     # Reset topbar
@@ -82,16 +99,99 @@ init_app_state <- function(input, output, session) {
   output$sb_role         <- renderText({ req(rv$role); rv$role })
   output$topbar_username <- renderText({ req(rv$username); rv$username })
   output$topbar_role     <- renderText({ req(rv$role); rv$role })
-  output$topbar_view_badge <- renderText({
-    role <- rv$role
-    if (is.null(role)) return("Loading")
-    switch(role,
-      "Trial Manager" = "TMG View",
-      "CI"            = "CI View",
-      "Team Leader"   = "Team View",
-      "Guest View"
+  output$topbar_trial_label <- renderUI({
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(span("BCTU Trials Dashboard"))
+    name <- cfg$short_name %||% toupper(cfg$code %||% "")
+    logo <- trial_logo_url(cfg)
+    # When the trial has a logo, show it left of the name. The white-pill
+    # background keeps colour logos legible on the navy topbar.
+    if (!is.null(logo)) {
+      tagList(
+        tags$span(
+          style = "display:inline-flex;align-items:center;gap:8px;",
+          tags$span(
+            style = "background:#fff;border-radius:6px;padding:2px 6px;
+                     display:inline-flex;align-items:center;justify-content:center;
+                     height:28px;",
+            tags$img(src = logo,
+                     style = "max-height:24px;max-width:120px;
+                              object-fit:contain;display:block;",
+                     alt = name)
+          ),
+          tags$span(name)
+        )
+      )
+    } else {
+      span(name)
+    }
+  })
+
+  output$topbar_view_badge <- renderText({ "" })
+
+  # ── Work-package picker (multi-WP trials only) ───────────────────────────
+  # Visible whenever the active trial has cfg$work_packages defined. Selecting
+  # a pill writes the WP index into rv$active_wp; "Overview" resets to NULL
+  # so downstream filters know to roll up across all WPs.
+  output$wp_picker_ui <- renderUI({
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(NULL)
+    wps <- cfg$work_packages
+    if (is.null(wps) || !length(wps)) return(NULL)
+
+    # Strip the "WKPn: " prefix from stored values for the button label, but
+    # keep the raw index so we know which WP got picked.
+    pretty <- vapply(wps, function(s) {
+      s <- as.character(s)
+      sub("^WKP[0-9]+:\\s*", "", s)
+    }, character(1))
+
+    active <- rv$active_wp   # NULL = overview
+    pills <- lapply(seq_along(wps), function(i) {
+      lbl <- if (nzchar(pretty[i])) sprintf("WKP%d · %s", i, pretty[i])
+             else                    sprintf("WKP%d", i)
+      tags$button(
+        id = paste0("wp_pill_", i),
+        class = paste("wp-pill action-button",
+                      if (!is.null(active) && active == i) "on" else ""),
+        type = "button",
+        onclick = sprintf(
+          "Shiny.setInputValue('wp_pick', %d, {priority:'event'});
+           setActiveWp('wp_pill_%d');", i, i),
+        lbl)
+    })
+
+    overview_btn <- tags$button(
+      id = "wp_pill_0",
+      class = paste("wp-pill action-button",
+                    if (is.null(active)) "on" else ""),
+      type = "button",
+      onclick = "Shiny.setInputValue('wp_pick', 0, {priority:'event'});
+                 setActiveWp('wp_pill_0');",
+      "Overview · all WPs")
+
+    tagList(
+      span(class = "wp-eye", "Work package"),
+      overview_btn,
+      pills
     )
   })
+
+  observeEvent(input$wp_pick, {
+    v <- suppressWarnings(as.integer(input$wp_pick))
+    if (is.na(v) || v <= 0) rv$active_wp <- NULL else rv$active_wp <- v
+  })
+
+  # Show or hide the picker bar whenever the active config changes.
+  observeEvent(rv$trial_config, {
+    cfg <- rv$trial_config
+    if (!is.null(cfg) && length(cfg$work_packages %||% character(0)) > 0)
+      shinyjs::show("wp_picker_wrap")
+    else
+      shinyjs::hide("wp_picker_wrap")
+    # Reset picker when switching trials
+    rv$active_wp <- NULL
+  }, ignoreNULL = FALSE)
 
   # ── Tab navigation ────────────────────────────────────────────────────────
   switch_tab <- function(tab_name, btn_id) {
@@ -100,6 +200,7 @@ init_app_state <- function(input, output, session) {
   }
   observeEvent(input$go_overview,       switch_tab("overview", "go_overview"))
   observeEvent(input$go_reports,        switch_tab("reports", "go_reports"))
+  observeEvent(input$go_modifications,  switch_tab("modifications", "go_modifications"))
   observeEvent(input$go_charts,         switch_tab("charts",  "go_charts"))
   observeEvent(input$go_randomisations, switch_tab("randomisations", "go_randomisations"))
   observeEvent(input$go_participants,   switch_tab("participants", "go_participants"))

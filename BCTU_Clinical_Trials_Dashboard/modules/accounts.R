@@ -1,5 +1,24 @@
 accounts_tab_ui <- function() {
                   tabPanel("accounts",
+
+                           # ── Admin: user passwords (real profiles) ──────
+                           tonic_card(
+                             title = "User passwords",
+                             tools = span(style = "font-size:11px;color:#64748B;font-style:italic;",
+                                          "Trial Managers only · resets a user's password to a temporary one they must change on next login"),
+                             div(style = "margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;",
+                                 div(style = "flex:1;min-width:240px;",
+                                     selectInput("pwadm_target", label = NULL,
+                                                 choices = NULL,
+                                                 width = "100%")),
+                                 actionButton("pwadm_reset", HTML("&#8634; Reset password"),
+                                              class = "btn btn-warning tm-only",
+                                              style = "font-weight:600;")),
+                             uiOutput("pwadm_result_ui")
+                           ),
+
+                           div(style = "margin-bottom:14px;"),
+
                            div(class = "grid-2",
                                tonic_card(title = "Add / edit account",
                                           div(class = "form-grid g2",

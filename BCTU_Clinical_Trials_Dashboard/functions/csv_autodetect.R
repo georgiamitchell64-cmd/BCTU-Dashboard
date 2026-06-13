@@ -113,6 +113,57 @@ autodetect_redcap <- function(filepath) {
                        "predicted_mortality")
   result$fields$nela_score <- detect_field(cols, nela_candidates)
 
+  # ── 4b. Safety / regulatory event-detail fields ───────────────────────────
+  # The Data tab drill-down needs per-event detail (onset date, severity,
+  # narrative, etc.) for SAEs / deviations / withdrawals / pregnancies. These
+  # column names are not standardised across trials, so we sniff using a
+  # prefix + suffix pattern: for each event family, look for a column whose
+  # name starts with the form prefix (sae, dev, preg, etc.) and ends with a
+  # role suffix (severity, onset, narrative, etc.). First match wins.
+  sniff <- function(prefixes, suffixes) {
+    cl <- tolower(cols)
+    for (p in prefixes) for (s in suffixes) {
+      hit <- grep(paste0("^", p, ".*", s), cl, perl = TRUE)
+      if (length(hit) > 0) return(cols[hit[1]])
+    }
+    NULL
+  }
+
+  # SAEs
+  result$fields$sae_term         <- sniff(c("sae_"), c("term$", "name$", "desc$", "description$", "event$"))
+  result$fields$sae_severity     <- sniff(c("sae_"), c("severity$", "grade$", "intensity$"))
+  result$fields$sae_relatedness  <- sniff(c("sae_"), c("relat", "causal"))
+  result$fields$sae_status       <- sniff(c("sae_"), c("status$", "outcome$"))
+  result$fields$sae_onset_date   <- sniff(c("sae_"), c("onset", "occur", "_date$", "_dt$", "start"))
+  result$fields$sae_report_date  <- sniff(c("sae_"), c("report", "submitted", "submit", "notif"))
+  result$fields$sae_narrative    <- sniff(c("sae_"), c("narrative", "details", "comment", "free"))
+
+  # Deviations
+  result$fields$deviation_term        <- sniff(c("dev_", "deviation_", "pd_"), c("term$", "type$", "category$", "desc"))
+  result$fields$deviation_severity    <- sniff(c("dev_", "deviation_", "pd_"), c("severity$", "grade$", "impact$"))
+  result$fields$deviation_status      <- sniff(c("dev_", "deviation_", "pd_"), c("status$", "resolved$", "outcome$"))
+  result$fields$deviation_date        <- sniff(c("dev_", "deviation_", "pd_"), c("_date$", "_dt$", "occur"))
+  result$fields$deviation_report_date <- sniff(c("dev_", "deviation_", "pd_"), c("report", "submitted", "notif"))
+  result$fields$deviation_narrative   <- sniff(c("dev_", "deviation_", "pd_"), c("narrative", "details", "comment"))
+
+  # Pregnancy notification
+  result$fields$preg_notif_term        <- sniff(c("preg_n", "pn_", "pregnancy_n"), c("term$", "type$", "desc"))
+  result$fields$preg_notif_status      <- sniff(c("preg_n", "pn_", "pregnancy_n"), c("status$", "outcome$"))
+  result$fields$preg_notif_date        <- sniff(c("preg_n", "pn_", "pregnancy_n"), c("_date$", "_dt$", "lmp"))
+  result$fields$preg_notif_report_date <- sniff(c("preg_n", "pn_", "pregnancy_n"), c("report", "submitted", "notif"))
+  result$fields$preg_notif_narrative   <- sniff(c("preg_n", "pn_", "pregnancy_n"), c("narrative", "details", "comment"))
+
+  # Pregnancy outcome
+  result$fields$preg_out_outcome     <- sniff(c("preg_o", "po_", "pregnancy_o"), c("outcome$", "result$", "term$"))
+  result$fields$preg_out_status      <- sniff(c("preg_o", "po_", "pregnancy_o"), c("status$"))
+  result$fields$preg_out_date        <- sniff(c("preg_o", "po_", "pregnancy_o"), c("_date$", "_dt$", "delivery"))
+  result$fields$preg_out_report_date <- sniff(c("preg_o", "po_", "pregnancy_o"), c("report", "submitted"))
+  result$fields$preg_out_narrative   <- sniff(c("preg_o", "po_", "pregnancy_o"), c("narrative", "details", "comment"))
+
+  # Withdrawal (cos_*)
+  result$fields$cos_date   <- sniff(c("cos_", "withdraw"), c("_date$", "_dt$", "occur"))
+  result$fields$cos_reason <- sniff(c("cos_", "withdraw"), c("reason", "narrative", "comment", "free"))
+
   # ── 5. Date fields (for reference) ────────────────────────────────────────
   date_cols <- cols[grepl("(date|_dt$|_dttm$|_dttm_|_day$)", cols, ignore.case = TRUE)]
   result$date_fields <- date_cols
@@ -205,7 +256,40 @@ build_config_from_detection <- function(detected, trial_code, trial_name, trial_
       ethnicity              = flds$ethnicity,
       nela_score             = flds$nela_score,
       follow_up_instruments  = fu_instruments,
-      cos_type               = flds$cos_type
+      cos_type               = flds$cos_type,
+
+      # Safety / regulatory event-detail columns (auto-sniffed; NULL if
+      # no match — the Data tab drill-down renders em-dashes for missing
+      # columns rather than failing).
+      sae_term         = flds$sae_term,
+      sae_severity     = flds$sae_severity,
+      sae_relatedness  = flds$sae_relatedness,
+      sae_status       = flds$sae_status,
+      sae_onset_date   = flds$sae_onset_date,
+      sae_report_date  = flds$sae_report_date,
+      sae_narrative    = flds$sae_narrative,
+
+      deviation_term        = flds$deviation_term,
+      deviation_severity    = flds$deviation_severity,
+      deviation_status      = flds$deviation_status,
+      deviation_date        = flds$deviation_date,
+      deviation_report_date = flds$deviation_report_date,
+      deviation_narrative   = flds$deviation_narrative,
+
+      preg_notif_term        = flds$preg_notif_term,
+      preg_notif_status      = flds$preg_notif_status,
+      preg_notif_date        = flds$preg_notif_date,
+      preg_notif_report_date = flds$preg_notif_report_date,
+      preg_notif_narrative   = flds$preg_notif_narrative,
+
+      preg_out_outcome     = flds$preg_out_outcome,
+      preg_out_status      = flds$preg_out_status,
+      preg_out_date        = flds$preg_out_date,
+      preg_out_report_date = flds$preg_out_report_date,
+      preg_out_narrative   = flds$preg_out_narrative,
+
+      cos_date   = flds$cos_date,
+      cos_reason = flds$cos_reason
     ),
     cos_type_labels = c("1"="Death","2"="No Operation","3"="Part withdrawal",
                         "4"="Complete withdrawal","5"="Lost to follow-up"),

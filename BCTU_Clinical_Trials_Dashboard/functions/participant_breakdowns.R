@@ -83,6 +83,93 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
   paste0(toupper(substring(s, 1, 1)), substring(s, 2))
 }
 
+# Format a cut() bin label like "[-Inf,35)" into "< 35", "35–55", "68+".
+.format_bin_label <- function(lbl) {
+  lbl <- as.character(lbl)
+  m <- regmatches(lbl,
+    regexpr("^[\\[(](-?Inf|[0-9.e+\\-]+),\\s*(-?Inf|[0-9.e+\\-]+)[\\])]$",
+            lbl, perl = TRUE))
+  if (!length(m) || !nzchar(m)) return(lbl)
+  inner <- substr(m, 2, nchar(m) - 1)
+  parts <- strsplit(inner, ",")[[1]]
+  lo <- trimws(parts[1]); hi <- trimws(parts[2])
+  fmt_n <- function(x) {
+    n <- suppressWarnings(as.numeric(x))
+    if (is.na(n)) return(x)
+    if (n == round(n)) as.character(as.integer(n)) else sprintf("%.1f", n)
+  }
+  if (lo == "-Inf") return(paste0("< ",   fmt_n(hi)))
+  if (hi == "Inf")  return(paste0(fmt_n(lo), "+"))
+  paste0(fmt_n(lo), "–", fmt_n(hi))
+}
+
+# Built-in suggestions for common column patterns.
+# Applied when a column has no explicit mapping and matches a pattern.
+.KNOWN_CODE_SUGGESTIONS <- list(
+  list(pattern = "(?i)(^|_)(sex|gender)(_|$)",
+       labels  = c("1" = "Male", "2" = "Female", "3" = "Other / prefer not to say")),
+  list(pattern = "(?i)yes_no|(_yn$)|(^yn_)",
+       labels  = c("0" = "No", "1" = "Yes")),
+  list(pattern = "(?i)(smoker|smoking|smoke)",
+       labels  = c("0" = "No", "1" = "Yes", "2" = "Ex-smoker")),
+  list(pattern = "(?i)(asthma|diabetes|hypertens|comorbid|cardiac|renal)",
+       labels  = c("0" = "No", "1" = "Yes"))
+)
+
+.suggest_code_labels <- function(col, values) {
+  values <- setdiff(as.character(values), NA_character_)
+  for (s in .KNOWN_CODE_SUGGESTIONS) {
+    if (grepl(s$pattern, col, perl = TRUE) &&
+        all(values %in% names(s$labels))) return(s$labels)
+  }
+  NULL
+}
+
+# Returns TRUE if all non-NA values in the vector look like small integers
+# (i.e. likely coded values with no label mapping).
+.looks_like_codes <- function(v) {
+  vals <- v[!is.na(v) & nzchar(as.character(v))]
+  if (!length(vals)) return(FALSE)
+  v_int <- suppressWarnings(as.integer(as.character(vals)))
+  all(!is.na(v_int)) && all(v_int >= 0) && length(unique(v_int)) <= 10
+}
+
+# Find columns in `det` (detect_breakdown_columns result) that appear to be
+# numeric codes with no resolved label mapping in cfg or built-in suggestions.
+# Returns a list of lists: col, label, values, suggested (named char vec or NULL).
+find_unmapped_code_cols <- function(raw, cfg, det) {
+  if (is.null(raw) || !nrow(raw) || !nrow(det)) return(list())
+  base <- raw
+  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
+    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
+    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
+  }
+  results <- list()
+  for (i in seq_len(nrow(det))) {
+    r <- det[i, ]
+    if (r$type != "categorical") next
+    col <- r$column
+    if (!col %in% names(base)) next
+    v <- as.character(base[[col]])
+    v[v == ""] <- NA
+    if (!.looks_like_codes(v)) next
+    # Skip if cfg already has a label mapping for this column
+    mapping <- cfg$column_labels[[col]] %||% NULL
+    if (!is.null(mapping) && length(mapping) > 0) next
+    # Skip ethnicity — handled separately by NHS scheme
+    if (grepl("ethnic", col, ignore.case = TRUE)) next
+    uniq_vals <- sort(unique(v[!is.na(v)]))
+    suggested <- .suggest_code_labels(col, uniq_vals)
+    results[[length(results) + 1]] <- list(
+      col       = col,
+      label     = r$label,
+      values    = uniq_vals,
+      suggested = suggested
+    )
+  }
+  results
+}
+
 # Default NHS 19-code ethnicity scheme (used when no trial-level mapping set).
 .NHS_ETHNICITY_LABELS <- c(
   "1"  = "White British",
@@ -113,9 +200,15 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
   if (is.null(values) || !length(values)) return(values)
   values <- as.character(values)
 
-  # Per-column mapping from cfg, e.g. cfg$dem_ethnicity_labels
+  # 1. User-defined per-column labels saved in overrides.json → cfg$column_labels
   mapping <- NULL
-  if (!is.null(cfg)) {
+  if (!is.null(cfg) && !is.null(cfg$column_labels[[col]]) &&
+      length(cfg$column_labels[[col]]) > 0) {
+    mapping <- unlist(cfg$column_labels[[col]])
+  }
+
+  # 2. Legacy per-column mapping from cfg, e.g. cfg$dem_ethnicity_labels
+  if (is.null(mapping) && !is.null(cfg)) {
     candidate_keys <- c(paste0(col, "_labels"),
                         sub("^(dem|cae|base|baseline)_", "", col),
                         "ethnicity_labels")
@@ -126,11 +219,16 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
     }
   }
 
-  # Fallback: NHS scheme if column looks like ethnicity and values are 1-19
+  # 3. NHS ethnicity fallback
   if (is.null(mapping) && grepl("ethnic", col, ignore.case = TRUE)) {
     if (all(values %in% c(names(.NHS_ETHNICITY_LABELS), NA))) {
       mapping <- .NHS_ETHNICITY_LABELS
     }
+  }
+
+  # 4. Built-in suggestions for common patterns (sex, yes/no, etc.)
+  if (is.null(mapping)) {
+    mapping <- .suggest_code_labels(col, values)
   }
 
   if (is.null(mapping)) return(values)
@@ -175,7 +273,7 @@ compute_breakdown <- function(raw, col, cfg = NULL,
                 dig.lab = 4)
     tab  <- table(bins)
     segments <- lapply(seq_along(tab), function(i) {
-      list(label = names(tab)[i],
+      list(label = .format_bin_label(names(tab)[i]),
            n = as.integer(tab[i]),
            pct = if (length(vals)) tab[i] / length(vals) else 0)
     })

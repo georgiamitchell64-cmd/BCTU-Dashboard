@@ -1,293 +1,10 @@
 trial_selector_ui <- function() {
   div(id = "trial_selector_panel", class = "home-root",
 
-      # ── Global rules: collapse sidebar / page padding while on home ──────
-      tags$style(HTML("
-        /* Hide every form of bslib sidebar */
-        body.home-mode #main_sidebar,
-        body.home-mode .bslib-sidebar-layout > aside,
-        body.home-mode .bslib-sidebar-layout > .sidebar,
-        body.home-mode aside.sidebar { display:none !important; }
-
-        /* Collapse the grid so the main column fills the viewport */
-        body.home-mode .bslib-sidebar-layout {
-          display: block !important;
-          grid-template-columns: 0 !important;
-          --_sidebar-width: 0 !important;
-        }
-        body.home-mode .bslib-sidebar-layout > .main,
-        body.home-mode .bslib-sidebar-layout > main,
-        body.home-mode bslib-sidebar-layout > .main {
-          width: 100% !important;
-          max-width: 100% !important;
-          padding: 0 !important;
-          margin: 0 !important;
-          grid-column: 1 / -1 !important;
-        }
-
-        /* Kill the page-padding wrapper from build_app_ui */
-        body.home-mode #app_main_wrap { padding: 0 !important; }
-        body.home-mode .home-root,
-        body.home-mode .home-root + * { width: 100%; }
-      ")),
-
-      # ── Home-screen styles (scoped via .home-root) ───────────────────────
-      tags$style(HTML("
-        .home-root {
-          --bg:       #FAFBFD;
-          --surface:  #FFFFFF;
-          --border:   #EEF2F7;
-          --text:     #0F172A;
-          --muted:    #64748B;
-          --faint:    #94A3B8;
-          --accent:   #6366F1;
-          --accent-2: #8B5CF6;
-          --mint:     #10B981;
-          --amber:    #F59E0B;
-          --rose:     #F43F5E;
-          background: var(--bg);
-          width: 100%;
-          min-height: 100vh;
-          margin: 0;
-          padding: 0;
-          color: var(--text);
-          position: relative;
-          z-index: 1;
-        }
-        .home-topbar {
-          display:flex; justify-content:space-between; align-items:center;
-          padding:18px 32px; background:var(--surface);
-          border-bottom:1px solid var(--border);
-        }
-        .home-brand {
-          display:flex; align-items:center; gap:10px;
-          font-size:15px; font-weight:600; letter-spacing:-0.2px;
-        }
-        .home-brand .brand-mark {
-          width:30px; height:30px; border-radius:9px;
-          background: linear-gradient(135deg, var(--accent), var(--accent-2));
-          display:flex; align-items:center; justify-content:center; color:white;
-          font-size:14px; font-weight:700;
-        }
-        .home-profile {
-          position:relative; cursor:pointer; padding:8px 12px;
-          border-radius:9px; transition:background .15s;
-          font-size:14px; color:var(--text);
-        }
-        .home-profile:hover { background:#F1F5F9; }
-        .home-profile .caret { color:var(--faint); margin-left:4px; }
-        .home-profile .home-dropdown {
-          display:none; position:absolute; right:0; top:42px;
-          background:var(--surface); border:1px solid var(--border);
-          border-radius:12px; padding:6px; width:200px;
-          box-shadow: 0 10px 30px rgba(15,23,42,0.08);
-          z-index:50;
-        }
-        .home-profile.open .home-dropdown { display:block; }
-        .home-dropdown-item {
-          padding:9px 12px; font-size:13px; border-radius:7px;
-          cursor:pointer; color:var(--text);
-        }
-        .home-dropdown-item:hover { background:#F1F5F9; }
-        .home-dropdown-divider {
-          height:1px; background:var(--border); margin:4px 0;
-        }
-
-        .home-container { padding: 28px 32px 60px; max-width:1280px; margin:0 auto; }
-
-        .home-tabs {
-          display:flex; gap:6px; margin-bottom:24px;
-          border-bottom:1px solid var(--border);
-        }
-        .home-tab {
-          cursor:pointer; padding:10px 14px;
-          font-size:13px; font-weight:500; color:var(--muted);
-          border-bottom:2px solid transparent; margin-bottom:-1px;
-          transition:color .15s, border-color .15s;
-        }
-        .home-tab:hover { color:var(--text); }
-        .home-tab.active {
-          color:var(--accent); border-bottom-color:var(--accent);
-          font-weight:600;
-        }
-
-        .home-section-head {
-          display:flex; justify-content:space-between; align-items:center;
-          margin-bottom:18px;
-        }
-        .home-section-head h2 {
-          font-size:22px; font-weight:600; letter-spacing:-0.4px; margin:0;
-        }
-        .home-section-head .subtitle {
-          font-size:13px; color:var(--muted); margin-top:3px;
-        }
-
-        .home-add-btn {
-          background:var(--accent); color:white; border:none;
-          padding:10px 16px; border-radius:10px; font-size:13px;
-          font-weight:500; cursor:pointer; transition:background .15s;
-          font-family:inherit;
-        }
-        .home-add-btn:hover { background:#4F46E5; }
-
-        .home-grid {
-          display:grid;
-          grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
-          gap:16px;
-        }
-
-        .home-card {
-          background:var(--surface); border:1px solid var(--border);
-          border-radius:14px; padding:20px;
-          box-shadow: 0 1px 2px rgba(15,23,42,0.03);
-          cursor:pointer; transition: transform .15s, box-shadow .15s, border-color .15s;
-          position:relative;
-        }
-        .home-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(99,102,241,0.10);
-          border-color: #DCD6FE;
-        }
-        .home-card-head {
-          display:flex; justify-content:space-between; align-items:flex-start;
-          margin-bottom:12px;
-        }
-        .home-card-title {
-          font-size:16px; font-weight:600; letter-spacing:-0.2px;
-        }
-        .home-card-meta {
-          font-size:11.5px; color:var(--muted); line-height:1.55;
-          margin-bottom:14px;
-        }
-        .home-progress {
-          height:6px; background:#F1F5F9; border-radius:999px;
-          overflow:hidden; margin:10px 0 8px;
-        }
-        .home-progress-fill {
-          height:100%; border-radius:999px;
-          background: linear-gradient(90deg, var(--accent), var(--accent-2));
-          transition: width .4s ease;
-        }
-        .home-progress-row {
-          display:flex; justify-content:space-between; align-items:baseline;
-          font-size:11.5px; color:var(--muted);
-        }
-        .home-progress-row strong { color:var(--text); font-weight:600; }
-
-        .home-status {
-          display:inline-flex; align-items:center; gap:5px;
-          font-size:10.5px; font-weight:600; padding:3px 8px;
-          border-radius:999px; text-transform:uppercase; letter-spacing:.4px;
-        }
-        .home-status.on-track { background:#ECFDF5; color:var(--mint); }
-        .home-status.warning  { background:#FEF3C7; color:#92400E; }
-        .home-status.at-risk  { background:#FFE4E6; color:#9F1239; }
-        .home-status .dot {
-          width:6px; height:6px; border-radius:50%;
-          background:currentColor;
-        }
-
-        .home-add-card {
-          background:transparent; border:2px dashed #DCD6FE;
-          display:flex; flex-direction:column; align-items:center;
-          justify-content:center; min-height:170px;
-          color:var(--accent); cursor:pointer;
-          transition: background .15s, border-color .15s;
-        }
-        .home-add-card:hover {
-          background:#F5F3FF; border-color:var(--accent);
-        }
-        .home-add-card .plus {
-          font-size:30px; font-weight:300; line-height:1; margin-bottom:6px;
-        }
-        .home-add-card .label { font-size:13px; font-weight:500; }
-
-        .home-card-delete {
-          position:absolute; top:12px; right:12px;
-          width:26px; height:26px; border-radius:50%;
-          border:none; background:transparent;
-          color:var(--faint); font-size:16px; cursor:pointer;
-          display:flex; align-items:center; justify-content:center;
-          transition: background .15s, color .15s;
-        }
-        .home-card-delete:hover { background:#FFE4E6; color:var(--rose); }
-
-        .home-stat-grid {
-          display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
-          gap:14px; margin-bottom:24px;
-        }
-        .home-stat {
-          background:var(--surface); border:1px solid var(--border);
-          border-radius:14px; padding:18px 20px;
-        }
-        .home-stat-label {
-          font-size:11px; font-weight:600; color:var(--muted);
-          text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px;
-        }
-        .home-stat-value {
-          font-size:28px; font-weight:700; letter-spacing:-0.6px;
-          color:var(--text);
-        }
-        .home-stat-sub {
-          font-size:12px; color:var(--muted); margin-top:4px;
-        }
-
-        .home-table {
-          width:100%; border-collapse:collapse; background:var(--surface);
-          border:1px solid var(--border); border-radius:14px; overflow:hidden;
-        }
-        .home-table th {
-          text-align:left; padding:14px 18px; font-size:11px;
-          font-weight:600; color:var(--muted);
-          text-transform:uppercase; letter-spacing:.6px;
-          background:#FAFBFD; border-bottom:1px solid var(--border);
-        }
-        .home-table td {
-          padding:14px 18px; font-size:13.5px;
-          border-bottom:1px solid var(--border);
-        }
-        .home-table tr:last-child td { border-bottom:none; }
-        .home-table tr.clickable { cursor:pointer; transition:background .12s; }
-        .home-table tr.clickable:hover { background:#F8FAFD; }
-
-        .home-category {
-          margin-top: 26px; margin-bottom: 14px;
-          display:flex; align-items:center; gap:10px;
-        }
-        .home-category:first-of-type { margin-top: 0; }
-        .home-category-icon {
-          width: 30px; height: 30px; border-radius: 9px;
-          background: #F5F3FF; color: var(--accent);
-          display:flex; align-items:center; justify-content:center;
-          font-size: 14px;
-        }
-        .home-category-label {
-          font-size: 14px; font-weight: 600; color: var(--text);
-          letter-spacing:-0.1px;
-        }
-        .home-category-count {
-          font-size: 11px; color: var(--muted);
-          background: #F1F5F9; padding: 2px 9px; border-radius: 999px;
-          font-weight: 500;
-        }
-        .home-category-divider {
-          flex: 1; height: 1px; background: var(--border);
-          margin-left: 6px;
-        }
-
-        .home-empty {
-          text-align:center; padding:60px 20px; color:var(--muted);
-          font-size:14px;
-        }
-        .home-empty .icon {
-          font-size:32px; margin-bottom:12px; opacity:.4;
-        }
-      ")),
-
-      # ── JS for tab switching + dropdown toggle ───────────────────────────
+      # ── JS: tab switching, dropdown toggle, notification drawer ───────────
       tags$script(HTML("
         document.addEventListener('click', function(e){
-          var prof = document.querySelector('.home-profile');
+          var prof = document.querySelector('.home-root .userchip');
           if (prof && prof.contains(e.target)) {
             prof.classList.toggle('open');
           } else if (prof) {
@@ -299,159 +16,245 @@ trial_selector_ui <- function() {
             var n = document.getElementById('home_tab_'+t);
             if (n) n.style.display = (t===tab) ? '' : 'none';
           });
-          document.querySelectorAll('.home-tab').forEach(function(t){
+          document.querySelectorAll('.home-root .htab').forEach(function(t){
             t.classList.remove('active');
           });
           if (el) el.classList.add('active');
-          Shiny.setInputValue('home_active_tab', tab, {priority:'event'});
+          if (window.Shiny) Shiny.setInputValue('home_active_tab', tab, {priority:'event'});
         }
       ")),
 
-      # ── Topbar ───────────────────────────────────────────────────────────
-      div(class = "home-topbar",
-          div(class = "home-brand",
-              span(class = "brand-mark", "B"),
-              span("BCTU Trials")),
-          div(style = "display:flex;align-items:center;gap:6px;",
-              # Bell icon + count badge
-              div(class = "home-bell",
-                  onclick = "Shiny.setInputValue('notif_open', Math.random(), {priority:'event'})",
-                  style = "position:relative;cursor:pointer;width:36px;height:36px;
-                           border-radius:9px;display:flex;align-items:center;justify-content:center;
-                           color:#475569;transition:background .15s;",
-                  onmouseover = "this.style.background='#F1F5F9';",
-                  onmouseout  = "this.style.background='transparent';",
-                  HTML('<svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
-                        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>'),
-                  uiOutput("notif_badge_ui", inline = TRUE)
-              ),
-              div(class = "home-profile",
+      div(class = "home-shell",
+
+          # ── Top bar ──────────────────────────────────────────────────────
+          # Logo size + filter are owned by .home-topbar img in home_redesign.css
+          # so the BCTU colours render at their native magenta/pink.
+          div(class = "home-topbar",
+              tags$img(src = "BlackText-landscape.png",
+                       alt = "BCTU — Birmingham Clinical Trials Unit"),
+              div(class = "topbar-spacer"),
+              tags$button(class = "tb-icon", title = "Notifications",
+                          onclick = "Shiny.setInputValue('notif_open', Math.random(), {priority:'event'})",
+                          HTML("&#x1F514;"),
+                          uiOutput("notif_badge_ui", inline = TRUE)),
+              tags$button(class = "tb-icon", title = "Help",
+                          onclick = "Shiny.setInputValue('home_help_open', Math.random(), {priority:'event'})",
+                          "?"),
+              div(class = "userchip",
+                  div(class = "useravatar",
+                      textOutput("home_user_initials", inline = TRUE)),
                   textOutput("home_profile_name", inline = TRUE),
-                  span(class = "caret", HTML("&#9662;")),
+                  span(class = "userchip-caret", HTML("&#9662;")),
                   uiOutput("home_dropdown_ui", inline = FALSE)
               )
-          )
-      ),
-
-      # Notification drawer (off-canvas, slides from right)
-      tags$style(HTML("
-        .notif-drawer-bg {
-          position:fixed; inset:0; background:rgba(15,23,42,0.35);
-          z-index:1080; opacity:0; pointer-events:none;
-          transition:opacity .2s;
-        }
-        .notif-drawer {
-          position:fixed; top:0; right:0; bottom:0; width:380px;
-          background:#FFFFFF; box-shadow:-12px 0 30px rgba(15,23,42,0.12);
-          z-index:1090; transform:translateX(100%);
-          transition:transform .25s ease;
-          display:flex; flex-direction:column;
-        }
-        body.notif-open .notif-drawer-bg { opacity:1; pointer-events:auto; }
-        body.notif-open .notif-drawer { transform:translateX(0); }
-        .notif-drawer-head {
-          padding:18px 20px; border-bottom:1px solid #EEF2F7;
-          display:flex; justify-content:space-between; align-items:center;
-        }
-        .notif-drawer-body { flex:1; overflow-y:auto; padding:14px 16px; }
-        .notif-bell-badge {
-          position:absolute; top:4px; right:4px; min-width:16px; height:16px;
-          padding:0 4px; border-radius:999px; background:#F43F5E; color:#FFF;
-          font-size:9.5px; font-weight:700; display:flex; align-items:center;
-          justify-content:center; line-height:1;
-        }
-      ")),
-      div(class = "notif-drawer-bg",
-          onclick = "document.body.classList.remove('notif-open')"),
-      div(class = "notif-drawer",
-          div(class = "notif-drawer-head",
-              div(div(style = "font-weight:600;color:#0F172A;font-size:15px;",
-                      "Smart Notifications"),
-                  div(style = "font-size:11.5px;color:#64748B;",
-                      "Auto-generated from trial data")),
-              div(
-                  actionLink("notif_clear_all", "Clear all",
-                             style = "font-size:11.5px;color:#64748B;
-                                      text-decoration:none;margin-right:14px;"),
-                  tags$button(onclick = "document.body.classList.remove('notif-open')",
-                              style = "background:transparent;border:none;color:#94A3B8;
-                                       font-size:18px;cursor:pointer;line-height:1;",
-                              HTML("&times;")))
-          ),
-          div(class = "notif-drawer-body",
-              uiOutput("notif_drawer_ui"))),
-
-      # ── Container with tabs ──────────────────────────────────────────────
-      div(class = "home-container",
-
-          div(class = "home-tabs",
-              div(class = "home-tab active",
-                  onclick = "homeShowTab('my', this)", "My Trials"),
-              div(class = "home-tab",
-                  onclick = "homeShowTab('overview', this)", "Overview"),
-              div(class = "home-tab",
-                  onclick = "homeShowTab('all', this)", "All Trials"),
-              div(class = "home-tab",
-                  onclick = "homeShowTab('sites', this)", "Sites"),
-              div(class = "home-tab",
-                  onclick = "homeShowTab('activity', this)", "Activity")
           ),
 
-          # My Trials
-          div(id = "home_tab_my",
-              div(class = "home-section-head",
-                  div(tags$h2("My Trials"),
-                      div(class = "subtitle",
-                          "Trials you're currently working on")),
-                  uiOutput("home_add_button_ui", inline = TRUE)
+          # ── Notification drawer (off-canvas, slides from right) ──────────
+          tags$style(HTML("
+            .notif-drawer-bg {
+              position:fixed; inset:0; background:rgba(15,23,42,0.35);
+              z-index:1080; opacity:0; pointer-events:none;
+              transition:opacity .2s;
+            }
+            .notif-drawer {
+              position:fixed; top:0; right:0; bottom:0; width:380px;
+              background:#FFFFFF; box-shadow:-12px 0 30px rgba(15,23,42,0.12);
+              z-index:1090; transform:translateX(100%);
+              transition:transform .25s ease;
+              display:flex; flex-direction:column;
+            }
+            body.notif-open .notif-drawer-bg { opacity:1; pointer-events:auto; }
+            body.notif-open .notif-drawer { transform:translateX(0); }
+            .notif-drawer-head {
+              padding:18px 20px; border-bottom:1px solid #EEF2F7;
+              display:flex; justify-content:space-between; align-items:center;
+            }
+            .notif-drawer-body { flex:1; overflow-y:auto; padding:14px 16px; }
+          ")),
+          div(class = "notif-drawer-bg",
+              onclick = "document.body.classList.remove('notif-open')"),
+          div(class = "notif-drawer",
+              div(class = "notif-drawer-head",
+                  div(div(style = "font-weight:600;color:#0F172A;font-size:15px;",
+                          "Smart Notifications"),
+                      div(style = "font-size:11.5px;color:#64748B;",
+                          "Auto-generated from trial data")),
+                  div(
+                      actionLink("notif_clear_all", "Clear all",
+                                 style = "font-size:11.5px;color:#64748B;
+                                          text-decoration:none;margin-right:14px;"),
+                      tags$button(onclick = "document.body.classList.remove('notif-open')",
+                                  style = "background:transparent;border:none;color:#94A3B8;
+                                           font-size:18px;cursor:pointer;line-height:1;",
+                                  HTML("&times;")))
               ),
-              uiOutput("trial_cards_ui")
-          ),
+              div(class = "notif-drawer-body",
+                  uiOutput("notif_drawer_ui"))),
 
-          # Overview
-          div(id = "home_tab_overview", style = "display:none;",
-              div(class = "home-section-head",
-                  div(tags$h2("Portfolio Overview"),
-                      div(class = "subtitle",
-                          "Aggregate recruitment and site activity across all trials"))
-              ),
-              uiOutput("home_overview_ui")
-          ),
+          # ── Canvas with tabs ─────────────────────────────────────────────
+          div(class = "home-canvas",
 
-          # All Trials
-          div(id = "home_tab_all", style = "display:none;",
-              div(class = "home-section-head",
-                  div(tags$h2("All Trials"),
-                      div(class = "subtitle",
-                          "Every trial in the BCTU portfolio"))
+              div(class = "home-tabs",
+                  tags$button(class = "htab active",
+                              onclick = "homeShowTab('my', this)",
+                              "My Trials",
+                              span(class = "htab-count",
+                                   textOutput("home_my_trials_count", inline = TRUE))),
+                  tags$button(class = "htab",
+                              onclick = "homeShowTab('overview', this)", "Portfolio"),
+                  tags$button(class = "htab",
+                              onclick = "homeShowTab('all', this)", "All Trials"),
+                  tags$button(class = "htab",
+                              onclick = "homeShowTab('sites', this)", "Sites"),
+                  tags$button(class = "htab",
+                              onclick = "homeShowTab('activity', this)",
+                              "Activity",
+                              uiOutput("home_activity_dot", inline = TRUE))
               ),
-              uiOutput("home_all_trials_ui")
-          ),
 
-          # Sites
-          div(id = "home_tab_sites", style = "display:none;",
-              div(class = "home-section-head",
-                  div(tags$h2("Site performance"),
-                      div(class = "subtitle",
-                          "Top sites by category, plus look-up for any specific site"))
-              ),
-              uiOutput("home_sites_ui")
-          ),
+              # My Trials
+              div(id = "home_tab_my",
+                  uiOutput("home_summary_strip_ui"),
 
-          # Activity
-          div(id = "home_tab_activity", style = "display:none;",
-              div(class = "home-section-head",
-                  div(tags$h2("Activity"),
-                      div(class = "subtitle",
-                          "Recent randomisations, site changes, and data uploads"))
+                  # Quick actions row
+                  div(class = "qa-row",
+                      tags$button(class = "qa-tile primary",
+                                  onclick = "Shiny.setInputValue('qa_new_trial', Math.random(), {priority:'event'})",
+                                  div(class = "qa-icon", HTML("&#43;")),
+                                  div(class = "qa-text",
+                                      div(class = "qa-label", "New trial"),
+                                      div(class = "qa-desc", "Spin up a dashboard"))),
+                      tags$button(class = "qa-tile",
+                                  onclick = "Shiny.setInputValue('qa_run_report', Math.random(), {priority:'event'})",
+                                  div(class = "qa-icon", HTML("&#x2913;")),
+                                  div(class = "qa-text",
+                                      div(class = "qa-label", "Run a report"),
+                                      div(class = "qa-desc", "Generate TMG / TSC"))),
+                      tags$button(class = "qa-tile",
+                                  onclick = "Shiny.setInputValue('qa_switch_theme', Math.random(), {priority:'event'})",
+                                  div(class = "qa-icon", HTML("&#x2197;")),
+                                  div(class = "qa-text",
+                                      div(class = "qa-label", "Switch theme"),
+                                      div(class = "qa-desc", "Light, dark, system"))),
+                      tags$button(class = "qa-tile",
+                                  onclick = "Shiny.setInputValue('qa_portfolio_settings', Math.random(), {priority:'event'})",
+                                  div(class = "qa-icon", HTML("&#9881;")),
+                                  div(class = "qa-text",
+                                      div(class = "qa-label", "Portfolio settings"),
+                                      div(class = "qa-desc", "Members, defaults, audit")))
+                  ),
+
+                  # Header for the trials grid
+                  div(class = "sec-head2",
+                      div(tags$h2(textOutput("home_trials_section_title", inline = TRUE)),
+                          div(class = "sec-head2-sub",
+                              "Click any card to open the trial dashboard")),
+                      uiOutput("home_add_button_ui", inline = TRUE)
+                  ),
+                  uiOutput("trial_cards_ui"),
+
+                  # Recent activity preview
+                  div(class = "sec-head2",
+                      div(tags$h2("Recent activity"),
+                          div(class = "sec-head2-sub",
+                              "Across all your trials")),
+                      tags$button(class = "sec-head2-act",
+                                  onclick = "homeShowTab('activity', document.querySelectorAll('.home-root .htab')[4])",
+                                  "See all →")
+                  ),
+                  uiOutput("home_activity_preview_ui")
               ),
-              uiOutput("home_activity_ui")
+
+              # Portfolio (was Overview)
+              div(id = "home_tab_overview", style = "display:none;",
+                  div(class = "sec-head2",
+                      div(tags$h2("Portfolio"),
+                          div(class = "sec-head2-sub",
+                              "Aggregate recruitment and site activity across all trials"))
+                  ),
+                  uiOutput("home_overview_ui")
+              ),
+
+              # All Trials
+              div(id = "home_tab_all", style = "display:none;",
+                  div(class = "sec-head2",
+                      div(tags$h2("All Trials"),
+                          div(class = "sec-head2-sub",
+                              "Every trial in the BCTU portfolio · click any to open its dashboard"))
+                  ),
+
+                  # Toolbar — search + status filter + sort + view + count.
+                  # The chip and view-toggle states are mirrored to hidden Shiny
+                  # inputs so the server can re-render the list on change.
+                  div(class = "at-toolbar",
+                    div(class = "at-search-wrap",
+                        tags$svg(width = "14", height = "14", viewBox = "0 0 24 24",
+                                 fill = "none", stroke = "currentColor",
+                                 `stroke-width` = "2",
+                                 tags$circle(cx = "11", cy = "11", r = "7"),
+                                 tags$path(d = "M20 20l-3-3")),
+                        textInput("all_trials_search", label = NULL,
+                                  placeholder = "Search by trial, CI, sponsor…",
+                                  width = "100%")),
+                    div(class = "at-pill-group", id = "all_trials_filter_group",
+                        tags$button(class = "at-pill on", `data-key` = "all",   "All"),
+                        tags$button(class = "at-pill",    `data-key` = "on",    "On track"),
+                        tags$button(class = "at-pill",    `data-key` = "warn",  "Behind"),
+                        tags$button(class = "at-pill",    `data-key` = "risk",  "Stalled"),
+                        tags$button(class = "at-pill",    `data-key` = "setup", "Set-up"),
+                        tags$button(class = "at-pill",    `data-key` = "closed","Closed")),
+                    selectInput("all_trials_sort", label = NULL,
+                                choices = c(
+                                  "Sort: Recruitment %"   = "pct",
+                                  "Sort: Trial name"      = "name",
+                                  "Sort: Recent activity" = "recent",
+                                  "Sort: Status (worst first)" = "status"),
+                                selected = "pct", width = "180px"),
+                    tags$div(class = "at-toolbar-spacer"),
+                    tags$span(class = "at-result-count",
+                              textOutput("all_trials_count_lbl", inline = TRUE))
+                  ),
+                  # Tiny JS to mirror chip clicks into a Shiny input
+                  tags$script(HTML("
+                    document.addEventListener('click', function(ev){
+                      var btn = ev.target.closest('#all_trials_filter_group .at-pill');
+                      if (!btn) return;
+                      document.querySelectorAll('#all_trials_filter_group .at-pill')
+                        .forEach(function(b){ b.classList.remove('on'); });
+                      btn.classList.add('on');
+                      Shiny.setInputValue('all_trials_filter',
+                        btn.getAttribute('data-key'), {priority:'event'});
+                    });
+                  ")),
+
+                  uiOutput("home_all_trials_ui")
+              ),
+
+              # Sites
+              div(id = "home_tab_sites", style = "display:none;",
+                  div(class = "sec-head2",
+                      div(tags$h2("Site performance"),
+                          div(class = "sec-head2-sub",
+                              "Top sites by category, plus look-up for any specific site"))
+                  ),
+                  uiOutput("home_sites_ui")
+              ),
+
+              # Activity
+              div(id = "home_tab_activity", style = "display:none;",
+                  div(class = "sec-head2",
+                      div(tags$h2("Activity"),
+                          div(class = "sec-head2-sub",
+                              "Recent randomisations, site changes, and data uploads"))
+                  ),
+                  uiOutput("home_activity_ui")
+              )
           )
       )
   )
 }
+
+
 
 
 # ── Smart Insights drill-down modals ────────────────────────────────────────
@@ -784,22 +587,73 @@ new_trial_wizard_ui <- function() {
         ),
         selectInput("wiz_category", "Portfolio category",
                     choices = TRIAL_CATEGORIES, selected = "Surgery",
-                    width = "100%")
+                    width = "100%"),
+
+        # Trial type
+        selectInput("wiz_trial_type", "Trial type",
+                    choices = c(
+                      "Randomised (open label)"   = "randomised",
+                      "Randomised (single blind)" = "single_blind",
+                      "Randomised (double blind)" = "double_blind",
+                      "Observational"             = "observational",
+                      "Single-arm / cohort"       = "single_arm",
+                      "Platform / umbrella"       = "platform",
+                      "Other"                     = "other"
+                    ),
+                    selected = "randomised", width = "100%"),
+
+        # Multi-work-package toggle. When ticked, exposes a count input and
+        # a dynamically rendered set of fields (WKP1, WKP2, ...) so the user
+        # fills them in like a modern form.
+        div(style = "background:#F8FAFD;border:1px solid #E2E8EE;border-radius:10px;
+                     padding:14px 16px;margin-top:8px;",
+            checkboxInput("wiz_is_multi_wp",
+                          "This is a platform trial or has multiple work packages",
+                          value = FALSE),
+            help_text("Tick if the trial has multiple sub-projects (e.g. Panorama).
+                       The dashboard will show per-WP tabs and a roll-up overview."),
+            shinyjs::hidden(div(id = "wiz_wp_panel",
+                div(style = "display:grid;grid-template-columns:160px 1fr;gap:12px;
+                             align-items:center;margin-bottom:10px;",
+                    tags$label("How many work packages?",
+                               style = "font-size:12px;font-weight:600;color:#0F172A;
+                                        margin:0;"),
+                    numericInput("wiz_n_wps", label = NULL,
+                                 value = 2, min = 1, max = 10, step = 1,
+                                 width = "100px")),
+                # Server-rendered: one labelled field per WP.
+                uiOutput("wiz_wp_fields_ui")
+            ))
+        )
     ),
 
     shinyjs::hidden(div(id = "wiz_step_2",
-        step_label("2", "Data source"),
-        help_text("Where does this trial's REDCap data live?"),
-        radioButtons("wiz_data_source", NULL,
-                     choices = c("Inside the app folder (recommended for testing)" = "local",
-                                 "Network drive path (e.g. K: drive)" = "network"),
-                     selected = "local", inline = FALSE),
-        conditionalPanel(
-          condition = "input.wiz_data_source == 'network'",
-          textInput("wiz_data_path", "Full folder path to REDCap CSV exports",
-                    placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/Data", width = "100%"),
-          help_text("Use forward slashes. The app needs read access to this folder.")
-        )
+        step_label("2", "Data paths"),
+        help_text("Paste the K: drive (or network) paths to your trial data. Use forward slashes. Leave blank to use the local app folder."),
+
+        div(class = "s-field", style = "margin-bottom:14px;",
+            tags$label(style = "font-size:12px;font-weight:600;color:#0F172A;",
+                       HTML("REDCap data CSV folder &#x1F4C1;")),
+            textInput("wiz_data_path",  label = NULL,
+                      placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/Data",
+                      width = "100%"),
+            help_text("Folder containing your REDCap CSV exports (the app picks the newest file).")),
+
+        div(class = "s-field", style = "margin-bottom:14px;",
+            tags$label(style = "font-size:12px;font-weight:600;color:#0F172A;",
+                       HTML("Return rates CSV folder &#x1F4C1;")),
+            textInput("wiz_rr_path", label = NULL,
+                      placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/ReturnRates",
+                      width = "100%"),
+            help_text("Folder containing return-rate CSVs. Leave blank if not applicable.")),
+
+        div(class = "s-field", style = "margin-bottom:14px;",
+            tags$label(style = "font-size:12px;font-weight:600;color:#0F172A;",
+                       HTML("Trial logo file &#x1F5BC;")),
+            textInput("wiz_logo_path", label = NULL,
+                      placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/logo.png",
+                      width = "100%"),
+            help_text("Path to a .png or .jpg logo file. Displayed in the topbar and reports."))
     )),
 
     shinyjs::hidden(div(id = "wiz_step_3",
@@ -841,15 +695,17 @@ new_trial_wizard_ui <- function() {
 
     shinyjs::hidden(div(id = "wiz_step_5",
         step_label("5", "Features"),
-        help_text("Choose which dashboard tabs to show. You can change these later in the config file."),
+        help_text("Choose which dashboard tabs and sections to show. You can change these later in Trial Settings."),
         div(style = "display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;margin-bottom:16px;",
-            checkboxInput("wiz_feat_projections", "Recruitment projections",      value = TRUE),
-            checkboxInput("wiz_feat_postal",      "Postal tracking tab",          value = FALSE),
-            checkboxInput("wiz_feat_returns",     "Return rates tab",             value = FALSE),
-            checkboxInput("wiz_feat_pilot",       "Pilot progression criteria",   value = FALSE),
-            checkboxInput("wiz_feat_consort",     "CONSORT flow diagram",         value = FALSE),
-            checkboxInput("wiz_feat_baseline",    "Baseline characteristics table", value = FALSE)
-        )
+            checkboxInput("wiz_feat_projections",     "Recruitment projections",        value = TRUE),
+            checkboxInput("wiz_feat_questionnaires",  "Patient-completed questionnaires (PROMs)", value = TRUE),
+            checkboxInput("wiz_feat_postal",          "Postal tracking tab",            value = FALSE),
+            checkboxInput("wiz_feat_returns",         "Return rates tab",               value = FALSE),
+            checkboxInput("wiz_feat_pilot",           "Pilot progression criteria",     value = FALSE),
+            checkboxInput("wiz_feat_consort",         "CONSORT flow diagram",           value = FALSE),
+            checkboxInput("wiz_feat_baseline",        "Baseline characteristics table", value = FALSE)
+        ),
+        help_text("Uncheck PROMs for trials where patients don't complete questionnaires (e.g. observational, registry, biomarker-only).")
     )),
 
     shinyjs::hidden(div(id = "wiz_step_6",

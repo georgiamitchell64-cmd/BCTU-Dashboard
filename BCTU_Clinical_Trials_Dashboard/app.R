@@ -1,7 +1,9 @@
 # =============================================================================
 # Clinical Trials Dashboard — Multi-Trial Entry Point
 # =============================================================================
-# No passwords required. Users create their own profile on first visit.
+# Users self-register a profile on first visit and sign in with a password.
+# Trial access is granted per-user from the Accounts tab (see
+# functions/permissions.R for the role model).
 # =============================================================================
 
 source("globals/packages.R",       local = TRUE)
@@ -30,6 +32,7 @@ source("functions/autodetect_modal.R",  local = TRUE)
 source("functions/apply_colours.R",     local = TRUE)
 source("functions/layout.R",            local = TRUE)
 source("functions/prepare_report_data.R", local = TRUE)
+source("functions/html_to_docx.R",      local = TRUE)
 source("functions/tsc_charts.R",        local = TRUE)
 source("functions/geocoding.R",         local = TRUE)
 source("functions/consort_flow.R",      local = TRUE)
@@ -38,6 +41,7 @@ source("functions/baseline_table.R",    local = TRUE)
 source("functions/return_rates_data.R", local = TRUE)
 source("functions/projection_math.R",   local = TRUE)
 source("functions/postal_tracking_data.R", local = TRUE)
+source("functions/safety_events.R",      local = TRUE)
 
 source("modules/welcome.R",             local = TRUE)
 source("modules/welcome_server.R",      local = TRUE)
@@ -65,6 +69,8 @@ source("modules/postal_tracking_ui.R",      local = TRUE)
 source("modules/postal_tracking_server.R",  local = TRUE)
 source("modules/trial_settings.R",          local = TRUE)
 source("modules/trial_settings_server.R",   local = TRUE)
+source("modules/modifications.R",           local = TRUE)
+source("modules/modifications_server.R",    local = TRUE)
 
 
 # ── Initialise database & profiles table ──────────────────────────────────────
@@ -118,6 +124,8 @@ server <- function(input, output, session) {
            error = function(e) message("ACCOUNTS: ", e$message))
   tryCatch(trial_settings_server(input, output, session, state),
            error = function(e) message("SETTINGS: ", e$message))
+  tryCatch(modifications_tab_server(input, output, session, state),
+           error = function(e) message("MODIFICATIONS: ", e$message))
 
   rr_data <- reactive({
     req(state$rv$trial_code)
@@ -159,10 +167,16 @@ server <- function(input, output, session) {
   )
 
   session$onSessionEnded(function() {
-    tryCatch(
-      isolate(db_save_all(state$rv$sites, state$rv$log, state$rv$accounts)),
-      error = function(e) message("DB save error: ", e$message)
-    )
+    tryCatch({
+      # This callback runs outside the reactive flush, so the process-wide
+      # trial globals (DB_PATH etc.) may belong to another user's session.
+      # Re-apply this session's config before saving so the data lands in
+      # the right trial database.
+      cfg <- isolate(state$rv$trial_config)
+      if (is.null(cfg)) return(invisible(NULL))
+      apply_trial_globals(cfg)
+      isolate(db_save_all(state$rv$sites, state$rv$log, state$rv$accounts))
+    }, error = function(e) message("DB save error: ", e$message))
   })
 }
 

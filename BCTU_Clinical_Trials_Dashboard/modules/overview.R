@@ -1,144 +1,240 @@
 overview_tab_ui <- function() {
-                  tabPanel("overview",
 
-                           # Meeting date bar
-                           div(class = "meeting-bar",
-                               span(style = "font-size:11px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.6px;white-space:nowrap",
-                                    HTML("&#x1F4C5; Last meeting date")),
-                               dateInput("last_meeting", label = NULL, value = Sys.Date() %m-% months(1),
-                                         width = "155px", format = "d M yyyy"),
-                               span(style = "font-size:11px;color:var(--muted);font-style:italic",
-                                    textOutput("meeting_label_txt", inline = TRUE)),
-                               span(style = "font-size:11px;color:var(--muted);margin-left:auto",
-                                    HTML("&Delta; = change since last meeting"))
-                           ),
+  # Small inline SVG sparkline — decorative, matches the design's mini trend
+  # visual on KPI cards. Receives a numeric vector and a stroke colour.
+  pov_sparkline <- function(values, colour) {
+    w <- 80; h <- 32
+    rng <- diff(range(values))
+    if (rng == 0) rng <- 1
+    n   <- length(values)
+    pts <- vapply(seq_along(values), function(i) {
+      x <- (i - 1) / (n - 1) * w
+      y <- h - ((values[i] - min(values)) / rng) * (h - 4) - 2
+      sprintf("%.2f,%.2f", x, y)
+    }, character(1))
+    line <- paste(pts, collapse = " ")
+    area <- paste0(line, sprintf(" %d,%d 0,%d", w, h, h))
+    HTML(sprintf(
+      '<svg width="%d" height="%d" viewBox="0 0 %d %d">
+         <polygon points="%s" fill="%s" opacity="0.10"/>
+         <polyline points="%s" fill="none" stroke="%s"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+       </svg>',
+      w, h, w, h, area, colour, line, colour
+    ))
+  }
 
-                           # Value boxes (3)
-                           layout_columns(
-                             col_widths = c(4, 4, 4), gap = "13px",
-                             vbox_html("fa-solid fa-hospital", "Sites", "n_sites",
-                                       "active in dashboard",
-                                       delta_id="delta_sites"),
-                             vbox_html("fa-solid fa-users", "Total Randomised", "n_rand",
-                                       textOutput("n_rand_sub", inline=TRUE),
-                                       delta_id="delta_rand"),
-                             vbox_html("fa-solid fa-bullseye", "Of Trial Target", "n_pct",
-                                       paste0("of ",TRIAL_TARGET," participants"),
-                                       top_color="#F59E0B",
-                                       icon_bg="background:#FEF3C7;color:#D97706",
-                                       delta_id="delta_pct")
-                           ),
-                           div(style = "margin-bottom:14px"),
+  # Calendar glyph for the date-range pill
+  cal_icon <- HTML(
+    '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+       <rect x="2" y="3" width="12" height="11" rx="2"
+             stroke="#8E8EA0" stroke-width="1.2" fill="none"/>
+       <path d="M2 7h12" stroke="#8E8EA0" stroke-width="1.2"/>
+       <path d="M5.5 1.5v3M10.5 1.5v3"
+             stroke="#8E8EA0" stroke-width="1.2" stroke-linecap="round"/>
+     </svg>'
+  )
 
-                           # ── Smart Insights ──────────────────────────────
-                           tonic_card(
-                             title = "Smart Insights",
-                             tools = span(style = "font-size:11px;color:var(--muted);
-                                                   font-style:italic;",
-                                          "Auto-generated from trial data"),
-                             uiOutput("smart_insights_ui")
-                           ),
-                           div(style = "margin-bottom:14px"),
+  tabPanel("overview",
+    div(class = "pov-shell ov-shell",
 
-                           # ── Recruitment projection (chart + sliders) ────
-                           tonic_card(
-                             title = "Recruitment projection vs protocol plan",
-                             tools = tagList(
-                               span(style = "font-size:11px;color:var(--muted);margin-right:10px;",
-                                    textOutput("proj_completion_tool", inline = TRUE)),
-                               actionButton("toggle_proj_settings", "Adjust assumptions",
-                                            icon  = icon("sliders"),
-                                            class = "btn btn-sm btn-outline-secondary")
-                             ),
+      # ── Page header + date range ─────────────────────────────────────
+      div(class = "pov-page-head",
+        tags$h1("Overview"),
+        div(class = "pov-daterange",
+          div(class = "pov-daterange-box",
+              cal_icon,
+              dateInput("date_from", label = NULL,
+                        value = Sys.Date() %m-% months(1),
+                        format = "d M yyyy"),
+              span(class = "pov-daterange-arrow", HTML("&rarr;")),
+              dateInput("date_to", label = NULL,
+                        value = Sys.Date(),
+                        format = "d M yyyy")),
+          span(class = "pov-daterange-note",
+               HTML("&Delta; = change over selected range"))
+        )
+      ),
 
-                             shinyjs::hidden(
-                               div(id = "proj_settings_panel",
-                                   style = "background:#F8FAFD;border:1px solid #DDE5EE;
-                                            border-radius:6px;padding:14px 16px;margin-bottom:12px;",
+      # Hidden text output retained for any callers still wired to it
+      tags$div(style = "display:none;",
+               textOutput("meeting_label_txt", inline = TRUE)),
 
-                                   div(style = "display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;",
-                                       div(style = "font-size:12px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;",
-                                           "Projection assumptions"),
-                                       actionButton("reset_proj_settings", "Reset to defaults",
-                                                    class = "btn btn-sm btn-link",
-                                                    style = "color:var(--teal);padding:0;")
-                                   ),
+      # ── KPI cards ────────────────────────────────────────────────────
+      div(class = "pov-kpis",
+        # Sites
+        div(class = "pov-kpi",
+          div(class = "pov-kpi-body",
+            div(class = "pov-kpi-label", "Sites"),
+            div(class = "pov-kpi-value", textOutput("n_sites", inline = TRUE)),
+            div(class = "pov-kpi-sub", "active in dashboard"),
+            div(class = "pov-kpi-delta-row",
+                uiOutput("delta_sites", inline = TRUE),
+                span(class = "pov-delta-label", "this period"))),
+          div(class = "pov-kpi-spark",
+              pov_sparkline(c(14,15,16,17,18,19,20,21,21,22,23,24), "#0EA5E9"))
+        ),
+        # Total randomised
+        div(class = "pov-kpi",
+          div(class = "pov-kpi-body",
+            div(class = "pov-kpi-label", "Total randomised"),
+            div(class = "pov-kpi-value", textOutput("n_rand", inline = TRUE)),
+            div(class = "pov-kpi-sub", textOutput("n_rand_sub", inline = TRUE)),
+            div(class = "pov-kpi-delta-row",
+                uiOutput("delta_rand", inline = TRUE),
+                span(class = "pov-delta-label", "this period"))),
+          div(class = "pov-kpi-spark",
+              pov_sparkline(c(680,780,890,1020,1120,1250,1340,1440,1550,1640,1730,1847),
+                            "#10B981"))
+        ),
+        # Of trial target
+        div(class = "pov-kpi",
+          div(class = "pov-kpi-body",
+            div(class = "pov-kpi-label", "Of trial target"),
+            div(class = "pov-kpi-value", textOutput("n_pct", inline = TRUE)),
+            div(class = "pov-kpi-sub",
+                paste0("of ", TRIAL_TARGET, " participants")),
+            div(class = "pov-kpi-delta-row",
+                uiOutput("delta_pct", inline = TRUE),
+                span(class = "pov-delta-label", "pp this period"))),
+          div(class = "pov-kpi-spark",
+              pov_sparkline(c(32,35,39,42,45,48,50,53,55,57,59,61.6), "#F59E0B"))
+        )
+      ),
 
-                                   # Row 1: per-site per-month rate
-                                   div(style = "font-size:11px;font-weight:600;color:var(--navy);margin:8px 0 4px;",
-                                       "Per-site per-month recruitment rate"),
-                                   div(style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;",
-                                       div(sliderInput("proj_rate_pessimistic", "Pessimistic",
-                                                       min = 0, max = 10, value = 2, step = 0.5, width = "100%")),
-                                       div(sliderInput("proj_rate_central",    "Central",
-                                                       min = 0, max = 10, value = 3, step = 0.5, width = "100%")),
-                                       div(sliderInput("proj_rate_optimistic", "Optimistic",
-                                                       min = 0, max = 10, value = 4, step = 0.5, width = "100%"))
-                                   ),
+      # ── Smart Insights ───────────────────────────────────────────────
+      tags$section(class = "pov-card",
+        div(class = "pov-card-head",
+            tags$h3("Smart Insights"),
+            span(class = "pov-card-tool-note",
+                 "Auto-generated from trial data")),
+        uiOutput("smart_insights_ui")
+      ),
 
-                                   # Row 2: new sites per month
-                                   div(style = "font-size:11px;font-weight:600;color:var(--navy);margin:14px 0 4px;",
-                                       "New sites opening per month (until target reached)"),
-                                   div(style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;",
-                                       div(sliderInput("proj_sites_pessimistic", "Pessimistic",
-                                                       min = 0, max = 6, value = 1, step = 0.5, width = "100%")),
-                                       div(sliderInput("proj_sites_central",    "Central",
-                                                       min = 0, max = 6, value = 2, step = 0.5, width = "100%")),
-                                       div(sliderInput("proj_sites_optimistic", "Optimistic",
-                                                       min = 0, max = 6, value = 3, step = 0.5, width = "100%"))
-                                   ),
+      # ── Recruitment projection (full width) ─────────────────────────
+      tags$section(class = "pov-card",
+        div(class = "pov-card-head",
+          div(
+            tags$h3("Recruitment projection"),
+            span(class = "pov-card-sub",
+                 textOutput("proj_completion_tool", inline = TRUE))
+          ),
+          div(class = "pov-card-tools",
+            actionButton("toggle_proj_settings", "Assumptions",
+                         icon  = icon("sliders"),
+                         class = "btn-outline")
+          )
+        ),
 
-                                   # Row 3: target site count
-                                   div(style = "font-size:11px;font-weight:600;color:var(--navy);margin:14px 0 4px;",
-                                       "Total sites when fully ramped"),
-                                   div(style = "max-width:340px;",
-                                       sliderInput("proj_target_sites", NULL,
-                                                   min = 1, max = 60, value = 24, step = 1, width = "100%")
-                                   ),
+        shinyjs::hidden(
+          div(id = "proj_settings_panel", class = "pov-assumptions",
+              div(style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;",
+                  div(sliderInput("proj_rate_pessimistic", "Pessimistic — rate/site/month",
+                                  min = 0, max = 10, value = 2, step = 0.5, width = "100%")),
+                  div(sliderInput("proj_rate_central", "Central — rate/site/month",
+                                  min = 0, max = 10, value = 3, step = 0.5, width = "100%")),
+                  div(sliderInput("proj_rate_optimistic", "Optimistic — rate/site/month",
+                                  min = 0, max = 10, value = 4, step = 0.5, width = "100%"))),
+              div(style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:8px;",
+                  div(sliderInput("proj_sites_pessimistic", "Sites opening/month",
+                                  min = 0, max = 6, value = 1, step = 0.5, width = "100%")),
+                  div(sliderInput("proj_sites_central", "Sites opening/month",
+                                  min = 0, max = 6, value = 2, step = 0.5, width = "100%")),
+                  div(sliderInput("proj_sites_optimistic", "Sites opening/month",
+                                  min = 0, max = 6, value = 3, step = 0.5, width = "100%"))),
+              div(style = "max-width:340px;margin-top:8px;",
+                  sliderInput("proj_target_sites", "Total sites when ramped",
+                              min = 1, max = 60, value = 24, step = 1, width = "100%")),
+              div(style = "display:flex;justify-content:flex-end;margin-top:6px;",
+                  actionButton("reset_proj_settings", "Reset to defaults",
+                               class = "ov-link"))
+          )
+        ),
 
-                                   div(style = "font-size:11px;color:var(--muted);font-style:italic;margin-top:10px;",
-                                       "Changes save automatically. Defaults come from live recruitment data once \u22653 months are available.")
-                               )
-                             ),
+        withSpinner(echarts4rOutput("proj_chart", height = "320px"),
+                    type = 4, color = col_teal),
 
-                             withSpinner(
-                               echarts4rOutput("proj_chart", height = "360px"),
-                               type = 4, color = col_teal
-                             ),
+        div(class = "ov-chart-note",
+            textOutput("proj_note", inline = TRUE))
+      ),
 
-                             div(style = "padding:10px 4px 0;font-size:11px;color:var(--muted);font-style:italic",
-                                 textOutput("proj_note", inline = TRUE))
-                           ),
-                           div(style = "margin-bottom:14px"),
+      # ── Portfolio review — collapsed by default behind a toggle ─────
+      tags$section(class = "pov-card pov-collapsible",
+        div(class = "pov-card-head pov-collapsible-head",
+          div(style = "display:flex;align-items:center;gap:12px;",
+            tags$h3("Portfolio review"),
+            span(class = "pov-card-tool-note",
+                 "Hidden by default — open when reviewing portfolio rates.")
+          ),
+          div(class = "pov-card-tools",
+            actionButton("toggle_pr_panel",
+                         label = tagList(
+                           span(id = "pr_toggle_lbl", "Show chart"),
+                           HTML('<svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="margin-left:6px;"><path d="M3 6l5 5 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>')
+                         ),
+                         class = "btn-outline")
+          )
+        ),
+        shinyjs::hidden(
+          div(id = "pr_panel",
+              div(class = "pov-card-tools",
+                  style = "justify-content:flex-end;gap:8px;margin-bottom:10px;",
+                  span(class = "pov-card-tool-note",
+                       "Edit values — chart updates live."),
+                  actionButton("pr_save", HTML("&check; Save"),
+                               class = "btn-outline",
+                               style = "font-size:11.5px;"),
+                  actionButton("pr_reset", "Reset",
+                               class = "btn-outline",
+                               style = "font-size:11.5px;")),
+              div(style = "display:grid;grid-template-columns:minmax(0, 1.3fr) minmax(0, 1fr);
+                           gap:18px;align-items:start;",
+                  div(style = "min-width:0;",
+                      withSpinner(echarts4rOutput("pr_chart", height = "320px"),
+                                  type = 4, color = col_teal)),
+                  div(style = "min-width:0;",
+                      uiOutput("pr_form_ui"))
+              ),
+              div(style = "margin-top:14px;",
+                  uiOutput("pr_data_table"))
+          )
+        )
+      ),
 
-                           # Map + pipeline
-                           div(class = "grid-8-4",
-                               tonic_card(
-                                 title = "UK Site Map",
-                                 tools = span(style = "font-size:11px;color:var(--muted)",
-                                              "Bubble size = randomisations \u00b7 Add city to place on map"),
-                                 leafletOutput("site_map", height = 440)
-                               ),
-                               tonic_card(
-                                 title = "Site pipeline",
-                                 withSpinner(echarts4rOutput("pipeline_chart", height = "230px"),
-                                             type = 4, color = col_teal),
-                                 tags$hr(style = "border:none;border-top:1px solid #EEF3F8;margin:14px 0"),
-                                 div(style = "font-size:10px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px",
-                                     "Top recruiting sites"),
-                                 withSpinner(echarts4rOutput("top_sites_chart", height = "180px"),
-                                             type = 4, color = col_teal)
-                               )
-                           ),
-                           div(style = "margin-bottom:14px"),
+      # ── Map + pipeline grid ──────────────────────────────────────────
+      div(class = "pov-map-grid",
+        tags$section(class = "pov-card",
+          div(class = "pov-card-head",
+              tags$h3("UK site map"),
+              span(class = "pov-card-tool-note",
+                   "Bubble size = randomisations")),
+          leafletOutput("site_map", height = 380)
+        ),
+        div(class = "pov-map-col-right",
+          tags$section(class = "pov-card",
+            div(class = "pov-pipeline-h4", "Site pipeline"),
+            withSpinner(echarts4rOutput("pipeline_chart", height = "200px"),
+                        type = 4, color = col_teal)
+          ),
+          tags$section(class = "pov-card",
+            div(class = "pov-pipeline-h4", "Top recruiting sites"),
+            withSpinner(echarts4rOutput("top_sites_chart", height = "180px"),
+                        type = 4, color = col_teal)
+          )
+        )
+      ),
 
-                           # Sites table
-                           tonic_card(
-                             title = "All sites \u2014 current status",
-                             tools = textInput("site_search_ov", label = NULL,
-                                               placeholder = "Filter\u2026", width = "160px"),
-                             withSpinner(reactableOutput("overview_table"),
-                                         type = 4, color = col_teal)
-                           )
-                  )
+      # ── Sites table ─────────────────────────────────────────────────
+      div(class = "pov-sitestable",
+        div(class = "pov-sitestable-head",
+            tags$h3("All sites"),
+            div(class = "pov-sitestable-search",
+                textInput("site_search_ov", label = NULL,
+                          placeholder = "Filter sites…", width = "180px"))),
+        div(class = "ov-table-wrap",
+            withSpinner(reactableOutput("overview_table"),
+                        type = 4, color = col_teal))
+      )
+    )
+  )
 }

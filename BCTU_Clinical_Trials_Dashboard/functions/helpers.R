@@ -1,5 +1,200 @@
 `%||%` <- function(a, b) if (!is.null(a) && length(a) > 0) a else b
 
+# =============================================================================
+# Pandoc discovery (cross-platform)
+# =============================================================================
+# rmarkdown::render() needs pandoc on PATH. On macOS RStudio sets
+# RSTUDIO_PANDOC; on Windows / Linux without RStudio we have to look harder
+# or surface a clear error. This helper tries every place we know about and
+# sets RSTUDIO_PANDOC when it finds one.
+ensure_pandoc <- function() {
+  # Already configured?
+  if (nzchar(Sys.getenv("RSTUDIO_PANDOC")) &&
+      file.exists(file.path(Sys.getenv("RSTUDIO_PANDOC"),
+                            if (.Platform$OS.type == "windows") "pandoc.exe" else "pandoc")))
+    return(TRUE)
+
+  # rmarkdown carries its own copy in newer versions. pandoc_exec() returns
+  # character(0) when no pandoc is available, so guard length/NA before
+  # file.exists() — otherwise the `if` errors instead of falling through.
+  rm_path <- tryCatch(rmarkdown::pandoc_exec(), error = function(e) NULL)
+  if (length(rm_path) == 1 && !is.na(rm_path) && nzchar(rm_path) &&
+      file.exists(rm_path)) {
+    Sys.setenv(RSTUDIO_PANDOC = dirname(rm_path)); return(TRUE)
+  }
+
+  # Common install locations across the three OSes
+  candidates <- c(
+    # macOS — RStudio + Quarto
+    "/Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/aarch64",
+    "/Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64",
+    "/Applications/RStudio.app/Contents/Resources/app/bin/quarto/bin/tools",
+    "/Applications/RStudio.app/Contents/MacOS/quarto/bin/tools",
+    "/Applications/RStudio.app/Contents/MacOS/pandoc",
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+
+    # Windows — RStudio + standalone + Quarto
+    "C:/Program Files/RStudio/resources/app/quarto/bin/tools",
+    "C:/Program Files/RStudio/bin/quarto/bin/tools",
+    "C:/Program Files/RStudio/bin/pandoc",
+    "C:/Program Files/Pandoc",
+    "C:/Program Files (x86)/Pandoc",
+    file.path(Sys.getenv("LOCALAPPDATA"), "Pandoc"),
+    file.path(Sys.getenv("APPDATA"),      "local", "Pandoc"),
+    "C:/Program Files/Quarto/bin/tools",
+    "C:/Program Files/Quarto/bin",
+
+    # Linux
+    "/usr/bin", "/usr/local/bin"
+  )
+  bin <- if (.Platform$OS.type == "windows") "pandoc.exe" else "pandoc"
+  for (pp in candidates) {
+    if (nzchar(pp) && dir.exists(pp) && file.exists(file.path(pp, bin))) {
+      Sys.setenv(RSTUDIO_PANDOC = pp); return(TRUE)
+    }
+  }
+
+  # Last resort: maybe it's already on PATH but RSTUDIO_PANDOC isn't set
+  found <- tryCatch(Sys.which(bin), error = function(e) "")
+  if (nzchar(found) && file.exists(found)) {
+    Sys.setenv(RSTUDIO_PANDOC = dirname(found)); return(TRUE)
+  }
+
+  FALSE
+}
+
+# =============================================================================
+# Report templates (per-trial)
+# =============================================================================
+# Each trial keeps its own copy of the report Rmd files in trials/<code>/reports/.
+# When a trial is missing a copy (legacy / new install), we fall back to the
+# canonical templates at the project root. The Settings → Report templates UI
+# writes back to the per-trial copy so trial managers can customise without
+# affecting other trials.
+# =============================================================================
+
+REPORT_TEMPLATE_KINDS <- c("tonic", "tsc")  # tonic_report.Rmd = TMG/iTMG, tsc_report.Rmd = TSC
+
+# Resolve the URL path (relative to Shiny's www/) for a trial's logo, if one
+# was copied to www/trial_logos/<code>.<ext> at startup. Returns NULL when
+# there's no logo so callers can fall back to a placeholder.
+trial_logo_url <- function(cfg) {
+  code <- cfg$code %||% ""
+  if (!nzchar(code)) return(NULL)
+  dir <- file.path(getwd(), "www", "trial_logos")
+  if (!dir.exists(dir)) return(NULL)
+  for (ext in c("png", "svg", "jpg", "jpeg", "webp", "gif")) {
+    f <- file.path(dir, paste0(code, ".", ext))
+    if (file.exists(f)) return(paste0("trial_logos/", code, ".", ext))
+  }
+  NULL
+}
+
+# Read the YAML header from an Rmd file and return the names of the params
+# declared in the `params:` block. Used to filter out params the dashboard
+# would otherwise pass to a stale per-trial template (rmarkdown errors with
+# "render params not declared in YAML" if it sees an unknown one).
+# Returns character(0) if the file is missing / unreadable / has no params.
+rmd_declared_params <- function(rmd_path) {
+  if (is.null(rmd_path) || !file.exists(rmd_path)) return(character(0))
+  lines <- tryCatch(readLines(rmd_path, warn = FALSE, n = 400),
+                    error = function(e) character(0))
+  if (!length(lines) || !grepl("^---\\s*$", lines[1])) return(character(0))
+
+  # Find the closing `---` of the YAML block
+  close_idx <- which(grepl("^---\\s*$", lines))[2]
+  if (is.na(close_idx)) return(character(0))
+  yaml_lines <- lines[2:(close_idx - 1)]
+
+  # Find the `params:` key and read its indented children
+  pidx <- grep("^params:\\s*$", yaml_lines)
+  if (!length(pidx)) return(character(0))
+  remaining <- yaml_lines[(pidx[1] + 1):length(yaml_lines)]
+
+  # Stop at the first non-indented line (next top-level key)
+  stop_at <- which(grepl("^[^[:space:]#]", remaining))
+  if (length(stop_at)) remaining <- remaining[seq_len(stop_at[1] - 1)]
+
+  # Pick out lines like "  short_name: ..." or "  report_content: NULL"
+  m <- regmatches(remaining,
+    regexec("^\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:", remaining))
+  out <- vapply(m, function(x) if (length(x) >= 2) x[[2]] else NA_character_,
+                character(1))
+  unique(out[!is.na(out)])
+}
+
+# Filter a named list of params to only those declared by the Rmd's YAML.
+# Lets the dashboard pass new params without breaking older per-trial copies.
+filter_params_for_rmd <- function(params, rmd_path) {
+  decl <- rmd_declared_params(rmd_path)
+  if (!length(decl)) return(params)
+  dropped <- setdiff(names(params), decl)
+  if (length(dropped))
+    message("rmd_render: dropping params not in YAML of ",
+            basename(rmd_path), ": ",
+            paste(dropped, collapse = ", "))
+  params[intersect(names(params), decl)]
+}
+
+# Filename for a given template kind, e.g. "tonic" → "tonic_report.Rmd"
+report_template_filename <- function(kind) {
+  if (!kind %in% REPORT_TEMPLATE_KINDS)
+    stop("Unknown report template kind: ", kind)
+  paste0(kind, "_report.Rmd")
+}
+
+# Path to the trial's own copy (may not exist yet).
+trial_report_template_path <- function(cfg, kind) {
+  trial_dir <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
+  file.path(trial_dir, "reports", report_template_filename(kind))
+}
+
+# Path to the project-level fallback template (the "factory default").
+default_report_template_path <- function(kind) {
+  file.path(getwd(), report_template_filename(kind))
+}
+
+# Resolve which file to use at render time. Order of precedence:
+#   1. cfg$report_template_paths[[kind]] — explicit override path set in
+#      Trial Settings → Report templates (lets a user point at an existing Rmd
+#      they already maintain elsewhere, e.g. on a network drive).
+#   2. trials/<code>/reports/<kind>_report.Rmd — the per-trial copy (default).
+#   3. <project root>/<kind>_report.Rmd — the canonical fallback.
+# Returns NULL if none exist.
+resolve_report_template <- function(cfg, kind) {
+  override <- cfg$report_template_paths[[kind]]
+  if (!is.null(override) && nzchar(override) && file.exists(override))
+    return(override)
+
+  trial_path <- trial_report_template_path(cfg, kind)
+  if (file.exists(trial_path)) return(trial_path)
+
+  default_path <- default_report_template_path(kind)
+  if (file.exists(default_path)) return(default_path)
+
+  NULL
+}
+
+# Copy the canonical templates into a trial's reports/ folder. Idempotent —
+# `overwrite = FALSE` by default so we don't trample edits the user has made.
+seed_trial_report_templates <- function(cfg, overwrite = FALSE) {
+  trial_dir   <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
+  reports_dir <- file.path(trial_dir, "reports")
+  if (!dir.exists(reports_dir))
+    dir.create(reports_dir, recursive = TRUE, showWarnings = FALSE)
+  for (kind in REPORT_TEMPLATE_KINDS) {
+    src <- default_report_template_path(kind)
+    dst <- trial_report_template_path(cfg, kind)
+    if (!file.exists(src)) next
+    if (file.exists(dst) && !overwrite) next
+    tryCatch(file.copy(src, dst, overwrite = TRUE),
+             error = function(e) message("Template copy failed (", kind, "): ",
+                                         e$message))
+  }
+  invisible(reports_dir)
+}
+
 # ── Hospital / city coordinate lookup (replaces city_latlon) ──────────────────
 .uk_hospital_coords <- data.frame(
   stringsAsFactors = FALSE,
@@ -400,6 +595,7 @@ next_site_id <- function(sites_df) {
 find_latest_csv <- function(data_dir = DATA_DIR) {
   if (!dir.exists(data_dir)) return(NULL)
   csvs <- list.files(data_dir, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
+  csvs <- csvs[!grepl("return_rate", basename(csvs), ignore.case = TRUE)]
   if (length(csvs) == 0) return(NULL)
   csvs[order(file.info(csvs)$mtime, decreasing = TRUE)][1]
 }
@@ -408,6 +604,7 @@ list_csvs <- function(data_dir = DATA_DIR) {
   if (!dir.exists(data_dir))
     return(tibble(file = character(), modified = as.POSIXct(character()), path = character()))
   csvs <- list.files(data_dir, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
+  csvs <- csvs[!grepl("return_rate", basename(csvs), ignore.case = TRUE)]
   if (length(csvs) == 0)
     return(tibble(file = character(), modified = as.POSIXct(character()), path = character()))
   info <- file.info(csvs)
@@ -497,6 +694,13 @@ process_redcap <- function(raw_df, current_sites) {
       else n_distinct(record_id[event_type == "Baseline"]),
       .groups = "drop")
   updated_sites <- current_sites
+  # Statuses we'll never overwrite from data — these are manual decisions
+  # ("Paused" / "Closed" / "Set-up" / "Open"). The auto-derive only updates
+  # sites that are still in the default "Identified" state (or have no
+  # status set at all). Once a user picks a real status on the Sites tab,
+  # re-uploading a CSV preserves it.
+  auto_override_allowed <- c("Identified", NA_character_, "")
+
   for (i in seq_len(nrow(dag_summary))) {
     dag_name   <- dag_summary$site_dag[i]
     rand_n     <- as.integer(dag_summary$rand_count[i])
@@ -504,7 +708,10 @@ process_redcap <- function(raw_df, current_sites) {
     existing   <- which(updated_sites$site_name == dag_name)
     if (length(existing) > 0) {
       updated_sites$randomised[existing[1]] <- rand_n
-      updated_sites$status[existing[1]]     <- new_status
+      cur_status <- updated_sites$status[existing[1]]
+      if (cur_status %in% auto_override_allowed) {
+        updated_sites$status[existing[1]] <- new_status
+      }
     } else {
       # Auto-lookup coordinates from hospital name
       ll <- hospital_latlon(dag_name)
@@ -693,10 +900,17 @@ comp_label <- function(v) {
 delta_badge_ui <- function(current, previous, suffix = "") {
   if (is.null(previous)) return(NULL)
   diff <- current - previous
-  if (diff == 0) return(span(class = "delta-badge", style = "background:#F1F5F9;color:#64748B", ""))
-  sign <- if (diff > 0) "+" else ""
-  cls  <- if (diff > 0) "delta-badge" else "delta-badge delta-neg"
-  span(class = cls, paste0(sign, diff, suffix))
+  if (diff == 0) {
+    return(span(class = "delta-badge pov-delta-badge flat",
+                paste0("→ 0", suffix)))
+  }
+  if (diff > 0) {
+    span(class = "delta-badge pov-delta-badge up",
+         paste0("↑ ", abs(diff), suffix))
+  } else {
+    span(class = "delta-badge delta-neg pov-delta-badge down",
+         paste0("↓ ", abs(diff), suffix))
+  }
 }
 
 e_tonic <- function(p) {

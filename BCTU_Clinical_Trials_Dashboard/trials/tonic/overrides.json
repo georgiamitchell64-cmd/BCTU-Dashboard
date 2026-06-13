@@ -1,0 +1,34 @@
+{
+  "report_template_paths": {},
+  "report_content": {
+    "short_name": "TONIC",
+    "trial_title": "AKDDNK",
+    "trial_subtitle": "JOSFINVSOINVDO",
+    "registration_line": "XOIOVIDO"
+  },
+  "modifications": [
+    {
+      "id": "mod_1778672813",
+      "ref": "MOD-001",
+      "category": "substantial_a",
+      "title": "pROTOCOL",
+      "description": "",
+      "documents": [],
+      "date_prepared": "2026-05-13",
+      "date_submitted": "",
+      "date_approved": "",
+      "date_implemented": "",
+      "iras_ref": "",
+      "rec_ref": "",
+      "mhra_ref": "",
+      "status": "Approved",
+      "notes": ""
+    }
+  ],
+  "theme": "custom",
+  "colors": {
+    "primary": "#1B4F6B",
+    "secondary": "#8B5CF6",
+    "accent": "#10B981"
+  }
+}
