@@ -1965,74 +1965,89 @@ trial_selector_server <- function(input, output, session, state) {
     div(style = "margin-top:4px;", rows)
   })
 
-  wiz_step <- reactiveVal(1L)
+  wiz_step  <- reactiveVal(1L)
   WIZ_TOTAL <- 6L
 
-  # Open wizard modal
-  observeEvent(input$open_wizard, {
-    wiz_step(1L)
-    showModal(new_trial_wizard_ui())
-    shinyjs::hide("wiz_prev")
-    shinyjs::hide("wiz_create")
-    shinyjs::show("wiz_next")
-  })
+  # Step-1 validation, shared by Next and the clickable stepper.
+  .wiz_validate_step1 <- function() {
+    sn <- trimws(input$wiz_short_name %||% "")
+    if (!nzchar(sn)) {
+      showNotification("Please enter a short name for the trial.", type = "warning")
+      return(FALSE)
+    }
+    code <- tolower(gsub("[^a-zA-Z0-9]", "", sn))
+    if (code %in% names(rv$available_trials)) {
+      showNotification(paste0("A trial with code '", code, "' already exists."),
+                       type = "warning")
+      return(FALSE)
+    }
+    TRUE
+  }
 
-  # Step indicator
+  # Show step n (1..WIZ_TOTAL) and sync footer buttons. Used by open, next,
+  # prev and the stepper.
+  show_step <- function(n) {
+    n <- max(1L, min(WIZ_TOTAL, as.integer(n)))
+    for (i in seq_len(WIZ_TOTAL))
+      shinyjs::toggle(paste0("wiz_step_", i), condition = (i == n))
+    shinyjs::toggle("wiz_prev",   condition = n > 1L)
+    shinyjs::toggle("wiz_next",   condition = n < WIZ_TOTAL)
+    shinyjs::toggle("wiz_create", condition = n == WIZ_TOTAL)
+    wiz_step(n)
+    shinyjs::runjs("var m=document.querySelector('.nt-main'); if(m){m.scrollTop=0;} window.scrollTo(0,0);")
+  }
+
+  # Open the full-page setup (swap out the home selector) and reset the form.
+  open_new_trial <- function() {
+    shinyjs::reset("new_trial_form")
+    shinyjs::hide("trial_selector_panel")
+    shinyjs::show("new_trial_panel")
+    show_step(1L)
+  }
+  close_new_trial <- function() {
+    shinyjs::hide("new_trial_panel")
+    shinyjs::show("trial_selector_panel")
+  }
+
+  observeEvent(input$open_wizard, open_new_trial())
+  observeEvent(input$wiz_cancel,  close_new_trial())
+
+  # Stepper rail — one row per step (done / active / upcoming). Visited steps
+  # are clickable to jump back and forth.
   output$wiz_step_indicator <- renderUI({
     step <- wiz_step()
-    dots <- lapply(seq_len(WIZ_TOTAL), function(i) {
-      active <- if (i == step) "background:#2EC4A5;" else "background:#DDE5EE;"
-      span(style = paste0("width:10px;height:10px;border-radius:50%;display:inline-block;
-                            margin:0 3px;transition:background .2s;", active))
+    rows <- lapply(NT_STEPS, function(s) {
+      i <- s$n
+      state  <- if (i == step) "active" else if (i < step) "done" else "upcoming"
+      marker <- if (i < step) HTML("&#x2713;") else as.character(i)
+      tags$button(
+        type = "button",
+        class = paste("nt-step-item", state),
+        onclick = sprintf("Shiny.setInputValue('wiz_goto', %d, {priority:'event'})", i),
+        span(class = "nt-step-marker", marker),
+        span(class = "nt-step-text",
+             span(class = "nt-step-title", s$title),
+             span(class = "nt-step-blurb", s$blurb)))
     })
-    div(style = "text-align:center;margin-bottom:18px;", dots)
+    div(class = "nt-stepper",
+        div(class = "nt-stepper-head", sprintf("Step %d of %d", step, WIZ_TOTAL)),
+        div(class = "nt-step-list", rows))
   })
 
-  # Next step
+  observeEvent(input$wiz_goto, {
+    target <- suppressWarnings(as.integer(input$wiz_goto))
+    if (is.na(target)) return()
+    if (wiz_step() == 1L && target > 1L && !.wiz_validate_step1()) return()
+    show_step(target)
+  })
+
   observeEvent(input$wiz_next, {
     step <- wiz_step()
-
-    # Validate step 1
-    if (step == 1L) {
-      sn <- trimws(input$wiz_short_name %||% "")
-      if (!nzchar(sn)) {
-        showNotification("Please enter a short name for the trial.", type = "warning")
-        return()
-      }
-      # Check if trial code already exists
-      code <- tolower(gsub("[^a-zA-Z0-9]", "", sn))
-      if (code %in% names(rv$available_trials)) {
-        showNotification(paste0("A trial with code '", code, "' already exists."), type = "warning")
-        return()
-      }
-    }
-
-    if (step < WIZ_TOTAL) {
-      shinyjs::hide(paste0("wiz_step_", step))
-      wiz_step(step + 1L)
-      shinyjs::show(paste0("wiz_step_", step + 1L))
-
-      # Button visibility
-      shinyjs::show("wiz_prev")
-      if (step + 1L == WIZ_TOTAL) {
-        shinyjs::hide("wiz_next")
-        shinyjs::show("wiz_create")
-      }
-    }
+    if (step == 1L && !.wiz_validate_step1()) return()
+    if (step < WIZ_TOTAL) show_step(step + 1L)
   })
-
-  # Previous step
   observeEvent(input$wiz_prev, {
-    step <- wiz_step()
-    if (step > 1L) {
-      shinyjs::hide(paste0("wiz_step_", step))
-      wiz_step(step - 1L)
-      shinyjs::show(paste0("wiz_step_", step - 1L))
-
-      shinyjs::show("wiz_next")
-      shinyjs::hide("wiz_create")
-      if (step - 1L == 1L) shinyjs::hide("wiz_prev")
-    }
+    if (wiz_step() > 1L) show_step(wiz_step() - 1L)
   })
 
   # Review summary
@@ -2422,7 +2437,7 @@ trial_config <- list(
                  error = function(e) message("Logo copy failed: ", e$message))
       }
 
-      removeModal()
+      close_new_trial()
       showNotification(
         HTML(sprintf("Trial <strong>%s</strong> created successfully!<br>
                       Folder: <code>trials/%s/</code><br>

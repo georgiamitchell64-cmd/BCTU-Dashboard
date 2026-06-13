@@ -183,6 +183,9 @@ build_app_ui <- function() {
         # ── Trial selector (shown first) ──────────────────────────────────────
         trial_selector_ui(),
 
+        # ── New-trial setup (full-page wizard; hidden until "New trial") ──────
+        new_trial_setup_ui(),
+
         # ── Dashboard panels (hidden until trial is selected) ─────────────────
         shinyjs::hidden(
           div(id = "dashboard_panel", style = "padding:20px 22px;",
