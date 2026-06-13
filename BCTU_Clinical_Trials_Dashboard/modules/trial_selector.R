@@ -486,40 +486,34 @@ trial_selector_ui <- function() {
 }
 
 
-# ── "Manage Users" modal (admin only) ────────────────────────────────────────
+# ── "User management" modal (admin only) ──────────────────────────────────────
+# Master-detail console: searchable user list on the left, a detail panel on the
+# right with portfolio role, per-trial access and password actions. Passwords are
+# never shown — only reset (to a temporary the user must change) or set.
 manage_users_modal <- function() {
   modalDialog(
-    title = div(style = "display:flex;align-items:center;gap:10px;",
-                span(style = "font-size:18px;color:#6366F1;", HTML("&#9881;")),
-                span(style = "font-weight:600;", "Manage Users")),
-    size = "l", easyClose = TRUE,
-    footer = modalButton("Close"),
-
-    div(style = "display:grid;grid-template-columns:1.4fr 0.8fr 2.4fr auto;
-                 gap:14px;padding:8px 0;border-bottom:2px solid #EEF2F7;
-                 font-size:11px;font-weight:600;color:#64748B;
-                 text-transform:uppercase;letter-spacing:.5px;",
-        div("User"),
-        div("Portfolio role"),
-        div("Trial access"),
-        div("")),
-
-    uiOutput("manage_users_table_ui"),
-
-    div(style = "margin-top:18px;font-size:12px;color:#64748B;line-height:1.6;",
-        HTML("<strong>Admin</strong> sees and manages every trial.
-              <strong>Member</strong> sees only the trials granted below."))
-  )
-}
-
-# ── "Edit memberships" modal (admin only) ────────────────────────────────────
-edit_memberships_modal <- function(fullname) {
-  modalDialog(
-    title = div(style = "display:flex;align-items:center;gap:10px;",
-                span(style = "font-weight:600;", "Trial access")),
-    size = "m", easyClose = TRUE,
-    footer = modalButton("Done"),
-
-    uiOutput("edit_memberships_body")
+    title = NULL, footer = NULL, size = "l", easyClose = TRUE,
+    div(class = "mu-root",
+      div(class = "mu-head",
+          div(class = "mu-head-titles",
+              div(class = "mu-title",
+                  HTML('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'),
+                  span("User management")),
+              div(class = "mu-sub",
+                  "Access and credentials across the portfolio")),
+          div(class = "mu-search",
+              HTML('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>'),
+              tags$input(type = "text", id = "mu_search",
+                         class = "mu-search-input",
+                         placeholder = "Search users…",
+                         oninput = "Shiny.setInputValue('mu_search', this.value)"))),
+      div(class = "mu-body",
+          div(class = "mu-list", uiOutput("mu_user_list_ui")),
+          div(class = "mu-detail", uiOutput("mu_detail_ui"))),
+      div(class = "mu-foot",
+          span(class = "mu-foot-note",
+               HTML('&#128274; Passwords are encrypted — they can never be viewed, only reset or set.')),
+          modalButton("Close"))
+    )
   )
 }

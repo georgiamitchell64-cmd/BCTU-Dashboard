@@ -570,7 +570,7 @@ trial_selector_server <- function(input, output, session, state) {
   # ── Quick actions: Portfolio settings → manage users ──────────────────
   observeEvent(input$qa_portfolio_settings, {
     if (isTRUE(rv$portfolio_role == "admin")) {
-      showModal(manage_users_modal())
+      open_user_management()
     } else {
       showModal(modalDialog(
         title = "Admins only",
@@ -1586,7 +1586,7 @@ trial_selector_server <- function(input, output, session, state) {
   # \u2500\u2500 Manage Users (admin only) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   observeEvent(input$home_manage_users, {
     if (!isTRUE(rv$portfolio_role == "admin")) return()
-    showModal(manage_users_modal())
+    open_user_management()
   })
 
   # \u2500\u2500 Backup / Restore (admin only) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -1695,65 +1695,61 @@ trial_selector_server <- function(input, output, session, state) {
     rv$home_membership_changed <- Sys.time()
   })
 
-  output$manage_users_table_ui <- renderUI({
+  # ── User management console (master-detail) ──────────────────────────────
+  mu_selected_user <- reactiveVal(NULL)
+  mu_last_temp      <- reactiveVal(NULL)   # list(user, pw) — one-time temp display
+
+  # Open the console: default-select the first user, clear transient state.
+  open_user_management <- function() {
+    users <- tryCatch(list_all_users(), error = function(e) data.frame())
+    mu_selected_user(if (nrow(users)) users$fullname[1] else NULL)
+    mu_last_temp(NULL)
+    shinyjs::runjs("Shiny.setInputValue('mu_search', '');")
+    showModal(manage_users_modal())
+  }
+
+  .mu_initials <- function(name) {
+    parts <- strsplit(trimws(name), "\\s+")[[1]]
+    parts <- parts[nzchar(parts)]
+    if (!length(parts)) return("?")
+    toupper(paste0(substr(parts[1], 1, 1),
+                   if (length(parts) > 1) substr(parts[length(parts)], 1, 1) else ""))
+  }
+
+  # Left rail: searchable list of users.
+  output$mu_user_list_ui <- renderUI({
     rv$home_membership_changed   # refresh trigger
     users <- list_all_users()
-    trials <- discover_trials()
+    if (nrow(users) == 0) return(div(class = "mu-empty", "No users yet."))
 
-    if (nrow(users) == 0) {
-      return(div(class = "home-empty", "No users yet."))
-    }
+    q <- tolower(trimws(input$mu_search %||% ""))
+    if (nzchar(q)) users <- users[grepl(q, tolower(users$fullname), fixed = TRUE), , drop = FALSE]
+    if (nrow(users) == 0) return(div(class = "mu-empty", "No users match your search."))
 
-    rows <- lapply(seq_len(nrow(users)), function(i) {
-      u <- users[i, ]
-      mems <- list_user_memberships_for(u$fullname)
-      mem_pills <- if (nrow(mems) == 0) {
-        span(style = "font-size:11.5px;color:#94A3B8;font-style:italic;", "No trials")
-      } else {
-        lapply(seq_len(nrow(mems)), function(j) {
-          m <- mems[j, ]
-          tcode <- m$trial_code
-          tname <- trials[[tcode]]$short_name %||% toupper(tcode)
-          span(style = "display:inline-flex;align-items:center;gap:4px;
-                        background:#F1F5F9;color:#0F172A;
-                        padding:2px 8px;border-radius:999px;font-size:11px;
-                        margin-right:5px;margin-bottom:4px;",
-               tname,
-               span(style = "color:#64748B;font-size:10px;",
-                    sprintf("(%s)", m$trial_role)))
-        })
-      }
-
-      div(style = "display:grid;grid-template-columns:1.4fr 0.8fr 2.4fr auto;
-                   gap:14px;align-items:center;padding:12px 0;
-                   border-bottom:1px solid #EEF2F7;",
-          div(div(style = "font-weight:600;color:#0F172A;", u$fullname),
-              div(style = "font-size:11px;color:#64748B;", u$role)),
-          tags$select(id = paste0("portrole_", i),
-            class = "form-control",
-            style = "font-size:12px;padding:5px 8px;height:32px;",
-            onchange = sprintf("Shiny.setInputValue('home_set_portrole',
-                                {user:'%s', role:this.value, n:Math.random()},
-                                {priority:'event'})",
-                               gsub("'", "\\\\'", u$fullname)),
-            tags$option(value = "member",
-                        selected = if (u$portfolio_role == "member") NA else NULL,
-                        "Member"),
-            tags$option(value = "admin",
-                        selected = if (u$portfolio_role == "admin") NA else NULL,
-                        "Admin")),
-          div(mem_pills),
-          actionButton(paste0("edit_mem_", i),
-                       label = HTML("&#9881; Edit"),
-                       class = "btn btn-sm btn-outline-secondary",
-                       onclick = sprintf("Shiny.setInputValue('home_edit_user',
-                                          {user:'%s', n:Math.random()},
-                                          {priority:'event'})",
-                                         gsub("'", "\\\\'", u$fullname)))
+    sel <- mu_selected_user()
+    lapply(seq_len(nrow(users)), function(i) {
+      u    <- users[i, ]
+      nmem <- nrow(list_user_memberships_for(u$fullname))
+      is_admin <- identical(u$portfolio_role, "admin")
+      tags$button(
+        type = "button",
+        class = paste("mu-user-item", if (identical(u$fullname, sel)) "active" else ""),
+        onclick = sprintf("Shiny.setInputValue('mu_select', {user:'%s', n:Math.random()}, {priority:'event'})",
+                          gsub("'", "\\\\'", u$fullname)),
+        span(class = "mu-avatar", .mu_initials(u$fullname)),
+        span(class = "mu-user-meta",
+             span(class = "mu-user-name", u$fullname),
+             span(class = "mu-user-sub",
+                  sprintf("%s · %s", if (is_admin) "Admin" else "Member",
+                          if (nmem == 1) "1 trial" else paste0(nmem, " trials")))),
+        if (is_admin) span(class = "mu-badge mu-badge-admin", "Admin")
       )
     })
+  })
 
-    div(rows)
+  observeEvent(input$mu_select, {
+    mu_selected_user(input$mu_select$user)
+    mu_last_temp(NULL)   # don't carry a temp password across users
   })
 
   observeEvent(input$home_set_portrole, {
@@ -1771,57 +1767,133 @@ trial_selector_server <- function(input, output, session, state) {
                      type = "message", duration = 3)
   })
 
-  observeEvent(input$home_edit_user, {
-    u <- input$home_edit_user$user
-    showModal(edit_memberships_modal(u))
-  })
-
-  output$edit_memberships_body <- renderUI({
-    u <- isolate(input$home_edit_user$user)
-    if (is.null(u)) return(NULL)
+  # Right pane: the selected user's role, per-trial access and password actions.
+  output$mu_detail_ui <- renderUI({
     rv$home_membership_changed
-    trials <- discover_trials()
-    mems <- list_user_memberships_for(u)
+    u <- mu_selected_user()
+    if (is.null(u))
+      return(div(class = "mu-detail-empty",
+                 HTML('<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'),
+                 div("Select a user to manage their access and password.")))
+
+    users <- list_all_users()
+    urow  <- users[users$fullname == u, , drop = FALSE]
+    if (!nrow(urow)) return(div(class = "mu-detail-empty", "User not found."))
+
+    is_admin  <- identical(urow$portfolio_role[1], "admin")
+    has_pw    <- tryCatch(profile_has_password(u),        error = function(e) FALSE)
+    reset_req <- tryCatch(is_password_reset_required(u),  error = function(e) FALSE)
+    trials    <- discover_trials()
+    mems      <- list_user_memberships_for(u)
     mem_lookup <- setNames(mems$trial_role, mems$trial_code)
 
-    rows <- lapply(names(trials), function(tcode) {
-      cfg <- trials[[tcode]]
-      current <- mem_lookup[[tcode]] %||% "none"
-      div(style = "display:grid;grid-template-columns:1fr 1fr;gap:14px;
-                   align-items:center;padding:10px 0;
-                   border-bottom:1px solid #EEF2F7;",
-          div(tags$strong(cfg$short_name %||% toupper(tcode)),
-              tags$br(),
-              span(style = "font-size:11px;color:#64748B;", cfg$name %||% "")),
-          tags$select(
-            class = "form-control",
-            style = "font-size:13px;padding:6px 10px;",
-            onchange = sprintf("Shiny.setInputValue('home_set_mem',
-                                {user:'%s', trial:'%s', role:this.value, n:Math.random()},
-                                {priority:'event'})",
-                               gsub("'", "\\\\'", u), tcode),
-            tags$option(value = "none",
-                        selected = if (current == "none") NA else NULL,
-                        "No access"),
-            tags$option(value = "manager",
-                        selected = if (current == "manager") NA else NULL,
-                        "Manager"),
-            tags$option(value = "coordinator",
-                        selected = if (current == "coordinator") NA else NULL,
-                        "Coordinator"),
-            tags$option(value = "statistician",
-                        selected = if (current == "statistician") NA else NULL,
-                        "Statistician"),
-            tags$option(value = "readonly",
-                        selected = if (current == "readonly") NA else NULL,
-                        "Read-only"))
-      )
+    portrole_btn <- function(val, label) {
+      tags$button(type = "button",
+        class = paste("mu-seg-btn", if ((val == "admin") == is_admin) "active" else ""),
+        onclick = sprintf("Shiny.setInputValue('home_set_portrole',{user:'%s',role:'%s',n:Math.random()},{priority:'event'})",
+                          gsub("'", "\\\\'", u), val),
+        label)
+    }
+
+    trial_rows <- if (!length(trials)) {
+      div(class = "mu-hint", "No trials in the portfolio yet.")
+    } else lapply(names(trials), function(tcode) {
+      cfg <- trials[[tcode]]; current <- mem_lookup[[tcode]] %||% "none"
+      div(class = "mu-trial-row",
+          div(class = "mu-trial-name",
+              span(class = paste("mu-trial-dot", if (current != "none") "on" else "")),
+              tags$strong(cfg$short_name %||% toupper(tcode))),
+          tags$select(class = "mu-select",
+            onchange = sprintf("Shiny.setInputValue('home_set_mem',{user:'%s',trial:'%s',role:this.value,n:Math.random()},{priority:'event'})",
+                              gsub("'", "\\\\'", u), tcode),
+            tags$option(value = "none",         selected = if (current == "none") NA else NULL,         "No access"),
+            tags$option(value = "manager",      selected = if (current == "manager") NA else NULL,      "Manager"),
+            tags$option(value = "coordinator",  selected = if (current == "coordinator") NA else NULL,  "Coordinator"),
+            tags$option(value = "statistician", selected = if (current == "statistician") NA else NULL, "Statistician"),
+            tags$option(value = "readonly",     selected = if (current == "readonly") NA else NULL,     "Read-only")))
     })
+
+    temp <- mu_last_temp()
+    temp_box <- if (!is.null(temp) && identical(temp$user, u))
+      div(class = "mu-temp",
+          div(class = "mu-temp-label", "Temporary password — copy and share securely, then it's gone:"),
+          div(class = "mu-temp-pw", temp$pw),
+          div(class = "mu-temp-note", "The user must set their own password the next time they sign in.")) else NULL
+
+    pw_status <- if (!has_pw) span(class = "mu-pill mu-pill-warn", "No password set")
+      else if (reset_req)    span(class = "mu-pill mu-pill-warn", "Reset pending — must change at next login")
+      else                   span(class = "mu-pill mu-pill-ok",   "Password set")
+
     tagList(
-      div(style = "font-size:13px;color:#64748B;margin-bottom:12px;",
-          sprintf("Set per-trial access for %s", u)),
-      div(rows)
+      div(class = "mu-detail-head",
+          span(class = "mu-avatar mu-avatar-lg", .mu_initials(u)),
+          div(div(class = "mu-detail-name", u),
+              div(class = "mu-detail-sub",
+                  sprintf("%s%s", urow$role[1] %||% "",
+                          if (!is.na(urow$created[1] %||% NA) && nzchar(urow$created[1] %||% ""))
+                            paste0(" · added ", urow$created[1]) else "")))),
+
+      div(class = "mu-section",
+          div(class = "mu-section-label", "Portfolio role"),
+          div(class = "mu-seg", portrole_btn("member", "Member"), portrole_btn("admin", "Admin")),
+          div(class = "mu-hint",
+              if (is_admin) "Admins see and manage every trial in the portfolio."
+              else "Members see only the trials granted below.")),
+
+      div(class = "mu-section",
+          div(class = "mu-section-label", "Trial access"),
+          if (is_admin) div(class = "mu-hint",
+              "This user is an admin and already has manager access to every trial."),
+          div(class = "mu-trial-list", trial_rows)),
+
+      div(class = "mu-section",
+          div(class = "mu-section-label", "Security"),
+          div(class = "mu-pw-status", pw_status),
+          temp_box,
+          actionButton("mu_reset_pw", HTML("&#8634; Reset to a temporary password"),
+                       class = "mu-btn mu-btn-amber mu-btn-block"),
+          div(class = "mu-pw-set",
+              tags$label("Or set a specific password"),
+              div(class = "mu-pw-set-row",
+                  passwordInput("mu_new_pw", label = NULL,
+                                placeholder = "New password (min 6 chars)", width = "100%"),
+                  actionButton("mu_set_pw", "Set", class = "mu-btn mu-btn-navy"))),
+          div(class = "mu-hint",
+              "Both options force the user to choose their own password next time they sign in. Existing passwords are encrypted and can never be viewed."))
     )
+  })
+
+  observeEvent(input$mu_reset_pw, {
+    u <- mu_selected_user(); if (is.null(u)) return()
+    res <- tryCatch(admin_reset_password(u, admin_fullname = rv$username),
+                    error = function(e) list(success = FALSE, message = e$message))
+    if (isTRUE(res$success)) {
+      mu_last_temp(list(user = u, pw = res$temp_password))
+      rv$home_membership_changed <- Sys.time()
+      showNotification(sprintf("Temporary password generated for %s.", u),
+                       type = "message", duration = 4)
+    } else {
+      showNotification(res$message %||% "Couldn't reset password.", type = "error", duration = 6)
+    }
+  })
+
+  observeEvent(input$mu_set_pw, {
+    u <- mu_selected_user(); if (is.null(u)) return()
+    pw <- input$mu_new_pw %||% ""
+    if (nchar(pw) < 6) {
+      showNotification("Password must be at least 6 characters.", type = "warning")
+      return()
+    }
+    res <- tryCatch(admin_reset_password(u, admin_fullname = rv$username, new_password = pw),
+                    error = function(e) list(success = FALSE, message = e$message))
+    if (isTRUE(res$success)) {
+      mu_last_temp(NULL)
+      rv$home_membership_changed <- Sys.time()
+      showNotification(sprintf("Password set for %s — they'll choose their own at next login.", u),
+                       type = "message", duration = 5)
+    } else {
+      showNotification(res$message %||% "Couldn't set password.", type = "error", duration = 6)
+    }
   })
 
   observeEvent(input$home_set_mem, {
@@ -2640,6 +2712,7 @@ trial_config <- list(
     "home_sites_ui", "home_activity_ui",
     "home_add_button_ui", "home_dropdown_ui", "home_profile_name",
     "sites_top_ui", "sites_detail_ui",
-    "notif_badge_ui", "notif_drawer_ui"
+    "notif_badge_ui", "notif_drawer_ui",
+    "mu_user_list_ui", "mu_detail_ui"
   ))
 }
