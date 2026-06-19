@@ -85,6 +85,12 @@ wp_effective_target <- function(cfg, active_wp = NULL) {
 }
 
 
+# Process-wide cache for discover_trials(), keyed by trials_dir. Invalidated
+# automatically when any config.R / overrides.json is added, removed or changed
+# (the fingerprint includes file paths + mtimes). This avoids re-sourcing every
+# trial config from disk on each of the ~24 call sites across the reactive graph.
+.discover_cache <- new.env(parent = emptyenv())
+
 #' Discover all available trial configs
 #' @return Named list of trial config lists, keyed by trial code
 discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
@@ -94,6 +100,16 @@ discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
   }
 
   trial_folders <- list.dirs(trials_dir, full.names = TRUE, recursive = FALSE)
+
+  # Fingerprint the on-disk state; return the cached result if nothing changed.
+  fp_files <- c(file.path(trial_folders, "config.R"),
+                file.path(trial_folders, "overrides.json"))
+  fp_files <- fp_files[file.exists(fp_files)]
+  fp <- paste0(trials_dir, "::",
+               paste(fp_files, file.mtime(fp_files), collapse = "|"))
+  cached <- .discover_cache[[trials_dir]]
+  if (!is.null(cached) && identical(cached$fp, fp)) return(cached$val)
+
   configs <- list()
 
   for (folder in trial_folders) {
@@ -132,6 +148,7 @@ discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
     }
   }
 
+  .discover_cache[[trials_dir]] <- list(fp = fp, val = configs)
   configs
 }
 

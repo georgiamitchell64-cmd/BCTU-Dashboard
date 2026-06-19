@@ -24,10 +24,12 @@
   --accent:  var(--bctu-mid);
 
   --amber:#F59E0B; --red:#EF4444; --green:#10B981;
-  --ink:#1F1226; --ink-2:#3A2542;
-  --muted:#6B5874; --muted-2:#A693AF;
-  --line:#EADCE6; --line-2:#F4ECF1;
-  --bg: #FAF6F9; --panel:#FFFFFF; --rail:#FBF5F9;
+  /* Neutral slate scale + clean white surfaces (was purple/pink-tinted) for a
+     crisper, more modern look. BCTU brand colours above are kept for accents. */
+  --ink:#1A1D29; --ink-2:#39414F;
+  --muted:#64748B; --muted-2:#94A3B8;
+  --line:#E3E8EF; --line-2:#EEF1F6;
+  --bg: #F6F7F9; --panel:#FFFFFF; --rail:#F1F3F6;
   --ui:'Inter','Outfit',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
   background: var(--bg);

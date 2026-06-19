@@ -15,6 +15,3 @@
 app_copy_*.R
 *_copy_*.R
 *.bak
-
-# ── Stray brace-expansion artifact from a botched mkdir ───────────────────────
-/{globals,functions,modules,trials/

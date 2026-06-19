@@ -99,6 +99,16 @@ init_app_state <- function(input, output, session) {
   output$sb_role         <- renderText({ req(rv$role); rv$role })
   output$topbar_username <- renderText({ req(rv$username); rv$username })
   output$topbar_role     <- renderText({ req(rv$role); rv$role })
+  output$topbar_acct_name <- renderText({ req(rv$username); rv$username })
+  output$topbar_acct_initials <- renderText({
+    nm <- rv$username
+    if (is.null(nm) || !nzchar(nm)) return("?")
+    parts <- strsplit(trimws(nm), "\\s+")[[1]]
+    parts <- parts[nzchar(parts)]
+    if (!length(parts)) return("?")
+    toupper(paste0(substr(parts[1], 1, 1),
+                   if (length(parts) > 1) substr(parts[length(parts)], 1, 1) else ""))
+  })
   output$topbar_trial_label <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg)) return(span("BCTU Trials Dashboard"))

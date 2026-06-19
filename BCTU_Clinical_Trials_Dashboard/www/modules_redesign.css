@@ -253,6 +253,61 @@
   font-size: 10px; padding: 2px 8px; border-radius: 10px;
   background: #FEF3C7; color: #92400E; font-weight: 600;
 }
+
+/* In-trial account control — chip with initials, name and a dropdown menu. */
+.topbar-account {
+  position: relative;
+  display: flex; align-items: center; gap: 9px;
+  padding: 5px 10px 5px 6px; border-radius: 10px;
+  border: 1px solid var(--hdr-line); background: var(--hdr-bg);
+  cursor: pointer; transition: background .15s ease, border-color .15s ease;
+  user-select: none;
+}
+.topbar-account:hover { background: var(--hdr-chip-bg); border-color: #D8D8E0; }
+.topbar-acct-avatar {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  background: var(--hdr-accent); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12.5px; font-weight: 700; letter-spacing: .3px;
+}
+.topbar-acct-info { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.topbar-acct-name { font-size: 13px; font-weight: 600; color: var(--hdr-ink); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.topbar-acct-role { font-size: 11px; color: var(--hdr-muted); white-space: nowrap; }
+.topbar-acct-caret { color: var(--hdr-muted); font-size: 10px; transition: transform .15s ease; }
+.topbar-account.open .topbar-acct-caret { transform: rotate(180deg); }
+.topbar-acct-menu {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  min-width: 210px; background: #fff;
+  border: 1px solid var(--hdr-line); border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(15,23,42,0.14);
+  padding: 6px; z-index: 1200;
+  opacity: 0; transform: translateY(-6px); pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease;
+}
+.topbar-account.open .topbar-acct-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.tam-head {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--hdr-muted); padding: 8px 12px 6px;
+}
+.tam-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: transparent; border: none; border-radius: 8px;
+  padding: 9px 12px; font-size: 13px; font-weight: 500; color: var(--hdr-ink);
+  font-family: inherit; cursor: pointer; transition: background .12s ease;
+}
+.tam-item:hover { background: var(--hdr-chip-bg); }
+.tam-item svg { color: var(--hdr-muted); flex-shrink: 0; }
+.tam-danger { color: #DC2626; }
+.tam-danger svg { color: #DC2626; }
+.tam-danger:hover { background: #FEF2F2; }
+
+/* Dark theme */
+html[data-theme="dark"] .topbar-account { background: var(--ov-panel); border-color: var(--ov-line); }
+html[data-theme="dark"] .topbar-account:hover { background: var(--ov-rail); }
+html[data-theme="dark"] .topbar-acct-name { color: var(--ov-ink); }
+html[data-theme="dark"] .topbar-acct-menu { background: var(--ov-panel); border-color: var(--ov-line); }
+html[data-theme="dark"] .tam-item { color: var(--ov-ink); }
+html[data-theme="dark"] .tam-item:hover { background: var(--ov-rail); }
 .topbar-user-meta .role-badge:empty { display: none; }
 @media (max-width: 720px) {
   .topbar-user-meta { display: none; }

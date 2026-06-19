@@ -45,6 +45,16 @@ build_app_ui <- function() {
           var el = document.getElementById(id);
           if (el) el.classList.add('on');
         }
+        // Account menu (in-trial topbar) — toggle open, close on outside click.
+        function toggleAccountMenu(e) {
+          if (e) e.stopPropagation();
+          var el = document.getElementById('topbar_account');
+          if (el) el.classList.toggle('open');
+        }
+        document.addEventListener('click', function(e) {
+          var a = document.getElementById('topbar_account');
+          if (a && !a.contains(e.target)) a.classList.remove('open');
+        });
       ")),
       tags$style(HTML("
         .wp-picker-bar {
@@ -128,12 +138,30 @@ build_app_ui <- function() {
                     HTML('<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6.5a4 4 0 018 0c0 2 1 3.5 1.5 4H2.5c.5-.5 1.5-2 1.5-4z" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linejoin="round"/><path d="M6 10.5s.5 2 2 2 2-2 2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>'),
                     div(class = "topbar-bell-dot")
                 ),
-                div(class = "topbar-avatar",
-                    HTML('<svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="5.5" r="3" fill="currentColor"/><path d="M2 14.5c0-3 2.7-5 6-5s6 2 6 5" fill="currentColor"/></svg>')
-                ),
-                tags$div(style = "display:none;",
-                    textOutput("topbar_username", inline = TRUE),
-                    textOutput("topbar_role", inline = TRUE)
+                # Account control — initials + name + caret, opening a small
+                # menu (change password / sign out). Far clearer than a bare icon.
+                div(id = "topbar_account", class = "topbar-account",
+                    onclick = "toggleAccountMenu(event)",
+                    span(class = "topbar-acct-avatar",
+                         textOutput("topbar_acct_initials", inline = TRUE)),
+                    span(class = "topbar-acct-info",
+                         span(class = "topbar-acct-name",
+                              textOutput("topbar_acct_name", inline = TRUE)),
+                         span(class = "topbar-acct-role",
+                              textOutput("topbar_role", inline = TRUE))),
+                    span(class = "topbar-acct-caret", HTML("&#9662;")),
+                    div(class = "topbar-acct-menu",
+                        div(class = "tam-head", "Account"),
+                        tags$button(class = "tam-item", type = "button",
+                                    onclick = "Shiny.setInputValue('home_change_password', Math.random(), {priority:'event'})",
+                                    HTML('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'),
+                                    span("Change password")),
+                        tags$button(class = "tam-item tam-danger", type = "button",
+                                    onclick = "Shiny.setInputValue('home_sign_out', Math.random(), {priority:'event'})",
+                                    HTML('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>'),
+                                    span("Sign out"))),
+                    tags$div(style = "display:none;",
+                        textOutput("topbar_username", inline = TRUE))
                 )
             )
         )),
