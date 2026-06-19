@@ -16,14 +16,9 @@
 participants_tab_ui <- function() {
   tabPanel("participants",
 
-    # ── Row 1: 4 donut KPIs + inline download ────────────────────────────
+    # ── Row 1: timepoint donut KPIs (config-driven) + inline download ────
     div(class = "data-hero-row",
-      div(class = "data-hero",
-          uiOutput("data_donut_baseline"),
-          uiOutput("data_donut_discharge"),
-          uiOutput("data_donut_d30"),
-          uiOutput("data_donut_d90")
-      ),
+      uiOutput("data_donuts"),
       div(class = "data-hero-download",
           downloadButton("dl_participants", HTML("&darr; Download all data"),
                          class = "btn data-dl-btn"))

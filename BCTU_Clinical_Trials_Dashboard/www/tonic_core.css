@@ -224,7 +224,7 @@ body, .shiny-app {
    Putting the download on the same row removes a half-empty strip below
    the KPIs and reads as "summary + the one obvious action." */
 .data-hero-row{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:end;margin-bottom:14px}
-.data-hero{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;min-width:0}
+.data-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;min-width:0}
 .data-hero-download{padding-bottom:2px}
 .donut-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 3px rgba(0,0,0,.04);transition:transform .15s,box-shadow .15s}
 .donut-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(27,79,107,.08)}

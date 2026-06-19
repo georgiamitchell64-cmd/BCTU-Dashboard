@@ -119,32 +119,47 @@ participants_server <- function(input, output, session, state) {
     )
   }
 
-  output$data_donut_baseline  <- renderUI({
-    den <- n_randomised(); num <- n_event("Baseline")
-    donut_card_ui(num, den, "Baseline",
+  # Turn a redcap_events role key into a readable label: "day_30" -> "Day 30",
+  # "month_12" -> "Month 12", "week_6" -> "Week 6".
+  .pretty_role <- function(role) tools::toTitleCase(gsub("_", " ", role))
+
+  # Timepoint donuts, driven by the trial's configured events so each trial
+  # shows ITS timepoints (e.g. Week 6 / Month 6 / Month 12) rather than a fixed
+  # Baseline/Day 30/Day 90 set. Baseline is always first; the remaining donuts
+  # come from cfg$redcap_events (order preserved, excluding sub_forms). Where a
+  # completion field is configured (TONIC-style) the donut shows completion %,
+  # otherwise it falls back to "records present at this event".
+  output$data_donuts <- renderUI({
+    den <- n_randomised()
+    base_n <- n_event("Baseline")
+    cards <- list(donut_card_ui(base_n, den, "Baseline",
                   ring = "#EDE9FE", fill = "#7C3AED",
-                  sub_extra = sprintf("%d missing", max(0L, den - num)))
-  })
-  output$data_donut_discharge <- renderUI({
-    den <- n_randomised()
-    num <- n_complete("discharge_complete", "discharge", "Discharge")
-    donut_card_ui(num, den, "Discharge",
-                  ring = "#DBEAFE", fill = "#2563EB",
-                  sub_extra = sprintf("%d pending", max(0L, den - num)))
-  })
-  output$data_donut_d30       <- renderUI({
-    den <- n_randomised()
-    num <- n_complete("day30_complete", "day_30", "Day 30")
-    donut_card_ui(num, den, "Day 30",
-                  ring = "#D1FAE5", fill = "#10B981",
-                  sub_extra = sprintf("%d outstanding", max(0L, den - num)))
-  })
-  output$data_donut_d90       <- renderUI({
-    den <- n_randomised()
-    num <- n_complete("day90_complete", "day_90", "Day 90")
-    donut_card_ui(num, den, "Day 90",
-                  ring = "#A7F3D0", fill = "#059669",
-                  sub_extra = sprintf("%d outstanding", max(0L, den - num)))
+                  sub_extra = sprintf("%d missing", max(0L, den - base_n))))
+
+    ev    <- (rv$trial_config$redcap_events) %||% list()
+    roles <- setdiff(names(ev), c("baseline", "sub_forms"))
+    if (!length(roles)) roles <- c("discharge", "day_30", "day_90")
+
+    # Known completion-field roles (a list so a missing key returns NULL, not an
+    # error) keep TONIC's completion donuts working; others use <role>_complete.
+    known_fields <- list(discharge = "discharge_complete",
+                         day_30 = "day30_complete", day_90 = "day90_complete")
+    palette <- list(c("#DBEAFE","#2563EB"), c("#D1FAE5","#10B981"),
+                    c("#A7F3D0","#059669"), c("#FEF3C7","#D97706"),
+                    c("#FCE7F3","#DB2777"), c("#E0E7FF","#4F46E5"),
+                    c("#CCFBF1","#0D9488"))
+
+    for (i in seq_along(roles)) {
+      role <- roles[i]
+      lbl  <- .pretty_role(role)
+      fr   <- known_fields[[role]] %||% paste0(role, "_complete")
+      num  <- n_complete(fr, role, lbl)
+      pal  <- palette[[((i - 1) %% length(palette)) + 1]]
+      cards[[length(cards) + 1]] <- donut_card_ui(num, den, lbl,
+                    ring = pal[1], fill = pal[2],
+                    sub_extra = sprintf("%d outstanding", max(0L, den - num)))
+    }
+    div(class = "data-hero", cards)
   })
 
   # ── Event reactives ───────────────────────────────────────────────────
