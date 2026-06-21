@@ -46,6 +46,11 @@ trial_settings_tab_ui <- function() {
                       span(style = "flex:1;min-width:0;",
                            span(class = "settings-lbl", "Features"),
                            span(class = "settings-desc", "Tabs & dashboard modules"))),
+          tags$button(class = "settings-item", `data-section` = "schedule",
+                      span(class = "settings-ic", HTML("&#x1F4C5;")),
+                      span(style = "flex:1;min-width:0;",
+                           span(class = "settings-lbl", "Follow-up schedule"),
+                           span(class = "settings-desc", "Timepoints & REDCap events"))),
           tags$button(class = "settings-item", `data-section` = "config",
                       span(class = "settings-ic", HTML("&#x2351;")),
                       span(style = "flex:1;min-width:0;",
@@ -292,6 +297,50 @@ trial_settings_tab_ui <- function() {
                               div(style = "font-size:11.5px;color:var(--ov-muted);margin-top:2px;",
                                   "Show the per-participant questionnaire grid on the Data tab. Turn off for trials without PROMs.")))
                   )
+              )
+            )
+          ),
+
+          # ── Section: Follow-up schedule ────────────────────────────
+          div(id = "settings_sec_schedule", class = "settings-section",
+              style = "display:none;",
+
+            tags$section(class = "s-card",
+              div(class = "s-card-head",
+                  div(style = "flex:1;min-width:0;",
+                      div(class = "s-card-title", "Follow-up schedule"),
+                      div(class = "s-card-sub",
+                          "The timepoints this trial collects. These drive the Data tab KPI donuts and event classification. Map each to the REDCap event name in your export's redcap_event_name column.")),
+                  actionButton("settings_save_schedule", "Save schedule",
+                               class = "btn-primary-sm")),
+              div(class = "s-card-body",
+                  div(class = "sch-baseline",
+                      div(class = "sch-field",
+                          tags$label("Baseline / randomisation event"),
+                          textInput("set_ev_baseline", label = NULL,
+                                    placeholder = "baseline_arm_1", width = "100%")),
+                      div(class = "sch-hint",
+                          "The event participants are randomised at — counted as 'randomised'.")),
+
+                  div(class = "sch-colhead",
+                      span(class = "sch-colhead-l", "Follow-up timepoint"),
+                      span(class = "sch-colhead-r", "REDCap event name"),
+                      span(style = "width:34px;")),
+                  uiOutput("settings_timepoints_ui"),
+
+                  div(style = "margin-top:12px;",
+                      actionButton("settings_tp_add",
+                                   HTML("&#43; Add timepoint"),
+                                   class = "btn-ghost-sm")),
+
+                  div(class = "sch-subforms",
+                      div(class = "sch-field",
+                          tags$label("Sub-form / safety events (comma-separated)"),
+                          textInput("set_ev_subforms", label = NULL,
+                                    placeholder = "sub_forms_arm_1, ad_hoc_arm_1",
+                                    width = "100%")),
+                      div(class = "sch-hint",
+                          "Events holding SAEs, deviations, withdrawals or change-of-status forms."))
               )
             )
           ),

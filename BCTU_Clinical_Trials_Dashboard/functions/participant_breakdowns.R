@@ -170,6 +170,53 @@ find_unmapped_code_cols <- function(raw, cfg, det) {
   results
 }
 
+# Like find_unmapped_code_cols(), but returns EVERY coded categorical column
+# (including ones already labelled) with each value's current label pre-filled —
+# existing override wins, then a built-in suggestion, then blank. This powers
+# the "edit / rename groupings" view so saved labels can be changed later.
+find_editable_code_cols <- function(raw, cfg, det) {
+  if (is.null(raw) || !nrow(raw) || is.null(det) || !nrow(det)) return(list())
+  base <- raw
+  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
+    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
+    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
+  }
+  has <- function(x, k) !is.null(x) && k %in% names(x)
+  results <- list()
+  for (i in seq_len(nrow(det))) {
+    r <- det[i, ]
+    if (r$type != "categorical") next
+    col <- r$column
+    if (!col %in% names(base)) next
+    v <- as.character(base[[col]]); v[v == ""] <- NA
+    if (!.looks_like_codes(v)) next
+    uniq_vals <- sort(unique(v[!is.na(v)]))
+    if (!length(uniq_vals)) next
+
+    existing  <- cfg$column_labels[[col]]; if (is.null(existing)) existing <- list()
+    suggested <- .suggest_code_labels(col, uniq_vals)
+    if (is.null(suggested) && grepl("ethnic", col, ignore.case = TRUE))
+      suggested <- .NHS_ETHNICITY_LABELS
+    if (is.null(suggested)) suggested <- character(0)
+
+    prefill <- setNames(vapply(uniq_vals, function(val) {
+      e <- if (has(existing, val)) existing[[val]] else NULL
+      if (!is.null(e) && nzchar(as.character(e))) return(as.character(e))
+      s <- if (has(suggested, val)) suggested[[val]] else NULL
+      if (!is.null(s) && nzchar(as.character(s))) return(as.character(s))
+      ""
+    }, character(1)), uniq_vals)
+
+    results[[length(results) + 1]] <- list(
+      col       = col,
+      label     = r$label,
+      values    = uniq_vals,
+      labelled  = length(existing) > 0,
+      suggested = as.list(prefill))
+  }
+  results
+}
+
 # Default NHS 19-code ethnicity scheme (used when no trial-level mapping set).
 .NHS_ETHNICITY_LABELS <- c(
   "1"  = "White British",

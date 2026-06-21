@@ -40,12 +40,20 @@ clear_overrides <- function(cfg) {
 
 # Merge a list of overrides over a cfg. Lists merge key-by-key (one level deep),
 # scalars replace.
+#
+# Exception — `.replace_keys` are written as a complete picture the user
+# controls (e.g. the follow-up schedule), so they fully replace rather than
+# deep-merge. Otherwise a timepoint removed in the editor would survive because
+# the original config.R key would merge back in.
+.override_replace_keys <- c("redcap_events")
+
 apply_overrides <- function(cfg, overrides = NULL) {
   if (is.null(overrides)) overrides <- load_overrides(cfg)
   if (length(overrides) == 0) return(cfg)
   for (k in names(overrides)) {
     v <- overrides[[k]]
-    if (is.list(v) && !is.null(cfg[[k]]) && is.list(cfg[[k]])) {
+    if (!(k %in% .override_replace_keys) &&
+        is.list(v) && !is.null(cfg[[k]]) && is.list(cfg[[k]])) {
       for (kk in names(v)) cfg[[k]][[kk]] <- v[[kk]]
     } else {
       cfg[[k]] <- v

@@ -441,30 +441,28 @@ participants_server <- function(input, output, session, state) {
                        type = "warning", duration = 5)
       return()
     }
-    unmapped <- find_unmapped_code_cols(raw, cfg, det)
-    labels_section <- if (length(unmapped) > 0) {
+    editable <- find_editable_code_cols(raw, cfg, det)
+    labels_section <- if (length(editable) > 0) {
       div(style = "margin-top:22px;border-top:1px solid #EEF3F8;padding-top:16px;",
           div(style = "font-weight:600;color:#0F172A;font-size:13px;margin-bottom:3px;",
-              HTML("&#128270; Value labels")),
+              HTML("&#127991; Value labels &mdash; edit to rename")),
           div(style = "font-size:12px;color:#64748B;margin-bottom:14px;",
-              "Some columns contain numeric codes. ",
-              "Define what each number means — suggestions are pre-filled where known."),
-          lapply(unmapped, function(ci) {
-            div(style = "margin-bottom:16px;background:#F8FAFD;border-radius:8px;padding:12px 14px;",
-                div(style = "font-weight:600;font-size:12px;color:#1B4F6B;margin-bottom:8px;",
-                    ci$label,
-                    span(style = "font-weight:400;color:#94A3B8;margin-left:6px;font-size:11px;",
-                         paste0("(", ci$col, ")"))),
+              "Give each coded value a readable name. These are the group names shown in the demographic cards — edit any field to rename a grouping. Existing names are pre-filled."),
+          lapply(editable, function(ci) {
+            div(class = "dg-col",
+                div(class = "dg-col-head",
+                    span(class = "dg-col-title", ci$label),
+                    span(class = "dg-col-var", paste0("(", ci$col, ")")),
+                    if (isTRUE(ci$labelled))
+                      span(class = "mu-pill mu-pill-ok", style = "margin-left:auto;", "Labelled")),
                 lapply(ci$values, function(v) {
-                  input_id  <- paste0("codelbl_", ci$col, "___", v)
-                  suggested <- ci$suggested[[v]] %||% ""
-                  div(style = "display:flex;align-items:center;gap:10px;margin-bottom:6px;",
-                      span(style = "min-width:28px;text-align:right;font-size:12px;color:#94A3B8;font-weight:600;",
-                           paste0(v, " =")),
+                  input_id <- paste0("codelbl_", ci$col, "___", v)
+                  div(class = "dg-row",
+                      span(class = "dg-code", paste0(v, " =")),
                       textInput(input_id, label = NULL,
-                                value     = suggested,
-                                placeholder = paste0("Label for \"", v, "\""),
-                                width     = "200px"))
+                                value = ci$suggested[[v]] %||% "",
+                                placeholder = paste0("Name for code ", v),
+                                width = "100%"))
                 }))
           }))
     } else NULL

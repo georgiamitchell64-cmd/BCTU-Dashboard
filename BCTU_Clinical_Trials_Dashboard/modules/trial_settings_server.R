@@ -31,6 +31,7 @@ trial_settings_server <- function(input, output, session, state) {
       appearance       = "Appearance",
       identity         = "Trial identity & data paths",
       features         = "Features",
+      schedule         = "Follow-up schedule",
       config           = "Config & overrides",
       report_content   = "Report content",
       portfolio_review = "Portfolio review",
@@ -143,6 +144,98 @@ trial_settings_server <- function(input, output, session, state) {
     )
   })
 
+  # ── Follow-up schedule editor ───────────────────────────────────────────
+  # Each timepoint is a row {uid, label, event}. Stable per-row uids let the
+  # render preserve typed values across add/remove without index shuffling.
+  tp_seq  <- reactiveVal(0L)
+  tp_rows <- reactiveVal(list())
+  .tp_next_uid <- function() { n <- tp_seq() + 1L; tp_seq(n); n }
+
+  .tp_init_from_cfg <- function(cfg) {
+    ev    <- cfg$redcap_events %||% list()
+    roles <- setdiff(names(ev), c("baseline", "sub_forms"))
+    tp_rows(lapply(roles, function(r) {
+      val <- ev[[r]]
+      list(uid   = .tp_next_uid(),
+           label = tools::toTitleCase(gsub("_", " ", r)),
+           event = if (is.null(val)) "" else as.character(val)[1])
+    }))
+  }
+
+  # Read current input values back into tp_rows before any structural change.
+  .tp_sync <- function() {
+    lapply(tp_rows(), function(r) {
+      lbl <- input[[paste0("set_tp_label_", r$uid)]]
+      evt <- input[[paste0("set_tp_event_", r$uid)]]
+      list(uid = r$uid,
+           label = if (is.null(lbl)) r$label else lbl,
+           event = if (is.null(evt)) r$event else evt)
+    })
+  }
+
+  output$settings_timepoints_ui <- renderUI({
+    rows <- tp_rows()
+    if (!length(rows))
+      return(div(class = "sch-empty",
+                 "No follow-up timepoints yet — add one below (e.g. Week 6, Month 6, Month 12)."))
+    lapply(rows, function(r) {
+      div(class = "sch-row",
+          textInput(paste0("set_tp_label_", r$uid), label = NULL,
+                    value = r$label, placeholder = "e.g. Month 6", width = "100%"),
+          textInput(paste0("set_tp_event_", r$uid), label = NULL,
+                    value = r$event, placeholder = "e.g. month_6_arm_1", width = "100%"),
+          tags$button(class = "sch-remove", type = "button", title = "Remove timepoint",
+                      onclick = sprintf("Shiny.setInputValue('settings_tp_remove', %d, {priority:'event'})", r$uid),
+                      HTML("&times;")))
+    })
+  })
+  outputOptions(output, "settings_timepoints_ui", suspendWhenHidden = FALSE)
+
+  observeEvent(input$settings_tp_add, {
+    rows <- .tp_sync()
+    rows[[length(rows) + 1]] <- list(uid = .tp_next_uid(), label = "", event = "")
+    tp_rows(rows)
+  })
+  observeEvent(input$settings_tp_remove, {
+    rid <- suppressWarnings(as.integer(input$settings_tp_remove))
+    tp_rows(Filter(function(r) !identical(r$uid, rid), .tp_sync()))
+  })
+
+  observeEvent(input$settings_save_schedule, {
+    cfg <- rv$trial_config; req(cfg)
+    .slug <- function(s) { s <- tolower(trimws(s)); s <- gsub("[^a-z0-9]+", "_", s); gsub("^_+|_+$", "", s) }
+
+    base_ev <- trimws(input$set_ev_baseline %||% "")
+    events  <- list(baseline = if (nzchar(base_ev)) base_ev
+                               else (cfg$redcap_events$baseline %||% "baseline_arm_1"))
+    used <- "baseline"
+    for (r in .tp_sync()) {
+      lbl <- trimws(r$label); if (!nzchar(lbl)) next
+      key <- .slug(lbl); if (!nzchar(key) || key %in% used) next
+      used <- c(used, key)
+      events[[key]] <- trimws(r$event %||% "")   # "" keeps the timepoint with no mapping yet
+    }
+    sf_raw <- trimws(input$set_ev_subforms %||% "")
+    if (nzchar(sf_raw)) {
+      parts <- trimws(strsplit(sf_raw, ",")[[1]]); parts <- parts[nzchar(parts)]
+      if (length(parts)) events$sub_forms <- as.list(parts)
+    }
+
+    ok <- tryCatch({ update_overrides(cfg, redcap_events = events); TRUE },
+                   error = function(e) {
+                     showNotification(paste("Save failed:", e$message), type = "error", duration = 8)
+                     FALSE })
+    if (!ok) return()
+    new_cfg <- cfg; new_cfg$redcap_events <- events
+    rv$trial_config <- new_cfg
+    apply_trial_globals(new_cfg)
+    rv$settings_changed <- Sys.time()
+    n_tp <- length(used) - 1L
+    showNotification(sprintf("Saved follow-up schedule — %d timepoint%s. Reload your CSV to re-classify events.",
+                             n_tp, if (n_tp == 1) "" else "s"),
+                     type = "message", duration = 5)
+  })
+
   # ── Populate fields when trial is loaded ──────────────────────────────────
   observeEvent(rv$trial_config, {
     cfg <- rv$trial_config
@@ -183,6 +276,14 @@ trial_settings_server <- function(input, output, session, state) {
     rd <- cfg$report_defaults %||% list()
     updateTextInput(session, "set_ci",      value = rd$ci %||% "")
     updateTextInput(session, "set_sponsor", value = rd$sponsor %||% "")
+
+    # Follow-up schedule
+    ev <- cfg$redcap_events %||% list()
+    updateTextInput(session, "set_ev_baseline", value = ev$baseline %||% "")
+    sf <- ev$sub_forms
+    updateTextInput(session, "set_ev_subforms",
+                    value = if (is.null(sf)) "" else paste(unlist(sf), collapse = ", "))
+    .tp_init_from_cfg(cfg)
   })
 
   # ── Config file path + override status ───────────────────────────────────
