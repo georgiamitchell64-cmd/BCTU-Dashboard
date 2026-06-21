@@ -51,6 +51,11 @@ trial_settings_tab_ui <- function() {
                       span(style = "flex:1;min-width:0;",
                            span(class = "settings-lbl", "Follow-up schedule"),
                            span(class = "settings-desc", "Timepoints & REDCap events"))),
+          tags$button(class = "settings-item", `data-section` = "demographics",
+                      span(class = "settings-ic", HTML("&#x1F465;")),
+                      span(style = "flex:1;min-width:0;",
+                           span(class = "settings-lbl", "Demographics"),
+                           span(class = "settings-desc", "Breakdowns & group names"))),
           tags$button(class = "settings-item", `data-section` = "config",
                       span(class = "settings-ic", HTML("&#x2351;")),
                       span(style = "flex:1;min-width:0;",
@@ -342,6 +347,23 @@ trial_settings_tab_ui <- function() {
                       div(class = "sch-hint",
                           "Events holding SAEs, deviations, withdrawals or change-of-status forms."))
               )
+            )
+          ),
+
+          # ── Section: Demographics ──────────────────────────────────
+          div(id = "settings_sec_demographics", class = "settings-section",
+              style = "display:none;",
+
+            tags$section(class = "s-card",
+              div(class = "s-card-head",
+                  div(style = "flex:1;min-width:0;",
+                      div(class = "s-card-title", "Demographic groupings"),
+                      div(class = "s-card-sub",
+                          "Choose which demographic breakdowns appear on the Data tab, and rename the groups shown for each coded value.")),
+                  actionButton("settings_save_demographics", "Save",
+                               class = "btn-primary-sm")),
+              div(class = "s-card-body",
+                  uiOutput("settings_demographics_ui"))
             )
           ),
 

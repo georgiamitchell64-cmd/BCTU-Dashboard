@@ -32,6 +32,7 @@ trial_settings_server <- function(input, output, session, state) {
       identity         = "Trial identity & data paths",
       features         = "Features",
       schedule         = "Follow-up schedule",
+      demographics     = "Demographics",
       config           = "Config & overrides",
       report_content   = "Report content",
       portfolio_review = "Portfolio review",
@@ -234,6 +235,112 @@ trial_settings_server <- function(input, output, session, state) {
     showNotification(sprintf("Saved follow-up schedule — %d timepoint%s. Reload your CSV to re-classify events.",
                              n_tp, if (n_tp == 1) "" else "s"),
                      type = "message", duration = 5)
+  })
+
+  # ── Demographic groupings editor (mirrors the Data-tab Configure modal) ──
+  # Uses set_bd_choice / setlbl_* input IDs so it never collides with the
+  # Data-tab modal (breakdowns_choice / codelbl_*); both write the same overrides.
+  output$settings_demographics_ui <- renderUI({
+    rv$settings_changed                      # refresh after a save
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(div(class = "sch-empty", "No trial selected."))
+    raw <- rv$raw_redcap
+
+    if (is.null(raw) || !nrow(raw)) {
+      cl <- cfg$column_labels %||% list()
+      if (!length(cl))
+        return(div(class = "sch-empty",
+          "Load a REDCap CSV on the Data tab to detect demographic columns. Group names you've already saved will appear here to rename."))
+      cards <- lapply(names(cl), function(col) {
+        vals <- cl[[col]]
+        div(class = "dg-col",
+            div(class = "dg-col-head",
+                span(class = "dg-col-title", col),
+                span(class = "mu-pill mu-pill-ok", style = "margin-left:auto;", "Labelled")),
+            lapply(names(vals), function(code) {
+              div(class = "dg-row",
+                  span(class = "dg-code", paste0(code, " =")),
+                  textInput(paste0("setlbl_", col, "___", code), label = NULL,
+                            value = as.character(vals[[code]]), width = "100%"))
+            }))
+      })
+      return(tagList(
+        div(class = "sch-hint", style = "margin-bottom:12px;",
+            "Showing saved group names — load a CSV on the Data tab to add new breakdowns."),
+        cards))
+    }
+
+    det <- tryCatch(detect_breakdown_columns(raw, cfg), error = function(e) data.frame())
+    if (!nrow(det))
+      return(div(class = "sch-empty", "No demographic columns detected in the current export."))
+
+    sel <- as.character(unlist(cfg$participant_breakdowns %||% default_breakdown_cols(det)))
+    choice_names <- lapply(seq_len(nrow(det)), function(i) {
+      r <- det[i, ]
+      tagList(span(style = "font-weight:600;color:var(--ov-ink);", r$label),
+              span(style = "font-size:11px;color:var(--ov-muted);margin-left:6px;",
+                   sprintf("· %s · %d unique", r$column, r$n_unique)))
+    })
+
+    editable <- find_editable_code_cols(raw, cfg, det)
+    label_cards <- if (length(editable)) lapply(editable, function(ci) {
+      div(class = "dg-col",
+          div(class = "dg-col-head",
+              span(class = "dg-col-title", ci$label),
+              span(class = "dg-col-var", paste0("(", ci$col, ")")),
+              if (isTRUE(ci$labelled))
+                span(class = "mu-pill mu-pill-ok", style = "margin-left:auto;", "Labelled")),
+          lapply(ci$values, function(v) {
+            div(class = "dg-row",
+                span(class = "dg-code", paste0(v, " =")),
+                textInput(paste0("setlbl_", ci$col, "___", v), label = NULL,
+                          value = ci$suggested[[v]] %||% "",
+                          placeholder = paste0("Name for code ", v), width = "100%"))
+          }))
+    }) else list(div(class = "sch-hint", "No coded columns need labels."))
+
+    tagList(
+      div(class = "dg-section-label", "Show these breakdowns"),
+      checkboxGroupInput("set_bd_choice", label = NULL,
+                         choiceNames = choice_names, choiceValues = det$column,
+                         selected = intersect(sel, det$column)),
+      div(class = "sch-subforms",
+          div(class = "dg-section-label", "Group names"),
+          div(class = "sch-hint", style = "margin-bottom:10px;",
+              "Rename the groups shown for each coded value. Existing names are pre-filled."),
+          label_cards)
+    )
+  })
+  outputOptions(output, "settings_demographics_ui", suspendWhenHidden = FALSE)
+
+  observeEvent(input$settings_save_demographics, {
+    cfg <- rv$trial_config; req(cfg)
+    all_inputs <- reactiveValuesToList(input)
+    col_labels <- cfg$column_labels %||% list()
+    for (key in grep("^setlbl_", names(all_inputs), value = TRUE)) {
+      val_text <- trimws(all_inputs[[key]] %||% "")
+      parts <- strsplit(sub("^setlbl_", "", key), "___", fixed = TRUE)[[1]]
+      if (length(parts) != 2 || !nzchar(val_text)) next
+      col <- parts[1]; code <- parts[2]
+      if (is.null(col_labels[[col]])) col_labels[[col]] <- list()
+      col_labels[[col]][[code]] <- val_text
+    }
+    args <- list(cfg = cfg, column_labels = col_labels)
+    if ("set_bd_choice" %in% names(all_inputs))
+      args$participant_breakdowns <- as.list(input$set_bd_choice %||% character(0))
+    ok <- tryCatch({ do.call(update_overrides, args); TRUE },
+                   error = function(e) {
+                     showNotification(paste("Save failed:", e$message), type = "error", duration = 8)
+                     FALSE })
+    if (!ok) return()
+    new_cfg <- cfg
+    new_cfg$column_labels <- col_labels
+    if ("set_bd_choice" %in% names(all_inputs))
+      new_cfg$participant_breakdowns <- as.character(input$set_bd_choice %||% character(0))
+    rv$trial_config <- new_cfg
+    apply_trial_globals(new_cfg)
+    rv$settings_changed <- Sys.time()
+    showNotification("Saved demographic settings.", type = "message", duration = 4)
   })
 
   # ── Populate fields when trial is loaded ──────────────────────────────────
