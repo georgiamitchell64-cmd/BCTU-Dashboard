@@ -128,10 +128,15 @@ sites_server <- function(input, output, session, state) {
 
   observeEvent(input$site_edit_open, {
     id  <- input$site_edit_open$id
-    row <- rv$sites[rv$sites$site_id == id, , drop = FALSE]
-    if (!nrow(row)) return()
+    # NA-safe exact match. A plain `site_id == id` subset turns any NA site_id
+    # into a phantom all-NA row, which would open the modal blank.
+    idx <- which(!is.na(rv$sites$site_id) & rv$sites$site_id == id)
+    if (!length(idx)) {
+      showNotification("Couldn't find that site to edit.", type = "warning")
+      return()
+    }
     editing_orig_id(id)
-    showModal(site_edit_modal(row[1, ], is_new = FALSE))
+    showModal(site_edit_modal(rv$sites[idx[1], , drop = FALSE], is_new = FALSE))
   })
 
   # ── Save (add or update) ────────────────────────────────────────────────
@@ -158,8 +163,9 @@ sites_server <- function(input, output, session, state) {
       tryCatch(as.Date(x), error = function(e) as.Date(NA))
     }
     src <- if (is_new) "manual" else {
-      s <- rv$sites$source[rv$sites$site_id == orig]
-      if (length(s) && !is.na(s[1]) && nzchar(s[1])) s[1] else "manual"
+      sidx <- which(!is.na(rv$sites$site_id) & rv$sites$site_id == orig)
+      s <- if (length(sidx)) rv$sites$source[sidx[1]] else NA_character_
+      if (!is.na(s) && nzchar(s)) s else "manual"
     }
 
     row <- tibble(
@@ -202,8 +208,8 @@ sites_server <- function(input, output, session, state) {
 
   # ── Delete (from the modal or the right-click menu) ─────────────────────
   .confirm_delete <- function(id) {
-    row <- rv$sites[rv$sites$site_id == id, , drop = FALSE]
-    nm  <- if (nrow(row)) (row$site_name[1] %||% id) else id
+    idx <- which(!is.na(rv$sites$site_id) & rv$sites$site_id == id)
+    nm  <- if (length(idx)) (rv$sites$site_name[idx[1]] %||% id) else id
     pending_delete_id(id)
     showModal(modalDialog(
       title = div(style = "color:#B91C1C;", HTML("&#x26A0; Delete site?")),

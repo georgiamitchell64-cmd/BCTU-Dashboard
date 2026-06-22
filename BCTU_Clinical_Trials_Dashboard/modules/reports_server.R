@@ -482,7 +482,10 @@ reports_server <- function(input, output, session, state) {
       # (prepare_report_data handles NULL gracefully).
       latest_crf_path <- tryCatch(
         {
-          p <- latest_return_rate_file()
+          p <- latest_return_rate_file(
+            dir        = rv$trial_config$return_rates_dir,
+            trial_code = rv$trial_config$code
+          )
           if (is.null(p) || !file.exists(p)) NULL
           # Use path relative to the app root so it works identically in
           # every render context (intermediates_dir resolves relative
@@ -569,7 +572,7 @@ reports_server <- function(input, output, session, state) {
               custom_sections = collect_custom_sections(),
               completeness_style = input$completeness_style %||% "heatmap",
               report_content  = rv$trial_config$report_content,
-              logo_path       = rv$trial_config$logo_file
+              logo_path       = resolve_logo_path(rv$trial_config)
             ), rmd_dest),
             envir             = new.env(parent = globalenv()),
             intermediates_dir = tmp_dir,
@@ -589,6 +592,10 @@ reports_server <- function(input, output, session, state) {
           file.copy("functions/consort_flow.R", file.path(tmp_dir, "consort_flow.R"), overwrite = TRUE)
           file.copy("functions/flat_completeness.R", file.path(tmp_dir, "flat_completeness.R"), overwrite = TRUE)
           file.copy("functions/baseline_table.R", file.path(tmp_dir, "baseline_table.R"), overwrite = TRUE)
+          # Stage the BCTU brand logo so the report header can embed it
+          if (file.exists("www/BlackText-landscape.png"))
+            file.copy("www/BlackText-landscape.png",
+                      file.path(tmp_dir, "BlackText-landscape.png"), overwrite = TRUE)
           
           rmarkdown::render(
             input             = rmd_dest,
@@ -602,7 +609,7 @@ reports_server <- function(input, output, session, state) {
               include_withdrawn = isTRUE(input$include_withdrawn),
               include_appendix  = isTRUE(input$report_appendix),
               report_date       = format(Sys.Date(), "%d %B %Y"),
-              logo_path         = rv$trial_config$logo_file,
+              logo_path         = resolve_logo_path(rv$trial_config),
               crf_csv_path      = latest_crf_path,
               screening_xlsx_path = "screening/TONIC_screening.xlsx",
               report_type       = rt,   # "TMG" or "iTMG"
@@ -1335,7 +1342,10 @@ reports_server <- function(input, output, session, state) {
       to_for_prep    <- if (use_filters) input$rpt_dates[2] else NULL
 
       latest_crf_path <- tryCatch({
-        p <- latest_return_rate_file()
+        p <- latest_return_rate_file(
+          dir        = rv$trial_config$return_rates_dir,
+          trial_code = rv$trial_config$code
+        )
         if (is.null(p) || !file.exists(p)) NULL else p
       }, error = function(e) NULL)
 
@@ -1366,7 +1376,8 @@ reports_server <- function(input, output, session, state) {
       for (h in c("functions/flat_completeness.R",
                   "functions/baseline_table.R",
                   "functions/consort_flow.R",
-                  "functions/tsc_charts.R")) {
+                  "functions/tsc_charts.R",
+                  "www/BlackText-landscape.png")) {   # BCTU header logo
         if (file.exists(h))
           file.copy(h, file.path(tmp_dir, basename(h)), overwrite = TRUE)
       }
@@ -1403,7 +1414,7 @@ reports_server <- function(input, output, session, state) {
               reviewed_by         = input$reviewed_by,
               completeness_style  = input$completeness_style %||% "heatmap",
               report_content      = cfg$report_content,
-              logo_path           = cfg$logo_file
+              logo_path           = resolve_logo_path(cfg)
             ), rmd_dest),
             envir             = new.env(parent = globalenv()),
             intermediates_dir = tmp_dir,
@@ -1437,7 +1448,7 @@ reports_server <- function(input, output, session, state) {
             include_withdrawn   = isTRUE(input$include_withdrawn),
             include_appendix    = isTRUE(input$report_appendix),
             report_date         = format(Sys.Date(), "%d %B %Y"),
-            logo_path           = cfg$logo_file,
+            logo_path           = resolve_logo_path(cfg),
             crf_csv_path        = latest_crf_path,
             report_type         = report_type_param,
             completeness_style  = input$completeness_style %||% "heatmap",
@@ -1626,7 +1637,10 @@ reports_server <- function(input, output, session, state) {
     to_for_prep    <- if (use_filters) input$rpt_dates[2] else NULL
 
     latest_crf_path <- tryCatch({
-      p <- latest_return_rate_file()
+      p <- latest_return_rate_file(
+        dir        = rv$trial_config$return_rates_dir,
+        trial_code = rv$trial_config$code
+      )
       if (is.null(p) || !file.exists(p)) NULL else p
     }, error = function(e) NULL)
 
@@ -1647,7 +1661,8 @@ reports_server <- function(input, output, session, state) {
     file.copy(rmd_src, rmd_dest, overwrite = TRUE)
     for (h in c("functions/flat_completeness.R",
                 "functions/baseline_table.R",
-                "functions/consort_flow.R")) {
+                "functions/consort_flow.R",
+                "www/BlackText-landscape.png")) {   # BCTU header logo
       if (file.exists(h))
         file.copy(h, file.path(tmp_dir, basename(h)), overwrite = TRUE)
     }
@@ -1669,7 +1684,7 @@ reports_server <- function(input, output, session, state) {
           include_withdrawn = isTRUE(input$include_withdrawn),
           include_appendix  = isTRUE(input$report_appendix),
           report_date       = format(Sys.Date(), "%d %B %Y"),
-          logo_path         = cfg$logo_file,
+          logo_path         = resolve_logo_path(cfg),
           crf_csv_path      = latest_crf_path,
           report_type       = tmpl_choice,
           completeness_style = input$completeness_style %||% "heatmap",

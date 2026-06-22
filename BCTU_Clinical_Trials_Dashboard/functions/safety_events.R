@@ -124,6 +124,18 @@ extract_events <- function(raw_df, complete_field, spec, event_label = "Event",
     lag_days    = lag,
     narrative   = as.character(.safety_col(df, spec$narrative,   n, NA_character_))
   )
+
+  # Translate coded severity / status to labels via the trial's column_labels
+  # (e.g. SAE severity 1/2/3 → Mild/Moderate/Severe). Unmapped values are kept
+  # as-is, so this is a no-op for trials without a mapping.
+  cfg <- current_trial_config()
+  if (exists(".resolve_value_labels")) {
+    if (!is.null(spec$severity) && nzchar(spec$severity %||% ""))
+      tib$severity <- .resolve_value_labels(tib$severity, spec$severity, cfg)
+    if (!is.null(spec$status) && nzchar(spec$status %||% ""))
+      tib$status   <- .resolve_value_labels(tib$status,   spec$status,   cfg)
+  }
+
   .append_detail_cols(tib, df, extra)
 }
 
@@ -348,9 +360,10 @@ status_dot <- function(value) {
     return('<span style="color:#94A3B8">—</span>')
   }
   v <- tolower(trimws(as.character(value)))
-  col <- if (grepl("open|pending|new", v))       "#F59E0B"
-         else if (grepl("review|investig", v))   "#3B82F6"
-         else if (grepl("closed|resolv|complete", v)) "#10B981"
+  col <- if (grepl("fatal|death|died|deceased", v))     "#DC2626"
+         else if (grepl("open|pending|new|ongoing|active", v)) "#F59E0B"
+         else if (grepl("review|investig", v))          "#3B82F6"
+         else if (grepl("closed|resolv|complete", v))   "#10B981"
          else "#94A3B8"
   sprintf(
     '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600"><span style="width:8px;height:8px;border-radius:50%%;background:%s"></span>%s</span>',

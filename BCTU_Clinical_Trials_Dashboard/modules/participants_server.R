@@ -376,9 +376,14 @@ participants_server <- function(input, output, session, state) {
     counts <- as.data.frame(table(code = df$severity), stringsAsFactors = FALSE)
     names(counts) <- c("code", "n")
     counts$label <- if (exists("cos_type_labels"))
-      vapply(counts$code,
-             function(c) cos_type_labels[[as.character(c)]] %||% paste("Code:", c),
-             character(1))
+      vapply(counts$code, function(c) {
+        key <- as.character(c)
+        # cos_type_labels is a named atomic vector — `[[` on a name that isn't
+        # present throws "subscript out of bounds" (e.g. an NA/blank or unmapped
+        # withdrawal code), so check membership before indexing.
+        if (!is.na(key) && key %in% names(cos_type_labels)) cos_type_labels[[key]]
+        else paste("Code:", c)
+      }, character(1))
     else counts$code
 
     palette <- c("#DC2626", "#F59E0B", "#3B82F6", "#7C3AED", "#64748B",

@@ -158,7 +158,10 @@ prepare_report_data <- function(df,
     sub_cos <- sub_forms[!is.na(sub_forms$cos_v), ]
     if (nrow(sub_cos) > 0) {
       sub_cos$cos_label <- cos_label[as.character(sub_cos$cos_v)]
-      sub_cos <- sub_cos[order(sub_cos$record_v, -as.numeric(sub_cos$cos_v)), ]
+      # Non-numeric / blank cos codes coerce to NA (they sort last). Wrap so a
+      # legitimately mixed column doesn't spam the log on every report build.
+      sub_cos <- sub_cos[order(sub_cos$record_v,
+                               -suppressWarnings(as.numeric(sub_cos$cos_v))), ]
       sub_cos <- sub_cos[!duplicated(sub_cos$record_v), ]
       withdrawal_events <- data.frame(
         record_id = sub_cos$record_v,

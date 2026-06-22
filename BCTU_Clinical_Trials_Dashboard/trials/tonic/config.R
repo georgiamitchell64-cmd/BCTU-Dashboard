@@ -65,6 +65,7 @@ trial_config <- list(
     ),
 
     cos_type                = "cos_type",
+    cos_date                = "cos_dt",        # Date of change in trial status (withdrawal drill-down)
 
     pn_start_datetime       = "nut_o_pn_start_dttm",
     pn_late_reason          = "nut_o_pn_late_rsn",
@@ -94,6 +95,24 @@ trial_config <- list(
     pregnancy_notification_complete = "pregnancy_notification_complete",
     pregnancy_outcome_complete      = "pregnancy_outcome_complete",
 
+    # SAE drill-down detail (Data tab → SAEs). Without these the count is right
+    # but every detail cell is an em-dash.
+    sae_term         = "sae_diagnosis",      # Diagnosis           → "Event"
+    sae_severity     = "sae_severity",       # 1 Mild/2 Mod/3 Sev  → "Severity"
+    sae_relatedness  = "sae_causality_site", # 1-5 causality
+    sae_status       = "sae_status",         # 1 Ongoing/2 Resolved/3 Fatal → "Status"
+    sae_onset_date   = "sae_onset_dt",       # Date of Onset       → "Date occurred"
+    sae_report_date  = "sae_reported_dt",    # Date Reported       → "Date submitted"
+    sae_narrative    = "sae_signssymptoms",  # Signs & symptoms    → "Reason / notes"
+
+    # Deviation drill-down detail (Data tab → Deviations). These populate the
+    # "Event / Date occurred / Date submitted / Reason" columns; without them
+    # the count is right but every detail cell shows an em-dash.
+    deviation_term          = "dev_ref",      # Deviation number  → "Event"
+    deviation_date          = "dev_dt",       # Date of deviation → "Date occurred"
+    deviation_report_date   = "dev_aware",    # Date team aware   → "Date submitted"
+    deviation_narrative     = "dev_summary",  # Summary           → "Reason / notes"
+
     # REDCap structural fields
     redcap_event_name = "redcap_event_name"
   ),
@@ -101,6 +120,14 @@ trial_config <- list(
   # Optional override for the CRF return-rates CSV folder. NULL = look in
   # `<trial_dir>/return rates/` or whatever upload module is wired to.
   crf_csv_default_path = "K:/BCTU/BCTU/Teams/Coloproctology/CURRENT TRIALS/TONIC/TONIC Meeting Organiser/TONIC TMG Report/TONIC_app/return rates",
+
+  # ── Coded value → label maps (keyed by REDCap column name) ────────────────
+  # Used by the demographic breakdowns and the safety drill-down to show words
+  # instead of raw codes. Add more columns here as needed.
+  column_labels = list(
+    sae_severity = list("1" = "Mild",    "2" = "Moderate", "3" = "Severe"),
+    sae_status   = list("1" = "Ongoing", "2" = "Resolved", "3" = "Fatal")
+  ),
 
   # ── COS type labels ───────────────────────────────────────────────────────
   cos_type_labels = c(

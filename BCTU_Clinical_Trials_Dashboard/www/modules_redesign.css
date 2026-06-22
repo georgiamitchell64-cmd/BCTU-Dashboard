@@ -2568,3 +2568,49 @@ html[data-theme="dark"] .btn-light {
 .se-check { margin-top: 6px; }
 .se-hint { font-size: 11.5px; color: var(--ov-muted); margin-top: 14px; line-height: 1.5; }
 @media (max-width: 700px) { .se-grid, .se-grid3 { grid-template-columns: 1fr; } .se-span2 { grid-column: auto; } }
+
+/* ── Site add / edit modal — clean, rounded white card ─────────────────────
+   Scoped via :has(.se-form) so only the site popup is affected. Colours are
+   set explicitly so the card reads well as a white surface in either theme. */
+.modal:has(.se-form) .modal-dialog { max-width: 760px; }
+.modal:has(.se-form) .modal-content {
+  background: #ffffff !important;
+  color: #1f2933;
+  border: none !important;
+  border-radius: 20px;
+  box-shadow: 0 30px 70px rgba(13, 31, 51, 0.28);
+  overflow: hidden;
+}
+.modal:has(.se-form) .modal-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid #eef1f5 !important;
+  padding: 18px 26px;
+}
+.modal:has(.se-form) .modal-body   { background: #ffffff !important; padding: 22px 26px; }
+.modal:has(.se-form) .modal-footer {
+  background: #ffffff !important;
+  border-top: 1px solid #eef1f5 !important;
+  padding: 16px 26px;
+}
+.modal:has(.se-form) .se-title,
+.modal:has(.se-form) .se-title span { color: #1B4F6B; }
+.modal:has(.se-form) .se-group-label { color: #1B4F6B; }
+.modal:has(.se-form) .se-field > label { color: #475569; }
+.modal:has(.se-form) .se-hint { color: #64748B; }
+
+/* Readable form controls on the white surface + softer rounding */
+.modal:has(.se-form) .form-control,
+.modal:has(.se-form) .selectize-input,
+.modal:has(.se-form) input[type="text"],
+.modal:has(.se-form) input[type="number"],
+.modal:has(.se-form) .form-control[type="date"] {
+  background: #ffffff !important;
+  color: #1f2933 !important;
+  border: 1px solid #d8dee6 !important;
+  border-radius: 10px !important;
+}
+.modal:has(.se-form) .form-control:focus,
+.modal:has(.se-form) .selectize-input.focus {
+  border-color: #1B4F6B !important;
+  box-shadow: 0 0 0 3px rgba(27, 79, 107, 0.12) !important;
+}

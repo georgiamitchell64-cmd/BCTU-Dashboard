@@ -592,10 +592,21 @@ next_site_id <- function(sites_df) {
   sprintf("%s-%03d", prefix, if (length(existing) == 0) 1L else max(existing) + 1L)
 }
 
+# Resolve a trial logo path to an absolute path. Reports render in a temp
+# intermediates_dir (so relative paths like "trials/<code>/www/logo.png" break
+# during knit); making it absolute up-front — while we're still in the app's
+# working directory — lets the report header embed the logo reliably.
+resolve_logo_path <- function(cfg) {
+  if (is.null(cfg)) return(NULL)
+  lf <- cfg$logo_file
+  if (is.null(lf) || !nzchar(lf)) return(NULL)
+  normalizePath(lf, winslash = "/", mustWork = FALSE)
+}
+
 find_latest_csv <- function(data_dir = DATA_DIR) {
   if (!dir.exists(data_dir)) return(NULL)
   csvs <- list.files(data_dir, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
-  csvs <- csvs[!grepl("return_rate", basename(csvs), ignore.case = TRUE)]
+  csvs <- csvs[!grepl("return[ _-]?rate", basename(csvs), ignore.case = TRUE)]
   if (length(csvs) == 0) return(NULL)
   csvs[order(file.info(csvs)$mtime, decreasing = TRUE)][1]
 }
@@ -604,7 +615,7 @@ list_csvs <- function(data_dir = DATA_DIR) {
   if (!dir.exists(data_dir))
     return(tibble(file = character(), modified = as.POSIXct(character()), path = character()))
   csvs <- list.files(data_dir, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
-  csvs <- csvs[!grepl("return_rate", basename(csvs), ignore.case = TRUE)]
+  csvs <- csvs[!grepl("return[ _-]?rate", basename(csvs), ignore.case = TRUE)]
   if (length(csvs) == 0)
     return(tibble(file = character(), modified = as.POSIXct(character()), path = character()))
   info <- file.info(csvs)

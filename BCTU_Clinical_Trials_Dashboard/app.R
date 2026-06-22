@@ -132,7 +132,11 @@ server <- function(input, output, session) {
   rr_data <- reactive({
     req(state$rv$trial_code)
     invalidateLater(5 * 60 * 1000)
-    load_return_rates()
+    cfg <- state$rv$trial_config
+    load_return_rates(
+      dir        = cfg$return_rates_dir,        # folder pasted in Trial Settings
+      trial_code = state$rv$trial_code
+    )
   })
   tryCatch(return_rates_server("rr", rr_data = rr_data),
            error = function(e) message("RETURN RATES: ", e$message))

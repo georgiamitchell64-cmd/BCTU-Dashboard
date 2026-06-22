@@ -79,8 +79,17 @@ encode_logo <- function(path) {
 }
 
 logo_b64      <- encode_logo(params$logo_path)
-# BCTU brand logo lives in www/ alongside the trial logos
-bctu_logo_b64 <- encode_logo(file.path("www", "BlackText-landscape.png"))
+# BCTU brand logo. The report knits in a temp intermediates_dir, so the plain
+# "www/..." path (relative to the app root) won't resolve here — reports_server
+# stages the file alongside the Rmd, so try that first, then fall back to the
+# in-place app paths for when the report is knitted directly.
+.bctu_candidates <- c(
+  "BlackText-landscape.png",                                                  # staged next to the Rmd
+  file.path("www", "BlackText-landscape.png"),                                # app root (in-place render)
+  file.path(dirname(knitr::current_input(dir = TRUE)), "BlackText-landscape.png")
+)
+.bctu_hit     <- .bctu_candidates[file.exists(.bctu_candidates)]
+bctu_logo_b64 <- if (length(.bctu_hit)) encode_logo(.bctu_hit[1]) else ""
 
 # ── Snapshot KPIs ─────────────────────────────────────────────────────────────
 n_rand    <- safe(kpi$total_randomised, 0)
