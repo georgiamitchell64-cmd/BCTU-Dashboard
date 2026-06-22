@@ -771,7 +771,8 @@ process_redcap <- function(raw_df, current_sites) {
         target        = 42L,
         randomised    = rand_n,
         lat           = ll$lat,
-        lon           = ll$lon))
+        lon           = ll$lon,
+        source        = "auto"))
     }
   }
   list(participants = participants, sites = updated_sites, raw_data = df, diagnostics = diag)

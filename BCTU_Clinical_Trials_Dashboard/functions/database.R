@@ -45,7 +45,8 @@ db_init <- function() {
       target         INTEGER,
       randomised     INTEGER,
       lat            REAL,
-      lon            REAL
+      lon            REAL,
+      source         TEXT DEFAULT 'auto'
     )
   ")
 
@@ -78,6 +79,8 @@ db_init <- function() {
       dbExecute(con, "ALTER TABLE sites ADD COLUMN siv_booked INTEGER DEFAULT 0")
     if (!"siv_date"   %in% existing_cols)
       dbExecute(con, "ALTER TABLE sites ADD COLUMN siv_date TEXT")
+    if (!"source"     %in% existing_cols)
+      dbExecute(con, "ALTER TABLE sites ADD COLUMN source TEXT DEFAULT 'auto'")
   }
 }
 
@@ -115,6 +118,10 @@ db_load_sites <- function() {
   # If legacy rows have country=NA, default to United Kingdom so existing data stays on the UK map
   df$country[is.na(df$country) | nchar(trimws(df$country)) == 0] <- "United Kingdom"
 
+  # Provenance: legacy rows pre-date the flag — treat them as auto-populated.
+  if (!"source" %in% names(df)) df$source <- "auto"
+  df$source[is.na(df$source) | nchar(trimws(df$source)) == 0] <- "auto"
+
   as_tibble(df)
 }
 
@@ -124,12 +131,13 @@ db_save_sites <- function(sites_df) {
   df <- sites_df
 
   # Ensure all expected columns exist
-  for (col in c("country", "siv_booked", "siv_date")) {
+  for (col in c("country", "siv_booked", "siv_date", "source")) {
     if (!col %in% names(df)) {
       df[[col]] <- switch(col,
         "country"    = NA_character_,
         "siv_booked" = FALSE,
-        "siv_date"   = as.Date(NA)
+        "siv_date"   = as.Date(NA),
+        "source"     = "auto"
       )
     }
   }
