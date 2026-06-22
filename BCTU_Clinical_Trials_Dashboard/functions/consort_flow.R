@@ -19,8 +19,12 @@
 # =============================================================================
 
 suppressPackageStartupMessages({
-  library(consort)
   library(grid)
+  # The `consort` package is only needed for the legacy consort_object/svg/png
+  # (Word) renderers. The dashboard + HTML report use the self-contained
+  # consort_html() below, so make the package optional — the app still runs if
+  # a deployment doesn't have it installed.
+  if (requireNamespace("consort", quietly = TRUE)) library(consort)
 })
 
 # ── helper ───────────────────────────────────────────────────────────────────
@@ -297,4 +301,116 @@ consort_png <- function(counts, filepath, width = 8, height = 10, dpi = 150) {
   print(obj)
 
   invisible(filepath)
+}
+
+# =============================================================================
+# 5. Live counts from a REDCap export (dashboard + HTML report)
+# =============================================================================
+# Unlike consort_counts() (which needs a prepared report-data object), this
+# derives the flow straight from raw_redcap + the trial config, and breaks
+# withdrawals down by their change-of-status type so it's clear what kind they
+# are. Returns a plain list — no package dependencies.
+consort_counts_live <- function(raw, cfg = current_trial_config()) {
+  out <- list(randomised = 0L, received = 0L, in_followup = 0L,
+              n_withdrawn = 0L, has_surgery = FALSE,
+              withdrawals = data.frame(label = character(), n = integer(),
+                                       stringsAsFactors = FALSE))
+  if (is.null(raw) || !nrow(raw)) return(out)
+  cfg <- cfg %||% list()
+
+  id_col   <- cfg$redcap_fields$record_id %||% "record_id"
+  if (!id_col %in% names(raw)) id_col <- names(raw)[1]
+  ids      <- raw[[id_col]]
+  rand_col <- cfg$redcap_fields$randomisation_datetime %||% "rand_dttm_s"
+  bevt     <- cfg$redcap_events$baseline %||% "baseline_arm_1"
+
+  if (rand_col %in% names(raw)) {
+    v <- trimws(as.character(raw[[rand_col]]))
+    keep <- !is.na(v) & nzchar(v) & v != "NA"
+    out$randomised <- length(unique(ids[keep]))
+  } else if ("redcap_event_name" %in% names(raw)) {
+    out$randomised <- length(unique(ids[raw$redcap_event_name == bevt]))
+  } else {
+    out$randomised <- length(unique(ids))
+  }
+
+  # Withdrawals broken down by change-of-status code → trial's own labels.
+  cos_col <- cfg$redcap_fields$cos_type %||% "cos_type"
+  if (!is.null(cos_col) && cos_col %in% names(raw)) {
+    cv    <- trimws(as.character(raw[[cos_col]]))
+    valid <- !is.na(cv) & nzchar(cv) & cv != "NA" & cv != "0"
+    if (any(valid)) {
+      labs  <- cfg$cos_type_labels
+      codes <- sort(unique(cv[valid]))
+      rows  <- lapply(codes, function(cd) {
+        lab <- if (!is.null(labs) && cd %in% names(labs)) labs[[cd]] else paste("Type", cd)
+        data.frame(label = lab, n = length(unique(ids[valid & cv == cd])),
+                   stringsAsFactors = FALSE)
+      })
+      out$withdrawals <- do.call(rbind, rows)
+      out$n_withdrawn <- length(unique(ids[valid]))
+    }
+  }
+
+  # Received intervention — only meaningful when the trial captures an op date.
+  op_col <- cfg$redcap_fields$operation_date
+  if (!is.null(op_col) && !is.na(op_col) && nzchar(op_col) && op_col %in% names(raw)) {
+    out$has_surgery <- TRUE
+    ov <- trimws(as.character(raw[[op_col]]))
+    out$received <- length(unique(ids[!is.na(ov) & nzchar(ov) & ov != "NA"]))
+  }
+
+  out$in_followup <- max(0L, out$randomised - out$n_withdrawn)
+  out
+}
+
+# =============================================================================
+# 6. Self-contained HTML CONSORT diagram (dashboard + HTML report)
+# =============================================================================
+# Inline-styled so it renders identically on the dashboard and inside the
+# downloaded report HTML. Withdrawals branch off as an amber card listing each
+# type and its count.
+consort_html <- function(counts, cfg = NULL) {
+  navy <- "#1B4F6B"; teal_bg <- "#E0F7F3"; amber_bg <- "#FFF7E6"; amber_br <- "#E0A93B"
+  esc  <- function(x) htmltools::htmlEscape(x)
+
+  box <- function(label, n) sprintf(
+    "<div style='background:%s;border:1.5px solid %s;border-radius:12px;
+                 padding:13px 20px;min-width:260px;text-align:center;
+                 box-shadow:0 1px 3px rgba(0,0,0,.05);'>
+       <div style='font-size:13px;font-weight:600;color:%s;'>%s</div>
+       <div style='font-size:23px;font-weight:800;color:%s;line-height:1.1;margin-top:2px;'>%s</div>
+     </div>",
+    teal_bg, navy, navy, esc(label), navy, format(n, big.mark = ","))
+  conn <- "<div style='width:2px;height:24px;background:#9FB6C4;margin:2px auto;'></div>"
+
+  wd <- counts$withdrawals
+  wd_card <- ""
+  if (!is.null(wd) && nrow(wd) > 0) {
+    items <- paste(vapply(seq_len(nrow(wd)), function(i)
+      sprintf("<div style='display:flex;justify-content:space-between;gap:18px;
+                           font-size:12px;color:#7A5B12;padding:3px 0;
+                           border-top:1px solid rgba(224,169,59,.3);'>
+                 <span>%s</span><strong>%d</strong></div>",
+              esc(wd$label[i]), wd$n[i]), character(1)), collapse = "")
+    wd_card <- sprintf(
+      "<div style='align-self:center;'>
+         <div style='font-size:11px;color:#9FB6C4;text-align:center;margin-bottom:4px;'>&larr; discontinued</div>
+         <div style='background:%s;border:1.5px solid %s;border-radius:12px;padding:12px 16px;min-width:240px;'>
+           <div style='font-size:11.5px;font-weight:700;color:#7A5B12;text-transform:uppercase;
+                       letter-spacing:.4px;'>Withdrawn / discontinued (n = %d)</div>%s</div>
+       </div>", amber_bg, amber_br, counts$n_withdrawn, items)
+  }
+
+  rows <- box("Randomised", counts$randomised)
+  if (isTRUE(counts$has_surgery))
+    rows <- paste0(rows, conn, box("Received intervention", counts$received))
+  rows <- paste0(rows, conn, box("In follow-up", counts$in_followup))
+  main_col <- sprintf("<div style='display:flex;flex-direction:column;align-items:center;'>%s</div>", rows)
+
+  sprintf(
+    "<div style='font-family:Inter,system-ui,sans-serif;display:flex;
+                 align-items:center;justify-content:center;gap:30px;flex-wrap:wrap;
+                 padding:8px 0;'>%s%s</div>",
+    main_col, wd_card)
 }

@@ -1,6 +1,20 @@
 welcome_screen_ui <- function() {
   div(id = "welcome_screen", class = "login-stage",
 
+      # ── Enter-to-submit: pressing Enter in a login field clicks the
+      #    relevant button (sign in / register / set new password). ──────
+      tags$script(HTML("
+        $(document).on('keydown', '#login_password, #login_password_confirm', function(e){
+          if (e.key === 'Enter') { e.preventDefault(); $('#login_go').click(); }
+        });
+        $(document).on('keydown', '#welcome_name, #welcome_email, #welcome_password, #welcome_password_confirm', function(e){
+          if (e.key === 'Enter') { e.preventDefault(); $('#welcome_go').click(); }
+        });
+        $(document).on('keydown', '#change_pw_new, #change_pw_confirm', function(e){
+          if (e.key === 'Enter') { e.preventDefault(); $('#change_pw_submit').click(); }
+        });
+      ")),
+
       # ── Scoped styles for login form controls ────────────────────
       tags$style(HTML("
         .login-stage .form-group { margin-bottom:0 !important; }

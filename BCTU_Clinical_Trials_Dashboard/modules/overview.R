@@ -161,6 +161,9 @@ overview_tab_ui <- function() {
             textOutput("proj_note", inline = TRUE))
       ),
 
+      # ── CONSORT flow (only when the trial enables it) ───────────────
+      uiOutput("consort_card_ui"),
+
       # ── Portfolio review — collapsed by default behind a toggle ─────
       tags$section(class = "pov-card pov-collapsible",
         div(class = "pov-card-head pov-collapsible-head",

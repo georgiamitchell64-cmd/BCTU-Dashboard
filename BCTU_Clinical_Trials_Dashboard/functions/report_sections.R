@@ -47,8 +47,18 @@
 
 .rs_render_header <- function(ctx) {
   cfg <- ctx$cfg
+  # Embed the trial logo as a data URI so the downloaded report is self-contained.
+  logo_html <- ""
+  lf <- cfg$logo_file
+  if (!is.null(lf) && nzchar(lf) && file.exists(lf)) {
+    uri <- tryCatch(knitr::image_uri(lf), error = function(e) NULL)
+    if (!is.null(uri) && nzchar(uri))
+      logo_html <- sprintf("<img src='%s' alt='' style='max-height:56px;max-width:220px;
+                            object-fit:contain;display:block;margin-bottom:12px;'/>", uri)
+  }
   paste0(
     "<div style='border-bottom:2px solid #6366F1;padding-bottom:14px;margin-bottom:18px;'>",
+    logo_html,
     sprintf("<div style='font-size:11px;font-weight:600;color:#6366F1;
                          text-transform:uppercase;letter-spacing:.6px;'>%s Report</div>",
             htmltools::htmlEscape(ctx$template_label %||% "Trial")),
@@ -104,6 +114,19 @@
             </div>",
             n_baseline, target, pct * 100)
   )
+}
+
+.rs_render_consort <- function(ctx) {
+  cfg <- ctx$cfg
+  raw <- ctx$rv$raw_redcap
+  if (is.null(raw) || !nrow(raw))
+    return(paste0(.rs_h(2, "CONSORT flow diagram"),
+                  .rs_subtle("No participant data available.")))
+  counts <- tryCatch(consort_counts_live(raw, cfg), error = function(e) NULL)
+  if (is.null(counts))
+    return(paste0(.rs_h(2, "CONSORT flow diagram"),
+                  .rs_subtle("CONSORT diagram unavailable.")))
+  paste0(.rs_h(2, "CONSORT flow diagram"), consort_html(counts, cfg))
 }
 
 .rs_render_site_summary <- function(ctx) {
@@ -760,6 +783,8 @@ REPORT_SECTIONS <- list(
        group = "Recruitment",       render = .rs_render_recruitment_summary),
   list(id = "smart_insights",      label = "Smart insights",
        group = "Recruitment",       render = .rs_render_smart_insights),
+  list(id = "consort",             label = "CONSORT flow diagram",
+       group = "Participants",      render = .rs_render_consort),
   list(id = "site_summary",        label = "Site summary",
        group = "Sites",             render = .rs_render_site_summary),
   list(id = "demographics",        label = "Demographics breakdown",
@@ -803,12 +828,18 @@ REPORT_TEMPLATES <- list(
     label = "TMG (Trial Management Group)",
     description = "Internal management report — recruitment, sites, insights.",
     sections = c("header", "recruitment_summary", "smart_insights",
-                 "site_summary", "safety_summary", "custom_text")
+                 "consort", "site_summary", "safety_summary", "custom_text")
+  ),
+  iTMG = list(
+    label = "iTMG (Independent Trial Management Group)",
+    description = "Independent management report — same content as the TMG report, labelled iTMG.",
+    sections = c("header", "recruitment_summary", "smart_insights",
+                 "consort", "site_summary", "safety_summary", "custom_text")
   ),
   TSC = list(
     label = "TSC (Trial Steering Committee)",
     description = "External oversight — recruitment, demographics, safety, amendments.",
-    sections = c("header", "recruitment_summary", "demographics",
+    sections = c("header", "recruitment_summary", "demographics", "consort",
                  "site_summary", "safety_summary", "amendments",
                  "next_period", "custom_text")
   ),

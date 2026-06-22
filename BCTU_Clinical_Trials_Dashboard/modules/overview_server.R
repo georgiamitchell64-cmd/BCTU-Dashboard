@@ -35,6 +35,20 @@ overview_server <- function(input, output, session, state) {
     render_insights_panel(insights_cached())
   })
 
+  # ── CONSORT flow diagram (only when the trial's consort_flow feature is on) ─
+  output$consort_card_ui <- renderUI({
+    cfg <- rv$trial_config
+    if (is.null(cfg) || !isTRUE(cfg$features$consort_flow)) return(NULL)
+    counts <- tryCatch(consort_counts_live(redcap_wp(), cfg), error = function(e) NULL)
+    if (is.null(counts)) return(NULL)
+    tags$section(class = "pov-card",
+      div(class = "pov-card-head",
+          tags$h3("CONSORT flow"),
+          span(class = "pov-card-tool-note",
+               "Participant flow — randomisation, follow-up and withdrawals by type")),
+      HTML(consort_html(counts, cfg)))
+  })
+
   # ── Per-work-package roll-up ──────────────────────────────────────────────
   # Computed from the full (unscoped) participant table so the "all WPs" summary
   # can compare every work package side by side, regardless of which pill is
