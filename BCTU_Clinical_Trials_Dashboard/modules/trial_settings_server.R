@@ -33,6 +33,7 @@ trial_settings_server <- function(input, output, session, state) {
       features         = "Features",
       schedule         = "Follow-up schedule",
       demographics     = "Demographics",
+      detail           = "Detail fields",
       config           = "Config & overrides",
       report_content   = "Report content",
       portfolio_review = "Portfolio review",
@@ -343,6 +344,125 @@ trial_settings_server <- function(input, output, session, state) {
     showNotification("Saved demographic settings.", type = "message", duration = 4)
   })
 
+  # ── Detail-fields editor (extra import columns for SAE / withdrawal /
+  #    complications, with custom headings) ─────────────────────────────────
+  DET_SECTIONS <- list(
+    list(key = "sae",          title = "Serious adverse events",
+         hint = "e.g. death, causality, expectedness, reason"),
+    list(key = "withdrawal",   title = "Withdrawals / change of status",
+         hint = "e.g. cos_type, cos, reason"),
+    list(key = "complication", title = "Complications",
+         hint = "e.g. complication type, Clavien-Dindo grade")
+  )
+  det_seq  <- reactiveVal(0L)
+  det_rows <- reactiveVal(list())   # flat: list(uid, section, col, header)
+  .det_next_uid <- function() { n <- det_seq() + 1L; det_seq(n); n }
+
+  .det_init_from_cfg <- function(cfg) {
+    rows <- list()
+    dfl  <- cfg$detail_fields %||% list()
+    for (s in DET_SECTIONS) {
+      for (f in (dfl[[s$key]] %||% list())) {
+        col <- f$col %||% f[["col"]]
+        if (is.null(col) || !nzchar(col)) next
+        rows[[length(rows) + 1]] <- list(uid = .det_next_uid(), section = s$key,
+                                         col = col, header = f$header %||% f[["header"]] %||% col)
+      }
+    }
+    det_rows(rows)
+  }
+
+  .det_sync <- function() {
+    lapply(det_rows(), function(r) {
+      cv <- input[[paste0("det_col_", r$uid)]]
+      hv <- input[[paste0("det_hdr_", r$uid)]]
+      list(uid = r$uid, section = r$section,
+           col = if (is.null(cv)) r$col else cv,
+           header = if (is.null(hv)) r$header else hv)
+    })
+  }
+
+  output$settings_detail_ui <- renderUI({
+    rows <- det_rows()
+    cols <- names(rv$raw_redcap %||% list())
+    grp <- function(s) {
+      srows <- Filter(function(r) identical(r$section, s$key), rows)
+      row_ui <- if (!length(srows))
+        div(class = "sch-empty", "No fields mapped yet.")
+      else lapply(srows, function(r) {
+        div(class = "sch-row",
+            selectizeInput(paste0("det_col_", r$uid), label = NULL,
+                           choices = unique(c(r$col, cols)), selected = r$col,
+                           width = "100%",
+                           options = list(create = TRUE, placeholder = "REDCap column…")),
+            textInput(paste0("det_hdr_", r$uid), label = NULL, value = r$header,
+                      placeholder = "Heading shown", width = "100%"),
+            tags$button(class = "sch-remove", type = "button", title = "Remove",
+                        onclick = sprintf("Shiny.setInputValue('settings_det_remove', %d, {priority:'event'})", r$uid),
+                        HTML("&times;")))
+      })
+      tagList(
+        div(class = "dg-col-head", style = "margin-top:14px;",
+            span(class = "dg-col-title", s$title)),
+        div(class = "sch-hint", s$hint),
+        div(class = "sch-colhead",
+            span(class = "sch-colhead-l", "Import column"),
+            span(class = "sch-colhead-r", "Heading shown"),
+            span(style = "width:34px;")),
+        row_ui,
+        div(style = "margin:8px 0 4px;",
+            actionButton(paste0("settings_det_add_", s$key),
+                         HTML("&#43; Add field"), class = "btn-ghost-sm")))
+    }
+    head_note <- if (!length(cols))
+      div(class = "sch-hint", style = "margin-bottom:6px;",
+          "Tip: load a REDCap CSV on the Data tab to pick columns from a list — you can also type column names by hand.") else NULL
+    tagList(head_note, lapply(DET_SECTIONS, grp))
+  })
+  outputOptions(output, "settings_detail_ui", suspendWhenHidden = FALSE)
+
+  # One add-handler per section.
+  lapply(DET_SECTIONS, function(s) {
+    local({
+      sk <- s$key
+      observeEvent(input[[paste0("settings_det_add_", sk)]], {
+        rows <- .det_sync()
+        rows[[length(rows) + 1]] <- list(uid = .det_next_uid(), section = sk, col = "", header = "")
+        det_rows(rows)
+      })
+    })
+  })
+
+  observeEvent(input$settings_det_remove, {
+    rid <- suppressWarnings(as.integer(input$settings_det_remove))
+    det_rows(Filter(function(r) !identical(r$uid, rid), .det_sync()))
+  })
+
+  observeEvent(input$settings_save_detail, {
+    cfg <- rv$trial_config; req(cfg)
+    rows <- .det_sync()
+    out  <- list()
+    for (s in DET_SECTIONS) {
+      sr <- Filter(function(r) identical(r$section, s$key) && nzchar(trimws(r$col %||% "")), rows)
+      out[[s$key]] <- lapply(sr, function(r) {
+        col <- trimws(r$col); hdr <- trimws(r$header %||% "")
+        list(col = col, header = if (nzchar(hdr)) hdr else col)
+      })
+    }
+    ok <- tryCatch({ update_overrides(cfg, detail_fields = out); TRUE },
+                   error = function(e) {
+                     showNotification(paste("Save failed:", e$message), type = "error", duration = 8)
+                     FALSE })
+    if (!ok) return()
+    new_cfg <- cfg; new_cfg$detail_fields <- out
+    rv$trial_config <- new_cfg
+    apply_trial_globals(new_cfg)
+    rv$settings_changed <- Sys.time()
+    n <- sum(vapply(out, length, integer(1)))
+    showNotification(sprintf("Saved %d detail field%s.", n, if (n == 1) "" else "s"),
+                     type = "message", duration = 4)
+  })
+
   # ── Populate fields when trial is loaded ──────────────────────────────────
   observeEvent(rv$trial_config, {
     cfg <- rv$trial_config
@@ -391,6 +511,7 @@ trial_settings_server <- function(input, output, session, state) {
     updateTextInput(session, "set_ev_subforms",
                     value = if (is.null(sf)) "" else paste(unlist(sf), collapse = ", "))
     .tp_init_from_cfg(cfg)
+    .det_init_from_cfg(cfg)
   })
 
   # ── Config file path + override status ───────────────────────────────────

@@ -56,6 +56,11 @@ trial_settings_tab_ui <- function() {
                       span(style = "flex:1;min-width:0;",
                            span(class = "settings-lbl", "Demographics"),
                            span(class = "settings-desc", "Breakdowns & group names"))),
+          tags$button(class = "settings-item", `data-section` = "detail",
+                      span(class = "settings-ic", HTML("&#x1F50E;")),
+                      span(style = "flex:1;min-width:0;",
+                           span(class = "settings-lbl", "Detail fields"),
+                           span(class = "settings-desc", "Map extra import columns"))),
           tags$button(class = "settings-item", `data-section` = "config",
                       span(class = "settings-ic", HTML("&#x2351;")),
                       span(style = "flex:1;min-width:0;",
@@ -364,6 +369,23 @@ trial_settings_tab_ui <- function() {
                                class = "btn-primary-sm")),
               div(class = "s-card-body",
                   uiOutput("settings_demographics_ui"))
+            )
+          ),
+
+          # ── Section: Detail fields ─────────────────────────────────
+          div(id = "settings_sec_detail", class = "settings-section",
+              style = "display:none;",
+
+            tags$section(class = "s-card",
+              div(class = "s-card-head",
+                  div(style = "flex:1;min-width:0;",
+                      div(class = "s-card-title", "Detail fields"),
+                      div(class = "s-card-sub",
+                          "Pull extra columns from your REDCap export into the SAE, withdrawal and complications detail — shown on the Data tab and in reports. Pick a column from your export and give it a heading.")),
+                  actionButton("settings_save_detail", "Save fields",
+                               class = "btn-primary-sm")),
+              div(class = "s-card-body",
+                  uiOutput("settings_detail_ui"))
             )
           ),
 

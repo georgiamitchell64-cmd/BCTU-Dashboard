@@ -236,6 +236,45 @@
   paste0(.rs_h(2, "Smart insights"), paste(blocks, collapse = ""))
 }
 
+# Render an events tibble (from safety_events.R) as a report table — the
+# standard Participant/Site/Type columns plus any mapped extra (x__) columns
+# and the reason/notes narrative.
+.rs_events_table <- function(df, title = "") {
+  if (is.null(df) || !nrow(df)) return("")
+  xcols    <- grep("^x__", names(df), value = TRUE)
+  is_event <- "term" %in% names(df)
+  show_reason <- "narrative" %in% names(df) &&
+    any(!is.na(df$narrative) & nzchar(trimws(df$narrative)))
+  heads <- c("Participant", "Site",
+             if (is_event) "Type", sub("^x__", "", xcols),
+             if (show_reason) "Reason / notes")
+  th <- paste0("<tr>", paste(sprintf("<th>%s</th>", htmltools::htmlEscape(heads)),
+                             collapse = ""), "</tr>")
+  body <- vapply(seq_len(nrow(df)), function(i) {
+    r    <- df[i, ]
+    vals <- c(as.character(r$record_id), as.character(r$site %||% ""),
+              if (is_event) as.character(r$term %||% ""),
+              vapply(xcols, function(c) as.character(r[[c]] %||% ""), character(1)),
+              if (show_reason) as.character(r$narrative %||% ""))
+    vals <- ifelse(is.na(vals) | !nzchar(trimws(vals)), "—", vals)
+    paste0("<tr>", paste(sprintf("<td>%s</td>", htmltools::htmlEscape(vals)),
+                         collapse = ""), "</tr>")
+  }, character(1))
+  paste0(if (nzchar(title)) .rs_h(3, title) else "",
+         "<table>", th, paste(body, collapse = ""), "</table>")
+}
+
+.rs_render_complications <- function(ctx) {
+  df <- tryCatch(complication_events(ctx$rv$raw_redcap), error = function(e) NULL)
+  if (is.null(df) || !nrow(df))
+    return(paste0(.rs_h(2, "Complications"),
+                  .rs_subtle("No complications recorded, or no complication columns mapped in Trial Settings.")))
+  paste0(.rs_h(2, "Complications"),
+         .rs_subtle(sprintf("%d participant%s with a recorded complication.",
+                            nrow(df), if (nrow(df) == 1) "" else "s")),
+         .rs_events_table(df, ""))
+}
+
 .rs_render_safety_summary <- function(ctx) {
   raw <- ctx$rv$raw_redcap
   if (is.null(raw) || !nrow(raw))
@@ -262,8 +301,17 @@
     return(paste0(.rs_h(2, "Safety & regulatory"),
                   .rs_subtle("No safety columns detected in the export.")))
 
+  # Detailed SAE + withdrawal tables (with reason and any mapped extra columns
+  # — death/causality/expectedness, cos/reason, etc.).
+  sae_tbl <- tryCatch(.rs_events_table(sae_events(raw), "Serious adverse events"),
+                      error = function(e) "")
+  wd_tbl  <- tryCatch(.rs_events_table(withdrawal_events(raw),
+                                       "Withdrawals / change of status"),
+                      error = function(e) "")
+
   paste0(.rs_h(2, "Safety & regulatory"),
-         .rs_box(.rs_kv_grid(pairs), accent = "#F59E0B"))
+         .rs_box(.rs_kv_grid(pairs), accent = "#F59E0B"),
+         sae_tbl, wd_tbl)
 }
 
 .rs_render_amendments <- function(ctx) {
@@ -791,6 +839,8 @@ REPORT_SECTIONS <- list(
        group = "Participants",      render = .rs_render_demographics),
   list(id = "safety_summary",      label = "Safety & regulatory",
        group = "Safety",            render = .rs_render_safety_summary),
+  list(id = "complications",       label = "Complications",
+       group = "Safety",            render = .rs_render_complications),
   list(id = "amendments",          label = "Amendments",
        group = "Regulatory",        render = .rs_render_amendments),
   list(id = "custom_text",         label = "Custom text / notes",
@@ -828,19 +878,21 @@ REPORT_TEMPLATES <- list(
     label = "TMG (Trial Management Group)",
     description = "Internal management report — recruitment, sites, insights.",
     sections = c("header", "recruitment_summary", "smart_insights",
-                 "consort", "site_summary", "safety_summary", "custom_text")
+                 "consort", "site_summary", "safety_summary", "complications",
+                 "custom_text")
   ),
   iTMG = list(
     label = "iTMG (Independent Trial Management Group)",
     description = "Independent management report — same content as the TMG report, labelled iTMG.",
     sections = c("header", "recruitment_summary", "smart_insights",
-                 "consort", "site_summary", "safety_summary", "custom_text")
+                 "consort", "site_summary", "safety_summary", "complications",
+                 "custom_text")
   ),
   TSC = list(
     label = "TSC (Trial Steering Committee)",
     description = "External oversight — recruitment, demographics, safety, amendments.",
     sections = c("header", "recruitment_summary", "demographics", "consort",
-                 "site_summary", "safety_summary", "amendments",
+                 "site_summary", "safety_summary", "complications", "amendments",
                  "next_period", "custom_text")
   ),
   NIHR = list(

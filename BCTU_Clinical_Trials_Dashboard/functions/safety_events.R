@@ -20,6 +20,31 @@
   df[[col]]
 }
 
+#' User-mapped extra detail columns for a section ("sae" / "withdrawal" /
+#' "complication"), defined in Trial Settings and stored in
+#' cfg$detail_fields[[section]] as a list of list(col=, header=). Lets trials
+#' surface extra REDCap columns (e.g. death, causality, expectedness, reason)
+#' without code changes.
+detail_fields_for <- function(section, cfg = current_trial_config()) {
+  fl <- (cfg %||% list())$detail_fields[[section]]
+  if (is.null(fl) || !length(fl)) return(list())
+  out <- lapply(fl, function(x) {
+    col <- x$col %||% x[["col"]]
+    if (is.null(col) || !nzchar(col)) return(NULL)
+    list(col = col, header = x$header %||% x[["header"]] %||% col)
+  })
+  Filter(Negate(is.null), out)
+}
+
+#' Append mapped extra columns to an events tibble. Each becomes an "x__<header>"
+#' column so renderers can pick them up generically and show the header.
+.append_detail_cols <- function(tib, df, extra) {
+  n <- nrow(df)
+  for (e in extra) tib[[paste0("x__", e$header)]] <-
+    as.character(.safety_col(df, e$col, n, NA_character_))
+  tib
+}
+
 #' Coerce a vector of date-ish strings into Date. REDCap exports vary:
 #' "2026-05-17", "17/05/2026", "2026-05-17 13:42", with mixed quality.
 #' Returns NA for unparseable values rather than throwing.
@@ -53,7 +78,8 @@
 #' @return  tibble — one row per event, columns:
 #'           record_id, site, event_type, term, severity, relatedness,
 #'           status, onset_date, report_date, lag_days, narrative
-extract_events <- function(raw_df, complete_field, spec, event_label = "Event") {
+extract_events <- function(raw_df, complete_field, spec, event_label = "Event",
+                           extra = list()) {
   if (is.null(raw_df) || nrow(raw_df) == 0) {
     return(tibble::tibble(
       record_id = character(0), site = character(0), event_type = character(0),
@@ -85,7 +111,7 @@ extract_events <- function(raw_df, complete_field, spec, event_label = "Event") 
   report <- .parse_date_loose(.safety_col(df, spec$report_date, n, NA_character_))
   lag    <- as.integer(report - onset)
 
-  tibble::tibble(
+  tib <- tibble::tibble(
     record_id   = as.character(.safety_col(df, "record_id",     n, NA)),
     site        = as.character(.safety_col(df, "site_dag",      n, NA)),
     event_type  = event_label,
@@ -98,6 +124,7 @@ extract_events <- function(raw_df, complete_field, spec, event_label = "Event") 
     lag_days    = lag,
     narrative   = as.character(.safety_col(df, spec$narrative,   n, NA_character_))
   )
+  .append_detail_cols(tib, df, extra)
 }
 
 #' Pull SAE rows. Field names resolved via fld().
@@ -114,7 +141,8 @@ sae_events <- function(raw_df) {
       report_date = fld("sae_report_date", default = NULL),
       narrative   = fld("sae_narrative",   default = NULL)
     ),
-    event_label = "SAE"
+    event_label = "SAE",
+    extra = detail_fields_for("sae")   # e.g. death, causality, expectedness, reason
   )
 }
 
@@ -208,7 +236,7 @@ withdrawal_events <- function(raw_df) {
   else cos_code
   onset <- .parse_date_loose(.safety_col(df, date_col, n, NA_character_))
 
-  tibble::tibble(
+  tib <- tibble::tibble(
     record_id   = as.character(.safety_col(df, "record_id", n, NA)),
     site        = as.character(.safety_col(df, "site_dag",  n, NA)),
     event_type  = "Withdrawal",
@@ -221,6 +249,30 @@ withdrawal_events <- function(raw_df) {
     lag_days    = rep(NA_integer_, n),
     narrative   = as.character(.safety_col(df, reason, n, NA_character_))
   )
+  # Extra mapped columns (e.g. cos, additional reason fields), defined in
+  # Trial Settings → Detail fields.
+  .append_detail_cols(tib, df, detail_fields_for("withdrawal"))
+}
+
+#' Pull complication rows — entirely driven by the columns mapped in
+#' Trial Settings → Detail fields (section "complication"). A row counts when
+#' any mapped complication column is non-empty.
+complication_events <- function(raw_df) {
+  extras <- detail_fields_for("complication")
+  empty  <- tibble::tibble(record_id = character(0), site = character(0))
+  if (is.null(raw_df) || !nrow(raw_df) || !length(extras)) return(empty)
+  cols    <- vapply(extras, `[[`, character(1), "col")
+  present <- cols[cols %in% names(raw_df)]
+  if (!length(present)) return(empty)
+  keep <- Reduce(`|`, lapply(present, function(c) {
+    v <- trimws(as.character(raw_df[[c]])); !is.na(v) & nzchar(v) & v != "NA" & v != "0"
+  }))
+  if (!any(keep)) return(empty)
+  df  <- raw_df[keep, , drop = FALSE]; n <- nrow(df)
+  tib <- tibble::tibble(
+    record_id = as.character(.safety_col(df, "record_id", n, NA)),
+    site      = as.character(.safety_col(df, "site_dag",  n, NA)))
+  .append_detail_cols(tib, df, extras)
 }
 
 # ─── Severity pill rendering ────────────────────────────────────────────────

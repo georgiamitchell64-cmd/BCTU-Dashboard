@@ -43,7 +43,12 @@ participants_tab_ui <- function() {
                      uiOutput("safety_tile_wd_body",   inline = TRUE)),
         actionButton("safety_tile_preg", label = NULL,
                      class = "s-tile s-tile-preg",
-                     uiOutput("safety_tile_preg_body", inline = TRUE))
+                     uiOutput("safety_tile_preg_body", inline = TRUE)),
+        # Complications — hidden until complication columns are mapped in
+        # Trial Settings → Detail fields (shown by the server when present).
+        shinyjs::hidden(actionButton("safety_tile_comp", label = NULL,
+                     class = "s-tile s-tile-comp",
+                     uiOutput("safety_tile_comp_body", inline = TRUE)))
       )
     ),
 

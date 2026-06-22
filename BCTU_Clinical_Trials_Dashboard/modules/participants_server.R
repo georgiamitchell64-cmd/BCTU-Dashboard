@@ -169,7 +169,10 @@ participants_server <- function(input, output, session, state) {
     raw <- redcap_wp()
     paste(rv$active_wp %||% 0L,
           if (is.null(raw)) 0L else nrow(raw),
-          if (is.null(raw)) 0L else length(raw), sep = ":")
+          if (is.null(raw)) 0L else length(raw),
+          # Detail-field mappings affect which columns are extracted, so
+          # re-key the cache when they change.
+          digest::digest(rv$trial_config$detail_fields %||% list()), sep = ":")
   }
 
   sae_df    <- reactive({ sae_events(redcap_wp()) })       %>% bindCache(fp())
@@ -177,6 +180,7 @@ participants_server <- function(input, output, session, state) {
   wd_df     <- reactive({ withdrawal_events(redcap_wp()) })%>% bindCache(fp())
   pn_df     <- reactive({ preg_notif_events(redcap_wp()) })%>% bindCache(fp())
   po_df     <- reactive({ preg_out_events(redcap_wp()) })  %>% bindCache(fp())
+  comp_df   <- reactive({ complication_events(redcap_wp()) }) %>% bindCache(fp())
 
   # Combined pregnancy view for the drill-down (notif + outcome).
   preg_df   <- reactive({ dplyr::bind_rows(pn_df(), po_df()) })
@@ -220,6 +224,14 @@ participants_server <- function(input, output, session, state) {
               sprintf("%d notif · %d outcome", n_n, n_o),
               active = identical(active_drill(), "preg"))
   })
+  # Complications tile — only meaningful once complication columns are mapped.
+  output$safety_tile_comp_body <- renderUI({
+    if (!length(detail_fields_for("complication"))) return(NULL)
+    df <- comp_df()
+    tile_body(HTML("&#10010; Complications"), nrow(df),
+              sprintf("%d participant%s", nrow(df), if (nrow(df) == 1) "" else "s"),
+              active = identical(active_drill(), "comp"))
+  })
 
   # ── Tile click handlers (toggle / switch) ──────────────────────────────
   set_drill <- function(key) {
@@ -230,6 +242,13 @@ participants_server <- function(input, output, session, state) {
   observeEvent(input$safety_tile_dev,  set_drill("dev"))
   observeEvent(input$safety_tile_wd,   set_drill("wd"))
   observeEvent(input$safety_tile_preg, set_drill("preg"))
+  observeEvent(input$safety_tile_comp, set_drill("comp"))
+
+  # Show the Complications tile only when complication columns are mapped.
+  observeEvent(rv$trial_config, {
+    shinyjs::toggle("safety_tile_comp",
+                    condition = length(detail_fields_for("complication")) > 0)
+  }, ignoreNULL = FALSE)
 
   # Mirror the active drill onto the tile DOM so CSS can highlight it.
   observe({
@@ -251,19 +270,21 @@ participants_server <- function(input, output, session, state) {
       sae  = sae_df(),
       dev  = dev_df(),
       wd   = wd_df(),
-      preg = preg_df()
+      preg = preg_df(),
+      comp = comp_df()
     )
     title <- switch(key,
       sae  = "Serious adverse events",
       dev  = "Protocol deviations",
-      wd   = "Withdrawals",
-      preg = "Pregnancy events"
+      wd   = "Withdrawals / change of status",
+      preg = "Pregnancy events",
+      comp = "Complications"
     )
     icon_html <- switch(key,
-      sae  = "!", dev = "?", wd = "←", preg = "⚙"
+      sae  = "!", dev = "?", wd = "←", preg = "⚙", comp = "+"
     )
 
-    if (nrow(df) == 0) {
+    if (is.null(df) || nrow(df) == 0) {
       return(div(class = "safety-drill",
         div(class = "safety-drill-head",
           div(class = "safety-drill-title",
@@ -271,27 +292,49 @@ participants_server <- function(input, output, session, state) {
           actionLink("safety_drill_close", HTML("&times;"),
                      class = "safety-drill-close")),
         div(style = "padding:18px;text-align:center;color:#64748B;font-size:12px;font-style:italic;",
-            "No events recorded.")
+            if (identical(key, "comp"))
+              "No complications — map complication columns in Trial Settings → Detail fields, then upload your export."
+            else "No events recorded.")
       ))
     }
 
-    # Build severity palette from the actual observed values in this dataset
-    pal <- build_severity_palette(df$severity)
+    # Generic, column-aware render:
+    #  · event-style rows (SAE/dev/wd/preg) show the standard clinical columns
+    #  · every section also shows its mapped extra columns (x__<header>) and the
+    #    reason/notes narrative, so SAE death/causality/expectedness, withdrawal
+    #    cos/reason and complication details all surface.
+    em        <- '<span style="color:#94A3B8">&mdash;</span>'
+    is_event  <- "term" %in% names(df)
+    xcols     <- grep("^x__", names(df), value = TRUE)
+    show_reason <- "narrative" %in% names(df) &&
+      any(!is.na(df$narrative) & nzchar(trimws(df$narrative)))
+    pal <- if (is_event) build_severity_palette(df$severity) else NULL
+
+    cell <- function(v) if (is.null(v) || length(v) == 0 || is.na(v) || !nzchar(trimws(as.character(v))))
+      HTML(em) else as.character(v)
+
+    head_cells <- c(list(tags$th("Participant"), tags$th("Site")),
+      if (is_event) list(tags$th("Event"), tags$th("Severity"),
+                         tags$th("Date occurred"), tags$th("Date submitted"),
+                         tags$th("Lag"), tags$th("Status")),
+      lapply(xcols, function(c) tags$th(sub("^x__", "", c))),
+      if (show_reason) list(tags$th("Reason / notes")))
 
     body <- lapply(seq_len(nrow(df)), function(i) {
       r <- df[i, ]
-      tags$tr(
-        tags$td(class = "id", as.character(r$record_id)),
-        tags$td(as.character(r$site %||% "")),
-        tags$td(as.character(r$term %||% "")),
-        tags$td(HTML(severity_pill(r$severity, pal))),
-        tags$td(if (!is.na(r$onset_date))  format(r$onset_date, "%d %b %Y")
-                else HTML('<span style="color:#94A3B8">&mdash;</span>')),
-        tags$td(if (!is.na(r$report_date)) format(r$report_date, "%d %b %Y")
-                else HTML('<span style="color:#94A3B8">&mdash;</span>')),
-        tags$td(HTML(lag_html(r$lag_days))),
-        tags$td(HTML(status_dot(r$status)))
-      )
+      cells <- c(
+        list(tags$td(class = "id", as.character(r$record_id)),
+             tags$td(cell(r$site))),
+        if (is_event) list(
+          tags$td(cell(r$term)),
+          tags$td(HTML(severity_pill(r$severity, pal))),
+          tags$td(if (!is.na(r$onset_date))  format(r$onset_date, "%d %b %Y") else HTML(em)),
+          tags$td(if (!is.na(r$report_date)) format(r$report_date, "%d %b %Y") else HTML(em)),
+          tags$td(HTML(lag_html(r$lag_days))),
+          tags$td(HTML(status_dot(r$status)))),
+        lapply(xcols, function(c) tags$td(cell(r[[c]]))),
+        if (show_reason) list(tags$td(style = "max-width:280px;", cell(r$narrative))))
+      do.call(tags$tr, cells)
     })
 
     div(class = "safety-drill",
@@ -305,22 +348,18 @@ participants_server <- function(input, output, session, state) {
                      title = "Close"))
       ),
       tags$table(class = "safety-drill-tbl",
-        tags$thead(tags$tr(
-          tags$th("Participant"), tags$th("Site"), tags$th("Event"),
-          tags$th("Severity"),    tags$th("Date occurred"),
-          tags$th("Date submitted"), tags$th("Lag"), tags$th("Status")
-        )),
+        tags$thead(do.call(tags$tr, head_cells)),
         tags$tbody(body)
       ),
       div(class = "safety-drill-foot",
-        span(sprintf("%d of %d events shown · median lag %s",
+        span(sprintf("%d of %d events shown%s",
                      nrow(df), nrow(df),
-                     {
+                     if (is_event) {
                        med <- suppressWarnings(stats::median(df$lag_days, na.rm = TRUE))
-                       if (is.na(med)) "—" else sprintf("%d days", as.integer(med))
-                     })),
+                       if (is.na(med)) "" else sprintf(" · median lag %d days", as.integer(med))
+                     } else "")),
         span(style = "color:#94A3B8;",
-             "Source: REDCap export · auto-detected fields")
+             "Source: REDCap export · mapped fields")
       )
     )
   })
