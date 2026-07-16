@@ -206,6 +206,33 @@ upload_server <- function(input, output, session, state) {
     load_label      <- pending$filelabel %||% basename(pending$filepath %||% "")
     rv$loaded_file  <- load_label
 
+    # ── Canonical pipeline (docs/ARCHITECTURE.md) ─────────────────────────
+    # Build the source-independent canonical dataset alongside the legacy
+    # frames, validate it, persist to the trial DB, and compute module
+    # availability. Runs additively: failures never break the legacy load.
+    tryCatch({
+      cfg_now <- rv$trial_config %||% current_trial_config()
+      pkg     <- redcap_package_from_df(raw, files = load_label)
+      built   <- build_canonical(pkg, cfg_now %||% list())
+      issues  <- validate_canonical(built$dataset, extra = built$issues)
+      rv$canon             <- built$dataset
+      rv$validation_issues <- issues
+      rv$module_status     <- module_availability(cfg_now %||% list(),
+                                                  built$dataset)
+      if (!is.null(built$dataset) && validation_passed(issues) &&
+          exists("DB_PATH") && is.character(DB_PATH)) {
+        canon_save(built$dataset, issues, DB_PATH,
+                   username = rv$username, file_label = load_label)
+      }
+      n_warn <- sum(issues$severity %in% c("blocking", "warning"))
+      if (n_warn > 0) {
+        showNotification(
+          paste0(validation_summary(issues), " — see the Data tab for details."),
+          type = if (any(issues$severity == "blocking")) "error" else "warning",
+          duration = 10)
+      }
+    }, error = function(e) message("canonical pipeline: ", e$message))
+
     n_p <- length(unique(result$participants$record_id))
     n_s <- nrow(result$sites)
     showNotification(
@@ -265,6 +292,23 @@ upload_server <- function(input, output, session, state) {
         redcap_events = new_cfg$redcap_events),
       error = function(e) message("autodetect persist: ", e$message)
     )
+
+    # Feed the cross-trial synonym library: every confirmed role→field pair
+    # becomes a learned synonym for the corresponding concept, so the next
+    # trial's suggestions start from this one's answers.
+    tryCatch({
+      reg <- concept_registry()
+      by_role <- stats::setNames(names(reg),
+                                 vapply(reg, function(cc)
+                                   cc$legacy_role %||% NA_character_,
+                                   character(1)))
+      for (role in names(applied_fields)) {
+        f <- applied_fields[[role]]
+        cid <- by_role[[role]]
+        if (!is.null(cid) && !is.na(cid) && nzchar(f %||% ""))
+          record_confirmed_mapping(cid, f, trial_code = new_cfg$code)
+      }
+    }, error = function(e) message("synonym learn: ", e$message))
 
     n_filled <- sum(vapply(applied_fields, function(x) nzchar(x %||% ""), logical(1))) +
                 sum(vapply(applied_events, function(x) nzchar(x %||% ""), logical(1)))

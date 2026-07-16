@@ -1,8 +1,29 @@
 # Clinical Trials Dashboard — Platform Architecture
 
-**Status:** Proposal for review
+**Status:** Approved direction; foundation implemented (see below)
 **Scope:** Evolving the BCTU dashboard from a REDCap-shaped multi-trial app into a
 source-independent clinical trial dashboard platform.
+
+**Implementation status**
+
+| Component | Where | State |
+|---|---|---|
+| Adapter API + registry | `functions/adapters/adapter_api.R` | ✅ implemented |
+| REDCap adapter (export + data dictionary) | `functions/adapters/redcap_csv.R` | ✅ implemented |
+| Generic CSV/Excel adapter | `functions/adapters/generic_tabular.R` | ✅ implemented |
+| Concept registry + learned synonym library | `functions/pipeline/concepts.R` | ✅ implemented |
+| Suggestion engine (scored, explainable) | `functions/pipeline/suggest.R` | ✅ implemented |
+| Canonical transformer (Contract 2) | `functions/pipeline/transform.R` | ✅ implemented |
+| Validation stage (blocking/warning/info) | `functions/pipeline/validate.R` | ✅ implemented |
+| Canonical store + import audit + drift check | `functions/pipeline/canonical_store.R` | ✅ implemented |
+| Declarative `trial.json` + config.R converter | `functions/pipeline/trial_config_json.R` | ✅ implemented |
+| Module manifests + availability engine | `modules/registry.R` | ✅ implemented |
+| Pipeline wired into import flow (additive) | `modules/upload_server.R` | ✅ implemented |
+| End-to-end smoke test | `tests/pipeline_smoke.R` (`Rscript tests/pipeline_smoke.R`) | ✅ passing |
+| Mapping studio UI (replaces autodetect modal) | — | ⬜ next |
+| Modules migrated off `rv$raw_redcap` onto `rv$canon` | — | ⬜ next (Phase 1 §13) |
+| Availability engine driving navigation | — | ⬜ next |
+| MedSciNet / Panacea adapters | — | ⬜ when a real trial needs them |
 
 ---
 
