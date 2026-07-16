@@ -58,11 +58,15 @@ jobs:
           use-public-rspm: true
       - name: Install app dependencies
         run: |
+          # globals/packages.R plus the library() calls made by sourced
+          # function files (ggplot2/scales/rmarkdown are loaded by the report
+          # helpers at source time)
           install.packages(c("shiny", "bslib", "shinyWidgets", "shinyjs",
                              "reactable", "echarts4r", "shinycssloaders",
                              "dplyr", "tidyr", "stringr", "lubridate",
                              "writexl", "readxl", "leaflet", "tibble", "rlang",
-                             "DBI", "RSQLite", "jsonlite", "digest"))
+                             "DBI", "RSQLite", "jsonlite", "digest",
+                             "ggplot2", "scales", "rmarkdown"))
         shell: Rscript {0}
       - name: Launch app and verify it serves the UI
         run: |
