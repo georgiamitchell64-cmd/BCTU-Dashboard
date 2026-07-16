@@ -103,6 +103,7 @@ discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
 
   # Fingerprint the on-disk state; return the cached result if nothing changed.
   fp_files <- c(file.path(trial_folders, "config.R"),
+                file.path(trial_folders, "trial.json"),
                 file.path(trial_folders, "overrides.json"))
   fp_files <- fp_files[file.exists(fp_files)]
   fp <- paste0(trials_dir, "::",
@@ -114,22 +115,50 @@ discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
 
   for (folder in trial_folders) {
     config_file <- file.path(folder, "config.R")
-    if (!file.exists(config_file)) next
+    json_file   <- file.path(folder, "trial.json")
+    if (!file.exists(config_file) && !file.exists(json_file)) next
 
     trial_code <- basename(folder)
-    cfg <- tryCatch({
-      env <- new.env(parent = globalenv())
-      source(config_file, local = env)
-      if (exists("trial_config", envir = env)) {
-        env$trial_config
-      } else {
-        message("Warning: ", config_file, " does not define 'trial_config'")
+    cfg <- if (file.exists(config_file)) {
+      tryCatch({
+        env <- new.env(parent = globalenv())
+        source(config_file, local = env)
+        if (exists("trial_config", envir = env)) {
+          env$trial_config
+        } else {
+          message("Warning: ", config_file, " does not define 'trial_config'")
+          NULL
+        }
+      }, error = function(e) {
+        message("Error loading trial config from ", config_file, ": ", e$message)
         NULL
+      })
+    } else {
+      list()  # trial defined entirely by trial.json — no R code required
+    }
+
+    # Declarative config overlays code config (deep merge, JSON wins per key).
+    # See functions/pipeline/trial_config_json.R for the format and migration
+    # model. A folder can carry only trial.json, only config.R, or both.
+    if (!is.null(cfg) && file.exists(json_file)) {
+      tj <- if (exists("apply_trial_json", mode = "function"))
+        load_trial_json(folder) else NULL
+      if (!is.null(tj)) {
+        problems <- validate_trial_json(tj)
+        if (length(problems) && !length(cfg)) {
+          message("Invalid trial.json for ", trial_code, ": ",
+                  paste(problems, collapse = "; "))
+          cfg <- NULL
+        } else {
+          if (length(problems))
+            message("trial.json issues for ", trial_code, " (using config.R values): ",
+                    paste(problems, collapse = "; "))
+          cfg <- apply_trial_json(cfg, tj)
+        }
+      } else if (!length(cfg)) {
+        cfg <- NULL   # json-only trial but trial.json unreadable
       }
-    }, error = function(e) {
-      message("Error loading trial config from ", config_file, ": ", e$message)
-      NULL
-    })
+    }
 
     if (!is.null(cfg)) {
       # Ensure required fields
