@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data tab — Version B: Dense ops console</title>
+<style>
+  :root{
+    --navy:#1B4F6B;--navy-dk:#143D54;--teal:#2EC4A5;--teal-dk:#0FA88E;
+    --amber:#F59E0B;--red:#EF4444;--blue:#3B82F6;--violet:#7C3AED;
+    --bg:#F4F6F9;--card:#fff;--border:#E2E8EE;--text:#0F1A24;--muted:#64748B;
+    --font:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:var(--font);color:var(--text);font-size:12.5px}
+  .shell{display:grid;grid-template-columns:200px 1fr;min-height:100vh}
+
+  /* Left jump-nav rail */
+  .rail{background:#FFFFFF;border-right:1px solid var(--border);padding:18px 14px;position:sticky;top:0;height:100vh;overflow:auto}
+  .rail .ttl{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+  .rail a{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;color:var(--text);text-decoration:none;border-radius:5px;font-size:12px;margin-bottom:2px}
+  .rail a:hover{background:#F1F5F9}
+  .rail a.active{background:#EEF6F3;color:var(--teal-dk);font-weight:600;border-left:3px solid var(--teal);padding-left:7px}
+  .rail a .n{font-size:10px;color:var(--muted);background:#F1F5F9;padding:1px 7px;border-radius:9px;font-weight:600}
+  .rail a.active .n{background:#fff;color:var(--teal-dk)}
+  .rail .div{height:1px;background:var(--border);margin:14px 0}
+  .rail .quick{font-size:11px;color:var(--muted);padding:6px 10px;display:flex;justify-content:space-between}
+
+  .main{padding:18px 22px;max-width:1200px}
+  .topline{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px}
+  h1{font-size:17px;color:var(--navy);margin:0;font-weight:700}
+  .topline .meta{font-size:11px;color:var(--muted)}
+  .topline .meta b{color:var(--navy)}
+
+  /* Dense KPI strip */
+  .kpis{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px}
+  .kpi{background:#fff;padding:11px 12px;display:flex;flex-direction:column;gap:3px}
+  .kpi .l{font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+  .kpi .v{font-size:18px;font-weight:700;color:var(--navy);line-height:1.1}
+  .kpi .s{font-size:10px;color:var(--muted)}
+  .kpi .delta{font-size:10px;font-weight:700;color:#059669}
+  .kpi.warn .v{color:#D97706}
+  .kpi.red .v{color:#DC2626}
+  .kpi.violet .v{color:#7C3AED}
+
+  /* Section card */
+  section{background:#fff;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;overflow:hidden}
+  section > header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);background:#FAFBFC}
+  section > header h2{margin:0;font-size:12.5px;color:var(--navy);font-weight:600;display:flex;align-items:center;gap:8px}
+  section > header h2 .badge{font-size:9px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;padding:2px 7px;border-radius:9px;background:#EEF6F3;color:var(--teal-dk)}
+  section > header h2 .badge.warn{background:#FEF3C7;color:#92400E}
+  section > header .ctrls{display:flex;gap:6px;font-size:11px;align-items:center}
+  section > header .ctrls .ico-btn{background:#fff;border:1px solid var(--border);border-radius:4px;padding:4px 9px;cursor:pointer;font-size:11px;color:var(--muted)}
+
+  /* Inline filter strip inside section */
+  .ifilters{display:flex;gap:10px;padding:8px 14px;background:#F8FAFD;border-bottom:1px solid var(--border);align-items:center;font-size:11px;flex-wrap:wrap}
+  .ifilters .grp{display:flex;align-items:center;gap:5px}
+  .ifilters label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+  .ifilters input,.ifilters select{padding:3px 8px;border:1px solid var(--border);border-radius:4px;font-size:11px;background:#fff;font-family:inherit}
+  .ifilters .chip{padding:3px 9px;border:1px solid var(--border);background:#fff;border-radius:999px;font-size:10.5px;color:var(--muted);cursor:pointer;font-weight:500}
+  .ifilters .chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .ifilters .right{margin-left:auto;color:var(--muted);font-style:italic}
+
+  /* Dense grid */
+  table.dgrid{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.dgrid thead th{padding:8px 6px;font-size:9px;text-transform:uppercase;font-weight:600;letter-spacing:.5px;color:var(--muted);background:#F8FAFD;border-bottom:1px solid var(--border);text-align:center;position:sticky;top:0}
+  table.dgrid thead th.bl{color:#7C3AED;border-bottom:2px solid #7C3AED}
+  table.dgrid thead th.dc{color:#2563EB;border-bottom:2px solid #2563EB}
+  table.dgrid thead th.d30{color:#065F46;border-bottom:2px solid #10B981}
+  table.dgrid thead th.d90{color:#065F46;border-bottom:2px solid #059669}
+  table.dgrid tbody td{padding:6px 5px;border-bottom:1px solid #F1F5FA;text-align:center}
+  table.dgrid tbody td.id{text-align:left;padding-left:14px;font-weight:600;color:var(--navy)}
+  table.dgrid tbody td.site{text-align:left;color:var(--muted);font-size:10.5px}
+  table.dgrid tbody tr:hover{background:#F8FAFD}
+  table.dgrid tbody tr.flag{background:#FFFBEB}
+  .c-c{color:#059669;font-weight:700}
+  .c-p{color:#D97706;font-weight:700}
+  .c-u{color:#D97706}
+  .c-n{color:#CBD5E1}
+  .ev-flag{color:#DC2626;font-size:10px;font-weight:600;margin-left:4px}
+
+  /* Site safety table */
+  table.safety{width:100%;border-collapse:collapse;font-size:12px}
+  table.safety th{padding:8px 12px;font-size:10px;text-transform:uppercase;font-weight:600;letter-spacing:.5px;color:var(--muted);background:#F8FAFD;border-bottom:1px solid var(--border);text-align:right}
+  table.safety th:first-child{text-align:left}
+  table.safety td{padding:8px 12px;border-bottom:1px solid #F1F5FA;text-align:right;font-variant-numeric:tabular-nums}
+  table.safety td:first-child{text-align:left;font-weight:600;color:var(--navy)}
+  table.safety td .sev{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  table.safety td .pill{display:inline-block;font-size:10px;padding:1px 7px;border-radius:9px;font-weight:600}
+  .pill-red{background:#FEE2E2;color:#991B1B}
+  .pill-amber{background:#FEF3C7;color:#92400E}
+  .pill-grey{background:#F1F5F9;color:#64748B}
+
+  .micro-spark{display:inline-block;height:12px;width:60px;vertical-align:middle}
+  .row-actions{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:#F8FAFD;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+  .dl-btn{background:var(--navy);color:#fff;border:none;padding:6px 12px;border-radius:4px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Left jump-nav rail -->
+  <aside class="rail">
+    <div class="ttl">Data tab</div>
+    <a class="active" href="#completion">Patient completion <span class="n">147</span></a>
+    <a href="#demo">Demographics</a>
+    <a href="#safety">Safety events <span class="n">23</span></a>
+    <a href="#withdrawals">Withdrawals <span class="n">8</span></a>
+    <a href="#postal">Postal tracking <span class="n">12</span></a>
+    <div class="div"></div>
+    <div class="ttl">Quick filters</div>
+    <div class="quick"><span>Incomplete</span><b style="color:var(--amber)">38</b></div>
+    <div class="quick"><span>No data 30d+</span><b style="color:var(--red)">14</b></div>
+    <div class="quick"><span>Unverified</span><b style="color:#D97706">9</b></div>
+    <div class="div"></div>
+    <div class="ttl">Export</div>
+    <a href="#"><span>Participants .xlsx</span></a>
+    <a href="#"><span>Safety .xlsx</span></a>
+    <a href="#"><span>Completeness .csv</span></a>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topline">
+      <div>
+        <h1>Trial data</h1>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">147 participants · 24 sites · last refresh 11 min ago</div>
+      </div>
+      <div class="meta">Data through <b>17 May 2026</b> · Source <b>REDCap</b></div>
+    </div>
+
+    <!-- Dense KPI strip: 8 metrics, no fluff -->
+    <div class="kpis">
+      <div class="kpi violet"><div class="l">Baseline</div><div class="v">135 <span class="delta">+4</span></div><div class="s">92% · 12 missing</div></div>
+      <div class="kpi"><div class="l">Discharge</div><div class="v" style="color:#2563EB">122</div><div class="s">83%</div></div>
+      <div class="kpi"><div class="l">Day 30</div><div class="v" style="color:#10B981">104</div><div class="s">71%</div></div>
+      <div class="kpi"><div class="l">Day 90</div><div class="v" style="color:#059669">79</div><div class="s">54%</div></div>
+      <div class="kpi red"><div class="l">SAEs</div><div class="v">7</div><div class="s">across 5 sites</div></div>
+      <div class="kpi warn"><div class="l">Deviations</div><div class="v">12</div><div class="s">8 open</div></div>
+      <div class="kpi warn"><div class="l">Withdrawals</div><div class="v">8 <span class="delta" style="color:#DC2626">+2</span></div><div class="s">5.4% rate</div></div>
+      <div class="kpi"><div class="l">Preg. evt</div><div class="v" style="color:#7C3AED">4</div><div class="s">2 notif · 2 out</div></div>
+    </div>
+
+    <!-- Patient completion (sticky inline filters) -->
+    <section id="completion">
+      <header>
+        <h2>Patient questionnaire completion <span class="badge">147 participants</span></h2>
+        <div class="ctrls">
+          <button class="ico-btn">⋯ Columns</button>
+          <button class="ico-btn">⬇ Export</button>
+        </div>
+      </header>
+      <div class="ifilters">
+        <div class="grp"><label>Site</label><select><option>All (24)</option></select></div>
+        <div class="grp"><label>ID</label><input placeholder="1001"></div>
+        <div class="grp"><label>Status</label>
+          <span class="chip on">All</span>
+          <span class="chip">Incomplete</span>
+          <span class="chip">Stalled 14d+</span>
+          <span class="chip">No baseline</span>
+        </div>
+        <div class="right">Showing 6 of 147 · cmd-click row to drill</div>
+      </div>
+      <table class="dgrid">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding-left:14px">ID</th><th style="text-align:left">Site</th>
+            <th class="bl">EQ-5D</th><th class="bl">HRUQ</th><th class="bl">PRODIGI</th><th class="bl">QoR-15</th><th class="bl">VAS</th>
+            <th class="dc">EQ-5D</th><th class="dc">VAS</th>
+            <th class="d30">EQ-5D</th><th class="d30">HRUQ</th><th class="d30">PRODIGI</th><th class="d30">QoR-15</th><th class="d30">VAS</th>
+            <th class="d90">EQ-5D</th><th class="d90">HRUQ</th><th class="d90">PRODIGI</th><th class="d90">QoR-15</th><th class="d90">VAS</th>
+            <th>Events</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="id">1001</td><td class="site">Birmingham QE</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td></td></tr>
+          <tr class="flag"><td class="id">1002</td><td class="site">Birmingham QE</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-p">●</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-p">●</td><td class="c-u">?</td>
+            <td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td>
+            <td><span class="ev-flag">SAE</span></td></tr>
+          <tr><td class="id">1003</td><td class="site">Birmingham QE</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td></td></tr>
+          <tr class="flag"><td class="id">2014</td><td class="site">Manchester Royal</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-p">●</td><td class="c-n">—</td><td class="c-p">●</td><td class="c-n">—</td><td class="c-n">—</td>
+            <td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td>
+            <td></td></tr>
+          <tr><td class="id">2015</td><td class="site">Manchester Royal</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td class="c-u">?</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td><td class="c-c">✓</td>
+            <td><span class="ev-flag" style="color:#D97706">DEV</span></td></tr>
+          <tr class="flag"><td class="id">3007</td><td class="site">Leeds St James</td>
+            <td class="c-c">✓</td><td class="c-p">●</td><td class="c-c">✓</td><td class="c-p">●</td><td class="c-c">✓</td>
+            <td class="c-p">●</td><td class="c-c">✓</td>
+            <td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td>
+            <td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td><td class="c-n">—</td>
+            <td><span class="ev-flag">SAE</span><span class="ev-flag" style="color:var(--muted)">WD</span></td></tr>
+        </tbody>
+      </table>
+      <div class="row-actions">
+        <div><span class="c-c">✓</span> Complete &nbsp;<span class="c-p">●</span> Started &nbsp;<span class="c-u">?</span> Unverified &nbsp;<span class="c-n">—</span> Not started · <b style="color:#DC2626">SAE</b> · <b style="color:#D97706">DEV</b> · <b>WD</b> withdrawal</div>
+        <div style="display:flex;gap:8px"><span>1–25 of 147</span><button class="dl-btn">Export</button></div>
+      </div>
+    </section>
+
+    <!-- Per-site safety table -->
+    <section id="safety">
+      <header>
+        <h2>Per-site safety <span class="badge warn">23 events · 12 sites</span></h2>
+        <div class="ctrls">
+          <button class="ico-btn">Sort: SAE rate ▾</button>
+        </div>
+      </header>
+      <table class="safety">
+        <thead><tr><th>Site</th><th>Randomised</th><th>SAEs</th><th>SAE rate</th><th>Dev.</th><th>WD</th><th>Preg.</th><th>Trend (90d)</th></tr></thead>
+        <tbody>
+          <tr><td><span class="sev" style="background:#DC2626"></span>Birmingham QE</td><td>22</td><td>3 <span class="pill pill-red">high</span></td><td>13.6%</td><td>2</td><td>1</td><td>1</td><td><svg class="micro-spark" viewBox="0 0 60 12"><polyline fill="none" stroke="#DC2626" stroke-width="1.5" points="0,8 10,7 20,6 30,5 40,3 50,2 60,2"/></svg></td></tr>
+          <tr><td><span class="sev" style="background:#F59E0B"></span>Manchester Royal</td><td>18</td><td>1 <span class="pill pill-amber">elev</span></td><td>5.6%</td><td>3</td><td>0</td><td>1</td><td><svg class="micro-spark" viewBox="0 0 60 12"><polyline fill="none" stroke="#F59E0B" stroke-width="1.5" points="0,6 10,5 20,5 30,6 40,4 50,5 60,4"/></svg></td></tr>
+          <tr><td><span class="sev" style="background:#10B981"></span>Leeds St James</td><td>15</td><td>1 <span class="pill pill-grey">avg</span></td><td>6.7%</td><td>1</td><td>2</td><td>0</td><td><svg class="micro-spark" viewBox="0 0 60 12"><polyline fill="none" stroke="#10B981" stroke-width="1.5" points="0,6 10,6 20,7 30,6 40,7 50,7 60,8"/></svg></td></tr>
+          <tr><td><span class="sev" style="background:#10B981"></span>Edinburgh RI</td><td>14</td><td>0</td><td>0%</td><td>2</td><td>1</td><td>0</td><td><svg class="micro-spark" viewBox="0 0 60 12"><polyline fill="none" stroke="#10B981" stroke-width="1.5" points="0,8 10,9 20,9 30,10 40,10 50,11 60,11"/></svg></td></tr>
+          <tr><td><span class="sev" style="background:#10B981"></span>Cardiff UHW</td><td>11</td><td>1 <span class="pill pill-grey">avg</span></td><td>9.1%</td><td>0</td><td>1</td><td>0</td><td><svg class="micro-spark" viewBox="0 0 60 12"><polyline fill="none" stroke="#10B981" stroke-width="1.5" points="0,7 10,8 20,7 30,8 40,8 50,8 60,9"/></svg></td></tr>
+        </tbody>
+      </table>
+      <div class="row-actions"><span>Showing 5 of 12 sites with events · sites with 0 events hidden</span><div><button class="dl-btn">Export safety</button></div></div>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>

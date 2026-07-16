@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data tab — Version C v2: Visual-first with safety drill-down</title>
+<style>
+  :root{
+    --navy:#1B4F6B;--navy-dk:#143D54;--teal:#2EC4A5;--teal-dk:#0FA88E;--teal-lt:#E0F7F3;
+    --amber:#F59E0B;--red:#EF4444;--blue:#3B82F6;--violet:#7C3AED;
+    --bg:#F4F6F9;--card:#fff;--border:#E2E8EE;--text:#1E293B;--muted:#64748B;
+    --font:'Outfit',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:var(--font);color:var(--text);font-size:13px}
+  .shell{max-width:1400px;margin:0 auto;padding:24px}
+
+  h1{font-size:22px;color:var(--navy);margin:0 0 4px;font-weight:700;letter-spacing:-.3px}
+  .lead{font-size:13px;color:var(--muted);margin-bottom:22px}
+
+  /* Hero row: 4 donut KPIs */
+  .hero-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+  .donut-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 3px rgba(0,0,0,.04);transition:transform .15s,box-shadow .15s}
+  .donut-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(27,79,107,.08)}
+  .donut{position:relative;width:80px;height:80px;flex-shrink:0}
+  .donut svg{transform:rotate(-90deg);width:80px;height:80px}
+  .donut .ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--navy);line-height:1}
+  .donut .ctr small{font-size:10px;font-weight:500;color:var(--muted);margin-top:2px}
+  .donut-info .lbl{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+  .donut-info .vv{font-size:22px;font-weight:700;color:var(--navy);line-height:1}
+  .donut-info .sub{font-size:11px;color:var(--muted);margin-top:3px}
+  .donut-info .trend{font-size:11px;font-weight:600;color:#059669;margin-top:6px;display:flex;align-items:center;gap:4px}
+  .donut-info .trend.neg{color:#DC2626}
+
+  /* 2-column body */
+  .body-2col{display:grid;grid-template-columns:1fr 360px;gap:14px}
+
+  .panel{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:14px}
+  .panel h3{margin:0 0 14px;font-size:13px;color:var(--navy);font-weight:600;display:flex;align-items:center;justify-content:space-between}
+  .panel h3 .h-meta{font-size:11px;color:var(--muted);font-weight:400;font-style:italic}
+
+  /* Safety hero card */
+  .safety-card{background:linear-gradient(135deg,#FFF7ED 0%,#FEF3C7 100%);border:1px solid #FDE68A;border-radius:12px;padding:18px;margin-bottom:14px}
+  .safety-card > h3{color:#92400E;margin:0 0 14px;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600}
+  .safety-card > h3 .meta{font-size:11px;font-weight:400;font-style:italic;color:#9A3412}
+
+  /* Clickable safety tiles */
+  .safety-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .s-tile{background:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.6);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .18s;position:relative;backdrop-filter:blur(4px)}
+  .s-tile:hover{background:#fff;border-color:#F59E0B;transform:translateY(-2px);box-shadow:0 8px 20px rgba(245,158,11,.18)}
+  .s-tile.active{background:#fff;border-color:#F59E0B;box-shadow:0 8px 20px rgba(245,158,11,.22)}
+  .s-tile.active::after{content:'';position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-top:10px solid #fff;filter:drop-shadow(0 2px 1px rgba(245,158,11,.3))}
+  .s-tile .lbl{font-size:9px;color:#92400E;text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:6px}
+  .s-tile .vv{font-size:24px;font-weight:700;color:#7C2D12;line-height:1}
+  .s-tile .sub{font-size:10px;color:#9A3412;margin-top:3px}
+  .s-tile .arr{position:absolute;top:10px;right:10px;font-size:10px;color:#9A3412;opacity:.5}
+  .s-tile:hover .arr,.s-tile.active .arr{opacity:1}
+
+  /* Drill-down panel */
+  .drill{background:#fff;border:1px solid var(--border);border-radius:12px;margin-top:18px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.06);animation:dropin .22s cubic-bezier(.22,1,.36,1)}
+  @keyframes dropin{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+  .drill-head{padding:14px 18px;background:#FFFBEB;border-bottom:1px solid #FDE68A;display:flex;justify-content:space-between;align-items:center}
+  .drill-head .ttl{font-size:13px;font-weight:600;color:#7C2D12;display:flex;align-items:center;gap:10px}
+  .drill-head .ttl .ic{width:28px;height:28px;border-radius:8px;background:#FEE2E2;color:#DC2626;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700}
+  .drill-head .actions{display:flex;gap:8px;font-size:11px;align-items:center}
+  .drill-head .actions select{padding:5px 10px;border:1px solid var(--border);border-radius:5px;font-size:11px;background:#fff;font-family:inherit}
+  .drill-head .actions .close{background:transparent;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px;line-height:1}
+
+  table.evtbl{width:100%;border-collapse:collapse;font-size:12px}
+  table.evtbl th{padding:9px 14px;background:#F8FAFD;font-size:10px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)}
+  table.evtbl th.r{text-align:right}
+  table.evtbl td{padding:11px 14px;border-bottom:1px solid #F1F5FA;font-size:12.5px;vertical-align:top}
+  table.evtbl tbody tr{cursor:pointer}
+  table.evtbl tbody tr:hover{background:#FFFBEB}
+  table.evtbl td.id{font-weight:600;color:var(--navy)}
+  table.evtbl td.r{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+  .ev-pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:9px}
+  .ev-pill.crit{background:#FEE2E2;color:#991B1B}
+  .ev-pill.exp{background:#FEF3C7;color:#92400E}
+  .ev-pill.rel{background:#E0E7FF;color:#3730A3}
+  .ev-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600}
+  .ev-status::before{content:'';width:8px;height:8px;border-radius:50%}
+  .ev-status.open::before{background:#F59E0B}
+  .ev-status.closed::before{background:#10B981}
+  .ev-status.review::before{background:#3B82F6}
+  .lag{font-size:11px;color:var(--muted)}
+  .lag.warn{color:#DC2626;font-weight:600}
+
+  .drill-foot{padding:10px 18px;background:#F8FAFD;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted)}
+  .dl-mini{background:var(--navy);color:#fff;border:none;padding:6px 12px;border-radius:5px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit}
+
+  /* Demographics right column */
+  .demo-block{margin-bottom:18px}
+  .demo-block h4{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin:0 0 10px}
+  .demo-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .demo-row .l{font-size:12px;color:var(--text);min-width:70px}
+  .demo-row .bar{flex:1;background:#F1F5F9;height:18px;border-radius:4px;position:relative;overflow:hidden}
+  .demo-row .bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;color:#fff;font-size:11px;font-weight:600}
+  .demo-row .n{font-size:11px;color:var(--muted);min-width:38px;text-align:right;font-weight:600}
+
+  /* Withdrawal donut */
+  .wd-card{display:flex;gap:18px;align-items:center}
+  .wd-donut{flex-shrink:0;width:120px;height:120px;position:relative}
+  .wd-donut svg{width:120px;height:120px;transform:rotate(-90deg)}
+  .wd-donut .ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .wd-donut .ctr b{font-size:26px;color:var(--navy);font-weight:700;line-height:1}
+  .wd-donut .ctr small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-top:3px}
+  .wd-legend{flex:1}
+  .wd-legend .lr{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F1F5F9;font-size:12px;cursor:pointer;transition:background .1s}
+  .wd-legend .lr:hover{background:#F8FAFD;padding-left:6px;padding-right:6px;margin:0 -6px;border-radius:4px}
+  .wd-legend .lr:last-child{border-bottom:none}
+  .wd-legend .lr .l{display:flex;align-items:center;gap:8px}
+  .wd-legend .lr .l .dot{width:10px;height:10px;border-radius:2px}
+  .wd-legend .lr .n{font-weight:700;color:var(--navy)}
+
+  .download-fab{background:var(--navy);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(27,79,107,.25)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <h1>Trial data</h1>
+  <div class="lead">147 participants across 24 sites · last refresh 11 min ago</div>
+
+  <!-- 4 donut KPI cards: enrolment/completion summary -->
+  <div class="hero-row">
+    <div class="donut-card">
+      <div class="donut">
+        <svg viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" stroke="#EDE9FE" stroke-width="10" fill="none"/>
+          <circle cx="40" cy="40" r="32" stroke="#7C3AED" stroke-width="10" fill="none" stroke-dasharray="185 201" stroke-linecap="round"/>
+        </svg>
+        <div class="ctr">92%<small>BASELINE</small></div>
+      </div>
+      <div class="donut-info">
+        <div class="lbl">Baseline</div>
+        <div class="vv">135 <span style="font-size:13px;color:var(--muted);font-weight:500">/ 147</span></div>
+        <div class="sub">12 missing</div>
+        <div class="trend">▲ 4 this week</div>
+      </div>
+    </div>
+
+    <div class="donut-card">
+      <div class="donut">
+        <svg viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" stroke="#DBEAFE" stroke-width="10" fill="none"/>
+          <circle cx="40" cy="40" r="32" stroke="#2563EB" stroke-width="10" fill="none" stroke-dasharray="167 201" stroke-linecap="round"/>
+        </svg>
+        <div class="ctr">83%<small>DISCHARGE</small></div>
+      </div>
+      <div class="donut-info">
+        <div class="lbl">Discharge</div>
+        <div class="vv">122 <span style="font-size:13px;color:var(--muted);font-weight:500">/ 147</span></div>
+        <div class="sub">25 pending</div>
+        <div class="trend">▲ 6 this week</div>
+      </div>
+    </div>
+
+    <div class="donut-card">
+      <div class="donut">
+        <svg viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" stroke="#D1FAE5" stroke-width="10" fill="none"/>
+          <circle cx="40" cy="40" r="32" stroke="#10B981" stroke-width="10" fill="none" stroke-dasharray="143 201" stroke-linecap="round"/>
+        </svg>
+        <div class="ctr">71%<small>DAY 30</small></div>
+      </div>
+      <div class="donut-info">
+        <div class="lbl">Day 30</div>
+        <div class="vv">104 <span style="font-size:13px;color:var(--muted);font-weight:500">/ 147</span></div>
+        <div class="sub">43 outstanding</div>
+        <div class="trend neg">▼ retention -3%</div>
+      </div>
+    </div>
+
+    <div class="donut-card">
+      <div class="donut">
+        <svg viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="32" stroke="#A7F3D0" stroke-width="10" fill="none"/>
+          <circle cx="40" cy="40" r="32" stroke="#059669" stroke-width="10" fill="none" stroke-dasharray="109 201" stroke-linecap="round"/>
+        </svg>
+        <div class="ctr">54%<small>DAY 90</small></div>
+      </div>
+      <div class="donut-info">
+        <div class="lbl">Day 90</div>
+        <div class="vv">79 <span style="font-size:13px;color:var(--muted);font-weight:500">/ 147</span></div>
+        <div class="sub">68 outstanding</div>
+        <div class="trend">▲ 11 this month</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Download button -->
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+    <button class="download-fab">⬇ Download all data</button>
+  </div>
+
+  <!-- Body -->
+  <div class="body-2col">
+
+    <div>
+      <!-- SAFETY card with clickable tiles + drill-down below -->
+      <div class="safety-card">
+        <h3>Safety &amp; regulatory <span class="meta">click a tile to drill down · past 90 days</span></h3>
+        <div class="safety-stats">
+          <div class="s-tile active">
+            <div class="lbl">⚠ SAEs</div>
+            <div class="vv">7</div>
+            <div class="sub">5 sites · 1 expected</div>
+            <span class="arr">▼</span>
+          </div>
+          <div class="s-tile">
+            <div class="lbl">◌ Deviations</div>
+            <div class="vv">12</div>
+            <div class="sub">8 open · 4 closed</div>
+            <span class="arr">▶</span>
+          </div>
+          <div class="s-tile">
+            <div class="lbl">↙ Withdrawals</div>
+            <div class="vv">8</div>
+            <div class="sub">5.4% of randomised</div>
+            <span class="arr">▶</span>
+          </div>
+          <div class="s-tile">
+            <div class="lbl">⛯ Pregnancies</div>
+            <div class="vv">4</div>
+            <div class="sub">2 notif · 2 outcome</div>
+            <span class="arr">▶</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drill-down panel (shows because SAEs is active) -->
+      <div class="drill">
+        <div class="drill-head">
+          <div class="ttl"><div class="ic">!</div> SAEs · 7 events</div>
+          <div class="actions">
+            <select><option>All sites</option><option>Birmingham QE</option></select>
+            <select><option>All severities</option><option>Critical</option><option>Expected</option></select>
+            <button class="dl-mini">⬇ Export</button>
+            <button class="close" title="Close">×</button>
+          </div>
+        </div>
+        <table class="evtbl">
+          <thead>
+            <tr>
+              <th>Participant</th>
+              <th>Site</th>
+              <th>Event</th>
+              <th>Severity</th>
+              <th>Date occurred</th>
+              <th>Date submitted</th>
+              <th>Reporting lag</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="id">1002</td>
+              <td>Birmingham QE</td>
+              <td>Post-op haemorrhage</td>
+              <td><span class="ev-pill crit">Critical</span></td>
+              <td>02 May 2026</td>
+              <td>04 May 2026</td>
+              <td><span class="lag">2 days</span></td>
+              <td><span class="ev-status closed">Closed</span></td>
+            </tr>
+            <tr>
+              <td class="id">2014</td>
+              <td>Manchester Royal</td>
+              <td>Anastomotic leak</td>
+              <td><span class="ev-pill crit">Critical</span></td>
+              <td>27 Apr 2026</td>
+              <td>03 May 2026</td>
+              <td><span class="lag warn">6 days</span></td>
+              <td><span class="ev-status review">Under review</span></td>
+            </tr>
+            <tr>
+              <td class="id">3007</td>
+              <td>Leeds St James</td>
+              <td>Wound infection</td>
+              <td><span class="ev-pill exp">Expected</span></td>
+              <td>19 Apr 2026</td>
+              <td>20 Apr 2026</td>
+              <td><span class="lag">1 day</span></td>
+              <td><span class="ev-status closed">Closed</span></td>
+            </tr>
+            <tr>
+              <td class="id">3014</td>
+              <td>Leeds St James</td>
+              <td>Pulmonary embolism</td>
+              <td><span class="ev-pill crit">Critical</span></td>
+              <td>14 Apr 2026</td>
+              <td>15 Apr 2026</td>
+              <td><span class="lag">1 day</span></td>
+              <td><span class="ev-status closed">Closed</span></td>
+            </tr>
+            <tr>
+              <td class="id">4022</td>
+              <td>Edinburgh RI</td>
+              <td>Cardiac arrhythmia</td>
+              <td><span class="ev-pill rel">Possibly related</span></td>
+              <td>08 Apr 2026</td>
+              <td>09 Apr 2026</td>
+              <td><span class="lag">1 day</span></td>
+              <td><span class="ev-status open">Open</span></td>
+            </tr>
+            <tr>
+              <td class="id">5018</td>
+              <td>Cardiff UHW</td>
+              <td>Sepsis</td>
+              <td><span class="ev-pill crit">Critical</span></td>
+              <td>01 Apr 2026</td>
+              <td>11 Apr 2026</td>
+              <td><span class="lag warn">10 days</span></td>
+              <td><span class="ev-status review">Under review</span></td>
+            </tr>
+            <tr>
+              <td class="id">6003</td>
+              <td>Newcastle Freeman</td>
+              <td>Acute kidney injury</td>
+              <td><span class="ev-pill exp">Expected</span></td>
+              <td>22 Mar 2026</td>
+              <td>23 Mar 2026</td>
+              <td><span class="lag">1 day</span></td>
+              <td><span class="ev-status closed">Closed</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="drill-foot">
+          <span>7 of 7 events shown · median lag 1 day · click any row for full case detail</span>
+          <span>Source: REDCap <code style="background:#fff;padding:1px 6px;border-radius:3px;border:1px solid var(--border)">sae_complete</code> + <code style="background:#fff;padding:1px 6px;border-radius:3px;border:1px solid var(--border)">sae_date</code></span>
+        </div>
+      </div>
+
+      <!-- Withdrawal donut card (clickable wedges) -->
+      <div class="panel" style="margin-top:14px">
+        <h3>Withdrawals by reason <span class="h-meta">click a reason to see individual cases · COS codes</span></h3>
+        <div class="wd-card">
+          <div class="wd-donut">
+            <svg viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="50" stroke="#FEE2E2" stroke-width="16" fill="none"/>
+              <circle cx="60" cy="60" r="50" stroke="#DC2626" stroke-width="16" fill="none" stroke-dasharray="79 314" stroke-dashoffset="0"/>
+              <circle cx="60" cy="60" r="50" stroke="#F59E0B" stroke-width="16" fill="none" stroke-dasharray="79 314" stroke-dashoffset="-79"/>
+              <circle cx="60" cy="60" r="50" stroke="#3B82F6" stroke-width="16" fill="none" stroke-dasharray="59 314" stroke-dashoffset="-158"/>
+              <circle cx="60" cy="60" r="50" stroke="#7C3AED" stroke-width="16" fill="none" stroke-dasharray="39 314" stroke-dashoffset="-217"/>
+              <circle cx="60" cy="60" r="50" stroke="#64748B" stroke-width="16" fill="none" stroke-dasharray="59 314" stroke-dashoffset="-256"/>
+            </svg>
+            <div class="ctr"><b>8</b><small>WITHDRAWN</small></div>
+          </div>
+          <div class="wd-legend">
+            <div class="lr"><div class="l"><div class="dot" style="background:#DC2626"></div>Death</div><div class="n">2</div></div>
+            <div class="lr"><div class="l"><div class="dot" style="background:#F59E0B"></div>No operation</div><div class="n">2</div></div>
+            <div class="lr"><div class="l"><div class="dot" style="background:#3B82F6"></div>Part withdrawal</div><div class="n">1</div></div>
+            <div class="lr"><div class="l"><div class="dot" style="background:#7C3AED"></div>Full withdrawal</div><div class="n">1</div></div>
+            <div class="lr"><div class="l"><div class="dot" style="background:#64748B"></div>Lost to follow-up</div><div class="n">2</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column: demographics + quick actions -->
+    <div>
+      <div class="panel">
+        <h3>Demographics <span class="h-meta">n = 147</span></h3>
+
+        <div class="demo-block">
+          <h4>Age</h4>
+          <div class="demo-row"><div class="l">18–39</div><div class="bar"><div class="bar-fill" style="background:#7C3AED;width:18%"></div></div><div class="n">26</div></div>
+          <div class="demo-row"><div class="l">40–59</div><div class="bar"><div class="bar-fill" style="background:#7C3AED;width:48%"></div></div><div class="n">71</div></div>
+          <div class="demo-row"><div class="l">60–79</div><div class="bar"><div class="bar-fill" style="background:#7C3AED;width:32%"></div></div><div class="n">47</div></div>
+          <div class="demo-row"><div class="l">80+</div><div class="bar"><div class="bar-fill" style="background:#7C3AED;width:2%"></div></div><div class="n">3</div></div>
+        </div>
+
+        <div class="demo-block">
+          <h4>Sex</h4>
+          <div class="demo-row"><div class="l">Female</div><div class="bar"><div class="bar-fill" style="background:#2EC4A5;width:62%"></div></div><div class="n">91</div></div>
+          <div class="demo-row"><div class="l">Male</div><div class="bar"><div class="bar-fill" style="background:#1B4F6B;width:38%"></div></div><div class="n">56</div></div>
+        </div>
+
+        <div class="demo-block">
+          <h4>Ethnicity</h4>
+          <div class="demo-row"><div class="l">White</div><div class="bar"><div class="bar-fill" style="background:#3B82F6;width:64%"></div></div><div class="n">94</div></div>
+          <div class="demo-row"><div class="l">Asian</div><div class="bar"><div class="bar-fill" style="background:#3B82F6;width:18%"></div></div><div class="n">27</div></div>
+          <div class="demo-row"><div class="l">Black</div><div class="bar"><div class="bar-fill" style="background:#3B82F6;width:10%"></div></div><div class="n">14</div></div>
+          <div class="demo-row"><div class="l">Mixed</div><div class="bar"><div class="bar-fill" style="background:#3B82F6;width:5%"></div></div><div class="n">7</div></div>
+          <div class="demo-row"><div class="l">Other</div><div class="bar"><div class="bar-fill" style="background:#3B82F6;width:3%"></div></div><div class="n">5</div></div>
+        </div>
+
+        <div style="font-size:11px;color:var(--muted);font-style:italic;padding-top:8px;border-top:1px dashed var(--border)">⚙ Configure breakdowns</div>
+      </div>
+
+      <div class="panel" style="background:linear-gradient(135deg,#EEF6F3 0%,#F0F9F7 100%);border-color:#C4EBE4">
+        <h3 style="color:var(--teal-dk)">Quick actions</h3>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button style="background:#fff;border:1px solid #C4EBE4;color:var(--navy);padding:10px 12px;border-radius:6px;font-size:12px;text-align:left;cursor:pointer;font-family:inherit;font-weight:500">↗ Open Returns tab <span style="float:right;color:var(--muted)">questionnaire completeness</span></button>
+          <button style="background:#fff;border:1px solid #C4EBE4;color:var(--navy);padding:10px 12px;border-radius:6px;font-size:12px;text-align:left;cursor:pointer;font-family:inherit;font-weight:500">↗ Review withdrawals <span style="float:right;color:var(--muted)">8 cases</span></button>
+          <button style="background:#fff;border:1px solid #C4EBE4;color:var(--navy);padding:10px 12px;border-radius:6px;font-size:12px;text-align:left;cursor:pointer;font-family:inherit;font-weight:500">⬇ Export full dataset</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

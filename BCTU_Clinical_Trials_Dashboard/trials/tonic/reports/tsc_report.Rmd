@@ -1,0 +1,1259 @@
+---
+title: " "
+output:
+  word_document:
+    reference_docx: null
+    fig_width: 6.5
+    fig_height: 3.5
+    toc: false
+params:
+  report_data: NULL
+  selected_sites: "All sites"
+  date_from: NULL
+  date_to: NULL
+  crf_csv_path: NULL
+  screening_xlsx_path: NULL
+  # TSC-specific user-entered fields
+  meeting_date: NULL
+  report_date: !r format(Sys.Date(), "%d %B %Y")
+  prepared_by: ""
+  reviewed_by: ""
+  protocol_version: ""
+  trial_summary: NULL          # named list: objectives, design, n, eligibility, interventions, primary_outcome, secondary_outcomes, funder
+  general_info_overrides: NULL # named list to override any field in the General Report Information table
+  funder_update: ""
+  amendments_substantial: NULL     # data.frame: date, description, status
+  amendments_non_substantial: NULL # data.frame: date, description, status
+  custom_sections: NULL        # list of list(title, content, position) — positions: after_general_info, after_recruitment, after_screening, after_safety, end_of_report
+  charts_dir: NULL             # directory containing pre-rendered PNGs (optional; otherwise rendered on the fly)
+  completeness_style: "heatmap" # "heatmap", "flat", or "both"
+  completeness_rate: "pct_expected" # "pct_due" or "pct_expected"
+  # Trial-specific report content (filled per-trial via Trial Settings → Report content).
+  # Same shape as tonic_report.Rmd: short_name, trial_title, trial_subtitle,
+  # registration_line, general_info, etc.
+  report_content: NULL
+  # Path to the trial logo (file). If supplied + readable, embedded top-centre
+  # on the cover. Falls back to text "[Trial logo]" placeholder when absent.
+  logo_path: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(knitr)
+library(dplyr)
+library(flextable)
+library(officer)
+
+# ── Consistent typography across the whole report ────────────────────────────
+# Forces every flextable to render in Arial and removes the mixed font issue
+# that happens when Word substitutes Aptos/Calibri for unspecified runs.
+# Also sets consistent line spacing and padding on every table.
+flextable::set_flextable_defaults(
+  font.family    = "Arial",
+  font.size      = 10,
+  padding.top    = 4,
+  padding.bottom = 4,
+  padding.left   = 5,
+  padding.right  = 5,
+  line_spacing   = 1.15,
+  text.align     = "left",
+  border.color   = "#BFBFBF"
+)
+
+# Load shared flat completeness helper (copied alongside Rmd by reports_server)
+if (file.exists("flat_completeness.R")) source("flat_completeness.R")
+
+rd  <- params$report_data
+kpi <- if(!is.null(rd$kpis)) rd$kpis else list()
+
+# Safe accessor: NULL / length-0 → fallback
+safe <- function(x, fallback = "") if (is.null(x) || length(x) == 0) fallback else x
+
+# Render charts if not pre-supplied
+if (is.null(params$charts_dir)) {
+  # Try a few likely locations for tsc_charts.R (robust to folder layout)
+  charts_script_candidates <- c(
+    "tsc_charts.R",                                                         # cwd
+    file.path(dirname(knitr::current_input(dir = TRUE)), "tsc_charts.R"),   # same folder as Rmd
+    file.path(dirname(knitr::current_input(dir = TRUE)), "..", "tsc_charts.R") # parent (e.g. Rmd in rmd/, script at top level)
+  )
+  charts_script <- charts_script_candidates[file.exists(charts_script_candidates)][1]
+  if (is.na(charts_script)) stop("Could not locate tsc_charts.R. Tried: ",
+                                 paste(charts_script_candidates, collapse = ", "))
+  source(charts_script, local = FALSE)
+  charts <- render_all_tsc_charts(rd)
+} else {
+  charts <- list(
+    cumulative = file.path(params$charts_dir, "cumulative.png"),
+    monthly    = file.path(params$charts_dir, "monthly.png"),
+    site       = file.path(params$charts_dir, "site.png"),
+    open_sites = file.path(params$charts_dir, "open_sites.png")
+  )
+}
+
+# Helper to insert custom sections at a given anchor
+render_custom_sections <- function(position) {
+  cs <- params$custom_sections
+  if (is.null(cs) || length(cs) == 0) return(invisible(NULL))
+  for (s in cs) {
+    if (!is.null(s$position) && s$position == position &&
+        !is.null(s$title) && nzchar(s$title)) {
+      # Render as a proper second-level heading so it fits the document style
+      cat("\n\n## ", s$title, "\n\n", sep = "")
+      # Support simple paragraph breaks — split on double newline
+      content <- s$content %||% ""
+      if (nzchar(content)) {
+        parts <- strsplit(content, "\n\n", fixed = TRUE)[[1]]
+        for (p in parts) {
+          # Preserve single-line breaks within a paragraph as hard breaks
+          cat(p, "\n\n", sep = "")
+        }
+      }
+    }
+  }
+}
+`%||%` <- function(a, b) if (is.null(a)) b else a
+
+# Flextable helpers — produce proper Word tables that handle multi-paragraph cells
+# and look like the template (navy header band, bordered, readable).
+
+tonic_navy_ft <- "#1B4F6B"
+
+# Two-column label:value table. Renders multi-paragraph values correctly.
+kv_table <- function(rows, label_width = 2.2, value_width = 4.0,
+                     header_row = NULL) {
+  df <- data.frame(
+    Field = names(rows),
+    Value = vapply(rows, function(x) {
+      if (is.null(x) || length(x) == 0) ""
+      else if (is.character(x) && !nzchar(x)) ""
+      else as.character(x)
+    }, character(1)),
+    stringsAsFactors = FALSE
+  )
+  ft <- flextable(df)
+  ft <- set_header_labels(ft, Field = "", Value = "")
+  ft <- delete_part(ft, part = "header")  # no column headers for key:value tables
+  if (!is.null(header_row)) {
+    # Add a single merged header row at the top with the supplied label
+    ft <- add_header_row(ft, values = header_row, colwidths = 2)
+    ft <- bg(ft, part = "header", bg = tonic_navy_ft)
+    ft <- color(ft, part = "header", color = "white")
+    ft <- bold(ft, part = "header")
+    ft <- align(ft, part = "header", align = "left")
+    ft <- fontsize(ft, part = "header", size = 11)
+    ft <- padding(ft, part = "header", padding = 6)
+  }
+  ft <- bold(ft, j = 1, part = "body")
+  ft <- bg(ft, j = 1, bg = "#F1F5F9", part = "body")
+  ft <- color(ft, j = 1, color = tonic_navy_ft, part = "body")
+  ft <- border_outer(ft, border = fp_border(color = "#CBD5E1", width = 0.5))
+  ft <- border_inner(ft, border = fp_border(color = "#E2E8F0", width = 0.5))
+  ft <- fontsize(ft, size = 10, part = "body")
+  ft <- padding(ft, padding = 5, part = "body")
+  ft <- width(ft, j = 1, width = label_width)
+  ft <- width(ft, j = 2, width = value_width)
+  ft <- valign(ft, valign = "top", part = "body")
+  # Convert \n in the Value column into proper line breaks inside cells
+  for (i in seq_len(nrow(df))) {
+    if (grepl("\n", df$Value[i], fixed = TRUE)) {
+      parts <- strsplit(df$Value[i], "\n", fixed = TRUE)[[1]]
+      # Interleave chunks with hard line breaks
+      chunks <- list()
+      for (k in seq_along(parts)) {
+        chunks[[length(chunks) + 1]] <- as_chunk(parts[k])
+        if (k < length(parts)) {
+          chunks[[length(chunks) + 1]] <- as_chunk("\n")  # flextable renders \n as soft break
+        }
+      }
+      ft <- compose(ft, i = i, j = 2, value = do.call(as_paragraph, chunks))
+    }
+  }
+  ft
+}
+
+# Render a generic data.frame as a Word table with TONIC styling
+tonic_ft <- function(df, widths = NULL) {
+  ft <- flextable(df)
+  ft <- bg(ft, part = "header", bg = tonic_navy_ft)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- fontsize(ft, part = "header", size = 10)
+  ft <- fontsize(ft, part = "body", size = 10)
+  ft <- border_outer(ft, border = fp_border(color = "#CBD5E1", width = 0.5))
+  ft <- border_inner(ft, border = fp_border(color = "#E2E8F0", width = 0.5))
+  ft <- padding(ft, padding = 5)
+  ft <- valign(ft, valign = "top", part = "body")
+  if (!is.null(widths)) {
+    for (i in seq_along(widths)) ft <- width(ft, j = i, width = widths[i])
+  } else {
+    ft <- autofit(ft)
+  }
+  ft
+}
+
+# Empty-state placeholder: a bordered one-column box explaining that
+# the section is to be completed manually. Looks much better than an
+# empty markdown table followed by italic text.
+manual_placeholder <- function(columns, message, widths = NULL) {
+  # Show headers for the columns that would be filled, then a single
+  # italicised row saying what's missing. This signals intent: "here's
+  # where X goes" rather than "nothing here".
+  df <- as.data.frame(
+    setNames(
+      lapply(columns, function(c) ""),
+      columns
+    ),
+    stringsAsFactors = FALSE
+  )
+  df[1, 1] <- message  # inject message into first cell
+  ft <- flextable(df)
+  ft <- bg(ft, part = "header", bg = tonic_navy_ft)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- fontsize(ft, part = "header", size = 10)
+  ft <- padding(ft, part = "header", padding = 5)
+  if (length(columns) > 1) {
+    ft <- merge_h(ft, i = 1, part = "body")
+  }
+  ft <- italic(ft, part = "body")
+  ft <- color(ft, color = "#6b7c8d", part = "body")
+  ft <- fontsize(ft, size = 10, part = "body")
+  ft <- padding(ft, part = "body", padding = 8)
+  ft <- align(ft, part = "body", align = "left")
+  ft <- border_outer(ft, border = fp_border(color = "#CBD5E1", width = 0.5))
+  ft <- border_inner(ft, border = fp_border(color = "#E2E8F0", width = 0.5))
+  if (!is.null(widths)) {
+    for (i in seq_along(widths)) ft <- width(ft, j = i, width = widths[i])
+  } else {
+    # Distribute 6.5" evenly across columns
+    w <- 6.5 / length(columns)
+    for (i in seq_along(columns)) ft <- width(ft, j = i, width = w)
+  }
+  ft
+}
+
+# Heatmap-style table for per-site per-month recruitment — cells
+# colour-coded by how the actual compares to the monthly target.
+hm_ft <- function(hm) {
+  months_u <- unique(hm$month_label[order(hm$month)])
+  sites_u  <- unique(hm$site_name)
+  wide <- data.frame(Site = sites_u, stringsAsFactors = FALSE)
+  # Also capture monthly_target per site for colour decisions
+  targets <- sapply(sites_u, function(s) {
+    r <- hm[hm$site_name == s, ]
+    if (nrow(r) > 0) r$monthly_target[1] else 2
+  })
+  # Raw numeric matrix for colour logic (parallel to wide)
+  num_mat <- matrix(NA_integer_, nrow = length(sites_u), ncol = length(months_u))
+  colnames(num_mat) <- months_u
+  rownames(num_mat) <- sites_u
+  for (m in months_u) {
+    vals <- sapply(sites_u, function(s) {
+      r <- hm[hm$site_name == s & hm$month_label == m, ]
+      if (nrow(r) > 0) as.integer(r$actual[1]) else NA_integer_
+    })
+    wide[[m]] <- ifelse(is.na(vals), "\u2014", as.character(vals))
+    num_mat[, m] <- vals
+  }
+
+  ft <- flextable(wide)
+  ft <- bg(ft, part = "header", bg = tonic_navy_ft)
+  ft <- color(ft, part = "header", color = "white")
+  ft <- bold(ft, part = "header")
+  ft <- fontsize(ft, part = "header", size = 9)
+  ft <- padding(ft, part = "header", padding = 4)
+  ft <- align(ft, j = 2:ncol(wide), part = "all", align = "center")
+  ft <- bold(ft, j = 1, part = "body")
+  ft <- color(ft, j = 1, color = tonic_navy_ft, part = "body")
+  ft <- fontsize(ft, part = "body", size = 9)
+  ft <- padding(ft, part = "body", padding = 4)
+  ft <- border_outer(ft, border = fp_border(color = "#CBD5E1", width = 0.5))
+  ft <- border_inner(ft, border = fp_border(color = "#E2E8F0", width = 0.5))
+  ft <- width(ft, j = 1, width = 2.0)
+  per_mo <- (6.5 - 2.0) / length(months_u)
+  for (k in seq_along(months_u)) ft <- width(ft, j = k + 1, width = per_mo)
+
+  # Colour cells per (site, month) vs monthly target
+  for (i in seq_along(sites_u)) {
+    for (k in seq_along(months_u)) {
+      v <- num_mat[i, k]
+      tgt <- targets[i]
+      bg_col <- if (is.na(v)) "#F8FAFC"
+                else if (v >= tgt) "#D4F5EC"
+                else if (v > 0)    "#FEF3DC"
+                else               "#FDE8E8"
+      fg_col <- if (is.na(v)) "#CBD5E1"
+                else if (v >= tgt) "#0F6E56"
+                else if (v > 0)    "#8A5A0D"
+                else               "#991B1B"
+      ft <- bg(ft, i = i, j = k + 1, bg = bg_col, part = "body")
+      ft <- color(ft, i = i, j = k + 1, color = fg_col, part = "body")
+    }
+  }
+  ft
+}
+```
+
+```{r cover-page}
+# Cover page rendered as a borderless flextable spanning full width.
+# Word respects this reliably; raw HTML tags don't render in Word output.
+# Trial-specific bits come from params$report_content (set per-trial in
+# Trial Settings → Report content); fall back to neutral placeholders so
+# the cover still renders for trials that haven't filled it in.
+rc <- if (is.null(params$report_content)) list() else params$report_content
+.cover_short    <- if (is.null(rc$short_name)    || !nzchar(rc$short_name))    "Trial"                              else rc$short_name
+.cover_title    <- if (is.null(rc$trial_title)   || !nzchar(rc$trial_title))   .cover_short                         else rc$trial_title
+.cover_subtitle <- if (is.null(rc$trial_subtitle)|| !nzchar(rc$trial_subtitle))""                                    else rc$trial_subtitle
+.cover_reg      <- if (is.null(rc$registration_line) || !nzchar(rc$registration_line)) "" else rc$registration_line
+
+# Decide whether we have a usable logo file. If we do, row 1 will be empty
+# text and we'll compose() an image into that cell after the table is built;
+# otherwise the row stays as a muted "[Trial logo]" placeholder.
+.logo_ok <- !is.null(params$logo_path) && nzchar(params$logo_path) &&
+            file.exists(params$logo_path) && !dir.exists(params$logo_path)
+
+cover_df <- data.frame(
+  x = c(
+    if (.logo_ok) "" else "[Trial logo]",
+    .cover_title,
+    .cover_subtitle,
+    .cover_reg,
+    "",
+    "Trial Steering Committee Report"
+  ),
+  stringsAsFactors = FALSE
+)
+
+cover_ft <- flextable(cover_df) |>
+  delete_part(part = "header") |>
+  align(align = "center", part = "body") |>
+  border_remove() |>
+  width(j = 1, width = 6.5) |>
+  padding(padding = 4, part = "body")
+
+# Embed the actual logo top-centre when available. as_image requires a
+# real file path and inch-units for width/height; we cap dimensions so even
+# wide logos don't blow up the cover.
+if (.logo_ok) {
+  cover_ft <- tryCatch(
+    flextable::compose(
+      cover_ft, i = 1, j = 1,
+      value = flextable::as_paragraph(
+        flextable::as_image(src = params$logo_path,
+                            width = 2.4, height = 1.0)
+      )),
+    error = function(e) {
+      message("Logo embed failed in TSC cover: ", e$message)
+      cover_ft
+    }
+  )
+  cover_ft <- padding(cover_ft, i = 1, padding.top = 12, padding.bottom = 6)
+} else {
+  # Row-specific styling for the placeholder
+  cover_ft <- color(cover_ft, i = 1, color = "#94A3B8")
+  cover_ft <- fontsize(cover_ft, i = 1, size = 10)
+}
+
+cover_ft <- bold(cover_ft, i = 2)                              # TONIC title
+cover_ft <- color(cover_ft, i = 2, color = tonic_navy_ft)
+cover_ft <- fontsize(cover_ft, i = 2, size = 40)
+cover_ft <- padding(cover_ft, i = 2, padding.top = 18, padding.bottom = 10)
+
+cover_ft <- bold(cover_ft, i = 3)                              # full trial title
+cover_ft <- fontsize(cover_ft, i = 3, size = 14)
+cover_ft <- color(cover_ft, i = 3, color = "#2C3E50")
+cover_ft <- padding(cover_ft, i = 3, padding = 6)
+
+cover_ft <- fontsize(cover_ft, i = 4, size = 11)               # registration
+cover_ft <- color(cover_ft, i = 4, color = "#6b7c8d")
+
+cover_ft <- bold(cover_ft, i = 6)                              # TSC Report subtitle
+cover_ft <- color(cover_ft, i = 6, color = tonic_navy_ft)
+cover_ft <- fontsize(cover_ft, i = 6, size = 22)
+cover_ft <- padding(cover_ft, i = 6, padding.top = 16, padding.bottom = 20)
+
+cover_ft
+```
+
+```{r cover-meta}
+kv_table(list(
+  `Date of TSC Meeting` = if (!is.null(params$meeting_date)) format(as.Date(params$meeting_date), "%d %B %Y") else "",
+  `Date of Report`      = params$report_date,
+  `Report prepared by`  = params$prepared_by,
+  `Report reviewed by`  = params$reviewed_by
+))
+```
+
+\newpage
+
+# Table of Contents
+
+1. Trial Summary
+2. General Report Information
+3. Recruitment Details
+4. Flow diagram of participants
+5. Screening data
+6. Data Completeness
+7. Protocol Deviations
+8. Safety
+9. Pilot Progress Criteria
+10. Summary of Amendments
+
+\newpage
+
+# 1. Trial Summary
+
+```{r trial-summary}
+ts <- params$trial_summary
+if (is.null(ts)) ts <- list()
+kv_table(
+  list(
+    Objectives                    = safe(ts$objectives),
+    `Trial design`                = safe(ts$design),
+    `Total number of participants`= safe(ts$n_participants, as.character(safe(kpi$trial_target, "898"))),
+    `Eligibility criteria`        = safe(ts$eligibility),
+    Interventions                 = safe(ts$interventions),
+    `Primary outcome measure`     = safe(ts$primary_outcome),
+    `Secondary outcome measures`  = safe(ts$secondary_outcomes),
+    Funder                        = safe(ts$funder, "National Institute for Health and Care Research, Health Technology Assessment Programme (NIHR \u2013 HTA) \u2014 NIHR155875")
+  ),
+  header_row = paste(.cover_short, "Trial")
+)
+```
+
+**Figure 1: Trial schema**
+
+*[Trial schema figure to be inserted manually if required]*
+
+\newpage
+
+# 2. General Report Information
+
+```{r general-info}
+gi <- if (is.null(params$general_info_overrides)) list() else params$general_info_overrides
+total_rand <- safe(kpi$total_randomised, 0)
+trial_tgt  <- safe(kpi$trial_target, 898)
+pct_rec    <- if (is.numeric(trial_tgt) && trial_tgt > 0 && is.numeric(total_rand))
+              sprintf("%.1f%%", 100 * as.numeric(total_rand) / as.numeric(trial_tgt)) else "—"
+
+kv_table(list(
+  `Start date of Grant`                  = safe(gi$grant_start,       "01 June 2024"),
+  `End date of Grant`                    = safe(gi$grant_end,         "28 February 2028"),
+  `Date trial opened to recruitment`     = safe(gi$recruitment_open,  "01 April 2026"),
+  `Date first participant was randomised`= safe(gi$first_randomised,  "01 April 2026"),
+  `End date for the pilot phase`         = safe(gi$pilot_end,         "September 2026"),
+  `Current end date for recruitment`     = safe(gi$recruitment_end,   "June 2028"),
+  `Number of participants randomised`    = as.character(total_rand),
+  `% Target recruitment`                 = sprintf("%s (of %s planned)", pct_rec, trial_tgt),
+  `Protocol version number`              = safe(params$protocol_version, "—")
+))
+```
+
+**Figure 1a: Project timeline**
+
+```{r fig-gantt}
+if (!is.null(charts$gantt) && file.exists(charts$gantt)) {
+  knitr::include_graphics(charts$gantt)
+}
+```
+
+**Table 1a: Progress against original protocol schedule**
+
+```{r schedule-drift}
+# Original protocol planned recruitment to open Mar 2025.
+# Actual open date from params (default 01 Apr 2026).
+# Show drift context so TSC can see the full history.
+actual_open_str <- safe(gi$recruitment_open, "01 April 2026")
+actual_first_str <- safe(gi$first_randomised, "01 April 2026")
+actual_open  <- tryCatch(as.Date(actual_open_str,  format = "%d %B %Y"), error = function(e) NA_Date_)
+actual_first <- tryCatch(as.Date(actual_first_str, format = "%d %B %Y"), error = function(e) NA_Date_)
+today <- Sys.Date()
+
+planned_open  <- as.Date("2025-03-01")   # original protocol planned open
+planned_first <- as.Date("2025-03-01")
+
+months_behind_open  <- if (!is.na(actual_open))
+  round(as.numeric(difftime(actual_open, planned_open, units = "days")) / 30.44, 1) else NA
+months_behind_first <- if (!is.na(actual_first))
+  round(as.numeric(difftime(actual_first, planned_first, units = "days")) / 30.44, 1) else NA
+
+# Months elapsed in recruitment so far (against original plan)
+planned_months_elapsed <- round(as.numeric(difftime(today, planned_open, units = "days")) / 30.44, 1)
+actual_months_elapsed  <- if (!is.na(actual_open))
+  round(as.numeric(difftime(today, actual_open, units = "days")) / 30.44, 1) else NA
+
+drift_tbl <- data.frame(
+  Milestone = c("Recruitment opens",
+                "First participant randomised",
+                "Months elapsed in recruitment"),
+  `Original protocol` = c(format(planned_open, "%b %Y"),
+                           format(planned_first, "%b %Y"),
+                           sprintf("%s months", planned_months_elapsed)),
+  `Actual` = c(if (!is.na(actual_open))  format(actual_open,  "%b %Y") else "\u2014",
+               if (!is.na(actual_first)) format(actual_first, "%b %Y") else "\u2014",
+               if (!is.na(actual_months_elapsed)) sprintf("%s months", actual_months_elapsed) else "\u2014"),
+  `Variance` = c(
+    if (!is.na(months_behind_open))  sprintf("%.1f months behind", months_behind_open)  else "\u2014",
+    if (!is.na(months_behind_first)) sprintf("%.1f months behind", months_behind_first) else "\u2014",
+    if (!is.na(actual_months_elapsed)) sprintf("%.1f months less", planned_months_elapsed - actual_months_elapsed) else "\u2014"
+  ),
+  check.names = FALSE, stringsAsFactors = FALSE
+)
+
+ft <- tonic_ft(drift_tbl, widths = c(2.5, 1.4, 1.4, 1.2))
+ft <- align(ft, j = 2:4, align = "center", part = "all")
+# Highlight variance column in amber/red where negative drift
+for (i in seq_len(nrow(drift_tbl))) {
+  v <- drift_tbl$Variance[i]
+  col <- if (grepl("behind|less", v)) "#D97706" else "#0F6E56"
+  ft <- color(ft, i = i, j = 4, color = col, part = "body")
+  ft <- bold(ft, i = i, j = 4, part = "body")
+}
+ft
+```
+
+```{r custom-after-general}
+render_custom_sections("after_general_info")
+```
+
+`r if (nzchar(safe(params$funder_update))) paste0("# Funder Update \u2013 Extension request\n\n", params$funder_update, "\n")`
+
+\newpage
+
+# 3. Recruitment Details
+
+**Table 1: Projected site/recruitment figures vs actual**
+
+```{r recruitment-summary-table}
+sf <- rd$schedule_full
+if (!is.null(sf) && nrow(sf) > 0) {
+  cur <- as.Date(format(Sys.Date(), "%Y-%m-01"))
+
+  # Show ALL months of the protocol schedule so the TSC/DMC can see
+  # monthly targets across the full recruitment window. Past months show
+  # both target and actual; future months show target only with actuals
+  # blanked.
+  full <- sf
+  is_future <- full$month_date > cur
+
+  monthly_actual <- full$monthly_actual
+  cum_actual     <- full$cumulative_actual
+  monthly_actual[is_future] <- NA
+  cum_actual[is_future]     <- NA
+
+  pct_vs_target <- ifelse(
+    !is_future & full$cumulative_target > 0,
+    paste0(round(100 * cum_actual / full$cumulative_target), "%"),
+    "\u2014"
+  )
+
+  # Display helpers — dashes instead of NAs for future rows
+  ma_disp <- ifelse(is.na(monthly_actual), "\u2014", as.character(monthly_actual))
+  ca_disp <- ifelse(is.na(cum_actual),     "\u2014", as.character(cum_actual))
+
+  rec_tbl <- data.frame(
+    Month           = full$month_label,
+    `Monthly target`= full$monthly_target,
+    `Cum. target`   = full$cumulative_target,
+    `Monthly actual`= ma_disp,
+    `Cum. actual`   = ca_disp,
+    `% vs target`   = pct_vs_target,
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  ft <- tonic_ft(rec_tbl, widths = c(1.1, 0.9, 0.9, 1.0, 0.9, 1.7))
+  ft <- align(ft, j = 2:6, align = "center", part = "all")
+
+  # Highlight the current month
+  current_row <- which(full$month_date == cur)
+  if (length(current_row) > 0) {
+    ft <- bg(ft, i = current_row, bg = "#E6F9F5", part = "body")
+    ft <- bold(ft, i = current_row, part = "body")
+  }
+
+  # De-emphasise future rows
+  future_rows <- which(is_future)
+  if (length(future_rows) > 0) {
+    ft <- color(ft, i = future_rows, color = "#94A3B8", part = "body")
+  }
+
+  ft
+} else {
+  cat("*Recruitment schedule data not available.*")
+}
+```
+
+**Figure 2: Projected recruitment vs actual recruitment**
+
+```{r fig-cumulative}
+if (!is.null(charts$cumulative) && file.exists(charts$cumulative)) {
+  knitr::include_graphics(charts$cumulative)
+}
+```
+
+**Figure 3: Projected open centres vs actual open centres**
+
+```{r fig-open-sites}
+if (!is.null(charts$open_sites) && file.exists(charts$open_sites)) {
+  knitr::include_graphics(charts$open_sites)
+}
+```
+
+**Table 1b: Projected vs actual open centres by month**
+
+```{r centres-open-table}
+sf <- rd$schedule_full
+sites_df <- rd$site_status
+
+if (!is.null(sf) && nrow(sf) > 0) {
+  cur <- as.Date(format(Sys.Date(), "%Y-%m-01"))
+
+  # Projected open centres per month: defined in the protocol schedule.
+  # We assume sf has a column called target_open_sites OR site_target;
+  # fall back to deriving from monthly_target if neither exists.
+  proj_col <- NULL
+  for (cand in c("target_open_sites", "site_target", "projected_sites", "open_sites_target")) {
+    if (cand %in% names(sf)) { proj_col <- cand; break }
+  }
+  projected_open <- if (!is.null(proj_col)) sf[[proj_col]] else {
+    # Fallback: ramp 2 new sites per month until 24, derived from protocol pattern
+    pmin(24L, cumsum(rep(2L, nrow(sf))))
+  }
+
+  # Actual open centres per month: count sites whose site_open_date
+  # is ≤ each month's month_date and status not Closed/Withdrawn.
+  actual_open <- rep(NA_integer_, nrow(sf))
+  if (!is.null(sites_df) && nrow(sites_df) > 0 &&
+      "site_open_date" %in% names(sites_df)) {
+    sod <- suppressWarnings(as.Date(sites_df$site_open_date))
+    valid_status <- if ("status" %in% names(sites_df)) {
+      !(sites_df$status %in% c("Closed", "Withdrawn"))
+    } else rep(TRUE, nrow(sites_df))
+    sod <- sod[valid_status]
+    for (i in seq_len(nrow(sf))) {
+      if (sf$month_date[i] <= cur) {
+        actual_open[i] <- sum(!is.na(sod) & sod <= sf$month_date[i])
+      }
+    }
+  }
+
+  is_future <- sf$month_date > cur
+  ao_disp <- ifelse(is.na(actual_open), "\u2014", as.character(actual_open))
+  var_disp <- ifelse(is.na(actual_open), "\u2014",
+                     as.character(actual_open - projected_open))
+
+  centres_tbl <- data.frame(
+    Month                 = sf$month_label,
+    `Projected open centres`= projected_open,
+    `Actual open centres` = ao_disp,
+    `Variance`            = var_disp,
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  ft <- tonic_ft(centres_tbl, widths = c(1.1, 1.6, 1.6, 1.0))
+  ft <- align(ft, j = 2:4, align = "center", part = "all")
+
+  current_row <- which(sf$month_date == cur)
+  if (length(current_row) > 0) {
+    ft <- bg(ft, i = current_row, bg = "#E6F9F5", part = "body")
+    ft <- bold(ft, i = current_row, part = "body")
+  }
+  future_rows <- which(is_future)
+  if (length(future_rows) > 0) {
+    ft <- color(ft, i = future_rows, color = "#94A3B8", part = "body")
+  }
+
+  ft
+} else {
+  cat("*Site-opening schedule not available.*")
+}
+```
+
+\newpage
+
+**Table 2: Recruitment per site**
+
+```{r recruitment-site-summary}
+# MK request: Site / Date site opened / Date first patient randomised /
+# Number of patients randomised — one row per recruiting site.
+sites_df  <- rd$site_status
+ptcp_rand <- rd$participants_randomised   # if available
+raw       <- rd$raw_redcap                # fallback for rand dates
+
+if (!is.null(sites_df) && nrow(sites_df) > 0) {
+
+  # Build a per-site summary (first rand date + count) using whichever
+  # data source is available.
+  rand_src <- NULL
+  if (!is.null(ptcp_rand) && nrow(ptcp_rand) > 0 &&
+      all(c("site_name","rand_dttm_s") %in% names(ptcp_rand))) {
+    rand_src <- ptcp_rand
+  } else if (!is.null(raw) && nrow(raw) > 0 &&
+             all(c("site_name","rand_dttm_s") %in% names(raw))) {
+    rand_src <- raw[!is.na(raw$rand_dttm_s), , drop = FALSE]
+  }
+
+  if (!is.null(rand_src) && nrow(rand_src) > 0) {
+    rand_src$rand_date <- suppressWarnings(as.Date(rand_src$rand_dttm_s))
+    rand_src <- rand_src[!is.na(rand_src$rand_date) & !is.na(rand_src$site_name), , drop = FALSE]
+  }
+
+  # Helper: first rand date for a given site (NA if none)
+  first_rand_for <- function(site) {
+    if (is.null(rand_src) || nrow(rand_src) == 0) return(as.Date(NA))
+    d <- rand_src$rand_date[rand_src$site_name == site]
+    if (length(d) == 0) as.Date(NA) else min(d, na.rm = TRUE)
+  }
+
+  # Helper: rand count for a given site
+  n_rand_for <- function(site) {
+    if (is.null(rand_src) || nrow(rand_src) == 0) return(0L)
+    sum(rand_src$site_name == site, na.rm = TRUE)
+  }
+
+  # Filter sites to those that are open, recruiting, or closed (drop set-up)
+  site_rows <- sites_df
+  if ("status" %in% names(site_rows)) {
+    site_rows <- site_rows[site_rows$status %in% c("Open","Recruiting","Closed"), , drop = FALSE]
+  }
+
+  # If no eligible sites after filtering, show placeholder
+  if (nrow(site_rows) == 0) {
+    manual_placeholder(
+      c("Site", "Date site opened", "Date first patient randomised",
+        "Number of patients randomised"),
+      "No open/recruiting sites to summarise.",
+      widths = c(2.6, 1.4, 1.8, 1.2)
+    )
+  } else {
+    # Build the display data frame row by row to avoid NA length issues
+    site_names <- site_rows$site_name
+    n_sites    <- length(site_names)
+    open_dates <- if ("site_open_date" %in% names(site_rows)) site_rows$site_open_date else rep(NA, n_sites)
+
+    first_rands <- as.Date(vapply(site_names, function(s) {
+      d <- first_rand_for(s)
+      if (is.na(d)) NA_real_ else as.numeric(d)
+    }, numeric(1)), origin = "1970-01-01")
+
+    n_rands <- vapply(site_names, n_rand_for, integer(1))
+
+    # Sort: highest-recruiting sites first, alphabetical as tiebreaker
+    ord <- order(-n_rands, site_names)
+    site_names  <- site_names[ord]
+    open_dates  <- open_dates[ord]
+    first_rands <- first_rands[ord]
+    n_rands     <- n_rands[ord]
+
+    fmt_date <- function(d) {
+      d <- suppressWarnings(as.Date(d))
+      ifelse(is.na(d), "\u2014", format(d, "%d %b %Y"))
+    }
+
+    out <- data.frame(
+      `Site`                          = site_names,
+      `Date site opened`              = fmt_date(open_dates),
+      `Date first patient randomised` = fmt_date(first_rands),
+      `Number of patients randomised` = as.integer(n_rands),
+      check.names = FALSE, stringsAsFactors = FALSE
+    )
+
+    # Total row
+    out <- rbind(
+      out,
+      data.frame(
+        `Site` = "Total",
+        `Date site opened` = "",
+        `Date first patient randomised` = "",
+        `Number of patients randomised` = as.integer(sum(n_rands)),
+        check.names = FALSE, stringsAsFactors = FALSE
+      )
+    )
+
+    ft <- tonic_ft(out, widths = c(2.6, 1.4, 1.8, 1.2))
+    ft <- align(ft, j = 2:4, align = "center", part = "all")
+    ft <- bold(ft, i = nrow(out), part = "body")
+    ft <- bg(ft,   i = nrow(out), bg = "#F4F6F8", part = "body")
+    ft
+  }
+
+} else {
+  manual_placeholder(
+    c("Site", "Date site opened", "Date first patient randomised",
+      "Number of patients randomised"),
+    "Site data not available.",
+    widths = c(2.6, 1.4, 1.8, 1.2)
+  )
+}
+```
+
+**Figure 5: Randomisations by site vs monthly target**
+
+```{r fig-site-recruitment}
+if (!is.null(charts$site) && file.exists(charts$site)) {
+  knitr::include_graphics(charts$site)
+}
+```
+
+**Figure 6: Monthly recruitment**
+
+```{r fig-monthly}
+if (!is.null(charts$monthly) && file.exists(charts$monthly)) {
+  knitr::include_graphics(charts$monthly)
+}
+```
+
+```{r custom-after-recruitment}
+render_custom_sections("after_recruitment")
+```
+
+\newpage
+
+# 4. Flow diagram of participants
+
+**Figure 4: CONSORT flow diagram**
+
+```{r consort-diagram}
+# Source the CONSORT builder (robust to folder layout)
+consort_script_candidates <- c(
+  "consort_flow.R",
+  file.path(dirname(knitr::current_input(dir = TRUE)), "consort_flow.R"),
+  file.path(dirname(knitr::current_input(dir = TRUE)), "..", "consort_flow.R"),
+  file.path(dirname(knitr::current_input(dir = TRUE)), "..", "functions", "consort_flow.R")
+)
+consort_script <- consort_script_candidates[file.exists(consort_script_candidates)][1]
+if (!is.na(consort_script)) {
+  source(consort_script, local = FALSE)
+  counts <- consort_counts(rd, screening_xlsx_path = params$screening_xlsx_path)
+  consort_png_path <- tempfile(fileext = ".png")
+  consort_png(counts, filepath = consort_png_path, width = 6.5, height = 8)
+  knitr::include_graphics(consort_png_path)
+} else {
+  cat("*CONSORT flow diagram builder not found \u2014 add consort_flow.R to the app directory.*")
+}
+```
+
+\newpage
+
+# 5. Baseline characteristics
+
+Participant characteristics at baseline, including the three minimisation variables used during randomisation and key demographic measures.
+
+```{r baseline-characteristics-table, results='asis'}
+if (file.exists("baseline_table.R")) {
+  source("baseline_table.R")
+  bl_df <- tryCatch(baseline_characteristics_df(rd), error = function(e) NULL)
+  if (!is.null(bl_df) && nrow(bl_df) > 0) {
+    cat(knitr::knit_print(baseline_characteristics_flextable(bl_df)))
+    cat("\n\n")
+  } else {
+    cat("*Baseline characteristics data not available.*\n\n")
+  }
+}
+```
+
+\newpage
+
+# 6. Screening data
+
+Tables 3–5 break down the various reasons for exclusion during the different stages of the screening process.
+
+**Table 3: Reason for the patient not being eligible for `r .cover_short`**
+
+```{r screening-ineligible}
+manual_placeholder(
+  c("Reason for ineligibility", "N"),
+  "Screening ineligibility data to be completed manually \u2014 not currently collected in REDCap.",
+  widths = c(5.0, 1.5)
+)
+```
+
+**Table 4: Reason the patient was not given the `r .cover_short` PIS**
+
+```{r screening-no-pis}
+manual_placeholder(
+  c("Reason PIS not given", "N"),
+  "Not currently collected in REDCap \u2014 to be completed manually.",
+  widths = c(5.0, 1.5)
+)
+```
+
+**Table 5: Reason patient was not randomised**
+
+```{r screening-not-rand}
+manual_placeholder(
+  c("Reason not randomised", "N"),
+  "Not currently collected in REDCap \u2014 to be completed manually.",
+  widths = c(5.0, 1.5)
+)
+```
+
+**Table 6: Reasons for participant withdrawal**
+
+```{r withdrawals}
+wd <- rd$withdrawals
+if (!is.null(wd) && !is.null(wd$log) && nrow(wd$log) > 0) {
+  wd_df <- wd$log
+  # Default the log has columns (site_name, cos_label). Rename for display
+  # and add a blank Reason column for the report author to populate manually
+  # (free-text reason isn't currently captured in REDCap in a structured form).
+  if (ncol(wd_df) >= 2) {
+    names(wd_df)[1:2] <- c("Site", "Type")
+  }
+  wd_df$Reason <- ""   # blank — complete by hand before sharing
+
+  tonic_ft(wd_df[, c("Site", "Type", "Reason")],
+           widths = c(2.0, 1.8, 2.7))
+} else {
+  manual_placeholder(
+    c("Site", "Type", "Reason"),
+    "No withdrawals to date.",
+    widths = c(2.0, 1.8, 2.7)
+  )
+}
+```
+
+```{r custom-after-screening}
+render_custom_sections("after_screening")
+```
+
+\newpage
+
+# 7. Data Completeness
+
+**Table 7: Site completed CRF return rates**
+
+```{r crf-rates}
+crf <- rd$crf_data
+po  <- rd$primary_outcome
+
+# --- Primary outcome banner (always show if calculable) ------------------
+if (!is.null(po)) {
+  po_elig <- safe(po$eligible, 0)
+  po_comp <- safe(po$complete, 0)
+  po_pct  <- safe(po$pct, NA)
+  thresh  <- safe(po$threshold_days, 7)
+  pct_display <- if (is.na(po_pct) || po_elig == 0) "\u2014" else paste0(po_pct, "%")
+
+  po_df <- data.frame(
+    x = sprintf(
+      "Primary outcome completeness (discharge form complete, op date + %s days \u2264 today): %s of %s eligible (%s)",
+      thresh, po_comp, po_elig, pct_display
+    ),
+    stringsAsFactors = FALSE
+  )
+  po_ft <- flextable(po_df) |>
+    delete_part(part = "header") |>
+    bg(bg = "#E6F9F5", part = "body") |>
+    color(color = tonic_navy_ft, part = "body") |>
+    bold(part = "body") |>
+    fontsize(size = 11, part = "body") |>
+    padding(padding = 8, part = "body") |>
+    border_outer(border = fp_border(color = "#2EC4A5", width = 1.5)) |>
+    width(j = 1, width = 6.5) |>
+    align(align = "left", part = "body")
+  knit_print(po_ft)
+}
+```
+
+```{r crf-rates-table, results='asis'}
+if (!is.null(crf) && nrow(crf) > 0) {
+  to_num <- function(x) suppressWarnings(as.numeric(gsub("%", "", as.character(x))))
+
+  show_heatmap <- params$completeness_style %in% c("heatmap", "both")
+  show_flat    <- params$completeness_style %in% c("flat",    "both")
+
+  # Helper: render a flextable into Word output correctly regardless of
+  # whether we're being knitted by rmarkdown or called directly. Uses
+  # knit_print() so that docx_value / xml is emitted in-flow.
+  render_ft <- function(ft) {
+    cat(knitr::knit_print(ft))
+    cat("\n\n")
+  }
+
+  if (show_heatmap) {
+    crf_tbl <- data.frame(
+      Event    = crf$Event,
+      Form     = crf$Form,
+      Expected = crf$Expected,
+      Due      = crf$Due,
+      Entered  = crf$Entered,
+      `% Expected entered` = sapply(seq_len(nrow(crf)), function(i) {
+        ex <- to_num(crf$Expected[i]); en <- to_num(crf$Entered[i])
+        if (!is.na(ex) && ex > 0 && !is.na(en)) paste0(round(en / ex * 100, 1), "%") else "\u2014"
+      }),
+      check.names = FALSE, stringsAsFactors = FALSE
+    )
+    cat("\n\n**Table \u2014 CRF return rate (by event)**\n\n")
+    render_ft(tonic_ft(crf_tbl, widths = c(0.9, 1.8, 0.7, 0.6, 0.7, 1.2)))
+  }
+
+  if (show_flat) {
+    cat("\n\n**Table \u2014 CRF return rate (flat, protocol forms)**\n\n")
+    flat_df <- flat_completeness_df(crf, rate_type = params$completeness_rate)
+    render_ft(flat_completeness_flextable(flat_df, rate_type = params$completeness_rate))
+    cat("*Rows marked \u2014 are forms listed in the protocol that are not yet in the current data export.*\n\n")
+  }
+
+} else {
+  cat("*CRF return rate data not available.*\n\n")
+  cat("*Ensure a return rates CSV is placed in `return rates/` (in the app directory) and that `crf_csv_path` is passed to `prepare_report_data()`.*")
+}
+```
+
+# 8. Protocol Deviations
+
+**Table 8: Summary of protocol deviations**
+
+```{r deviations}
+# Follow the SAE pattern: show an amber-style banner when there are no
+# deviations to report, otherwise list them in a structured table.
+dev <- rd$deviations     # expected list(log = data.frame, n = integer)
+dev_n   <- if (!is.null(dev) && !is.null(dev$n)) dev$n else 0
+dev_log <- if (!is.null(dev) && !is.null(dev$log)) dev$log else NULL
+
+if (dev_n == 0 || is.null(dev_log) || nrow(dev_log) == 0) {
+  # Amber banner matching the SAE style
+  banner_df <- data.frame(
+    x = "Total protocol deviations reported to date: 0. No deviation details to summarise.",
+    stringsAsFactors = FALSE
+  )
+  banner_ft <- flextable(banner_df) |>
+    delete_part(part = "header") |>
+    bg(bg = "#FEF3DC", part = "body") |>
+    color(color = "#8A5A0D", part = "body") |>
+    bold(part = "body") |>
+    fontsize(size = 11, part = "body") |>
+    padding(padding = 8, part = "body") |>
+    border_outer(border = fp_border(color = "#D97706", width = 1.5)) |>
+    width(j = 1, width = 6.5) |>
+    align(align = "left", part = "body")
+  knit_print(banner_ft)
+} else {
+  # Display whatever columns are available (defensive — dev_log might have
+  # different column names depending on how deviations are captured).
+  want_cols <- c("date", "site", "description", "category", "action")
+  available <- intersect(want_cols, tolower(names(dev_log)))
+
+  # Reorder dev_log columns to the preferred order, rename for display
+  dev_disp <- dev_log
+  names(dev_disp) <- tolower(names(dev_disp))
+  dev_disp <- dev_disp[, available, drop = FALSE]
+  pretty_names <- c(date = "Date", site = "Site", description = "Description",
+                    category = "Category", action = "Action")
+  names(dev_disp) <- pretty_names[names(dev_disp)]
+
+  # Fill in missing expected columns as blanks
+  for (nm in setdiff(unname(pretty_names), names(dev_disp))) {
+    dev_disp[[nm]] <- ""
+  }
+  dev_disp <- dev_disp[, unname(pretty_names)]
+
+  tonic_ft(dev_disp, widths = c(0.9, 1.1, 2.3, 1.1, 1.1))
+}
+```
+
+# 9. Safety
+
+**Table 9: Summary of SAEs**
+
+```{r safety}
+safety <- rd$safety_summary
+sae_n  <- safe(kpi$sae_count, 0)
+if (!is.null(safety) && nrow(safety) > 0) {
+  # Summary banner + table
+  banner_df <- data.frame(
+    x = sprintf("Total SAEs reported to date: %s", sae_n),
+    stringsAsFactors = FALSE
+  )
+  banner_ft <- flextable(banner_df) |>
+    delete_part(part = "header") |>
+    bg(bg = "#FEF3DC", part = "body") |>
+    color(color = "#8A5A0D", part = "body") |>
+    bold(part = "body") |>
+    fontsize(size = 11, part = "body") |>
+    padding(padding = 8, part = "body") |>
+    border_outer(border = fp_border(color = "#D97706", width = 1.5)) |>
+    width(j = 1, width = 6.5) |>
+    align(align = "left", part = "body")
+  knit_print(banner_ft)
+  cat("\n\n")
+  tonic_ft(safety)
+} else {
+  manual_placeholder(
+    c("Status"),
+    sprintf("Total SAEs reported to date: %s. No SAE details to summarise.", sae_n),
+    widths = c(6.5)
+  )
+}
+```
+
+```{r custom-after-safety}
+render_custom_sections("after_safety")
+```
+
+\newpage
+
+# 10. Pilot Progress Criteria
+
+**Table 10: Pilot Progression Criteria**
+
+```{r pilot-criteria}
+pt <- if (!is.null(rd$pilot)) rd$pilot else list()
+fmt_pct <- function(x) if (is.null(x) || length(x) == 0 || is.na(x)) "Not yet due" else paste0(x, "%")
+rag_label <- function(s) {
+  if (is.null(s) || length(s) == 0 || is.na(s)) return("Not yet due")
+  switch(s,
+         green = "GREEN — on track",
+         amber = "AMBER — review",
+         red   = "RED — action required",
+         not_yet_due = "Not yet due",
+         small_n = "AMBER (small n)",
+         "—")
+}
+# Determine RAG for recruitment
+rr_s <- {
+  v <- safe(pt$recruit_rate, NA)
+  if (is.na(v)) "not_yet_due" else if (v >= 100) "green" else if (v >= 60) "amber" else "red"
+}
+ri_s <- {
+  v <- safe(pt$interv_rate, NA)
+  if (is.na(v)) "not_yet_due" else if (v >= 100) "green" else if (v >= 75) "amber" else "red"
+}
+rc_s <- {
+  v <- safe(pt$contam_rate, NA)
+  if (is.na(v)) "not_yet_due" else if (v == 0) "green" else if (v < 25) "amber" else "red"
+}
+rx_s <- {
+  v <- safe(pt$crossover_rate, NA)
+  if (is.na(v)) "not_yet_due" else if (v == 0) "green" else if (v < 10) "amber" else "red"
+}
+
+pilot_tbl <- data.frame(
+  Criterion = c("01 Recruitment rate", "02 Data completeness", "03 90-day questionnaire",
+                "04 Intervention delivery", "05 Contamination", "06 Crossover rate"),
+  Red      = c("<60%", "<90%", "<70%", "\u226470%", "\u226530%", "\u226510%"),
+  Amber    = c("60\u201399%", "90\u201399%", "70\u201399%", "71\u201399%", "1\u201329%", "1\u20139%"),
+  Green    = c("100%", "100%", "100%", "100%", "0%", "0%"),
+  Current  = c(fmt_pct(safe(pt$recruit_rate, NA)), "96%",
+               fmt_pct(safe(pt$fu_90_rate, NA)),
+               fmt_pct(safe(pt$interv_rate, NA)),
+               fmt_pct(safe(pt$contam_rate, NA)),
+               fmt_pct(safe(pt$crossover_rate, NA))),
+  Status   = c(rag_label(rr_s), rag_label("amber"),
+               rag_label(safe(pt$fu_90_status, "not_yet_due")),
+               rag_label(ri_s), rag_label(rc_s), rag_label(rx_s)),
+  check.names = FALSE, stringsAsFactors = FALSE
+)
+
+# RAG codes per row (aligned with Status column text)
+rag_codes <- c(rr_s, "amber", safe(pt$fu_90_status, "not_yet_due"), ri_s, rc_s, rx_s)
+rag_bg    <- vapply(rag_codes, function(s) switch(s,
+  green = "#D4F5EC", amber = "#FEF3DC", red = "#FDE8E8",
+  not_yet_due = "#F1F5F9", small_n = "#FEF3DC", "#F1F5F9"), character(1))
+rag_fg    <- vapply(rag_codes, function(s) switch(s,
+  green = "#0F6E56", amber = "#8A5A0D", red = "#991B1B",
+  not_yet_due = "#64748B", small_n = "#8A5A0D", "#64748B"), character(1))
+current_fg <- vapply(rag_codes, function(s) switch(s,
+  green = "#0F6E56", amber = "#D97706", red = "#C0392B",
+  not_yet_due = "#64748B", small_n = "#D97706", "#64748B"), character(1))
+
+pilot_ft <- flextable(pilot_tbl) |>
+  bg(part = "header", bg = tonic_navy_ft) |>
+  color(part = "header", color = "white") |>
+  bold(part = "header") |>
+  fontsize(part = "header", size = 10) |>
+  padding(part = "header", padding = 7) |>
+  align(part = "header", align = "center") |>
+  align(j = 1, align = "left", part = "all") |>
+  fontsize(part = "body", size = 10) |>
+  padding(part = "body", padding = 5) |>
+  align(j = 2:6, align = "center", part = "body") |>
+  border_outer(border = fp_border(color = "#CBD5E1", width = 0.5)) |>
+  border_inner(border = fp_border(color = "#E2E8F0", width = 0.5)) |>
+  width(j = 1, width = 1.9) |>
+  width(j = 2, width = 0.65) |>
+  width(j = 3, width = 0.75) |>
+  width(j = 4, width = 0.65) |>
+  width(j = 5, width = 1.0) |>
+  width(j = 6, width = 1.55) |>
+  bold(j = 1, part = "body") |>
+  color(j = 1, color = tonic_navy_ft, part = "body")
+
+# Colour the Current column numbers
+for (i in seq_len(nrow(pilot_tbl))) {
+  pilot_ft <- color(pilot_ft, i = i, j = 5, color = current_fg[i], part = "body")
+  pilot_ft <- bold(pilot_ft, i = i, j = 5, part = "body")
+  # Status pill: coloured background + coloured text
+  pilot_ft <- bg(pilot_ft, i = i, j = 6, bg = rag_bg[i], part = "body")
+  pilot_ft <- color(pilot_ft, i = i, j = 6, color = rag_fg[i], part = "body")
+  pilot_ft <- bold(pilot_ft, i = i, j = 6, part = "body")
+}
+
+pilot_ft
+```
+
+```{r pilot-guide}
+# Decision guide banner underneath the pilot table
+guide_df <- data.frame(
+  x = paste0(
+    "Decision guide \u2014 ",
+    "GREEN: all criteria met, proceed. ",
+    "AMBER: partially met, review and modify. ",
+    "RED: not met, consider stopping."
+  ),
+  stringsAsFactors = FALSE
+)
+flextable(guide_df) |>
+  delete_part(part = "header") |>
+  bg(bg = "#E8F0F5", part = "body") |>
+  color(color = tonic_navy_ft, part = "body") |>
+  fontsize(size = 9, part = "body") |>
+  padding(padding = 7, part = "body") |>
+  border_outer(border = fp_border(color = tonic_navy_ft, width = 1)) |>
+  width(j = 1, width = 6.5) |>
+  align(align = "left", part = "body")
+```
+
+\newpage
+
+# 10. Summary of Amendments
+
+**Table 11: Summary of Substantial Amendments**
+
+```{r amendments-sub}
+amd <- params$amendments_substantial
+if (!is.null(amd) && is.data.frame(amd) && nrow(amd) > 0) {
+  names(amd) <- c("Date", "Description", "Status")
+  tonic_ft(amd, widths = c(1.0, 4.5, 1.0))
+} else {
+  manual_placeholder(
+    c("Date", "Description", "Status"),
+    "No substantial amendments entered.",
+    widths = c(1.0, 4.5, 1.0)
+  )
+}
+```
+
+**Table 12: Summary of Non-Substantial Amendments**
+
+```{r amendments-nonsub}
+amd2 <- params$amendments_non_substantial
+if (!is.null(amd2) && is.data.frame(amd2) && nrow(amd2) > 0) {
+  names(amd2) <- c("Date", "Description", "Status")
+  tonic_ft(amd2, widths = c(1.0, 4.5, 1.0))
+} else {
+  manual_placeholder(
+    c("Date", "Description", "Status"),
+    "No non-substantial amendments entered.",
+    widths = c(1.0, 4.5, 1.0)
+  )
+}
+```
+
+```{r custom-end-of-report}
+render_custom_sections("end_of_report")
+```
+
+---
+
+*`r .cover_short` TSC Report · Birmingham Clinical Trials Unit · `r params$report_date`*

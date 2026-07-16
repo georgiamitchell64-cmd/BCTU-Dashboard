@@ -1,0 +1,230 @@
+/* =============================================================================
+   PANORAMA — OVERVIEW
+   Refined visual language for the Overview tab. Loaded after the redesign
+   sheets so these rules win where they overlap.
+   ========================================================================== */
+
+.pov-shell {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color: #1A1A2E;
+  font-size: 13.5px;
+  background: #F5F5F7;
+  padding: 4px 0 32px;
+  display: flex; flex-direction: column; gap: 16px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+.pov-shell, .pov-shell * { box-sizing: border-box; }
+.pov-shell .pov-card,
+.pov-shell .pov-kpi,
+.pov-shell .pov-sitestable { min-width: 0; max-width: 100%; }
+
+/* Page header */
+.pov-page-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.pov-page-head h1 {
+  font-size: 22px; font-weight: 700; color: #1A1A2E;
+  letter-spacing: -0.01em; margin: 0;
+}
+
+/* Date range bar */
+.pov-daterange {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.pov-daterange .pov-daterange-box {
+  display: flex; align-items: center; gap: 8px;
+  background: #fff; border: 1px solid #E0E0E5; border-radius: 8px;
+  padding: 4px 12px; font-size: 13px; color: #3A3A4A;
+}
+.pov-daterange .pov-daterange-box .form-group,
+.pov-daterange .pov-daterange-box .shiny-date-input { margin: 0; }
+.pov-daterange .pov-daterange-box .form-control {
+  border: none; padding: 4px 6px; height: 30px;
+  font-size: 13px; color: #3A3A4A; background: transparent;
+  box-shadow: none; min-width: 110px;
+}
+.pov-daterange-arrow { color: #A0A0B0; font-size: 13px; }
+.pov-daterange-note  { font-size: 12px; color: #A0A0B0; }
+
+/* Generic card */
+.pov-card {
+  background: #fff; border: 1px solid #EBEBF0; border-radius: 14px;
+  padding: 24px 28px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  transition: box-shadow .25s ease, transform .25s ease;
+}
+.pov-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+.pov-card.p0 { padding: 0; }
+.pov-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; gap: 12px; flex-wrap: wrap;
+}
+.pov-card-head h3 {
+  font-size: 15px; font-weight: 650; color: #1A1A2E; margin: 0;
+}
+.pov-card-head .pov-card-sub {
+  font-size: 12px; color: #A0A0B0; display: block; margin-top: 3px;
+}
+.pov-card-tool-note { font-size: 11.5px; color: #A0A0B0; }
+.pov-card-tools { display: flex; align-items: center; gap: 10px; }
+
+/* KPI row */
+.pov-kpis {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .pov-kpis { grid-template-columns: 1fr; }
+}
+.pov-kpi {
+  background: #fff; border: 1px solid #EBEBF0; border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  transition: box-shadow .25s ease, transform .25s ease;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px;
+}
+.pov-kpi:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  transform: translateY(-1px);
+}
+.pov-kpi-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pov-kpi-label {
+  font-size: 12.5px; font-weight: 500; color: #8E8EA0;
+  letter-spacing: .02em; text-transform: uppercase;
+}
+.pov-kpi-value {
+  font-size: 30px; font-weight: 700; color: #1A1A2E;
+  letter-spacing: -0.03em; line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.pov-kpi-sub { font-size: 12px; color: #8E8EA0; margin-top: 2px; }
+.pov-kpi-delta-row {
+  display: flex; align-items: center; gap: 6px; margin-top: 4px;
+}
+.pov-kpi-spark { flex-shrink: 0; margin-left: 16px; margin-top: 8px; }
+
+/* Delta badge (used in KPI and elsewhere) */
+.pov-delta-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11.5px; font-weight: 600;
+  padding: 2px 8px; border-radius: 6px;
+}
+.pov-delta-badge.up   { color: #10B981; background: #ECFDF5; }
+.pov-delta-badge.down { color: #EF4444; background: #FEF2F2; }
+.pov-delta-badge.flat { color: #8E8EA0; background: #F5F5F7; }
+.pov-delta-label { font-size: 11.5px; color: #A0A0B0; }
+
+/* Smart insights */
+.pov-insight-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid #F5F5F7;
+}
+.pov-insight-row:last-child { border-bottom: none; }
+.pov-insight-icon {
+  width: 22px; height: 22px; border-radius: 6px;
+  font-size: 11px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.pov-insight-icon.success { background: #ECFDF5; color: #059669; }
+.pov-insight-icon.warning { background: #FFFBEB; color: #D97706; }
+.pov-insight-icon.info    { background: #EFF6FF; color: #2563EB; }
+.pov-insight-text { font-size: 13.5px; color: #3A3A4A; line-height: 1.5; }
+
+/* Charts grid */
+.pov-charts-grid {
+  display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px;
+}
+@media (max-width: 1100px) {
+  .pov-charts-grid { grid-template-columns: 1fr; }
+}
+
+/* Assumptions panel */
+.pov-assumptions {
+  background: #FAFAFA; border: 1px solid #EBEBF0; border-radius: 10px;
+  padding: 16px 20px; margin-bottom: 16px;
+  font-size: 12.5px; color: #5A5A6E;
+}
+
+/* Map + pipeline grid */
+.pov-map-grid {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.pov-map-grid > * { min-width: 0; }
+@media (max-width: 1100px) {
+  .pov-map-grid { grid-template-columns: 1fr; }
+}
+
+/* Collapsible card (Portfolio review) */
+.pov-collapsible-head { margin-bottom: 0; }
+.pov-collapsible-head h3 { font-size: 14.5px; }
+.pov-map-col-right {
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+/* Pipeline */
+.pov-pipeline { display: flex; flex-direction: column; gap: 14px; }
+.pov-pipeline-h4 {
+  font-size: 13px; font-weight: 650; color: #1A1A2E; margin: 0 0 2px 0;
+}
+.pov-pipeline-row { display: flex; align-items: center; gap: 12px; }
+.pov-pipeline-label {
+  width: 110px; flex-shrink: 0; text-align: right;
+  font-size: 12px; color: #5A5A6E;
+}
+.pov-pipeline-track {
+  flex: 1; height: 22px; background: #F5F5F7; border-radius: 6px;
+  overflow: hidden;
+}
+.pov-pipeline-fill {
+  height: 100%; border-radius: 6px; transition: width .6s ease;
+  min-width: 24px;
+}
+.pov-pipeline-val {
+  width: 24px; text-align: right;
+  font-size: 13px; font-weight: 600; color: #1A1A2E;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Top recruiting sites mini-list */
+.pov-topsites { display: flex; flex-direction: column; gap: 10px; }
+.pov-topsites-row { display: flex; align-items: center; gap: 10px; }
+.pov-topsites-rank {
+  width: 20px; height: 20px; border-radius: 5px;
+  font-size: 11px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; background: #F5F5F7; color: #8E8EA0;
+}
+.pov-topsites-rank.first { background: rgba(13,148,136,0.12); color: var(--pov-accent, #0D9488); }
+.pov-topsites-name { flex: 1; font-size: 12.5px; color: #3A3A4A; font-weight: 500; }
+.pov-topsites-val  { font-size: 13px; font-weight: 600; color: #1A1A2E; }
+
+/* Sites table card overrides */
+.pov-sitestable {
+  background: #fff; border: 1px solid #EBEBF0; border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  transition: box-shadow .25s ease;
+}
+.pov-sitestable:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+.pov-sitestable-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 28px 16px;
+}
+.pov-sitestable-head h3 {
+  font-size: 15px; font-weight: 650; color: #1A1A2E; margin: 0;
+}
+.pov-sitestable-search .form-control {
+  padding: 7px 14px; border: 1px solid #E0E0E5; border-radius: 8px;
+  font-size: 12.5px; color: #3A3A4A; width: 180px;
+  font-family: inherit;
+}
+.pov-sitestable-search .form-control:focus {
+  outline: none; border-color: var(--pov-accent, #0D9488);
+  box-shadow: 0 0 0 2px rgba(13,148,136,.15);
+}

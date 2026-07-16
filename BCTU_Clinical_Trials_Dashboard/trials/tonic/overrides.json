@@ -1,0 +1,166 @@
+{
+  "report_template_paths": {},
+  "report_content": {
+    "short_name": "TONIC",
+    "trial_title": "Timing Of Nutrition In emergenCy laparotomy (TONIC)",
+    "trial_subtitle": "Timing Of Nutrition In emergenCy laparotomy (TONIC) A randomised trial comparing early parenteral nutrition vs standard nutritional care in adults undergoing emergency laparotomy.",
+    "registration_line": "ISRCTN59200516 \t328678 (England/Wales); 365916 (Scotland)",
+    "general_info": [
+      {
+        "label": "ISRCTN\tISRCTN59200516",
+        "value": ""
+      },
+      {
+        "label": "DOI\thttps",
+        "value": "//doi.org/10.1186/ISRCTN59200516"
+      },
+      {
+        "label": "Integrated Research Application System (IRAS)\t328678 (England/Wales); 365916 (Scotland)",
+        "value": ""
+      },
+      {
+        "label": "Central Portfolio Management System (CPMS)\t56203",
+        "value": ""
+      },
+      {
+        "label": "Sponsor\tUniversity of Birmingham",
+        "value": ""
+      },
+      {
+        "label": "Funder\tNational Institute for Health and Care Research",
+        "value": ""
+      }
+    ]
+  },
+  "modifications": [],
+  "theme": "custom",
+  "colors": {
+    "primary": "#1B4F6B",
+    "secondary": "#2EC4A5",
+    "accent": "#F59E0B"
+  },
+  "data_dir": "K:/BCTU/BCTU/Teams/Coloproctology/CURRENT TRIALS/TONIC/BCTU Clinical Trials Dashboard/BCTU_Clinical_Trials_Dashboard/trials/tonic/data",
+  "return_rates_dir": "K:/BCTU/BCTU/Teams/Coloproctology/CURRENT TRIALS/TONIC/BCTU Clinical Trials Dashboard/BCTU_Clinical_Trials_Dashboard/trials/tonic/ReturnRates",
+  "logo_file": "K:/BCTU/BCTU/Teams/Coloproctology/CURRENT TRIALS/TONIC/BCTU Clinical Trials Dashboard/BCTU_Clinical_Trials_Dashboard/trials/tonic/www/logo.png",
+  "detail_fields": {
+    "sae": [
+      {
+        "col": "sae_onset_dt",
+        "header": "Onset Date"
+      },
+      {
+        "col": "sae_expectedness",
+        "header": "sae_expectedness"
+      },
+      {
+        "col": "sae_causality_cent",
+        "header": "sae_causality_cent"
+      },
+      {
+        "col": "sae_death_dt",
+        "header": "sae_death_dt"
+      }
+    ],
+    "withdrawal": [
+      {
+        "col": "cos_decision",
+        "header": "Decision"
+      },
+      {
+        "col": "cos_withdraw_rsn_pt",
+        "header": "Reason"
+      },
+      {
+        "col": "cos_withdraw_rsn_oth",
+        "header": "Other"
+      }
+    ],
+    "complication": [
+      {
+        "col": "s_comp_complication",
+        "header": "Surgery Complication"
+      },
+      {
+        "col": "l_comp_complication",
+        "header": "Line Complication"
+      },
+      {
+        "col": "p_comp_complication",
+        "header": "PN Complication"
+      },
+      {
+        "col": "s_comp_complication_oth",
+        "header": "Other"
+      }
+    ]
+  },
+  "participant_breakdowns": [
+    "base_sex",
+    "base_ethnic_gp",
+    "nut_b_nrs_points",
+    "base_nela_score_mort",
+    "cae_age"
+  ],
+  "column_labels": {
+    "sae_severity": {
+      "1": "Mild",
+      "2": "Moderate",
+      "3": "Severe"
+    },
+    "sae_status": {
+      "1": "Ongoing",
+      "2": "Resolved",
+      "3": "Fatal"
+    },
+    "base_sex": {
+      "1": "Male",
+      "2": "Female"
+    },
+    "base_ethnic_gp": {
+      "1": "Asian or Asian British - Indian",
+      "10": "Mixed or multiple ethnic groups - White and Black African",
+      "13": "White - English, Welsh, Scottish, Northern Irish or British",
+      "14": "White - Irish"
+    },
+    "nut_b_nrs_points": {
+      "0": "Normal nutritional status",
+      "2": "Moderate",
+      "3": "Severe",
+      "4": "Severe",
+      "5": "Severe",
+      "6": "Severe"
+    }
+  },
+  "report_templates": {
+    "iTMG": {
+      "sections": [
+        "header",
+        "recruitment_summary",
+        "smart_insights",
+        "site_summary",
+        "safety_summary",
+        "complications"
+      ]
+    },
+    "TMG": {
+      "sections": [
+        "header",
+        "recruitment_summary",
+        "smart_insights",
+        "consort",
+        "site_summary",
+        "custom_text"
+      ]
+    }
+  },
+  "portfolio_review": {
+    "n_months": 27,
+    "start_month": "2026-03-01",
+    "excel_path": "",
+    "series": {
+      "proj_pts_monthly": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "proj_pts_cum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "proj_sites_cum": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  }
+}

@@ -1,0 +1,201 @@
+---
+title: "Portfolio Review — Trial Update Summary v4.0"
+output:
+  html_document:
+    self_contained: true
+    theme: null
+    highlight: null
+    mathjax: null
+params:
+  cfg: !r list()
+  rv: !r list()
+  report_data: !r list()
+  portfolio: !r list()
+  period_label: "—"
+  prepared_by: "—"
+  reviewed_by: "—"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      results = "asis")
+
+# This Rmd mirrors the design in Portfolio Review.html exactly. The
+# section-render functions (.rs_render_pr_*) emit the same .pf-* markup
+# that the Reports tab preview uses, so the rendered output is identical.
+cfg       <- params$cfg       %||% list()
+rv        <- params$rv        %||% list()
+ctx <- list(
+  cfg              = cfg,
+  rv               = rv,
+  report_data      = params$report_data %||% list(),
+  portfolio        = params$portfolio   %||% list(),
+  period_label     = params$period_label,
+  prepared_by      = params$prepared_by,
+  reviewed_by      = params$reviewed_by
+)
+
+trial_label <- cfg$short_name %||% toupper(cfg$code %||% "Trial")
+period      <- params$period_label %||% format(Sys.Date(), "%B %Y")
+
+render_pr <- function(id) {
+  s <- report_section_by_id(id)
+  if (is.null(s)) return("")
+  tryCatch(s$render(ctx),
+           error = function(e) sprintf("<p>Failed: %s</p>", e$message))
+}
+```
+
+```{=html}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap');
+body{font-family:'Inter',system-ui,sans-serif;color:#0F1A24;
+     background:#F4F6F9;font-size:13px;margin:0;padding:24px;}
+.pf-page{width:794px;background:#fff;margin:0 auto 24px;
+         padding:18px 48px 28px;
+         box-shadow:0 1px 2px rgba(15,26,36,.06),0 8px 24px rgba(15,26,36,.08);}
+.pf-page-meta{display:flex;justify-content:space-between;font-size:9.5px;
+              color:#64748B;margin-bottom:12px;letter-spacing:.3px;}
+.pf-page-foot{display:flex;justify-content:space-between;font-size:9.5px;
+              color:#64748B;margin-top:18px;}
+.pf-banner{background:#7030A0;color:#fff;font-size:15px;font-weight:700;
+           letter-spacing:.04em;text-transform:uppercase;text-align:center;
+           padding:10px 16px;border-radius:4px 4px 0 0;}
+.pf-header-block{border:1px solid #E2E8EE;border-radius:4px;overflow:hidden;}
+.pf-info-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #E2E8EE;}
+.pf-info-row{display:grid;grid-template-columns:160px 1fr;border-bottom:1px solid #EEF2F6;}
+.pf-info-cell{padding:5px 10px;font-size:11px;line-height:1.4;}
+.pf-info-cell.label{font-weight:600;background:#F8FAFC;}
+.pf-info-cell.value{color:#27384A;}
+.pf-status-row{display:flex;gap:18px;padding:8px 10px;
+               border:1px solid #E2E8EE;border-top:0;background:#fff;}
+.pf-check-item{display:flex;align-items:center;gap:6px;font-size:11px;color:#27384A;}
+.pf-check-item.small{font-size:10.5px;}
+.pf-checkbox{width:14px;height:14px;border:1.5px solid #E2E8EE;border-radius:3px;
+             display:inline-flex;align-items:center;justify-content:center;
+             font-size:9px;color:#fff;background:#fff;line-height:1;}
+.pf-checkbox.sm{width:12px;height:12px;font-size:8px;}
+.pf-checkbox.checked{background:#7030A0;border-color:#7030A0;}
+.pf-summary{border:1px solid #E2E8EE;border-top:0;padding:8px 10px;background:#fff;
+            border-radius:0 0 4px 4px;margin-bottom:10px;}
+.pf-summary-label{font-size:10.5px;font-weight:600;margin-bottom:4px;}
+.pf-summary-text{font-family:'Source Serif 4',Georgia,serif;font-size:11px;
+                 color:#27384A;line-height:1.55;}
+.pf-section{margin-bottom:10px;}
+.pf-section-banner{background:#7030A0;color:#fff;font-size:11.5px;
+                   font-weight:700;letter-spacing:.04em;padding:6px 12px;
+                   border-radius:4px 4px 0 0;text-transform:uppercase;}
+.pf-section-banner.alert{background:#7F1D1D;}
+.pf-progress-grid,.pf-rag-grid,.pf-chart-container,.pf-kv-grid,
+.pf-staffing-grid,.pf-issues-block{
+  border:1px solid #E2E8EE;border-top:0;border-radius:0 0 4px 4px;background:#fff;}
+.pf-yn-row,.pf-meeting-row{display:grid;grid-template-columns:200px 1fr;
+                           border-bottom:1px solid #EEF2F6;align-items:center;}
+.pf-yn-label,.pf-meeting-label,.pf-further-label{
+  font-size:10.5px;font-weight:500;padding:6px 10px;background:#F8FAFC;}
+.pf-yn-answer{display:flex;align-items:center;gap:14px;padding:6px 10px;}
+.pf-yn-date{font-size:10.5px;color:#64748B;margin-left:8px;}
+.pf-yn-date strong{color:#0F1A24;font-weight:600;}
+.pf-divider{height:1px;background:#E2E8EE;}
+.pf-meeting-dates{display:flex;gap:28px;padding:6px 10px;font-size:10.5px;color:#64748B;}
+.pf-meeting-dates strong{color:#0F1A24;font-weight:600;
+                         font-family:'JetBrains Mono',monospace;font-size:10px;}
+.pf-further-row{display:grid;grid-template-columns:200px 1fr;align-items:start;}
+.pf-further-text{font-size:10.5px;color:#27384A;line-height:1.55;padding:6px 10px;}
+.pf-rag-grid{display:flex;flex-direction:column;}
+.pf-rag-item{display:flex;align-items:center;gap:10px;padding:7px 12px;
+             border-bottom:1px solid #EEF2F6;}
+.pf-rag-item:last-child{border-bottom:0;}
+.pf-rag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.pf-rag-text{font-size:10.5px;color:#64748B;line-height:1.4;}
+.pf-chart-container{padding:12px 14px;}
+.pf-chart-placeholder{display:flex;flex-direction:column;align-items:center;
+                      justify-content:center;height:200px;
+                      border:2px dashed #E2E8EE;border-radius:6px;
+                      background:#F8FAFC;gap:8px;}
+.pf-chart-placeholder-text{font-size:12px;color:#64748B;font-weight:500;}
+.pf-chart-placeholder-sub{font-size:10.5px;color:#94A3B8;}
+.pf-recruit-stats{display:grid;grid-template-columns:repeat(4,1fr);
+                  margin-top:8px;border-top:1px solid #E2E8EE;
+                  border-bottom:1px solid #E2E8EE;}
+.pf-recruit-stat{padding:7px 10px;border-right:1px solid #EEF2F6;
+                 display:flex;flex-direction:column;}
+.pf-recruit-stat:last-child{border-right:0;}
+.pf-recruit-stat .k{font-size:9px;font-weight:600;color:#64748B;
+                    text-transform:uppercase;letter-spacing:.5px;}
+.pf-recruit-stat .v{font-size:16px;font-weight:700;color:#0F1A24;
+                    font-variant-numeric:tabular-nums;}
+.pf-table{width:100%;border-collapse:collapse;font-size:10.5px;
+          border:1px solid #E2E8EE;border-top:0;border-radius:0 0 4px 4px;
+          overflow:hidden;}
+.pf-table thead th{font-size:9px;font-weight:600;color:#64748B;
+                   text-transform:uppercase;letter-spacing:.6px;text-align:left;
+                   padding:7px 10px;border-bottom:1.5px solid #0F1A24;
+                   background:#F8FAFC;}
+.pf-table tbody td{padding:6px 10px;border-bottom:1px solid #EEF2F6;color:#27384A;}
+.pf-table tbody td.mono{font-family:'JetBrains Mono',monospace;font-size:10px;}
+.pf-pill{display:inline-flex;font-size:9.5px;font-weight:600;padding:1px 7px;
+         border-radius:10px;text-transform:uppercase;letter-spacing:.3px;}
+.pf-pill.green{background:#D1FAE5;color:#065F46;}
+.pf-pill.amber{background:#FEF3C7;color:#92400E;}
+.pf-pill.grey{background:#EEF2F6;color:#27384A;}
+.pf-pill.red{background:#FEE2E2;color:#991B1B;}
+.pf-data-capture{display:flex;align-items:center;gap:8px;}
+.pf-dc-bar{flex:1;height:6px;background:#EEF2F6;border-radius:3px;
+           overflow:hidden;max-width:120px;}
+.pf-dc-fill{height:100%;background:#7030A0;}
+.pf-dc-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;
+             color:#0F1A24;font-weight:600;}
+.pf-kv-row,.pf-staff-row{display:grid;grid-template-columns:240px 1fr;
+                         border-bottom:1px solid #EEF2F6;}
+.pf-kv-row:last-child,.pf-staff-row:last-child{border-bottom:0;}
+.pf-kv-label,.pf-staff-label{font-size:10.5px;font-weight:500;padding:5px 10px;
+                             background:#F8FAFC;}
+.pf-kv-value{font-family:'JetBrains Mono',monospace;font-size:10.5px;
+             color:#27384A;padding:5px 10px;}
+.pf-staff-value{font-size:10.5px;color:#27384A;padding:6px 10px;line-height:1.5;}
+.pf-issues-block{display:grid;grid-template-columns:1fr 1fr;}
+.pf-issues-col{padding:8px 12px;border-right:1px solid #EEF2F6;}
+.pf-issues-col:last-child{border-right:0;}
+.pf-issues-heading{font-size:10px;font-weight:600;text-transform:uppercase;
+                   letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;
+                   border-bottom:1px solid #EEF2F6;}
+.pf-issues-list{margin:0;padding:0 0 0 14px;font-size:10.5px;color:#27384A;
+                line-height:1.55;}
+.pf-issues-list li{margin-bottom:6px;}
+@media print{
+  body{background:#fff;padding:0;}
+  .pf-page{box-shadow:none;width:100%;page-break-after:always;}
+}
+</style>
+```
+
+# Page 1 — Trial Update Summary
+
+```{r page1}
+cat(sprintf("<div class='pf-page'>"))
+cat(sprintf("<div class='pf-page-meta'><span>Birmingham Clinical Trials Unit</span><span>Version 4.0 · %s</span></div>",
+            htmltools::htmlEscape(period)))
+cat(render_pr("pr_trial_summary"))
+cat(render_pr("pr_review_progress"))
+cat(render_pr("pr_rag_status"))
+cat(sprintf("<div class='pf-page-foot'><span>%s · Portfolio Review · %s</span><span>Page 1 of 2</span></div>",
+            htmltools::htmlEscape(trial_label), htmltools::htmlEscape(period)))
+cat("</div>")
+```
+
+# Page 2 — Recruitment, Milestones, Database, Finance, Issues
+
+```{r page2}
+cat(sprintf("<div class='pf-page'>"))
+cat(sprintf("<div class='pf-page-meta'><span>Birmingham Clinical Trials Unit</span><span>Version 4.0 · %s</span></div>",
+            htmltools::htmlEscape(period)))
+cat(render_pr("pr_recruitment"))
+cat(render_pr("pr_milestones"))
+cat(render_pr("pr_database"))
+cat(render_pr("pr_finance"))
+cat(render_pr("pr_issues"))
+cat(sprintf("<div class='pf-page-foot'><span>%s · Portfolio Review · %s</span><span>Page 2 of 2</span></div>",
+            htmltools::htmlEscape(trial_label), htmltools::htmlEscape(period)))
+cat("</div>")
+```
