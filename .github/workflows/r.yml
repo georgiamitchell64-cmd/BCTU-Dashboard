@@ -1,10 +1,8 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-#
-# See https://github.com/r-lib/actions/tree/master/examples#readme for
-# additional example workflows available for the R community.
+# =============================================================================
+# CI for the BCTU Clinical Trials Dashboard (a Shiny app, not an R package —
+# so no R CMD check; we parse every source file, run the pipeline test suite,
+# and boot the app headlessly to catch startup regressions).
+# =============================================================================
 
 name: R
 
@@ -17,24 +15,84 @@ on:
 permissions:
   contents: read
 
-jobs:
-  build:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        r-version: ['3.6.3', '4.1.1']
+defaults:
+  run:
+    working-directory: BCTU_Clinical_Trials_Dashboard
 
+jobs:
+  pipeline-tests:
+    name: Parse + pipeline tests
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up R ${{ matrix.r-version }}
-        uses: r-lib/actions/setup-r@f57f1301a053485946083d7a45022b278929a78a
+      - uses: r-lib/actions/setup-r@v2
         with:
-          r-version: ${{ matrix.r-version }}
-      - name: Install dependencies
+          r-version: 'release'
+          use-public-rspm: true   # Posit binary packages — fast installs
+      - name: Install pipeline dependencies
         run: |
-          install.packages(c("remotes", "rcmdcheck"))
-          remotes::install_deps(dependencies = TRUE)
+          install.packages(c("dplyr", "tidyr", "tibble", "stringr", "rlang",
+                             "jsonlite", "DBI", "RSQLite", "lubridate",
+                             "digest", "readxl"))
         shell: Rscript {0}
-      - name: Check
-        run: rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "error")
+      - name: Parse every R source file
+        run: |
+          files <- list.files(c(".", "globals", "functions", "modules", "tests"),
+                              pattern = "\\.R$", recursive = TRUE, full.names = TRUE)
+          files <- unique(files)
+          for (f in files) tryCatch(parse(f), error = function(e)
+            stop("PARSE FAILURE in ", f, ": ", conditionMessage(e)))
+          cat("Parsed", length(files), "files OK\n")
         shell: Rscript {0}
+      - name: Run pipeline smoke tests
+        run: Rscript tests/pipeline_smoke.R
+
+  app-boot:
+    name: App boots headlessly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+      - name: Install app dependencies
+        run: |
+          install.packages(c("shiny", "bslib", "shinyWidgets", "shinyjs",
+                             "reactable", "echarts4r", "shinycssloaders",
+                             "dplyr", "tidyr", "stringr", "lubridate",
+                             "writexl", "readxl", "leaflet", "tibble", "rlang",
+                             "DBI", "RSQLite", "jsonlite", "digest"))
+        shell: Rscript {0}
+      - name: Launch app and verify it serves the UI
+        run: |
+          R -e "shiny::runApp('.', port = 8123, host = '127.0.0.1')" > app.log 2>&1 &
+          APP_PID=$!
+          up=0
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:8123 -o page.html; then
+              echo "App is up (after ~${i}s)"
+              up=1
+              break
+            fi
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "::error::App process exited during startup"
+              cat app.log
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$up" != "1" ]; then
+            echo "::error::App never responded on port 8123"
+            cat app.log
+            exit 1
+          fi
+          grep -qi "<html" page.html || { echo "::error::Response is not HTML"; cat app.log; exit 1; }
+          # Surface any R-side errors caught during startup
+          if grep -E "Error in|Warning: Error" app.log; then
+            echo "::error::Startup errors found in app log"
+            cat app.log
+            exit 1
+          fi
+          kill $APP_PID 2>/dev/null || true
+          echo "App booted and served HTML cleanly."
