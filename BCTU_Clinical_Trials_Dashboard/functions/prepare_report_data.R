@@ -699,30 +699,87 @@ prepare_report_data <- function(df,
   }
 
   # ── 24. Demographics ──────────────────────────────────────────────────────
-  dem_df   <- baseline[baseline$record_v %in% filtered$record_id, , drop = FALSE]
-  age_data <- if ("age_v" %in% names(dem_df)) list(
-    under_70 = sum(dem_df$age_v < 70, na.rm = TRUE),
-    over_70  = sum(dem_df$age_v >= 70, na.rm = TRUE)) else NULL
-  nela_data <- if ("nela_v" %in% names(dem_df)) list(
-    under_5  = sum(dem_df$nela_v < 5, na.rm = TRUE),
-    over_5   = sum(dem_df$nela_v >= 5, na.rm = TRUE)) else NULL
+  # One value per participant, coalesced across ALL rows/events (baseline-event
+  # rows preferred). Reading only the baseline-event rows — as this previously
+  # did — silently dropped every participant whose demographics were entered on
+  # another event/row, so the demographics tables showed a fraction of the
+  # cohort while the rest of the report counted everyone. Values are coerced
+  # to numeric before comparison (CSV columns arrive as text, and character
+  # "<" is alphabetical, not numeric). Explicit not_recorded counts keep each
+  # table's total equal to the filtered cohort.
+  dem_first <- function(colname) {
+    if (!(colname %in% names(df))) return(NULL)
+    v   <- df[[colname]]
+    vc  <- trimws(as.character(v))
+    has <- !is.na(v) & nzchar(vc)
+    ids <- trimws(as.character(df$record_v))
+    ok  <- !is.na(ids) & nzchar(ids)
+    ord <- if (evcol %in% names(df)) {
+      bevt <- evt("baseline", default = NULL, cfg = cfg)
+      order(!(df[[evcol]] %in% (bevt %||% character(0))))   # baseline rows first
+    } else seq_len(nrow(df))
+    ord <- ord[ok[ord]]
+    per <- vapply(split(ord, ids[ord]), function(r) {
+      nz <- r[has[r]]
+      if (length(nz)) vc[nz[1]] else NA_character_
+    }, character(1))
+    per[names(per) %in% filtered$record_id]
+  }
+
+  dem_n <- nrow(filtered)
+  age_per <- dem_first("age_v")
+  age_num <- suppressWarnings(as.numeric(age_per))
+  age_data <- if (!is.null(age_per)) list(
+    under_70     = sum(age_num < 70, na.rm = TRUE),
+    over_70      = sum(age_num >= 70, na.rm = TRUE),
+    not_recorded = dem_n - sum(!is.na(age_num))) else NULL
+
+  nela_per <- dem_first("nela_v")
+  nela_num <- suppressWarnings(as.numeric(nela_per))
+  nela_data <- if (!is.null(nela_per)) list(
+    under_5      = sum(nela_num < 5, na.rm = TRUE),
+    over_5       = sum(nela_num >= 5, na.rm = TRUE),
+    not_recorded = dem_n - sum(!is.na(nela_num))) else NULL
 
   eth_labels <- cfg$ethnicity_labels
   white_codes <- cfg$white_ethnicity_codes %||% as.character(13:17)
-  eth_data <- if ("eth_v" %in% names(dem_df) && !is.null(eth_labels)) {
-    valid <- dem_df[!is.na(dem_df$eth_v), ]
-    if (nrow(valid) == 0) NULL else {
-      valid$eth_label <- eth_labels[as.character(valid$eth_v)]
-      valid$eth_label[is.na(valid$eth_label)] <-
-        paste0("Unknown (", valid$eth_v[is.na(valid$eth_label)], ")")
-      tbl <- as.data.frame(table(valid$eth_label), stringsAsFactors = FALSE)
+  eth_per <- dem_first("eth_v")
+  eth_data <- if (!is.null(eth_per) && !is.null(eth_labels)) {
+    eth_val <- eth_per[!is.na(eth_per)]
+    if (length(eth_val) == 0) NULL else {
+      eth_label <- unname(eth_labels[eth_val])
+      eth_label[is.na(eth_label)] <-
+        paste0("Unknown (", eth_val[is.na(eth_label)], ")")
+      tbl <- as.data.frame(table(eth_label), stringsAsFactors = FALSE)
       names(tbl) <- c("ethnicity","n")
       tbl$pct <- round(tbl$n / sum(tbl$n) * 100, 1)
       tbl <- tbl[order(-tbl$n), ]
-      iw <- as.character(valid$eth_v) %in% white_codes
-      list(table = tbl, white = sum(iw), minority = sum(!iw), total = nrow(valid))
+      iw <- eth_val %in% white_codes
+      list(table = tbl, white = sum(iw), minority = sum(!iw),
+           total = length(eth_val),
+           not_recorded = dem_n - length(eth_val))
     }
   } else NULL
+
+  # ── 24b. Per-participant baseline frame (baseline characteristics table) ──
+  # One row per filtered participant, demographic columns under their original
+  # trial names (what baseline_table.R resolves via fld()), each coalesced
+  # across events like the tables above. Numeric-looking columns are coerced
+  # so mean/SD formatting works on CSV text values.
+  dem_df <- data.frame(record_id = filtered$record_id, stringsAsFactors = FALSE)
+  dem_source_cols <- unique(vapply(
+    c("age","sex","ethnicity","nela_score","nrs_group","residence","must_score"),
+    function(r) fld(r, default = "", cfg = cfg) %||% "", character(1)))
+  dem_source_cols <- dem_source_cols[nzchar(dem_source_cols) &
+                                       dem_source_cols %in% names(df)]
+  for (sc in dem_source_cols) {
+    per  <- dem_first(sc)
+    vals <- unname(per[match(dem_df$record_id, names(per))])
+    num  <- suppressWarnings(as.numeric(vals))
+    dem_df[[sc]] <- if (identical(is.na(num), is.na(vals))) num else vals
+  }
+  if ("site_name" %in% names(filtered))
+    dem_df$site_name <- filtered$site_name
 
   # ── 25. Withdrawals ───────────────────────────────────────────────────────
   w <- withdrawn_df

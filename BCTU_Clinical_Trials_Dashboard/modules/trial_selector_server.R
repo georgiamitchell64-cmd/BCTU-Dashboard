@@ -26,7 +26,7 @@ trial_selector_server <- function(input, output, session, state) {
     if (!id_col %in% names(raw)) id_col <- "record_id"
     baseline <- cfg$redcap_events$baseline %||% "baseline_arm_1"
     if ("redcap_event_name" %in% names(raw)) {
-      length(unique(raw[[id_col]][raw$redcap_event_name == baseline]))
+      length(unique(raw[[id_col]][raw$redcap_event_name %in% baseline]))
     } else {
       length(unique(raw[[id_col]]))
     }

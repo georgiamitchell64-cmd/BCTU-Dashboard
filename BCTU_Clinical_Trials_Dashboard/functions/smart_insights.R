@@ -23,7 +23,7 @@
   if (!nrow(raw))   return(raw[0, , drop = FALSE])
   baseline_evt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
   if ("redcap_event_name" %in% names(raw)) {
-    raw[raw$redcap_event_name == baseline_evt, , drop = FALSE]
+    raw[raw$redcap_event_name %in% baseline_evt, , drop = FALSE]
   } else {
     raw
   }

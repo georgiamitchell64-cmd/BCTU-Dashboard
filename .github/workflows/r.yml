@@ -46,6 +46,8 @@ jobs:
         shell: Rscript {0}
       - name: Run pipeline smoke tests
         run: Rscript tests/pipeline_smoke.R
+      - name: Run report demographics regression test
+        run: Rscript tests/report_demographics_test.R
 
   app-boot:
     name: App boots headlessly

@@ -13,20 +13,59 @@
   "_timestamp$"
 )
 
+# ── Participant-level value extraction ───────────────────────────────────────
+# A REDCap export is one row per participant-EVENT, so reading a demographic
+# straight off the baseline-event rows silently loses every participant whose
+# value was entered on a different event/row (consent events, repeat-instrument
+# rows, multi-arm event names). These helpers collapse the frame to ONE value
+# per participant: the first non-empty value, scanning the mapped baseline
+# event's rows first and every other row after, so counts always cover the
+# whole cohort.
+
+.pb_id_col <- function(raw, cfg = NULL) {
+  id <- cfg$redcap_fields$record_id %||% "record_id"
+  if (!id %in% names(raw))
+    id <- if ("record_id" %in% names(raw)) "record_id" else names(raw)[1]
+  id
+}
+
+# Build once, reuse for every column: a list of row indices per participant,
+# ordered so baseline-event rows are scanned first. `%in%` (not `==`) so
+# multi-event baseline mappings and NA event names are handled.
+pb_participant_index <- function(raw, cfg = NULL) {
+  ids <- trimws(as.character(raw[[.pb_id_col(raw, cfg)]]))
+  ok  <- !is.na(ids) & nzchar(ids)
+  ord <- seq_len(nrow(raw))
+  if ("redcap_event_name" %in% names(raw)) {
+    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
+    is_base <- raw$redcap_event_name %in% bevt
+    ord <- order(!is_base)          # stable: baseline rows first
+  }
+  ord <- ord[ok[ord]]
+  split(ord, ids[ord])
+}
+
+# One value per participant for `col` (character; NA when never recorded).
+pb_first_values <- function(raw, col, idx) {
+  v  <- raw[[col]]
+  vc <- trimws(as.character(v))
+  has <- !is.na(v) & nzchar(vc)
+  vapply(idx, function(r) {
+    nz <- r[has[r]]
+    if (length(nz)) vc[nz[1]] else NA_character_
+  }, character(1))
+}
+
 # Heuristic: detect columns suitable for breakdowns from a raw frame.
 # Returns a data.frame: column, label, type ("numeric" | "categorical"),
-# n_unique, n_missing.
+# n_unique, n_missing. Counts are per PARTICIPANT (values coalesced across
+# events), not per row.
 detect_breakdown_columns <- function(raw, cfg = NULL) {
   if (is.null(raw) || !nrow(raw)) return(data.frame())
 
-  # Filter to baseline rows (most demographics live there)
-  base <- raw
-  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
-  }
+  idx <- pb_participant_index(raw, cfg)
 
-  cols <- names(base)
+  cols <- names(raw)
   is_skip <- vapply(cols, function(c)
     any(vapply(.PB_SKIP_PATTERNS, function(p)
       grepl(p, c, ignore.case = TRUE), logical(1))),
@@ -36,11 +75,7 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
   if (!length(cols)) return(data.frame())
 
   rows <- lapply(cols, function(c) {
-    v <- base[[c]]
-    if (is.null(v)) return(NULL)
-
-    # Treat empty strings as NA
-    if (is.character(v) || is.factor(v)) v[v == ""] <- NA
+    v <- pb_first_values(raw, c, idx)
 
     n_total   <- length(v)
     n_missing <- sum(is.na(v))
@@ -139,19 +174,14 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
 # Returns a list of lists: col, label, values, suggested (named char vec or NULL).
 find_unmapped_code_cols <- function(raw, cfg, det) {
   if (is.null(raw) || !nrow(raw) || !nrow(det)) return(list())
-  base <- raw
-  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
-  }
+  idx <- pb_participant_index(raw, cfg)
   results <- list()
   for (i in seq_len(nrow(det))) {
     r <- det[i, ]
     if (r$type != "categorical") next
     col <- r$column
-    if (!col %in% names(base)) next
-    v <- as.character(base[[col]])
-    v[v == ""] <- NA
+    if (!col %in% names(raw)) next
+    v <- pb_first_values(raw, col, idx)
     if (!.looks_like_codes(v)) next
     # Skip if cfg already has a label mapping for this column
     mapping <- cfg$column_labels[[col]] %||% NULL
@@ -176,19 +206,15 @@ find_unmapped_code_cols <- function(raw, cfg, det) {
 # the "edit / rename groupings" view so saved labels can be changed later.
 find_editable_code_cols <- function(raw, cfg, det) {
   if (is.null(raw) || !nrow(raw) || is.null(det) || !nrow(det)) return(list())
-  base <- raw
-  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
-  }
+  idx <- pb_participant_index(raw, cfg)
   has <- function(x, k) !is.null(x) && k %in% names(x)
   results <- list()
   for (i in seq_len(nrow(det))) {
     r <- det[i, ]
     if (r$type != "categorical") next
     col <- r$column
-    if (!col %in% names(base)) next
-    v <- as.character(base[[col]]); v[v == ""] <- NA
+    if (!col %in% names(raw)) next
+    v <- pb_first_values(raw, col, idx)
     if (!.looks_like_codes(v)) next
     uniq_vals <- sort(unique(v[!is.na(v)]))
     if (!length(uniq_vals)) next
@@ -295,14 +321,12 @@ compute_breakdown <- function(raw, col, cfg = NULL,
                               max_segments = 8) {
   if (is.null(raw) || !nrow(raw) || !col %in% names(raw)) return(NULL)
 
-  base <- raw
-  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
-  }
-
-  v <- base[[col]]
-  if (is.character(v) || is.factor(v)) v[v == ""] <- NA
+  # One value per PARTICIPANT, coalesced across every row/event (baseline
+  # rows first). Previously this read only the baseline-event rows, so any
+  # participant whose demographics were recorded on another event/row was
+  # silently missing from the counts.
+  idx <- pb_participant_index(raw, cfg)
+  v   <- pb_first_values(raw, col, idx)
 
   v_num <- suppressWarnings(as.numeric(v))
   is_numeric_like <- mean(!is.na(v_num)) >= 0.8 &&
@@ -347,7 +371,7 @@ compute_breakdown <- function(raw, col, cfg = NULL,
          n = as.integer(tab[i]),
          pct = if (length(vals)) tab[i] / length(vals) else 0)
   })
-  headline <- sprintf("%d categories · %d records",
+  headline <- sprintf("%d categories · %d participants",
                      min(length(unique(v[!is.na(v)])), 99),
                      length(vals))
   list(type = "categorical", label = .pretty_label(col),

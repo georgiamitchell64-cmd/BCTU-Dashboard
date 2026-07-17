@@ -1113,6 +1113,8 @@ if (!is.null(ad)) {
   po <- if (tot > 0) round(o70/tot*100) else 0
   cat(sprintf('<div class="chip" style="background:var(--teal-tint)"><b style="color:var(--teal)">%d</b><span>Under 70 (%d%%)</span></div>', u70, pu))
   cat(sprintf('<div class="chip"><b>%d</b><span>70 and over (%d%%)</span></div>', o70, po))
+  nr <- safe(ad$not_recorded, 0)
+  if (nr > 0) cat(sprintf('<div class="chip" style="opacity:.65"><b>%d</b><span>Not recorded</span></div>', nr))
 } else cat('<div class="chip"><b>—</b><span>No age data</span></div>')
 ```
     </div>
@@ -1129,6 +1131,8 @@ if (!is.null(nd)) {
   po <- if (tot > 0) round(o5/tot*100) else 0
   cat(sprintf('<div class="chip" style="background:var(--teal-tint)"><b style="color:var(--teal)">%d</b><span>Under 5%% (%d%%)</span></div>', u5, pu))
   cat(sprintf('<div class="chip"><b>%d</b><span>5%% and over (%d%%)</span></div>', o5, po))
+  nr <- safe(nd$not_recorded, 0)
+  if (nr > 0) cat(sprintf('<div class="chip" style="opacity:.65"><b>%d</b><span>Not recorded</span></div>', nr))
 } else cat('<div class="chip"><b>—</b><span>No NELA data</span></div>')
 ```
     </div>
@@ -1160,6 +1164,8 @@ if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
       cat(sprintf('<div class="note" style="margin-top:8px">White : ethnic-minority ratio <b style="color:var(--navy);font-style:normal">%g : 1</b> · representative spread will be re-reviewed at pilot end.</div>', g))
     }
   }
+  nr <- safe(demo$ethnicity$not_recorded, 0)
+  if (nr > 0) cat(sprintf('<div class="note" style="margin-top:4px">%d participant(s) with no ethnicity recorded.</div>', nr))
 } else cat('<div class="note">No ethnicity data available.</div>')
 ```
   </div>
