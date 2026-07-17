@@ -88,7 +88,7 @@
   if (!is.null(raw) && nrow(raw) && "redcap_event_name" %in% names(raw)) {
     bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
     id_col <- cfg$redcap_fields$record_id %||% "record_id"
-    n_baseline <- length(unique(raw[[id_col]][raw$redcap_event_name == bevt]))
+    n_baseline <- length(unique(raw[[id_col]][raw$redcap_event_name %in% bevt]))
   }
   pct <- if (target > 0) min(1, n_baseline / target) else 0
 

@@ -26,7 +26,7 @@ trial_selector_server <- function(input, output, session, state) {
     if (!id_col %in% names(raw)) id_col <- "record_id"
     baseline <- cfg$redcap_events$baseline %||% "baseline_arm_1"
     if ("redcap_event_name" %in% names(raw)) {
-      length(unique(raw[[id_col]][raw$redcap_event_name == baseline]))
+      length(unique(raw[[id_col]][raw$redcap_event_name %in% baseline]))
     } else {
       length(unique(raw[[id_col]]))
     }
@@ -2163,16 +2163,185 @@ trial_selector_server <- function(input, output, session, state) {
       if (!nzchar(key) || key %in% seen) return(NULL)
       seen <<- c(seen, key)
       id  <- paste0("wiz_tp_evt_", key)
+      # Typed value wins; otherwise fall back to the metadata-import suggestion
+      # (rv$wiz_evt_prefill) when the field renders for the first time.
+      val <- isolate(input[[id]])
+      if (is.null(val) || !nzchar(val))
+        val <- isolate(rv$wiz_evt_prefill)[[key]] %||% ""
       div(style = "display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;margin-bottom:8px;",
           tags$label(tp, style = "font-size:12px;font-weight:600;color:var(--ov-navy);
                                   background:var(--ov-rail);border:1px solid var(--ov-line);
                                   border-radius:6px;padding:7px 10px;text-align:center;margin:0;"),
           textInput(id, label = NULL,
-                    value = isolate(input[[id]]) %||% "",
+                    value = val,
                     placeholder = paste0(key, "_arm_1"),
                     width = "100%"))
     })
     div(style = "margin-top:10px;", rows)
+  })
+
+  # ── Step 3: metadata import (adapter → suggestion engine → prefill) ──────
+  # Runs the platform pipeline (functions/adapters/, functions/pipeline/) over
+  # the uploaded data dictionary / export, then pre-fills the event and field
+  # steps with the top suggestion for each dashboard concept. The user reviews
+  # everything on steps 4–5 before creating; nothing is auto-committed.
+  observeEvent(input$wiz_meta_files, {
+    files <- input$wiz_meta_files
+    if (is.null(files) || !nrow(files)) return()
+
+    # fileInput stores uploads as 0.csv, 1.csv… — restore the real names so
+    # extension- and content-based detection sees what the user sees.
+    paths <- vapply(seq_len(nrow(files)), function(i) {
+      dest <- file.path(dirname(files$datapath[i]), basename(files$name[i]))
+      ok <- tryCatch(file.rename(files$datapath[i], dest), error = function(e) FALSE)
+      if (isTRUE(ok)) dest else files$datapath[i]
+    }, character(1))
+
+    res <- withProgress(
+      message = "Reading project metadata",
+      detail  = "Detecting source and scoring field mappings…",
+      value   = 0.4,
+      tryCatch({
+        det     <- detect_source(paths)
+        adapter <- get_adapter(det$adapter[1])
+        pkg     <- adapter_read(adapter, paths)
+        sugg    <- suggest_mappings(pkg)
+        list(det = det, pkg = pkg, sugg = sugg,
+             top = top_suggestions(sugg), events = suggest_events(pkg))
+      }, error = function(e) {
+        showNotification(paste("Could not read the file(s):",
+                               conditionMessage(e)),
+                         type = "error", duration = 10)
+        NULL
+      })
+    )
+    if (is.null(res)) return()
+    rv$wiz_meta <- res
+
+    # ── Prefill fields (step 5) from auto-confident suggestions ─────────────
+    n_fld <- 0L
+    for (cid in names(.WIZ_CONCEPT_INPUTS)) {
+      f <- res$top$field_name[res$top$concept_id == cid & res$top$auto]
+      if (length(f) == 1 && nzchar(f)) {
+        updateTextInput(session, .WIZ_CONCEPT_INPUTS[[cid]], value = f)
+        n_fld <- n_fld + 1L
+      }
+    }
+    auto_ids <- res$top$concept_id[res$top$auto]
+    updateCheckboxInput(session, "wiz_cap_demographics",
+      value = any(startsWith(auto_ids, "demographics.")))
+    updateCheckboxInput(session, "wiz_cap_procedure",
+      value = any(auto_ids %in% c("operation.date", "discharge.date")))
+
+    # ── Prefill events (step 4) ──────────────────────────────────────────────
+    n_ev <- 0L
+    if (!is.null(res$events$baseline)) {
+      updateTextInput(session, "wiz_ev_baseline", value = res$events$baseline)
+      n_ev <- n_ev + 1L
+    }
+    if (length(res$events$sub_forms)) {
+      updateTextInput(session, "wiz_ev_subforms",
+                      value = paste(res$events$sub_forms, collapse = ", "))
+      n_ev <- n_ev + 1L
+    }
+    sel <- isolate(input$wiz_timepoints) %||% character(0)
+    prefill <- list()
+    for (role in names(.WIZ_EVENT_TIMEPOINTS)) {
+      ev <- res$events[[role]]
+      if (is.null(ev)) next
+      tp  <- .WIZ_EVENT_TIMEPOINTS[[role]]
+      key <- .wiz_tp_slug(tp)
+      sel <- union(sel, tp)
+      prefill[[key]] <- ev
+      # Update in place if the timepoint field is already rendered; the
+      # renderUI fallback below covers the not-yet-rendered case.
+      updateTextInput(session, paste0("wiz_tp_evt_", key), value = ev)
+      n_ev <- n_ev + 1L
+    }
+    rv$wiz_evt_prefill <- prefill
+    updateSelectizeInput(session, "wiz_timepoints", selected = sel)
+
+    showNotification(
+      sprintf("Metadata read: pre-filled %d field(s) and %d event(s). Review them on the next steps.",
+              n_fld, n_ev),
+      type = "message", duration = 8)
+  })
+
+  # Suggestion review panel under the upload box on step 3.
+  output$wiz_meta_summary <- renderUI({
+    meta <- rv$wiz_meta
+    if (is.null(meta)) return(NULL)
+    pkg <- meta$pkg
+    src_label <- meta$det$label[1]
+    conf      <- meta$det$confidence[1]
+    n_dict    <- sum(!pkg$schema$inferred)
+    from_dict <- n_dict > 0
+
+    stat <- function(val, lbl) {
+      div(style = "text-align:center;padding:10px 14px;",
+          div(style = "font-size:20px;font-weight:700;color:#1B4F6B;", val),
+          div(style = "font-size:11px;color:#64748B;", lbl))
+    }
+
+    conf_badge <- function(score) {
+      col <- if (score >= 0.8) "#059669" else if (score >= 0.6) "#D97706" else "#94A3B8"
+      span(style = sprintf("background:%s1A;color:%s;font-weight:700;font-size:11px;
+                            padding:2px 8px;border-radius:10px;", col, col),
+           paste0(round(score * 100), "%"))
+    }
+
+    reg <- concept_registry()
+    rows <- lapply(names(.WIZ_CONCEPT_INPUTS), function(cid) {
+      cand <- meta$top[meta$top$concept_id == cid, ]
+      concept_lbl <- reg[[cid]]$label %||% cid
+      if (!nrow(cand)) {
+        return(tags$tr(
+          tags$td(style = "padding:6px 10px;font-weight:600;color:#1B4F6B;", concept_lbl),
+          tags$td(style = "padding:6px 10px;color:#94A3B8;", "no match found"),
+          tags$td(""), tags$td("")))
+      }
+      fld_lbl <- cand$label[1]
+      show_lbl <- if (!is.na(fld_lbl) && nzchar(fld_lbl) &&
+                      !identical(fld_lbl, cand$field_name[1])) {
+        tagList(span(style = "font-weight:600;", fld_lbl), tags$br(),
+                tags$code(style = "font-size:11px;", cand$field_name[1]))
+      } else {
+        tags$code(cand$field_name[1])
+      }
+      tags$tr(
+        tags$td(style = "padding:6px 10px;font-weight:600;color:#1B4F6B;", concept_lbl),
+        tags$td(style = "padding:6px 10px;", show_lbl),
+        tags$td(style = "padding:6px 10px;", conf_badge(cand$score[1])),
+        tags$td(style = "padding:6px 10px;font-size:11px;color:#64748B;", cand$reasons[1]))
+    })
+
+    tagList(
+      div(class = "nt-card",
+          div(class = "nt-group-label", "What was read"),
+          div(style = "display:flex;gap:6px;align-items:center;flex-wrap:wrap;",
+              span(style = "font-weight:700;color:#1B4F6B;", src_label),
+              conf_badge(conf),
+              span(style = "font-size:12px;color:#64748B;",
+                   if (from_dict) "· metadata from data dictionary (labels, types, choices)"
+                   else "· no dictionary supplied — types inferred from the data")),
+          div(style = "display:flex;justify-content:space-around;margin-top:8px;
+                       border-top:1px solid rgba(46,196,165,.15);",
+              stat(nrow(pkg$schema), "fields"),
+              stat(nrow(pkg$forms),  "forms"),
+              stat(nrow(pkg$events), "events"),
+              stat(if (!is.null(pkg$data$records)) nrow(pkg$data$records) else 0, "rows"))),
+      div(class = "nt-card",
+          div(class = "nt-group-label", "Suggested mappings"),
+          div(class = "nt-hint",
+              "These pre-fill the next two steps — change any of them there. Confirmed mappings teach the app for future trials."),
+          div(style = "overflow-x:auto;",
+              tags$table(style = "width:100%;border-collapse:collapse;font-size:12.5px;",
+                tags$thead(tags$tr(
+                  tags$th(style = "text-align:left;padding:6px 10px;color:#64748B;", "Dashboard concept"),
+                  tags$th(style = "text-align:left;padding:6px 10px;color:#64748B;", "Suggested field"),
+                  tags$th(style = "text-align:left;padding:6px 10px;color:#64748B;", "Confidence"),
+                  tags$th(style = "text-align:left;padding:6px 10px;color:#64748B;", "Why"))),
+                tags$tbody(rows)))))
   })
 
   # Capture toggles on the Field-mapping step: default the procedure group on
@@ -2214,7 +2383,25 @@ trial_selector_server <- function(input, output, session, state) {
   })
 
   wiz_step  <- reactiveVal(1L)
-  WIZ_TOTAL <- 6L
+  WIZ_TOTAL <- 7L
+
+  # Dashboard concept id → wizard input id. One table drives the metadata
+  # prefill (step 3), the suggestion review UI, and the trial.json written on
+  # create, so they can never drift apart.
+  .WIZ_CONCEPT_INPUTS <- c(
+    "participant.id"         = "wiz_fld_record_id",
+    "site.name"              = "wiz_fld_site",
+    "randomisation.datetime" = "wiz_fld_rand_dt",
+    "demographics.age"       = "wiz_fld_age",
+    "demographics.sex"       = "wiz_fld_sex",
+    "demographics.ethnicity" = "wiz_fld_ethnicity",
+    "operation.date"         = "wiz_fld_op_date",
+    "discharge.date"         = "wiz_fld_discharge_date",
+    "status_change.type"     = "wiz_fld_cos_type"
+  )
+  # Suggested event roles → the follow-up timepoint labels used on step 4.
+  .WIZ_EVENT_TIMEPOINTS <- c(discharge = "Discharge",
+                             day_30 = "Day 30", day_90 = "Day 90")
 
   # Step-1 validation, shared by Next and the clickable stepper.
   .wiz_validate_step1 <- function() {
@@ -2248,6 +2435,8 @@ trial_selector_server <- function(input, output, session, state) {
   # Open the full-page setup (swap out the home selector) and reset the form.
   open_new_trial <- function() {
     shinyjs::reset("new_trial_form")
+    rv$wiz_meta        <- NULL
+    rv$wiz_evt_prefill <- NULL
     shinyjs::hide("trial_selector_panel")
     shinyjs::show("new_trial_panel")
     show_step(1L)
@@ -2362,9 +2551,15 @@ trial_selector_server <- function(input, output, session, state) {
     }
     wp_label <- if (length(wp_names)) paste(wp_names, collapse = " \u00b7 ") else "Single (no work packages)"
 
+    meta_label <- if (!is.null(rv$wiz_meta)) {
+      paste0(rv$wiz_meta$det$label[1], " — ",
+             sum(rv$wiz_meta$top$auto %||% FALSE), " mappings suggested")
+    } else "Not imported (mappings typed by hand)"
+
     tagList(
       row("Trial code",          code),
       row("Short name",          sn),
+      row("Metadata",            meta_label),
       row("Full name",           input$wiz_full_name %||% "\u2014"),
       row("Category",            input$wiz_category %||% "Other"),
       row("Trial type",          type_label %||% "Randomised"),
@@ -2705,6 +2900,69 @@ trial_config <- list(
     # Write config file
     tryCatch({
       writeLines(config_text, file.path(trial_dir, "config.R"))
+
+      # Declarative twin (trials/<code>/trial.json). Captures the same mapping
+      # as concept ids so the canonical pipeline can read it without sourcing
+      # R code, and records the source fingerprint for drift detection when
+      # metadata was imported on step 3. See docs/ARCHITECTURE.md §9.
+      tryCatch({
+        concepts <- list()
+        cap_on <- function(cid) {
+          if (startsWith(cid, "demographics.")) return(isTRUE(input$wiz_cap_demographics))
+          if (cid %in% c("operation.date", "discharge.date")) return(isTRUE(input$wiz_cap_procedure))
+          TRUE
+        }
+        for (cid in names(.WIZ_CONCEPT_INPUTS)) {
+          if (!cap_on(cid)) next
+          v <- trimws(input[[.WIZ_CONCEPT_INPUTS[[cid]]]] %||% "")
+          if (nzchar(v)) concepts[[cid]] <- list(field = v)
+        }
+
+        events <- list()
+        bl <- trimws(input$wiz_ev_baseline %||% "")
+        if (nzchar(bl)) events$baseline <- list(source_events = as.list(bl))
+        seen_ev <- "baseline"
+        for (tp in (input$wiz_timepoints %||% character(0))) {
+          key <- .wiz_tp_slug(tp)
+          if (!nzchar(key) || key %in% seen_ev) next
+          seen_ev <- c(seen_ev, key)
+          ev <- trimws(input[[paste0("wiz_tp_evt_", key)]] %||% "")
+          if (nzchar(ev)) events[[key]] <- list(source_events = as.list(ev))
+        }
+        sf <- trimws(strsplit(trimws(input$wiz_ev_subforms %||% ""), ",")[[1]])
+        sf <- sf[nzchar(sf)]
+        if (length(sf)) events$sub_forms <- list(source_events = as.list(sf))
+
+        meta_src <- rv$wiz_meta$pkg$source
+        save_trial_json(trial_dir, list(
+          config_version = TRIAL_CONFIG_VERSION,
+          meta = list(code = code, name = input$wiz_full_name %||% sn,
+                      short_name = sn,
+                      trial_target = as.integer(input$wiz_target %||% 100),
+                      category = input$wiz_category %||% "Other"),
+          source = list(
+            adapter  = meta_src$adapter %||% "redcap_csv",
+            data_dir = if (nzchar(trimws(input$wiz_data_path %||% "")))
+              gsub("\\\\", "/", input$wiz_data_path) else NULL),
+          mapping = list(
+            source_fingerprint = meta_src$fingerprint %||% NULL,
+            concepts = concepts,
+            events   = events)
+        ))
+
+        # Learn: each confirmed concept→field pair improves suggestions for
+        # the next trial (functions/pipeline/concepts.R synonym library).
+        if (!is.null(rv$wiz_meta)) {
+          sch <- rv$wiz_meta$pkg$schema
+          for (cid in names(concepts)) {
+            f <- concepts[[cid]]$field
+            lbl <- sch$label[match(f, sch$field_name)]
+            record_confirmed_mapping(cid, f,
+                                     field_label = if (!is.na(lbl)) lbl else NULL,
+                                     trial_code = code)
+          }
+        }
+      }, error = function(e) message("trial.json write: ", e$message))
 
       # Seed the trial's reports/ folder with copies of the canonical Rmd
       # templates. Trial managers can edit them via Trial Settings → Report

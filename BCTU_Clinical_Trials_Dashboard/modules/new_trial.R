@@ -15,12 +15,13 @@
 # Step metadata (kept in sync with WIZ_TOTAL / the wiz_step_N divs below and
 # the show_step() helper in trial_selector_server.R).
 NT_STEPS <- list(
-  list(n = 1, title = "Trial basics",   blurb = "Name, target and design"),
+  list(n = 1, title = "Trial basics",    blurb = "Name, target and design"),
   list(n = 2, title = "Data & branding", blurb = "Folders, logo and colours"),
-  list(n = 3, title = "REDCap events",  blurb = "Map your event names"),
-  list(n = 4, title = "Field mapping",  blurb = "Map your variable names"),
-  list(n = 5, title = "Features",       blurb = "Tabs and sections to show"),
-  list(n = 6, title = "Review & create", blurb = "Check it over and go")
+  list(n = 3, title = "Import metadata", blurb = "Auto-map from your data dictionary"),
+  list(n = 4, title = "Events",          blurb = "Map your event names"),
+  list(n = 5, title = "Field mapping",   blurb = "Map your variable names"),
+  list(n = 6, title = "Features",        blurb = "Tabs and sections to show"),
+  list(n = 7, title = "Review & create", blurb = "Check it over and go")
 )
 
 new_trial_setup_ui <- function() {
@@ -165,9 +166,32 @@ new_trial_setup_ui <- function() {
                           .nt_color("wiz_col_accent",    "Accent",    "#F59E0B")))
               )),
 
-              # ── Step 3 — Follow-up schedule (events) ──────────────────
+              # ── Step 3 — Import metadata (adapter + suggestion engine) ─
               shinyjs::hidden(div(class = "nt-step", id = "wiz_step_3",
-                  step_head("3", "Follow-up schedule",
+                  step_head("3", "Import metadata",
+                            "Let the app read your project structure and map the fields for you."),
+                  div(class = "nt-callout",
+                      HTML("Upload your <strong>REDCap Data Dictionary</strong>
+                            (Project Setup &rarr; Data Dictionary &rarr; download, CSV or XLSX),
+                            a <strong>data export</strong>, or both. Exports from other
+                            systems (MedSciNet, Panacea, plain CSV/Excel) work too.
+                            The app detects the source, reads field labels and types,
+                            and pre-fills the next two steps &mdash; you just review.
+                            <strong>Optional:</strong> skip this step to type the
+                            mappings by hand.")),
+                  div(class = "nt-card",
+                      fileInput("wiz_meta_files", label = NULL, multiple = TRUE,
+                                accept = c(".csv", ".xlsx", ".xls"),
+                                buttonLabel = "Browse…",
+                                placeholder = "Data dictionary and/or data export",
+                                width = "100%"),
+                      hint("Nothing is stored until you create the trial — files are only read to build suggestions.")),
+                  uiOutput("wiz_meta_summary")
+              )),
+
+              # ── Step 4 — Follow-up schedule (events) ──────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_4",
+                  step_head("4", "Follow-up schedule",
                             "Which REDCap events make up your trial's timeline?"),
                   div(class = "nt-callout",
                       HTML("For each timepoint, enter its <strong>REDCap event name</strong> — the value in the <code>redcap_event_name</code> column of your export (e.g. <code>baseline_arm_1</code>). Only Baseline is required. Not sure of the names? Leave them as-is and let the app auto-detect them on your first upload.")),
@@ -202,9 +226,9 @@ new_trial_setup_ui <- function() {
                                     value = "sub_forms_arm_1, ad_hoc_arm_1", width = "100%")))
               )),
 
-              # ── Step 4 — Field mapping ────────────────────────────────
-              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_4",
-                  step_head("4", "Field mapping",
+              # ── Step 5 — Field mapping ────────────────────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_5",
+                  step_head("5", "Field mapping",
                             "Map the REDCap variable names your export uses."),
                   div(class = "nt-callout",
                       HTML("Enter <strong>variable names</strong> (the column headers in your export), not their labels. The optional groups below adapt to what your trial captures — switch off anything that doesn't apply, so you're not asked for fields you don't collect.")),
@@ -265,9 +289,9 @@ new_trial_setup_ui <- function() {
                           textInput("wiz_fld_cos_type", label = NULL, placeholder = "cos_type", width = "100%")))
               )),
 
-              # ── Step 5 — Features ─────────────────────────────────────
-              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_5",
-                  step_head("5", "Features",
+              # ── Step 6 — Features ─────────────────────────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_6",
+                  step_head("6", "Features",
                             "Choose which tabs and sections to show. Change these any time in Trial Settings."),
                   div(class = "nt-card",
                       div(class = "nt-grid-2 nt-features",
@@ -281,8 +305,8 @@ new_trial_setup_ui <- function() {
                       hint("Uncheck PROMs for trials where patients don't complete questionnaires (e.g. observational, registry, biomarker-only)."))
               )),
 
-              # ── Step 6 — Review & create ──────────────────────────────
-              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_6",
+              # ── Step 7 — Review & create ──────────────────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_7",
                   step_head(HTML("&#x2714;"), "Review & create",
                             "One last look before the dashboard is generated."),
                   div(class = "nt-card nt-review",
