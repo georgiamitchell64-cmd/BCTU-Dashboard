@@ -6,6 +6,8 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const ExcelJS = require('exceljs');
 
 const { readWorkbook, cellToString, findHeaderRow, normaliseHeaders } = require('../src/main/workbook');
 const { detectMapping, buildSites } = require('../src/shared/importer');
@@ -43,6 +45,40 @@ test('duplicate and blank headers are made unique', () => {
     normaliseHeaders(['Email', 'Email', '', 'Site']),
     ['Email', 'Email (2)', 'Column 3', 'Site'],
   );
+});
+
+// Site IDs are identifiers, not quantities. Losing a leading zero turns site
+// 001 into site 1 and stops it matching anything else the trial holds.
+test('leading zeros survive a CSV import', async () => {
+  const file = path.join(os.tmpdir(), `scm-zeros-${process.pid}.csv`);
+  fs.writeFileSync(file, 'Site ID,Site Name,Email\n001,QE,a@nhs.net\n023,Addenbrookes,b@nhs.net\n');
+  try {
+    const workbook = await readWorkbook(file);
+    assert.deepStrictEqual(workbook.sheets[0].rows.map((r) => r['Site ID']), ['001', '023']);
+  } finally {
+    fs.unlinkSync(file);
+  }
+});
+
+test('a number shown with a zero-padding format keeps its padding', async () => {
+  const file = path.join(os.tmpdir(), `scm-numfmt-${process.pid}.xlsx`);
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Sites');
+  sheet.addRow(['Site ID', 'Site Name', 'Email']);
+  // Stored as the number 1 but displayed as 001, which is how Excel users
+  // normally set site numbers up.
+  sheet.addRow([1, 'QE', 'a@nhs.net']).getCell(1).numFmt = '000';
+  sheet.addRow([23, 'Addenbrookes', 'b@nhs.net']).getCell(1).numFmt = '000';
+  // A real number must not be padded or otherwise mangled.
+  sheet.addRow([3.5, 'Decimal', 'c@nhs.net']);
+  await workbook.xlsx.writeFile(file);
+
+  try {
+    const read = await readWorkbook(file);
+    assert.deepStrictEqual(read.sheets[0].rows.map((r) => r['Site ID']), ['001', '023', '3.5']);
+  } finally {
+    fs.unlinkSync(file);
+  }
 });
 
 test('an unsupported file type is rejected with a clear message', async () => {

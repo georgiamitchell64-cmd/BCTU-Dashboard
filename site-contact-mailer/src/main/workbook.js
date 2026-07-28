@@ -38,10 +38,30 @@ function cellToString(value) {
   return String(value).trim();
 }
 
+/**
+ * Read a cell as the text the user sees in Excel.
+ *
+ * Site identifiers are routinely stored as numbers but displayed with leading
+ * zeros through a "000" number format, and ExcelJS reports neither `.value`
+ * nor `.text` with the padding applied. Losing it would turn site 001 into
+ * site 1 and stop it matching anything else the trial holds, so the
+ * zero-padding formats are applied here.
+ */
+function formatCell(cell) {
+  const value = cell.value;
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    const format = String(cell.numFmt || '').replace(/["';@]/g, '');
+    if (/^0+$/.test(format) && format.length > 1) {
+      return String(value).padStart(format.length, '0');
+    }
+  }
+  return cellToString(value);
+}
+
 function rowValues(row, width) {
   const out = [];
   for (let col = 1; col <= width; col += 1) {
-    out.push(cellToString(row.getCell(col).value));
+    out.push(formatCell(row.getCell(col)));
   }
   return out;
 }
@@ -139,6 +159,9 @@ async function readWorkbook(filePath) {
   if (extension === '.csv' || extension === '.tsv' || extension === '.txt') {
     await workbook.csv.readFile(filePath, {
       parserOptions: { delimiter: extension === '.tsv' ? '\t' : ',' },
+      // ExcelJS converts anything number-like by default, which would turn
+      // site "001" into 1. Every column here is treated as text.
+      map: (datum) => datum,
     });
   } else if (extension === '.xlsx' || extension === '.xlsm') {
     await workbook.xlsx.readFile(filePath);
