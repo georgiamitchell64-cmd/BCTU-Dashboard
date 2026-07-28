@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;">
+  <title>Site Contact Mailer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">✉</span>
+    <div>
+      <h1>Site Contact Mailer</h1>
+      <p id="importSummary" class="brand-sub">No contact list imported</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button id="btnImport" class="btn btn-primary">Import contact list…</button>
+    <button id="btnExport" class="btn btn-ghost" title="Export the current list as CSV">Export</button>
+    <button id="btnSettings" class="btn btn-ghost" title="Settings">Settings</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ── Sites ──────────────────────────────────────────────────────── -->
+  <section class="pane pane-sites">
+    <div class="pane-head">
+      <h2>Sites</h2>
+      <span id="siteCount" class="muted"></span>
+    </div>
+
+    <div class="toolbar">
+      <input id="siteSearch" class="search" type="search"
+             placeholder="Search sites, IDs, contacts…" autocomplete="off">
+      <div class="toolbar-row">
+        <button id="btnSelectAll" class="link-btn">Select all</button>
+        <button id="btnSelectNone" class="link-btn">Clear</button>
+        <button id="btnSelectFiltered" class="link-btn">Select matching</button>
+      </div>
+      <div id="statusFilters" class="chips"></div>
+    </div>
+
+    <div id="siteList" class="site-list" role="list"></div>
+
+    <div id="sitesEmpty" class="empty-state">
+      <p class="empty-title">No sites yet</p>
+      <p>Import an Excel or CSV contact list to get started.</p>
+      <button id="btnImportEmpty" class="btn btn-primary">Import contact list…</button>
+    </div>
+  </section>
+
+  <!-- ── Compose ────────────────────────────────────────────────────── -->
+  <section class="pane pane-compose">
+    <div class="pane-head">
+      <h2>Compose</h2>
+      <div class="mode-switch" role="radiogroup" aria-label="Sending mode">
+        <button class="mode-btn is-active" data-mode="combined" role="radio" aria-checked="true">
+          One email
+        </button>
+        <button class="mode-btn" data-mode="merge" role="radio" aria-checked="false">
+          One per site
+        </button>
+      </div>
+    </div>
+
+    <div id="recipientBar" class="recipient-bar"></div>
+
+    <div class="field">
+      <label for="subject">Subject</label>
+      <input id="subject" type="text" placeholder="e.g. {{site_name}} — monthly recruitment update">
+    </div>
+
+    <div class="field field-grow">
+      <div class="label-row">
+        <label for="body">Message</label>
+        <div class="label-actions">
+          <select id="placeholderPicker" title="Insert a field from your spreadsheet">
+            <option value="">Insert field…</option>
+          </select>
+          <select id="templatePicker" title="Load a saved template">
+            <option value="">Templates…</option>
+          </select>
+          <button id="btnSaveTemplate" class="link-btn">Save template</button>
+        </div>
+      </div>
+      <textarea id="body" placeholder="Dear {{first_name|colleagues}},&#10;&#10;…"></textarea>
+    </div>
+
+    <div id="mergeOptions" class="merge-options hidden">
+      <label class="checkline">
+        <input id="perContact" type="checkbox">
+        <span>A separate email to each individual contact
+          <small>Off: one email per site, addressed to all of that site's contacts.</small>
+        </span>
+      </label>
+    </div>
+
+    <div id="composeWarnings" class="warnings hidden"></div>
+
+    <footer class="compose-footer">
+      <div class="delivery">
+        <label for="deliveryMethod">Send by</label>
+        <select id="deliveryMethod">
+          <option value="eml">Draft in my email app</option>
+          <option value="mailto">Open a compose window</option>
+          <option value="smtp">Send directly (SMTP)</option>
+        </select>
+      </div>
+      <div class="footer-actions">
+        <button id="btnCopy" class="btn btn-ghost">Copy addresses</button>
+        <button id="btnPreview" class="btn btn-ghost">Preview</button>
+        <button id="btnSend" class="btn btn-primary" disabled>Select sites first</button>
+      </div>
+    </footer>
+  </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<!-- ── Import wizard ──────────────────────────────────────────────── -->
+<div id="importModal" class="modal hidden">
+  <div class="modal-card modal-wide">
+    <header class="modal-head">
+      <h2>Import contact list</h2>
+      <button class="icon-btn" data-close="importModal" aria-label="Close">×</button>
+    </header>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field">
+          <label for="sheetPicker">Sheet</label>
+          <select id="sheetPicker"></select>
+        </div>
+        <div class="field">
+          <label for="layoutPicker">How is it laid out?</label>
+          <select id="layoutPicker">
+            <option value="per-contact">One row per contact</option>
+            <option value="per-site">One row per site, several email columns</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="hint" id="layoutHint"></p>
+
+      <div id="mappingFields" class="mapping-grid"></div>
+
+      <div id="emailColumnBox" class="email-columns"></div>
+
+      <div class="preview-block">
+        <div class="label-row">
+          <h3>Result</h3>
+          <span id="importStats" class="muted"></span>
+        </div>
+        <div id="importPreview" class="import-preview"></div>
+        <div id="importWarnings" class="warnings hidden"></div>
+      </div>
+    </div>
+    <footer class="modal-foot">
+      <label class="checkline compact">
+        <input id="mergeExisting" type="checkbox">
+        <span>Add to the existing list instead of replacing it</span>
+      </label>
+      <div class="footer-actions">
+        <button class="btn btn-ghost" data-close="importModal">Cancel</button>
+        <button id="btnConfirmImport" class="btn btn-primary">Import</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- ── Preview ────────────────────────────────────────────────────── -->
+<div id="previewModal" class="modal hidden">
+  <div class="modal-card modal-wide">
+    <header class="modal-head">
+      <h2>Preview</h2>
+      <button class="icon-btn" data-close="previewModal" aria-label="Close">×</button>
+    </header>
+    <div class="modal-body">
+      <div class="preview-nav">
+        <button id="prevMessage" class="btn btn-ghost">‹ Previous</button>
+        <span id="previewPosition" class="muted"></span>
+        <button id="nextMessage" class="btn btn-ghost">Next ›</button>
+      </div>
+      <div id="previewContent" class="preview-content"></div>
+    </div>
+    <footer class="modal-foot">
+      <div></div>
+      <div class="footer-actions">
+        <button class="btn btn-ghost" data-close="previewModal">Close</button>
+        <button id="btnSendFromPreview" class="btn btn-primary">Send</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- ── Settings ───────────────────────────────────────────────────── -->
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-card">
+    <header class="modal-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" data-close="settingsModal" aria-label="Close">×</button>
+    </header>
+    <div class="modal-body">
+      <div class="field">
+        <label for="senderAddress">Your email address</label>
+        <input id="senderAddress" type="email" placeholder="you@bham.ac.uk">
+        <p class="hint">Used as the To line when everyone else is bcc'd, and as the From address for direct sending.</p>
+      </div>
+
+      <label class="checkline">
+        <input id="forceBcc" type="checkbox">
+        <span>Always use Bcc<small>Even when only one site is selected.</small></span>
+      </label>
+
+      <label class="checkline">
+        <input id="putSelfInTo" type="checkbox">
+        <span>Put my address in To when using Bcc
+          <small>Recommended — a message with an empty To line is more likely to be filtered as spam.</small>
+        </span>
+      </label>
+
+      <div class="field">
+        <label for="bodyFormat">Message format</label>
+        <select id="bodyFormat">
+          <option value="plain">Plain text</option>
+          <option value="html">HTML</option>
+        </select>
+      </div>
+
+      <details class="smtp-block">
+        <summary>Direct sending (SMTP)</summary>
+        <p class="hint">
+          Only needed if you chose “Send directly”. Most university and NHS accounts
+          require an app password or a departmental relay — drafting into your own
+          email app avoids all of that, and keeps a copy in your Sent items.
+        </p>
+        <div class="field-row">
+          <div class="field grow">
+            <label for="smtpHost">Server</label>
+            <input id="smtpHost" type="text" placeholder="smtp.office365.com">
+          </div>
+          <div class="field narrow">
+            <label for="smtpPort">Port</label>
+            <input id="smtpPort" type="number" value="587">
+          </div>
+        </div>
+        <label class="checkline compact">
+          <input id="smtpSecure" type="checkbox">
+          <span>Use TLS on connect (port 465)</span>
+        </label>
+        <div class="field">
+          <label for="smtpUser">Username</label>
+          <input id="smtpUser" type="text" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="smtpPassword">Password</label>
+          <input id="smtpPassword" type="password" autocomplete="off" placeholder="Leave blank to keep the saved one">
+          <p id="smtpPasswordHint" class="hint"></p>
+        </div>
+        <button id="btnVerifySmtp" class="btn btn-ghost">Test connection</button>
+      </details>
+
+      <p id="appInfo" class="hint"></p>
+    </div>
+    <footer class="modal-foot">
+      <div></div>
+      <div class="footer-actions">
+        <button class="btn btn-ghost" data-close="settingsModal">Close</button>
+        <button id="btnSaveSettings" class="btn btn-primary">Save</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

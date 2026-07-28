@@ -1,0 +1,55 @@
+{
+  "name": "site-contact-mailer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Desktop app for importing a site contact list from Excel and emailing site contacts",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "sample": "node sample/make-sample.js",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "nodemailer": "^6.9.14"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "uk.ac.bham.bctu.site-contact-mailer",
+    "productName": "Site Contact Mailer",
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!**/*.test.js"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    }
+  }
+}
