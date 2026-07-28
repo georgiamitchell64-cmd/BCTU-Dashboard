@@ -32,7 +32,33 @@ being dropped silently.
 Expand a site to untick individual people. The bar above the subject always
 shows exactly who will be addressed and how.
 
-**Write** the message in the app. For a personalised send, use `{{fields}}`:
+**Choose who at each site** with the **Send to** chips. By default everyone at
+a selected site is written to; picking roles narrows it to just those people —
+only the PIs, only R&D, or the research teams. Contacts outside the chosen
+roles are struck through in the list rather than silently dropped, and a site
+with nobody in those roles is called out as skipped.
+
+Roles are grouped as they are read, so the many ways a spreadsheet writes the
+same job all land together: `PI`, `P.I.`, `Principal Investigator` and
+`Chief Investigator` become one **Principal Investigator** chip, and `R&D`,
+`R & D` and `Research and Development` become one **R&D** chip. Anything not
+recognised keeps its own wording and gets its own chip.
+
+**Write** the message with formatting — bold, italic, underline, fonts, sizes,
+text colour, highlighting, bullets, numbering, alignment, indents, links and
+tables. Pasting from Outlook or a webpage **keeps its formatting**: the markup
+is cleaned of Word's `mso-` cruft and stripped of anything executable, but the
+styling survives. `Load HTML…` pulls in a `.html` or `.eml` file as the
+message, and `</> Source` exposes the raw HTML for a message written
+elsewhere. **Attach file…** adds attachments to every email in the send.
+
+Formatted messages are sent as `multipart/alternative` — the HTML *and* a
+plain-text copy generated from it — so they read correctly on restricted mail
+clients, and their absence is a common reason for a message to score as spam.
+Images pasted into the body travel as proper inline attachments rather than
+`data:` URIs, which most mail clients refuse to render.
+
+For a personalised send, use `{{fields}}`:
 
 ```
 Subject: {{site_name}} — recruitment update
@@ -47,6 +73,10 @@ Dear {{first_name|colleagues}},
 a field, alongside built-ins like `{{site_name}}`, `{{site_id}}` and
 `{{today}}` — use the **Insert field** menu to see the full list. Subject and
 message can be saved as a template for next time.
+
+Placeholders keep working inside formatted text. Bolding half of a
+`{{site_name}}` splits it across tags, which would otherwise leave the raw
+`{{site_name}}` in the sent email; the app repairs that before merging.
 
 **Send** one of three ways:
 
@@ -103,9 +133,11 @@ cross-building from Linux to a signed Windows or macOS app needs extra tooling.
 npm test
 ```
 
-Covers address parsing, column detection, the To/Bcc rule, template rendering
-and the draft file format. `npm run sample` must have been run for the
-workbook tests to do anything (they skip themselves otherwise).
+Covers address parsing, column detection, role grouping and filtering, the
+To/Bcc rule, template rendering in both plain text and HTML, the paste
+sanitiser, and the MIME structure of the generated drafts. `npm run sample`
+must have been run for the workbook tests to do anything (they skip
+themselves otherwise).
 
 ## Notes for the trial office
 
@@ -137,19 +169,31 @@ will be asked for it again each session.
 src/
   shared/      Pure logic, no Electron — unit tested directly
     emails.js    address parsing, validation, de-duplication
-    importer.js  column detection, grouping rows into sites
-    compose.js   template rendering, the To/Bcc rule, the merge queue
-    mailer.js    .eml drafts, mailto links, nodemailer payloads
+    importer.js  column detection, role grouping, rows into sites
+    compose.js   template rendering, the To/Bcc rule, role filtering, merges
+    html.js      paste cleaning, sanitising, HTML->text, HTML placeholders
+    mailer.js    MIME drafts, mailto links, nodemailer payloads
   main/        Electron main process — the only code with disk/network access
-    main.js      window, menu, IPC handlers, delivery
+    main.js      window, menu, IPC handlers, attachments, delivery
     workbook.js  reading .xlsx/.csv via ExcelJS
     store.js     persisted list, templates, settings, encrypted credentials
     preload.js   the IPC bridge exposed to the page
   renderer/    The user interface (no Node access)
+    editor.js    the rich-text editor and its paste handling
 ```
+
+`shared/html.js` is loaded both ways: `require()`d by the main process, and
+included as a plain `<script>` in the renderer, because the sanitiser has to
+run synchronously as the user types and pastes.
 
 The renderer runs with `contextIsolation` on, `nodeIntegration` off and a
 restrictive content security policy; every privileged action goes through an
 explicit channel in `preload.js`. Parsed spreadsheets stay in the main
 process, so re-mapping columns re-runs the import there rather than shipping
 whole sheets to the page.
+
+The policy does allow `'unsafe-inline'` for styles, which rich-text editing
+requires — the editor produces inline `style` attributes and pasted email
+carries its own. Every piece of such HTML goes through the sanitiser first,
+scripts and event handlers are removed, and the renderer has no Node access,
+so the remaining exposure is limited to the page's own appearance.

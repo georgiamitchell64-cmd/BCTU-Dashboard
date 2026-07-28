@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
   setSmtpPassword: (password) => invoke('smtp:setPassword', password),
   verifySmtp: () => invoke('smtp:verify'),
 
+  chooseAttachments: () => invoke('attachments:choose'),
+  loadHtmlBody: () => invoke('body:loadHtml'),
+
   copyToClipboard: (text) => invoke('clipboard:write', text),
   exportCsv: (payload) => invoke('export:csv', payload),
   appInfo: () => invoke('app:info'),

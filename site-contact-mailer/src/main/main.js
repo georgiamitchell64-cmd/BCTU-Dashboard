@@ -8,6 +8,8 @@ const { app, BrowserWindow, dialog, ipcMain, shell, safeStorage, Menu, clipboard
 const { readWorkbook } = require('./workbook');
 const { Store } = require('./store');
 const { detectMapping, buildSites, mergeSiteLists } = require('../shared/importer');
+const { parseAddressCell } = require('../shared/emails');
+const { sanitizeHtml, cleanPastedHtml } = require('../shared/html');
 const { buildCombinedMessage, buildMergeQueue, BUILT_IN_FIELDS } = require('../shared/compose');
 const { buildEml, buildMailto, draftFileName, toNodemailer } = require('../shared/mailer');
 
@@ -175,10 +177,25 @@ function planMessages({ sites, template, mode, options }) {
     alwaysBccSelfAddress: settings.putSelfInTo,
     ...options,
   };
-  if (mode === 'merge') {
-    return buildMergeQueue(sites, template, { ...opts, perContact: Boolean(opts.perContact) });
-  }
-  return [buildCombinedMessage(sites, template, opts)];
+  // "Plain text only" in Settings discards the formatting rather than
+  // ignoring the setting — the text alternative is already generated from it.
+  const effective = settings.bodyFormat === 'plain'
+    ? { ...template, bodyHtml: '' }
+    : template;
+
+  const messages = mode === 'merge'
+    ? buildMergeQueue(sites, effective, { ...opts, perContact: Boolean(opts.perContact) })
+    : [buildCombinedMessage(sites, effective, opts)];
+
+  // Cc and attachments are the same on every message in a send, so they are
+  // applied here rather than threaded through the merge logic.
+  const cc = parseAddressCell(opts.cc || '').contacts;
+  const attachments = opts.attachments || [];
+  return messages.map((message) => ({
+    ...message,
+    cc: [...(message.cc || []), ...cc],
+    attachments,
+  }));
 }
 
 handle('compose:plan', async (payload) => {
@@ -308,6 +325,119 @@ handle('smtp:verify', async () => {
 });
 
 // ── Utilities ─────────────────────────────────────────────────────────────
+
+// Anything much larger than this makes for a message most mail servers will
+// bounce; Exchange commonly caps a message at 25-35 MB after encoding.
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+handle('attachments:choose', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Attach files',
+    properties: ['openFile', 'multiSelections'],
+  });
+  if (result.canceled || !result.filePaths.length) return [];
+
+  return result.filePaths.map((filePath) => {
+    const stats = fs.statSync(filePath);
+    if (stats.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error(
+        `"${path.basename(filePath)}" is ${(stats.size / 1024 / 1024).toFixed(1)} MB. `
+        + 'Most mail systems reject anything over about 20 MB — send a link instead.',
+      );
+    }
+    return {
+      fileName: path.basename(filePath),
+      contentType: contentTypeFor(filePath),
+      size: stats.size,
+      base64: fs.readFileSync(filePath).toString('base64'),
+    };
+  });
+});
+
+const CONTENT_TYPES = {
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.txt': 'text/plain',
+  '.csv': 'text/csv',
+  '.zip': 'application/zip',
+  '.rtf': 'application/rtf',
+};
+
+function contentTypeFor(filePath) {
+  return CONTENT_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+}
+
+/**
+ * Load an .html or .eml file as the message body — the route for reusing a
+ * newsletter or a message someone else drafted.
+ */
+handle('body:loadHtml', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Load a message',
+    properties: ['openFile'],
+    filters: [
+      { name: 'HTML or email', extensions: ['html', 'htm', 'eml', 'txt'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+
+  const filePath = result.filePaths[0];
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const extension = path.extname(filePath).toLowerCase();
+
+  let html = raw;
+  if (extension === '.eml') {
+    html = extractHtmlFromEml(raw);
+    if (!html) throw new Error('No HTML body found in that .eml file.');
+  } else if (extension === '.txt') {
+    html = require('../shared/html').textToHtmlFragment(raw);
+  }
+
+  // Keep only what is inside <body>, so the app's own page is not affected.
+  const bodyMatch = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(html);
+  if (bodyMatch) html = bodyMatch[1];
+
+  return { fileName: path.basename(filePath), html: sanitizeHtml(cleanPastedHtml(html)) };
+});
+
+/** Pull the text/html part out of a saved message, decoding its transfer encoding. */
+function extractHtmlFromEml(raw) {
+  const normalised = raw.replace(/\r\n/g, '\n');
+  // Split into MIME parts if there is a boundary, otherwise treat as one part.
+  const boundary = /boundary\s*=\s*"?([^";\n]+)"?/i.exec(normalised);
+  const chunks = boundary
+    ? normalised.split(new RegExp(`--${boundary[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+    : [normalised];
+
+  for (const chunk of chunks) {
+    if (!/content-type\s*:\s*text\/html/i.test(chunk)) continue;
+    const split = chunk.indexOf('\n\n');
+    if (split === -1) continue;
+    const headers = chunk.slice(0, split);
+    let body = chunk.slice(split + 2);
+    const encoding = /content-transfer-encoding\s*:\s*(\S+)/i.exec(headers);
+    const scheme = encoding ? encoding[1].toLowerCase() : '7bit';
+    if (scheme === 'base64') {
+      body = Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('utf8');
+    } else if (scheme === 'quoted-printable') {
+      body = body
+        .replace(/=\n/g, '')
+        .replace(/=([0-9A-F]{2})/gi, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
+    return body;
+  }
+  return null;
+}
 
 handle('clipboard:write', async (text) => {
   clipboard.writeText(String(text || ''));

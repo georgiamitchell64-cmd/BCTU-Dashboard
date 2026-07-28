@@ -147,6 +147,36 @@ function detectMapping(headers) {
   return mapping;
 }
 
+// Contact lists spell the same job several ways — "PI", "P.I.", "Principal
+// Investigator" — and sending "just to the PIs" has to catch all of them.
+// Each entry is [canonical name, test]. Order matters: the first match wins,
+// so the more specific patterns come first.
+const ROLE_GROUPS = [
+  ['Principal Investigator', /\b(p\.?i\.?|principal\s*investigator|chief\s*investigator|c\.?i\.?|local\s*investigator)\b/i],
+  ['Sub-Investigator', /\b(sub\s*-?\s*i\.?|sub\s*-?\s*investigator|co\s*-?\s*investigator)\b/i],
+  ['Research Nurse', /\b(research\s*(nurse|practitioner|midwife)|nurse|r\.?g\.?n\.?|ccrn?)\b/i],
+  ['Research Team', /\b(research\s*(team|team\s*inbox|group|delivery)|study\s*team|trials?\s*team|trials?\s*unit)\b/i],
+  ['R&D', /\b(r\s*&\s*d|r\s*and\s*d|research\s*(and|&)\s*development|r\s*&\s*i|research\s*(office|governance|department))\b/i],
+  ['Pharmacy', /\b(pharmac(y|ist)|dispensary)\b/i],
+  ['Data Manager', /\b(data\s*(manager|management|entry)|d\.?m\.?)\b/i],
+  ['Trial Coordinator', /\b(trials?\s*(co\s*-?\s*ordinator|coordinator|administrator|assistant|manager)|c\.?t\.?a\.?|study\s*co\s*-?\s*ordinator|co\s*-?\s*ordinator|coordinator|administrator|admin)\b/i],
+  ['Laboratory', /\b(lab(oratory)?|pathology|biochem)\b/i],
+];
+
+/**
+ * Group a free-text role into a consistent label so it can be filtered on.
+ * Anything unrecognised keeps its original wording rather than being forced
+ * into a bucket it does not belong in.
+ */
+function canonicalRole(role) {
+  const text = String(role || '').trim();
+  if (!text) return '';
+  for (const [name, pattern] of ROLE_GROUPS) {
+    if (pattern.test(text)) return name;
+  }
+  return text;
+}
+
 function cellText(row, column) {
   if (!column) return '';
   const value = row[column];
@@ -240,6 +270,7 @@ function buildSites(rows, mapping, options = {}) {
           name: contact.name || explicitName || '',
           email: contact.email,
           role: role || '',
+          roleGroup: canonicalRole(role),
           selected: true,
           sourceRow: rowNumber,
         });
@@ -287,6 +318,8 @@ function mergeSiteLists(existing, incoming, strategy = 'replace') {
 
 module.exports = {
   ROW_NUMBER,
+  ROLE_GROUPS,
+  canonicalRole,
   normaliseHeader,
   toFieldKey,
   detectMapping,

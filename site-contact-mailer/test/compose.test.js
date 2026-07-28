@@ -7,7 +7,7 @@ const {
   renderTemplate, buildContext, buildCombinedRecipients, buildCombinedMessage,
   buildMergeQueue, placeholdersUsed,
 } = require('../src/shared/compose');
-const { buildEml, buildMailto, draftFileName, textToHtml } = require('../src/shared/mailer');
+const { buildEml, buildMailto, draftFileName, textToHtml, toNodemailer } = require('../src/shared/mailer');
 
 function site(id, name, contacts, fields = {}) {
   return {
@@ -189,4 +189,180 @@ test('draft file names are ordered and safe for the filesystem', () => {
   // Characters Windows forbids in a filename must not survive.
   assert.strictEqual(draftFileName({ siteName: 'A\\B*C|D' }, 0), '001 ABCD.eml');
   assert.strictEqual(draftFileName({ siteId: '007', siteName: '' }, 1), '002 007.eml');
+});
+
+// ── Role filtering: "just the PIs", "just R&D" ────────────────────────────
+
+const { canonicalRole } = require('../src/shared/importer');
+const { contactsForSite, roleSummary, renderBody } = require('../src/shared/compose');
+
+const mixed = site('010', 'Mixed Site', [
+  { name: 'Dr Jane Bloggs', email: 'pi@nhs.net', role: 'Principal Investigator', roleGroup: 'Principal Investigator' },
+  { name: 'Ade Okoro', email: 'nurse@nhs.net', role: 'Research Nurse', roleGroup: 'Research Nurse' },
+  { name: 'R&D Office', email: 'rd@nhs.net', role: 'R&D', roleGroup: 'R&D' },
+]);
+
+test('canonicalRole groups the ways a spreadsheet writes the same job', () => {
+  for (const written of ['PI', 'P.I.', 'Principal Investigator', 'Chief Investigator']) {
+    assert.strictEqual(canonicalRole(written), 'Principal Investigator', `failed for "${written}"`);
+  }
+  for (const written of ['R&D', 'R & D', 'Research and Development', 'R&D Office']) {
+    assert.strictEqual(canonicalRole(written), 'R&D', `failed for "${written}"`);
+  }
+  assert.strictEqual(canonicalRole('Research Nurse'), 'Research Nurse');
+  assert.strictEqual(canonicalRole('Pharmacist'), 'Pharmacy');
+});
+
+test('an unrecognised role keeps its original wording', () => {
+  assert.strictEqual(canonicalRole('Sonographer'), 'Sonographer');
+  assert.strictEqual(canonicalRole(''), '');
+});
+
+test('no role filter means everyone at the site', () => {
+  assert.strictEqual(contactsForSite(mixed, {}).length, 3);
+  assert.strictEqual(contactsForSite(mixed, { roles: [] }).length, 3);
+});
+
+test('filtering to one role writes only to those people', () => {
+  const pis = contactsForSite(mixed, { roles: ['Principal Investigator'] });
+  assert.deepStrictEqual(pis.map((c) => c.email), ['pi@nhs.net']);
+});
+
+test('several roles can be combined', () => {
+  const chosen = contactsForSite(mixed, { roles: ['Principal Investigator', 'R&D'] });
+  assert.deepStrictEqual(chosen.map((c) => c.email), ['pi@nhs.net', 'rd@nhs.net']);
+});
+
+test('the role filter applies to a combined send too', () => {
+  const result = buildCombinedRecipients([mixed, qe], {
+    senderAddress: 'me@bham.ac.uk',
+    roles: ['Principal Investigator'],
+  });
+  // qe's contacts have no roleGroup set, so only the PI matches.
+  assert.deepStrictEqual(result.bcc.map((c) => c.email), ['pi@nhs.net']);
+});
+
+test('a merge skips sites with nobody in the chosen role', () => {
+  const noPi = site('011', 'Nurses Only', [
+    { email: 'n@nhs.net', role: 'Research Nurse', roleGroup: 'Research Nurse' },
+  ]);
+  const messages = buildMergeQueue([mixed, noPi], { subject: 'x', body: 'y' },
+    { roles: ['Principal Investigator'] });
+  assert.strictEqual(messages.length, 1);
+  assert.strictEqual(messages[0].siteId, '010');
+});
+
+test('roleSummary counts each role across the selection', () => {
+  assert.deepStrictEqual(roleSummary([mixed]), [
+    { role: 'Principal Investigator', count: 1 },
+    { role: 'R&D', count: 1 },
+    { role: 'Research Nurse', count: 1 },
+  ]);
+});
+
+// ── HTML message bodies ───────────────────────────────────────────────────
+
+test('an HTML template renders and carries a plain-text alternative', () => {
+  const context = buildContext(qe, { siteCount: 1 });
+  const rendered = renderBody({
+    subject: '{{site_name}} update',
+    bodyHtml: '<p>Dear <b>{{site_name}}</b>,</p><p>Thanks.</p>',
+  }, context);
+
+  assert.strictEqual(rendered.isHtml, true);
+  assert.strictEqual(rendered.subject, 'Queen Elizabeth update');
+  assert.strictEqual(rendered.bodyHtml, '<p>Dear <b>Queen Elizabeth</b>,</p><p>Thanks.</p>');
+  assert.strictEqual(rendered.body, 'Dear Queen Elizabeth,\n\nThanks.');
+});
+
+test('a plain template is unaffected by the HTML path', () => {
+  const context = buildContext(qe, { siteCount: 1 });
+  const rendered = renderBody({ subject: 'S', body: 'Plain {{site_name}}' }, context);
+  assert.strictEqual(rendered.isHtml, false);
+  assert.strictEqual(rendered.bodyHtml, null);
+  assert.strictEqual(rendered.body, 'Plain Queen Elizabeth');
+});
+
+test('an empty HTML body falls back to the plain body', () => {
+  const context = buildContext(qe, { siteCount: 1 });
+  const rendered = renderBody({ subject: 'S', bodyHtml: '<p><br></p>', body: 'Fallback' }, context);
+  assert.strictEqual(rendered.isHtml, false);
+  assert.strictEqual(rendered.body, 'Fallback');
+});
+
+test('a merge carries HTML through to every message', () => {
+  const messages = buildMergeQueue([qe, add], {
+    subject: '{{site_name}}',
+    bodyHtml: '<p>Hello {{site_name}}</p>',
+  });
+  assert.strictEqual(messages.length, 2);
+  assert.strictEqual(messages[0].bodyHtml, '<p>Hello Queen Elizabeth</p>');
+  assert.strictEqual(messages[1].bodyHtml, '<p>Hello Addenbrookes</p>');
+});
+
+// ── MIME structure of rich drafts ─────────────────────────────────────────
+
+const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+test('a plain message stays single-part', () => {
+  const eml = buildEml({ to: [{ email: 'a@nhs.net' }], subject: 'S', body: 'B' });
+  assert.match(eml, /^Content-Type: text\/plain; charset=UTF-8$/m);
+  assert.ok(!/multipart/.test(eml));
+});
+
+test('an HTML message is multipart/alternative with both parts', () => {
+  const eml = buildEml({
+    to: [{ email: 'a@nhs.net' }], subject: 'S',
+    bodyHtml: '<p>Hello <b>there</b></p>', body: 'Hello there',
+  });
+  assert.match(eml, /^Content-Type: multipart\/alternative; boundary="(.+)"$/m);
+  assert.match(eml, /Content-Type: text\/plain; charset=UTF-8/);
+  assert.match(eml, /Content-Type: text\/html; charset=UTF-8/);
+});
+
+test('a pasted image becomes a related part referenced by cid', () => {
+  const eml = buildEml({
+    to: [{ email: 'a@nhs.net' }], subject: 'S',
+    bodyHtml: `<p><img src="data:image/png;base64,${PNG_1PX}"></p>`,
+  });
+  assert.match(eml, /^Content-Type: multipart\/related;/m);
+  assert.match(eml, /Content-ID: <img1@site-contact-mailer>/);
+  assert.match(eml, /Content-Disposition: inline; filename="image1\.png"/);
+  // The data: URI must not survive into the sent HTML.
+  const html = Buffer.from(
+    /Content-Type: text\/html[\s\S]*?\r\n\r\n([A-Za-z0-9+/=\r\n]+)/.exec(eml)[1].replace(/\s/g, ''),
+    'base64',
+  ).toString('utf8');
+  assert.match(html, /src="cid:img1@site-contact-mailer"/);
+  assert.ok(!/data:image/.test(html));
+});
+
+test('attachments wrap the message in multipart/mixed', () => {
+  const eml = buildEml({
+    to: [{ email: 'a@nhs.net' }], subject: 'S', body: 'B',
+    attachments: [{ fileName: 'protocol.pdf', contentType: 'application/pdf', base64: 'JVBERi0=' }],
+  });
+  assert.match(eml, /^Content-Type: multipart\/mixed;/m);
+  assert.match(eml, /Content-Type: application\/pdf; name="protocol\.pdf"/);
+  assert.match(eml, /Content-Disposition: attachment; filename="protocol\.pdf"/);
+});
+
+test('an attachment with a non-ASCII name is RFC 2231 encoded', () => {
+  const eml = buildEml({
+    to: [{ email: 'a@nhs.net' }], subject: 'S', body: 'B',
+    attachments: [{ fileName: 'protocole-résumé.pdf', contentType: 'application/pdf', base64: 'JVBERi0=' }],
+  });
+  assert.match(eml, /filename\*=UTF-8''protocole-r%C3%A9sum%C3%A9\.pdf/);
+});
+
+test('nodemailer gets html, a text alternative and attachments', () => {
+  const payload = toNodemailer({
+    to: [{ email: 'a@nhs.net' }], subject: 'S',
+    bodyHtml: '<p>Hi</p>', body: 'Hi',
+    attachments: [{ fileName: 'x.pdf', contentType: 'application/pdf', base64: 'AAA' }],
+  }, { from: 'me@bham.ac.uk' });
+  assert.match(payload.html, /<p>Hi<\/p>/);
+  assert.strictEqual(payload.text, 'Hi');
+  assert.strictEqual(payload.attachments[0].filename, 'x.pdf');
+  assert.strictEqual(payload.attachments[0].encoding, 'base64');
 });

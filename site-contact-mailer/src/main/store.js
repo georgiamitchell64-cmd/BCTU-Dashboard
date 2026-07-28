@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS = {
   // With everyone in Bcc the message still needs a To, so the sender's own
   // address goes there.
   putSelfInTo: true,
-  bodyFormat: 'plain',
+  bodyFormat: 'html',
   deliveryMethod: 'eml',
   draftFolder: '',
   smtp: {
@@ -28,8 +28,12 @@ const DEFAULT_SETTINGS = {
   },
 };
 
+// 2: rich-text messages. Stores written by version 1 default bodyFormat to
+// 'plain', which would now silently strip the formatting the user just typed.
+const CURRENT_VERSION = 2;
+
 const DEFAULT_STATE = {
-  version: 1,
+  version: CURRENT_VERSION,
   settings: DEFAULT_SETTINGS,
   sites: [],
   templates: [],
@@ -54,7 +58,7 @@ class Store {
     try {
       const raw = fs.readFileSync(this.file, 'utf8');
       const parsed = JSON.parse(raw);
-      return {
+      const state = {
         ...DEFAULT_STATE,
         ...parsed,
         settings: {
@@ -63,6 +67,14 @@ class Store {
           smtp: { ...DEFAULT_SETTINGS.smtp, ...((parsed.settings || {}).smtp || {}) },
         },
       };
+
+      if (!parsed.version || parsed.version < 2) {
+        // The old default was plain text, chosen when there was no formatting
+        // to lose. Carrying it forward would throw away every rich message.
+        state.settings.bodyFormat = 'html';
+        state.version = CURRENT_VERSION;
+      }
+      return state;
     } catch (error) {
       if (error.code !== 'ENOENT') {
         // A corrupt file should not stop the app opening; keep the bad copy
@@ -123,7 +135,10 @@ class Store {
       id,
       name: template.name || 'Untitled',
       subject: template.subject || '',
+      // `body` is the plain-text alternative; `bodyHtml` is the formatted
+      // message. Templates saved before rich text have only the former.
       body: template.body || '',
+      bodyHtml: template.bodyHtml || '',
       updatedAt: new Date().toISOString(),
     };
     const index = this.state.templates.findIndex((t) => t.id === id);

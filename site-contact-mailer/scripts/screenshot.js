@@ -26,9 +26,23 @@ if (!/\.png$/i.test(output)) {
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'scm-shot-')));
 if (seedFile) fs.copyFileSync(seedFile, path.join(app.getPath('userData'), 'data.json'));
 
-require('../src/main/main.js');
-
 const problems = [];
+
+// Attach before the page loads, so errors thrown during the renderer's own
+// start-up are captured rather than missed while waiting.
+app.on('browser-window-created', (_event, window) => {
+  window.webContents.on('console-message', (_e, level, message, line, source) => {
+    if (level >= 2) problems.push(`${message}${source ? ` (${source}:${line})` : ''}`);
+  });
+  window.webContents.on('render-process-gone', (_e, details) => {
+    problems.push(`renderer gone: ${details.reason}`);
+  });
+  window.webContents.on('preload-error', (_e, preloadPath, error) => {
+    problems.push(`preload error in ${preloadPath}: ${error.message}`);
+  });
+});
+
+require('../src/main/main.js');
 
 app.whenReady().then(async () => {
   await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -39,13 +53,6 @@ app.whenReady().then(async () => {
     app.exit(1);
     return;
   }
-
-  window.webContents.on('console-message', (_event, level, message) => {
-    if (level >= 2) problems.push(message);
-  });
-  window.webContents.on('render-process-gone', (_event, details) => {
-    problems.push(`renderer gone: ${details.reason}`);
-  });
 
   // Let the renderer finish its initial load-and-render.
   await new Promise((resolve) => setTimeout(resolve, 1200));

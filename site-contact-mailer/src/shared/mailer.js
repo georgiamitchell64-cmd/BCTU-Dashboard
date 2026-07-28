@@ -17,6 +17,20 @@
 //                or a departmental relay.
 
 const { formatAddress } = require('./emails');
+const { htmlToText, wrapHtmlDocument, extractDataImages, textToHtmlFragment } = require('./html');
+
+let boundaryCounter = 0;
+
+/** Unique MIME boundary. Deterministic per process so tests can rely on it. */
+function makeBoundary(label) {
+  boundaryCounter += 1;
+  return `----=_SCM_${label}_${Date.now().toString(36)}_${boundaryCounter}`;
+}
+
+/** Reset boundary numbering — used by tests to get stable output. */
+function resetBoundaries() {
+  boundaryCounter = 0;
+}
 
 // Conservative: Outlook's own command line tops out around 8k, older
 // Windows shell handlers cut off far sooner, so warn well before that.
@@ -34,20 +48,9 @@ function foldBase64(base64) {
   return (base64.match(/.{1,76}/g) || []).join('\r\n');
 }
 
-function escapeHtml(text) {
-  return String(text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 /** Wrap a plain-text body as HTML, preserving the line breaks the user typed. */
 function textToHtml(text) {
-  const paragraphs = String(text || '')
-    .split(/\n{2,}/)
-    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
-    .join('\n');
-  return `<html><body style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">\n${paragraphs}\n</body></html>`;
+  return wrapHtmlDocument(`\n${textToHtmlFragment(text)}\n`);
 }
 
 function headerAddressList(contacts) {
@@ -61,32 +64,131 @@ function headerAddressList(contacts) {
     .join(', ');
 }
 
+/** One MIME part: headers, blank line, base64 body. */
+function mimePart(contentType, extraHeaders, content) {
+  return [
+    `Content-Type: ${contentType}`,
+    ...extraHeaders,
+    'Content-Transfer-Encoding: base64',
+    '',
+    foldBase64(Buffer.from(content, 'utf8').toString('base64')),
+  ].join('\r\n');
+}
+
+function encodeFileNameParam(name) {
+  const safe = String(name || 'attachment');
+  // RFC 2231 for non-ASCII filenames, plain quoting otherwise.
+  if (/^[\x20-\x7E]*$/.test(safe)) return `"${safe.replace(/"/g, '')}"`;
+  return `UTF-8''${encodeURIComponent(safe)}`;
+}
+
+function attachmentPart(attachment) {
+  const disposition = attachment.inline ? 'inline' : 'attachment';
+  const name = encodeFileNameParam(attachment.fileName);
+  const isPlain = /^"/.test(name);
+  const headers = [
+    `Content-Disposition: ${disposition}; ${isPlain ? `filename=${name}` : `filename*=${name}`}`,
+  ];
+  if (attachment.cid) headers.push(`Content-ID: <${attachment.cid}>`);
+  return [
+    `Content-Type: ${attachment.contentType || 'application/octet-stream'}; ${isPlain ? `name=${name}` : `name*=${name}`}`,
+    ...headers,
+    'Content-Transfer-Encoding: base64',
+    '',
+    foldBase64(attachment.base64),
+  ].join('\r\n');
+}
+
+function multipart(subtype, parts, boundary, extraParams = '') {
+  const body = parts.map((part) => `--${boundary}\r\n${part}`).join('\r\n');
+  return {
+    contentType: `multipart/${subtype}; boundary="${boundary}"${extraParams}`,
+    body: `${body}\r\n--${boundary}--`,
+  };
+}
+
 /**
- * Build a draft .eml. `format` is 'plain' or 'html'.
+ * Build a draft .eml.
  *
- * The message is intentionally single-part: Outlook's draft handling is more
- * reliable without multipart/alternative, and the user is going to review the
- * message in their client before sending anyway.
+ * The structure is chosen from what the message actually contains, because
+ * every extra layer is another thing a mail client can render badly:
+ *
+ *   text only, no files            -> text/plain
+ *   HTML                           -> multipart/alternative (plain + HTML)
+ *   HTML with pasted images        -> multipart/related wrapping the above
+ *   anything with attachments      -> multipart/mixed wrapping the above
+ *
+ * The plain-text alternative is always included with an HTML message: it is
+ * what recipients on restricted mail clients see, and its absence is a common
+ * reason for a message to score as spam.
  */
 function buildEml(message, options = {}) {
   const { format = 'plain' } = options;
-  const lines = [];
+  const attachments = (message.attachments || []).filter((a) => a && a.base64);
 
-  if (message.senderAddress) lines.push(`From: ${message.senderAddress}`);
-  if (message.to && message.to.length) lines.push(`To: ${headerAddressList(message.to)}`);
-  if (message.cc && message.cc.length) lines.push(`Cc: ${headerAddressList(message.cc)}`);
-  if (message.bcc && message.bcc.length) lines.push(`Bcc: ${headerAddressList(message.bcc)}`);
-  lines.push(`Subject: ${encodeHeaderWord(message.subject || '')}`);
-  lines.push('X-Unsent: 1');
-  lines.push('MIME-Version: 1.0');
-  lines.push(`Content-Type: text/${format === 'html' ? 'html' : 'plain'}; charset=UTF-8`);
-  lines.push('Content-Transfer-Encoding: base64');
-  lines.push('');
+  const wantsHtml = format === 'html' || Boolean(message.bodyHtml);
+  let htmlBody = null;
+  let inlineImages = [];
 
-  const body = format === 'html' ? textToHtml(message.body) : String(message.body || '');
-  lines.push(foldBase64(Buffer.from(body, 'utf8').toString('base64')));
+  if (wantsHtml) {
+    const raw = message.bodyHtml ? wrapHtmlDocument(message.bodyHtml) : textToHtml(message.body);
+    // Inline base64 images have to become real parts: most clients refuse to
+    // render a data: URI in a received message.
+    const extracted = extractDataImages(raw);
+    htmlBody = extracted.html;
+    inlineImages = extracted.images.map((image) => ({ ...image, inline: true }));
+  }
 
-  return `${lines.join('\r\n')}\r\n`;
+  const plainBody = message.body !== undefined && message.body !== null && String(message.body) !== ''
+    ? String(message.body)
+    : htmlToText(htmlBody || '');
+
+  let contentType;
+  let body;
+
+  if (!wantsHtml) {
+    contentType = 'text/plain; charset=UTF-8';
+    body = foldBase64(Buffer.from(plainBody, 'utf8').toString('base64'));
+  } else {
+    const alternative = multipart('alternative', [
+      mimePart('text/plain; charset=UTF-8', [], plainBody),
+      mimePart('text/html; charset=UTF-8', [], htmlBody),
+    ], makeBoundary('ALT'));
+
+    let current = alternative;
+    if (inlineImages.length) {
+      const relatedParts = [
+        `Content-Type: ${current.contentType}\r\n\r\n${current.body}`,
+        ...inlineImages.map(attachmentPart),
+      ];
+      current = multipart('related', relatedParts, makeBoundary('REL'), '; type="multipart/alternative"');
+    }
+    contentType = current.contentType;
+    body = current.body;
+  }
+
+  if (attachments.length) {
+    const inner = `Content-Type: ${contentType}\r\n${wantsHtml ? '' : 'Content-Transfer-Encoding: base64\r\n'}\r\n${body}`;
+    const mixed = multipart('mixed', [inner, ...attachments.map(attachmentPart)], makeBoundary('MIX'));
+    contentType = mixed.contentType;
+    body = mixed.body;
+  }
+
+  const headers = [];
+  if (message.senderAddress) headers.push(`From: ${message.senderAddress}`);
+  if (message.to && message.to.length) headers.push(`To: ${headerAddressList(message.to)}`);
+  if (message.cc && message.cc.length) headers.push(`Cc: ${headerAddressList(message.cc)}`);
+  if (message.bcc && message.bcc.length) headers.push(`Bcc: ${headerAddressList(message.bcc)}`);
+  headers.push(`Subject: ${encodeHeaderWord(message.subject || '')}`);
+  // Tells Outlook to open this as an editable draft rather than a read message.
+  headers.push('X-Unsent: 1');
+  headers.push('MIME-Version: 1.0');
+  headers.push(`Content-Type: ${contentType}`);
+  // A single-part body is base64; multipart bodies carry per-part encodings.
+  if (!/^multipart\//.test(contentType)) headers.push('Content-Transfer-Encoding: base64');
+  headers.push('');
+
+  return `${headers.join('\r\n')}\r\n${body}\r\n`;
 }
 
 /**
@@ -152,8 +254,25 @@ function toNodemailer(message, options = {}) {
   if (message.to && message.to.length) payload.to = message.to.map(formatAddress);
   if (message.cc && message.cc.length) payload.cc = message.cc.map(formatAddress);
   if (message.bcc && message.bcc.length) payload.bcc = message.bcc.map(formatAddress);
-  if (options.format === 'html') payload.html = textToHtml(message.body);
-  else payload.text = String(message.body || '');
+  if (message.bodyHtml) {
+    payload.html = wrapHtmlDocument(message.bodyHtml);
+    // Always send the text alternative alongside it.
+    payload.text = message.body || htmlToText(message.bodyHtml);
+  } else if (options.format === 'html') {
+    payload.html = textToHtml(message.body);
+    payload.text = String(message.body || '');
+  } else {
+    payload.text = String(message.body || '');
+  }
+  if (message.attachments && message.attachments.length) {
+    payload.attachments = message.attachments.map((a) => ({
+      filename: a.fileName,
+      content: a.base64,
+      encoding: 'base64',
+      contentType: a.contentType,
+      ...(a.cid ? { cid: a.cid } : {}),
+    }));
+  }
   if (options.replyTo) payload.replyTo = options.replyTo;
   return payload;
 }
@@ -161,6 +280,7 @@ function toNodemailer(message, options = {}) {
 module.exports = {
   MAILTO_SAFE_LENGTH,
   MAILTO_HARD_LENGTH,
+  resetBoundaries,
   buildEml,
   buildMailto,
   textToHtml,

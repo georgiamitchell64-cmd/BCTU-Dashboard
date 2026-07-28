@@ -13,11 +13,18 @@ const state = {
   mode: 'combined',
   search: '',
   statusFilter: new Set(),
+  // Empty means "everyone at the selected sites". Adding roles narrows the
+  // send to just those people — e.g. only PIs, or only R&D.
+  roleFilter: new Set(),
   expanded: new Set(),
+  attachments: [],
   planned: [],
   previewIndex: 0,
+  previewTab: 'formatted',
   importDraft: null,
 };
+
+let editor = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -58,12 +65,40 @@ function closeModal(id) { $(id).classList.add('hidden'); }
 
 // ── Selection ─────────────────────────────────────────────────────────────
 
-function selectedSites() {
-  return state.sites.filter((s) => s.selected && s.contacts.some((c) => c.selected !== false));
+function roleOf(contact) {
+  return contact.roleGroup || contact.role || 'Unspecified';
+}
+
+/** Does this contact fall inside the current role filter and stay ticked? */
+function contactIncluded(contact) {
+  if (contact.selected === false) return false;
+  if (state.roleFilter.size === 0) return true;
+  return state.roleFilter.has(roleOf(contact));
+}
+
+function activeContacts(site) {
+  return site.contacts.filter(contactIncluded);
 }
 
 function activeContactCount(site) {
-  return site.contacts.filter((c) => c.selected !== false).length;
+  return activeContacts(site).length;
+}
+
+/** Sites that are ticked and still have someone to write to. */
+function selectedSites() {
+  return state.sites.filter((s) => s.selected && activeContactCount(s) > 0);
+}
+
+/**
+ * The site list as the send should see it: only contacts inside the role
+ * filter. The filter is a per-send choice, so it is applied to a copy rather
+ * than by unticking people in the stored list.
+ */
+function payloadSites() {
+  return selectedSites().map((site) => ({
+    ...site,
+    contacts: activeContacts(site).map((c) => ({ ...c, selected: true })),
+  }));
 }
 
 function matchesFilters(site) {
@@ -129,6 +164,43 @@ function renderStatusFilters() {
   }
 }
 
+function renderRoleFilters() {
+  const box = $('roleFilters');
+  const counts = new Map();
+  for (const site of state.sites) {
+    for (const contact of site.contacts) {
+      if (contact.selected === false) continue;
+      const role = roleOf(contact);
+      counts.set(role, (counts.get(role) || 0) + 1);
+    }
+  }
+
+  box.innerHTML = '';
+  const roles = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  if (roles.length <= 1) {
+    // Nothing to choose between; hide the control rather than show one chip.
+    $('roleFilters').closest('.role-filter').classList.add('hidden');
+    return;
+  }
+  $('roleFilters').closest('.role-filter').classList.remove('hidden');
+
+  for (const [role, count] of roles) {
+    const on = state.roleFilter.has(role);
+    const chip = document.createElement('button');
+    chip.className = `chip${on ? ' role-on' : ''}`;
+    chip.title = on ? `Only writing to ${role}` : `Include ${role}`;
+    chip.textContent = `${role} (${count})`;
+    chip.addEventListener('click', () => {
+      if (on) state.roleFilter.delete(role);
+      else state.roleFilter.add(role);
+      renderSites();
+    });
+    box.appendChild(chip);
+  }
+
+  $('btnAllRoles').classList.toggle('hidden', state.roleFilter.size === 0);
+}
+
 function renderSites() {
   const list = $('siteList');
   const empty = $('sitesEmpty');
@@ -173,7 +245,16 @@ function renderSites() {
 
     const badge = document.createElement('span');
     badge.className = `site-badge${contacts === 0 ? ' warn' : ''}`;
-    badge.textContent = contacts === 0 ? 'no contacts' : plural(contacts, 'contact');
+    if (contacts > 0) {
+      badge.textContent = plural(contacts, 'contact');
+    } else if (state.roleFilter.size > 0 && site.contacts.some((c) => c.selected !== false)) {
+      // It has contacts, just nobody in the roles being written to — saying
+      // "no contacts" here would be wrong and alarming.
+      badge.textContent = `no ${[...state.roleFilter].join('/')}`;
+      badge.title = 'This site has contacts, but none in the roles you are sending to.';
+    } else {
+      badge.textContent = 'no contacts';
+    }
 
     const disclose = document.createElement('button');
     disclose.className = 'disclose';
@@ -201,7 +282,12 @@ function renderSites() {
       }
       for (const contact of site.contacts) {
         const line = document.createElement('label');
-        line.className = 'contact';
+        // Ticked but outside the role filter: shown dimmed so it is obvious
+        // why they are not receiving this particular email.
+        const excludedByRole = contact.selected !== false && !contactIncluded(contact);
+        line.className = `contact${excludedByRole ? ' is-role-excluded' : ''}`;
+        if (excludedByRole) line.title = `Not in the "Send to" selection (${roleOf(contact)})`;
+
         const tick = document.createElement('input');
         tick.type = 'checkbox';
         tick.checked = contact.selected !== false;
@@ -230,6 +316,7 @@ function renderSites() {
   $('siteCount').textContent = ticked ? `${shown} · ${ticked} selected` : shown;
 
   renderStatusFilters();
+  renderRoleFilters();
   renderRecipientBar();
 }
 
@@ -243,9 +330,10 @@ function renderRecipientBar() {
   // Ticked, but every address is either missing or unticked, so nothing can
   // be sent to them. Say so rather than quietly leaving them out.
   const skipped = state.sites.filter((s) => s.selected && !chosen.includes(s));
+  const reason = state.roleFilter.size ? 'nobody in those roles' : 'no contacts';
   const skippedNote = skipped.length
     ? ` · <span class="warn-text">${plural(skipped.length, 'selected site has', 'selected sites have')} `
-      + `no contacts and will be skipped</span>`
+      + `${reason} and will be skipped</span>`
     : '';
 
   if (chosen.length === 0) {
@@ -259,10 +347,12 @@ function renderRecipientBar() {
 
   const recipients = new Set();
   for (const site of chosen) {
-    for (const contact of site.contacts) {
-      if (contact.selected !== false) recipients.add(contact.email.toLowerCase());
-    }
+    for (const contact of activeContacts(site)) recipients.add(contact.email.toLowerCase());
   }
+
+  const roleNote = state.roleFilter.size
+    ? ` · <span class="role-note">${escapeHtml([...state.roleFilter].join(', '))} only</span>`
+    : '';
 
   if (state.mode === 'merge') {
     const perContact = $('perContact').checked;
@@ -270,7 +360,7 @@ function renderRecipientBar() {
     bar.innerHTML = `<span class="pill">TO</span>`
       + `<strong>${plural(count, 'separate email')}</strong> — `
       + `${perContact ? 'one to each contact' : 'one per site, addressed to that site\'s contacts'}, `
-      + `each with its own subject and message.${skippedNote}`;
+      + `each with its own subject and message.${skippedNote}${roleNote}`;
     button.textContent = state.settings.deliveryMethod === 'smtp'
       ? `Send ${count}` : `Prepare ${count}`;
   } else {
@@ -283,11 +373,11 @@ function renderRecipientBar() {
         + (state.settings.putSelfInTo && self
           ? ` · <span class="pill">TO</span>${escapeHtml(self)}`
           : ' · <span class="warn-text">no To address set — add yours in Settings</span>')
-        + skippedNote;
+        + skippedNote + roleNote;
     } else {
       bar.innerHTML = `<span class="pill">TO</span>`
         + `<strong>${plural(recipients.size, 'address', 'addresses')}</strong> at `
-        + `${escapeHtml(chosen[0].siteName)}${skippedNote}`;
+        + `${escapeHtml(chosen[0].siteName)}${skippedNote}${roleNote}`;
     }
     button.textContent = 'Send';
   }
@@ -297,7 +387,13 @@ function renderRecipientBar() {
 // ── Compose ───────────────────────────────────────────────────────────────
 
 function currentTemplate() {
-  return { subject: $('subject').value, body: $('body').value };
+  const bodyHtml = editor.getHtml();
+  return {
+    subject: $('subject').value,
+    bodyHtml,
+    // The plain-text alternative always travels with the HTML.
+    body: editor.getText(),
+  };
 }
 
 function refreshPlaceholderPicker() {
@@ -326,14 +422,6 @@ function refreshPlaceholderPicker() {
   addGroup('From your spreadsheet', [...extra].sort().map((key) => ({ key, label: key })));
 }
 
-function insertAtCursor(field, text) {
-  const start = field.selectionStart ?? field.value.length;
-  const end = field.selectionEnd ?? field.value.length;
-  field.value = field.value.slice(0, start) + text + field.value.slice(end);
-  field.selectionStart = field.selectionEnd = start + text.length;
-  field.focus();
-}
-
 function refreshTemplatePicker() {
   const picker = $('templatePicker');
   picker.innerHTML = '<option value="">Templates…</option>';
@@ -358,10 +446,15 @@ function setMode(mode) {
 
 function sendPayload() {
   return {
-    sites: selectedSites(),
+    sites: payloadSites(),
     template: currentTemplate(),
     mode: state.mode,
-    options: { perContact: $('perContact').checked },
+    options: {
+      perContact: $('perContact').checked,
+      roles: [...state.roleFilter],
+      cc: $('ccField').value,
+      attachments: state.attachments,
+    },
   };
 }
 
@@ -371,13 +464,14 @@ function validateBeforeSend() {
   const chosen = selectedSites();
   if (chosen.length === 0) problems.push('No sites are selected.');
   if (!$('subject').value.trim()) problems.push('The subject is empty.');
-  if (!$('body').value.trim()) problems.push('The message is empty.');
+  if (editor.isEmpty()) problems.push('The message is empty.');
 
   const combinedBcc = state.mode === 'combined' && (chosen.length > 1 || state.settings.forceBcc);
   if (combinedBcc && state.settings.putSelfInTo && !state.settings.senderAddress) {
     problems.push('Everyone will be bcc\'d but no To address is set. Add your email address in Settings.');
   }
-  if (state.mode === 'combined' && $('body').value.includes('{{first_name}}')) {
+  const bodyText = editor.getText();
+  if (state.mode === 'combined' && bodyText.includes('{{first_name}}')) {
     problems.push('{{first_name}} only works on a per-site email — on one combined email it will come out blank. Use "One per site", or {{first_name|colleagues}}.');
   }
   return problems;
@@ -478,6 +572,26 @@ function renderPreview() {
       + `<span class="v">${escapeHtml(contacts.map((c) => (c.name ? `${c.name} <${c.email}>` : c.email)).join('; '))}</span></div>`
     : '');
 
+  const attachmentLine = state.attachments.length
+    ? `<div class="preview-header-row"><span class="k">Attached</span><span class="v">`
+      + `${escapeHtml(state.attachments.map((a) => a.fileName).join(', '))}</span></div>`
+    : '';
+
+  // An HTML message is shown as it will render, with the plain-text
+  // alternative one click away — that is what recipients on restricted
+  // clients will actually see.
+  const showText = state.previewTab === 'text' || !message.bodyHtml;
+  const tabs = message.bodyHtml
+    ? `<div class="preview-tabs">
+         <button class="preview-tab${showText ? '' : ' is-on'}" data-tab="formatted">Formatted</button>
+         <button class="preview-tab${showText ? ' is-on' : ''}" data-tab="text">Plain text</button>
+       </div>`
+    : '';
+
+  const body = showText
+    ? `<div class="preview-body">${escapeHtml(message.body)}</div>`
+    : `<div class="preview-body is-html">${scmHtml.sanitizeHtml(message.bodyHtml)}</div>`;
+
   $('previewContent').innerHTML = `
     <div class="preview-headers">
       ${line('To', message.to)}
@@ -485,8 +599,17 @@ function renderPreview() {
       ${line('Bcc', message.bcc)}
       <div class="preview-header-row"><span class="k">Subject</span>
         <span class="v">${escapeHtml(message.subject) || '<em>(empty)</em>'}</span></div>
+      ${attachmentLine}
     </div>
-    <div class="preview-body">${escapeHtml(message.body)}</div>`;
+    ${tabs}
+    ${body}`;
+
+  for (const tab of $('previewContent').querySelectorAll('.preview-tab')) {
+    tab.addEventListener('click', () => {
+      state.previewTab = tab.dataset.tab;
+      renderPreview();
+    });
+  }
 }
 
 async function openPreview() {
@@ -807,6 +930,104 @@ async function saveSettings() {
 
 // ── Wiring ────────────────────────────────────────────────────────────────
 
+// ── Editor, toolbar and attachments ───────────────────────────────────────
+
+function renderAttachments() {
+  const box = $('attachmentList');
+  box.innerHTML = '';
+  for (const [index, file] of state.attachments.entries()) {
+    const chip = document.createElement('span');
+    chip.className = 'attachment';
+    const kb = file.size / 1024;
+    const size = kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(kb))} KB`;
+    chip.append(
+      document.createTextNode(file.fileName),
+      Object.assign(document.createElement('span'), { className: 'attachment-size', textContent: size }),
+    );
+    const remove = document.createElement('button');
+    remove.textContent = '×';
+    remove.title = `Remove ${file.fileName}`;
+    remove.addEventListener('click', () => {
+      state.attachments.splice(index, 1);
+      renderAttachments();
+    });
+    chip.appendChild(remove);
+    box.appendChild(chip);
+  }
+}
+
+/** Reflect the caret's current formatting in the toolbar buttons. */
+function syncToolbarState() {
+  for (const button of document.querySelectorAll('.tb-btn[data-command]')) {
+    const command = button.dataset.command;
+    button.classList.toggle('is-on', editor.queryState(command));
+  }
+}
+
+function wireEditor() {
+  editor = new RichTextEditor($('editorBody'), {
+    onChange: () => { renderRecipientBar(); },
+  });
+
+  document.addEventListener('selectionchange', () => {
+    if (document.activeElement === $('editorBody')) syncToolbarState();
+  });
+
+  // Formatting buttons are declared in the HTML with data-command, so one
+  // handler covers all of them.
+  for (const button of document.querySelectorAll('.tb-btn[data-command]')) {
+    button.addEventListener('mousedown', (event) => event.preventDefault()); // keep the selection
+    button.addEventListener('click', () => {
+      editor.exec(button.dataset.command);
+      syncToolbarState();
+    });
+  }
+
+  for (const picker of document.querySelectorAll('.tb-select[data-style]')) {
+    picker.addEventListener('change', () => {
+      if (!picker.value) return;
+      editor.exec(picker.dataset.style, picker.value);
+      picker.value = '';
+    });
+  }
+
+  $('foreColour').addEventListener('input', (event) => editor.exec('foreColor', event.target.value));
+  $('backColour').addEventListener('input', (event) => editor.exec('hiliteColor', event.target.value));
+  $('btnLink').addEventListener('click', () => editor.promptForLink());
+
+  $('btnSourceMode').addEventListener('click', () => {
+    const goingToSource = !editor.sourceMode;
+    editor.setSourceMode(goingToSource, $('sourceBody'));
+    $('editorBody').classList.toggle('hidden', goingToSource);
+    $('sourceBody').classList.toggle('hidden', !goingToSource);
+    $('btnSourceMode').classList.toggle('is-on', goingToSource);
+    for (const control of document.querySelectorAll('.tb-btn[data-command], .tb-select, .tb-colour')) {
+      control.classList.toggle('hidden', goingToSource);
+    }
+    editor.focus();
+  });
+
+  $('sourceBody').addEventListener('input', () => renderRecipientBar());
+
+  $('btnLoadHtml').addEventListener('click', async () => {
+    const loaded = await call(api.loadHtmlBody());
+    if (!loaded) return;
+    if (!editor.isEmpty()
+      && !window.confirm('Replace the message you have written with the contents of this file?')) return;
+    editor.setHtml(loaded.html);
+    if (editor.sourceMode) $('sourceBody').value = loaded.html;
+    toast(`Loaded ${loaded.fileName}`, 'success');
+  });
+
+  $('btnAttach').addEventListener('click', async () => {
+    const files = await call(api.chooseAttachments());
+    if (!files || files.length === 0) return;
+    state.attachments.push(...files);
+    renderAttachments();
+    toast(`Attached ${plural(files.length, 'file')}`, 'success');
+  });
+}
+
 function wireEvents() {
   $('btnImport').addEventListener('click', startImport);
   $('btnImportEmpty').addEventListener('click', startImport);
@@ -852,7 +1073,7 @@ function wireEvents() {
 
   $('placeholderPicker').addEventListener('change', (event) => {
     if (!event.target.value) return;
-    insertAtCursor($('body'), `{{${event.target.value}}}`);
+    editor.insertPlaceholder(event.target.value);
     event.target.value = '';
   });
 
@@ -860,9 +1081,15 @@ function wireEvents() {
     const template = state.templates.find((t) => t.id === event.target.value);
     if (!template) return;
     $('subject').value = template.subject;
-    $('body').value = template.body;
+    // Templates saved before rich text carry only a plain body.
+    editor.setHtml(template.bodyHtml || scmHtml.textToHtmlFragment(template.body || ''));
     event.target.value = '';
     toast(`Loaded "${template.name}"`);
+  });
+
+  $('btnAllRoles').addEventListener('click', () => {
+    state.roleFilter.clear();
+    renderSites();
   });
 
   $('btnSaveTemplate').addEventListener('click', async () => {
@@ -900,9 +1127,7 @@ function wireEvents() {
   $('btnCopy').addEventListener('click', async () => {
     const chosen = selectedSites();
     if (chosen.length === 0) { toast('Select some sites first', 'error'); return; }
-    const addresses = [...new Set(chosen.flatMap((s) => s.contacts
-      .filter((c) => c.selected !== false)
-      .map((c) => c.email)))];
+    const addresses = [...new Set(chosen.flatMap((s) => activeContacts(s).map((c) => c.email)))];
     await call(api.copyToClipboard(addresses.join('; ')));
     toast(`Copied ${plural(addresses.length, 'address', 'addresses')}`, 'success');
   });
@@ -965,6 +1190,7 @@ async function saveSettingsQuietly() {
 }
 
 async function init() {
+  wireEditor();
   wireEvents();
 
   const loaded = await call(api.loadState());
@@ -980,6 +1206,7 @@ async function init() {
 
   refreshTemplatePicker();
   refreshPlaceholderPicker();
+  renderAttachments();
   setMode('combined');
   renderSites();
 

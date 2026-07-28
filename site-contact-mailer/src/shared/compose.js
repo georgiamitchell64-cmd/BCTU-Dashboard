@@ -3,6 +3,7 @@
 // Template substitution and the rules that decide who ends up in To/Cc/Bcc.
 
 const { dedupeContacts, firstNameOf, formatAddress } = require('./emails');
+const { renderPlaceholdersInHtml, htmlToText, isEmptyHtml } = require('./html');
 
 const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*(?:\|([^}]*))?\}\}/g;
 
@@ -85,11 +86,43 @@ function placeholdersUsed(template) {
   return [...found];
 }
 
+/**
+ * Whether a contact should receive this send.
+ *
+ * `roles` is the set of role groups the user has chosen to write to — empty
+ * or absent means everyone. This is how "just the PIs" or "just R&D" is
+ * expressed, on top of any individuals unticked by hand.
+ */
+function contactIsIncluded(contact, roles) {
+  if (contact.selected === false) return false;
+  if (!roles || roles.length === 0) return true;
+  return roles.includes(contact.roleGroup || contact.role || '');
+}
+
+/** Contacts of a single site that are in scope for this send. */
+function contactsForSite(site, options = {}) {
+  return dedupeContacts(site.contacts.filter((c) => contactIsIncluded(c, options.roles)));
+}
+
 /** Only the contacts the user has left ticked, for sites that are selected. */
-function selectedContacts(sites) {
+function selectedContacts(sites, options = {}) {
   return dedupeContacts(
-    sites.flatMap((site) => site.contacts.filter((c) => c.selected !== false)),
+    sites.flatMap((site) => site.contacts.filter((c) => contactIsIncluded(c, options.roles))),
   );
+}
+
+/** Every distinct role group across a set of sites, with a count of each. */
+function roleSummary(sites) {
+  const counts = new Map();
+  for (const site of sites) {
+    for (const contact of site.contacts) {
+      const key = contact.roleGroup || contact.role || 'Unspecified';
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([role, count]) => ({ role, count }))
+    .sort((a, b) => b.count - a.count || a.role.localeCompare(b.role));
 }
 
 /**
@@ -101,8 +134,8 @@ function selectedContacts(sites) {
  * sane in the recipient's client and in the sender's Sent items.
  */
 function buildCombinedRecipients(sites, options = {}) {
-  const { senderAddress = '', forceBcc = false, alwaysBccSelfAddress = true } = options;
-  const contacts = selectedContacts(sites);
+  const { senderAddress = '', forceBcc = false, alwaysBccSelfAddress = true, roles = [] } = options;
+  const contacts = selectedContacts(sites, { roles });
   const useBcc = forceBcc || sites.length > 1;
 
   if (!useBcc) {
@@ -122,12 +155,42 @@ function buildCombinedRecipients(sites, options = {}) {
  * `perContact` splits it further into one message per person, which is what
  * you want when the body opens with "Dear {{first_name}}".
  */
+/**
+ * Render a template's subject and body against one context.
+ *
+ * A template is HTML when it carries `bodyHtml`; the plain-text part is then
+ * derived from the rendered HTML so the two alternatives always agree.
+ */
+function renderBody(template, context) {
+  const subject = renderTemplate(template.subject, context);
+
+  if (template.bodyHtml && !isEmptyHtml(template.bodyHtml)) {
+    const rendered = renderPlaceholdersInHtml(template.bodyHtml, context);
+    return {
+      subject: subject.text,
+      bodyHtml: rendered.html,
+      body: htmlToText(rendered.html),
+      isHtml: true,
+      missing: [...new Set([...subject.missing, ...rendered.missing])],
+    };
+  }
+
+  const body = renderTemplate(template.body, context);
+  return {
+    subject: subject.text,
+    bodyHtml: null,
+    body: body.text,
+    isHtml: false,
+    missing: [...new Set([...subject.missing, ...body.missing])],
+  };
+}
+
 function buildMergeQueue(sites, template, options = {}) {
-  const { perContact = false, today = new Date(), senderAddress = '' } = options;
+  const { perContact = false, today = new Date(), senderAddress = '', roles = [] } = options;
   const messages = [];
 
   for (const site of sites) {
-    const contacts = dedupeContacts(site.contacts.filter((c) => c.selected !== false));
+    const contacts = contactsForSite(site, { roles });
     if (contacts.length === 0) continue;
 
     const targets = perContact ? contacts.map((c) => [c]) : [contacts];
@@ -138,8 +201,7 @@ function buildMergeQueue(sites, template, options = {}) {
         siteCount: sites.length,
         today,
       });
-      const subject = renderTemplate(template.subject, context);
-      const body = renderTemplate(template.body, context);
+      const rendered = renderBody(template, context);
       messages.push({
         siteKey: site.key,
         siteId: site.siteId,
@@ -147,10 +209,8 @@ function buildMergeQueue(sites, template, options = {}) {
         to: group,
         cc: [],
         bcc: [],
-        subject: subject.text,
-        body: body.text,
         senderAddress,
-        missing: [...new Set([...subject.missing, ...body.missing])],
+        ...rendered,
       });
     }
   }
@@ -170,18 +230,15 @@ function buildCombinedMessage(sites, template, options = {}) {
     context.site_name = sites.map((s) => s.siteName).join(', ');
     context.site_id = sites.map((s) => s.siteId).join(', ');
   }
-  const subject = renderTemplate(template.subject, context);
-  const body = renderTemplate(template.body, context);
+  const rendered = renderBody(template, context);
   return {
     to: recipients.to,
     cc: recipients.cc,
     bcc: recipients.bcc,
     usedBcc: recipients.usedBcc,
-    subject: subject.text,
-    body: body.text,
     senderAddress: options.senderAddress || '',
-    missing: [...new Set([...subject.missing, ...body.missing])],
     siteName: sites.length === 1 ? sites[0].siteName : `${sites.length} sites`,
+    ...rendered,
   };
 }
 
@@ -193,7 +250,11 @@ module.exports = {
   BUILT_IN_FIELDS,
   buildContext,
   renderTemplate,
+  renderBody,
   placeholdersUsed,
+  contactIsIncluded,
+  contactsForSite,
+  roleSummary,
   selectedContacts,
   buildCombinedRecipients,
   buildCombinedMessage,

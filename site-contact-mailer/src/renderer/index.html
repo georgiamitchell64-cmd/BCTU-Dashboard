@@ -2,8 +2,13 @@
 <html lang="en-GB">
 <head>
   <meta charset="utf-8">
+  <!-- 'unsafe-inline' for styles is required: rich-text editing produces inline
+       style attributes, and pasted email carries its own. All such HTML is run
+       through the sanitiser in shared/html.js first, and the renderer has no
+       Node access, so the exposure is limited to the page's own appearance. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;">
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline';
+                 img-src 'self' data: https: cid:; media-src 'none'; connect-src 'none';">
   <title>Site Contact Mailer</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -42,6 +47,16 @@
         <button id="btnSelectFiltered" class="link-btn">Select matching</button>
       </div>
       <div id="statusFilters" class="chips"></div>
+
+      <!-- Who at each site receives the message. Nothing selected means
+           everyone; picking roles narrows it to e.g. just PIs or just R&D. -->
+      <div class="role-filter">
+        <div class="role-filter-head">
+          <span class="role-filter-label">Send to</span>
+          <button id="btnAllRoles" class="link-btn">All contacts</button>
+        </div>
+        <div id="roleFilters" class="chips"></div>
+      </div>
     </div>
 
     <div id="siteList" class="site-list" role="list"></div>
@@ -74,9 +89,16 @@
       <input id="subject" type="text" placeholder="e.g. {{site_name}} — monthly recruitment update">
     </div>
 
+    <div class="field">
+      <div class="label-row">
+        <label for="ccField">Cc <span class="muted">(optional, added to every email)</span></label>
+      </div>
+      <input id="ccField" type="text" placeholder="colleague@bham.ac.uk; another@bham.ac.uk">
+    </div>
+
     <div class="field field-grow">
       <div class="label-row">
-        <label for="body">Message</label>
+        <label for="editorBody">Message</label>
         <div class="label-actions">
           <select id="placeholderPicker" title="Insert a field from your spreadsheet">
             <option value="">Insert field…</option>
@@ -87,7 +109,79 @@
           <button id="btnSaveTemplate" class="link-btn">Save template</button>
         </div>
       </div>
-      <textarea id="body" placeholder="Dear {{first_name|colleagues}},&#10;&#10;…"></textarea>
+
+      <!-- Formatting toolbar. Buttons carry data-command so they can be wired
+           generically; the CSP forbids inline handlers. -->
+      <div class="toolbar-format" id="formatToolbar" role="toolbar" aria-label="Formatting">
+        <select class="tb-select" data-style="fontName" title="Font">
+          <option value="">Font</option>
+          <option value="Calibri">Calibri</option>
+          <option value="Arial">Arial</option>
+          <option value="Helvetica">Helvetica</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Tahoma">Tahoma</option>
+          <option value="Courier New">Courier New</option>
+        </select>
+        <select class="tb-select tb-narrow" data-style="fontSize" title="Size">
+          <option value="">Size</option>
+          <option value="1">8</option>
+          <option value="2">10</option>
+          <option value="3">11</option>
+          <option value="4">14</option>
+          <option value="5">18</option>
+          <option value="6">24</option>
+          <option value="7">36</option>
+        </select>
+
+        <span class="tb-sep"></span>
+        <button class="tb-btn tb-bold" data-command="bold" title="Bold (Ctrl+B)">B</button>
+        <button class="tb-btn tb-italic" data-command="italic" title="Italic (Ctrl+I)">I</button>
+        <button class="tb-btn tb-underline" data-command="underline" title="Underline (Ctrl+U)">U</button>
+        <button class="tb-btn tb-strike" data-command="strikeThrough" title="Strikethrough">S</button>
+
+        <span class="tb-sep"></span>
+        <label class="tb-colour" title="Text colour">
+          <span class="tb-colour-swatch" id="foreSwatch">A</span>
+          <input type="color" id="foreColour" value="#000000">
+        </label>
+        <label class="tb-colour" title="Highlight">
+          <span class="tb-colour-swatch tb-highlight" id="backSwatch">▨</span>
+          <input type="color" id="backColour" value="#ffff00">
+        </label>
+
+        <span class="tb-sep"></span>
+        <button class="tb-btn" data-command="insertUnorderedList" title="Bulleted list">•—</button>
+        <button class="tb-btn" data-command="insertOrderedList" title="Numbered list">1—</button>
+        <button class="tb-btn" data-command="outdent" title="Decrease indent">⇤</button>
+        <button class="tb-btn" data-command="indent" title="Increase indent">⇥</button>
+
+        <span class="tb-sep"></span>
+        <button class="tb-btn" data-command="justifyLeft" title="Align left">⬅</button>
+        <button class="tb-btn" data-command="justifyCenter" title="Centre">↔</button>
+        <button class="tb-btn" data-command="justifyRight" title="Align right">➡</button>
+
+        <span class="tb-sep"></span>
+        <button class="tb-btn" id="btnLink" title="Insert link (Ctrl+K)">🔗</button>
+        <button class="tb-btn" data-command="unlink" title="Remove link">⛓</button>
+        <button class="tb-btn" data-command="insertHorizontalRule" title="Horizontal line">—</button>
+        <button class="tb-btn" data-command="removeFormat" title="Clear formatting">✕</button>
+
+        <span class="tb-spacer"></span>
+        <button class="tb-btn tb-wide" id="btnLoadHtml" title="Load a .html or .eml file as the message">Load HTML…</button>
+        <button class="tb-btn tb-wide" id="btnSourceMode" title="Edit the raw HTML">&lt;/&gt; Source</button>
+      </div>
+
+      <div id="editorBody" class="editor" role="textbox" aria-multiline="true"
+           aria-label="Message body" data-placeholder="Dear {{first_name|colleagues}}, …"></div>
+      <textarea id="sourceBody" class="editor-source hidden" spellcheck="false"
+                aria-label="Message HTML source"></textarea>
+    </div>
+
+    <div class="attachments-row">
+      <button id="btnAttach" class="link-btn">Attach file…</button>
+      <span id="attachmentList" class="attachment-list"></span>
     </div>
 
     <div id="mergeOptions" class="merge-options hidden">
@@ -225,9 +319,14 @@
       <div class="field">
         <label for="bodyFormat">Message format</label>
         <select id="bodyFormat">
-          <option value="plain">Plain text</option>
-          <option value="html">HTML</option>
+          <option value="html">Formatted (recommended)</option>
+          <option value="plain">Plain text only</option>
         </select>
+        <p class="hint">
+          Formatted messages are sent with a plain-text copy alongside them, so
+          they still read correctly on restricted mail clients. Choosing plain
+          text discards the formatting entirely.
+        </p>
       </div>
 
       <details class="smtp-block">
@@ -275,6 +374,8 @@
   </div>
 </div>
 
+<script src="../shared/html.js"></script>
+<script src="editor.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
