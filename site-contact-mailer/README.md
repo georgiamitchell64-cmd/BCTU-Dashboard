@@ -127,6 +127,18 @@ npm run dist:linux   # Linux AppImage
 Installers are written to `dist/`. Build on the platform you are targeting;
 cross-building from Linux to a signed Windows or macOS app needs extra tooling.
 
+**On a managed Windows machine**, the build config sets
+`win.signAndEditExecutable: false`. Without it, electron-builder downloads its
+`winCodeSign` toolkit, which contains macOS symlinks, and the extraction fails
+with *"Cannot create symbolic link: A required privilege is not held by the
+client"* — creating symlinks on Windows needs a privilege that a standard
+account does not have. Turning the option off skips that download entirely;
+the only cost is that the `.exe` keeps Electron's default file metadata
+(the app name and behaviour are unaffected).
+
+If you have Developer Mode enabled, administrator rights, or a real
+code-signing certificate, delete that line to get proper executable metadata.
+
 ### Tests
 
 ```sh

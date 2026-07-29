@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Desktop app for importing a site contact list from Excel and emailing site contacts",
+  "author": "Birmingham Clinical Trials Unit",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -36,7 +37,8 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
