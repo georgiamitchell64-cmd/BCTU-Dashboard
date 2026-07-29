@@ -1,19 +1,65 @@
 {
   "name": "bctu-planner",
-  "productName": "Planner",
+  "productName": "BCTU Planner",
   "version": "1.0.0",
   "description": "A desktop day-to-day planner for clinical trial work — daily, weekly and monthly tasks with urgency, trial tagging and full customisation.",
+  "author": "Birmingham Clinical Trials Unit",
   "main": "main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
     "test": "node --test \"test/*.test.mjs\"",
-    "preview": "node tools/preview-server.js"
+    "preview": "node tools/preview-server.js",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
   },
-  "keywords": ["planner", "tasks", "electron", "clinical-trials", "bctu"],
+  "keywords": [
+    "planner",
+    "tasks",
+    "electron",
+    "clinical-trials",
+    "bctu"
+  ],
   "license": "MIT",
   "devDependencies": {
-    "electron": "^43.2.0"
+    "electron": "^43.2.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "uk.ac.bham.bctu.planner",
+    "productName": "BCTU Planner",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "BCTU Planner"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    }
   }
 }

@@ -9,7 +9,21 @@ the two feel like part of the same kit.
 
 ---
 
-## Running it
+## Installing it
+
+Grab the installer from `dist/` (or the zip that was handed to you) and run
+**BCTU Planner Setup 1.0.0.exe**. It installs per-user, so it needs no
+administrator rights and asks for no elevation — it lands in your own
+`%LOCALAPPDATA%\Programs` and adds a Start-menu entry.
+
+There is also **BCTU Planner 1.0.0.exe**, a portable build: no install at all,
+just double-click it, including from a USB stick or a network drive. Both
+builds share the same data folder, so you can move between them.
+
+The app is not code-signed, so SmartScreen may show *"Windows protected your
+PC"* the first time. Click **More info → Run anyway**.
+
+## Running it from source
 
 ```bash
 cd planner
@@ -32,6 +46,28 @@ selectors) run with:
 ```bash
 npm test
 ```
+
+## Building the installers yourself
+
+```bash
+npm run dist:win     # NSIS installer + portable .exe
+npm run dist:mac     # dmg
+npm run dist:linux   # AppImage
+```
+
+Output lands in `dist/`. Build on the platform you are targeting — cross-building
+a signed Windows or macOS app from Linux needs extra tooling.
+
+**On a managed Windows machine**, the build config sets
+`win.signAndEditExecutable: false`. Without it, electron-builder downloads its
+`winCodeSign` toolkit, which contains macOS symlinks, and extracting them fails
+with *"Cannot create symbolic link: A required privilege is not held by the
+client"* — creating symlinks on Windows needs a privilege a standard account
+does not hold. Turning the option off skips that download entirely; the only
+cost is that the `.exe` keeps Electron's default file metadata. Delete the line
+if you have Developer Mode, administrator rights, or a code-signing certificate.
+
+This is the same fix as the one in `site-contact-mailer`.
 
 ---
 
@@ -129,9 +165,9 @@ break lengths, reminder lead time, and which views appear in the sidebar at all.
 
 Everything is a single JSON file:
 
-- **Windows** `%APPDATA%\Planner\planner-data.json`
-- **macOS** `~/Library/Application Support/Planner/planner-data.json`
-- **Linux** `~/.config/Planner/planner-data.json`
+- **Windows** `%APPDATA%\BCTU Planner\planner-data.json`
+- **macOS** `~/Library/Application Support/BCTU Planner/planner-data.json`
+- **Linux** `~/.config/BCTU Planner/planner-data.json`
 
 A dated copy is written to `backups/` in the same folder each time the app
 starts, and the last fourteen are kept. **File → Open Data Folder** takes you
