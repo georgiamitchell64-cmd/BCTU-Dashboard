@@ -47,25 +47,27 @@ selectors) run with:
 npm test
 ```
 
-## Building the installers yourself
+## Building the installer yourself
 
 ```bash
-npm run dist:win     # NSIS installer + portable .exe
-npm run dist:mac     # dmg
-npm run dist:linux   # AppImage
+npm run dist
 ```
 
-Output lands in `dist/`. Build on the platform you are targeting — cross-building
-a signed Windows or macOS app from Linux needs extra tooling.
+Output lands in `dist/`: an NSIS installer and a portable `.exe`. Windows is the
+only target configured, and the build must run on Windows — cross-building from
+Linux needs wine and gains nothing here.
 
 **On a managed Windows machine**, the build config sets
 `win.signAndEditExecutable: false`. Without it, electron-builder downloads its
 `winCodeSign` toolkit, which contains macOS symlinks, and extracting them fails
 with *"Cannot create symbolic link: A required privilege is not held by the
 client"* — creating symlinks on Windows needs a privilege a standard account
-does not hold. Turning the option off skips that download entirely; the only
-cost is that the `.exe` keeps Electron's default file metadata. Delete the line
-if you have Developer Mode, administrator rights, or a code-signing certificate.
+does not hold. Turning the option off skips that download entirely.
+
+That toolkit is also what electron-builder uses to write an icon and version
+information into the `.exe`, so switching it off would normally cost you those.
+It does not here: `build/after-pack.js` does that job separately, without the
+privileged download. See [The icon](#the-icon) below.
 
 This is the same fix as the one in `site-contact-mailer`.
 
@@ -84,7 +86,7 @@ re-running it:
 | File | Used for |
 | --- | --- |
 | `build/icon.ico` | Windows — the `.exe`, its shortcuts, and the installer |
-| `build/icon.png` | Linux AppImage, and the source macOS converts to `.icns` |
+| `build/icon.png` | The 1024×1024 master render, kept for reference and re-export |
 | `src/assets/icon.png` | Shipped inside the app; `BrowserWindow` uses it for the window and taskbar icon at runtime |
 
 ### How the icon reaches the .exe
@@ -106,9 +108,8 @@ needs no special privilege. Build on Windows and everything gets the icon:
 
 The hook is best-effort by design: if `rcedit` is missing or fails, it prints a
 warning and the build carries on. A wrong icon is a blemish, a failed build is
-not. The one case where it does fail is cross-building for Windows from Linux
-or macOS, where `rcedit.exe` needs wine — build on Windows and the question
-does not arise.
+not. The one case where it does fail is cross-building from Linux, where
+`rcedit.exe` needs wine — build on Windows and the question does not arise.
 
 ---
 
@@ -206,9 +207,9 @@ break lengths, reminder lead time, and which views appear in the sidebar at all.
 
 Everything is a single JSON file:
 
-- **Windows** `%APPDATA%\BCTU Planner\planner-data.json`
-- **macOS** `~/Library/Application Support/BCTU Planner/planner-data.json`
-- **Linux** `~/.config/BCTU Planner/planner-data.json`
+```
+%APPDATA%\BCTU Planner\planner-data.json
+```
 
 A dated copy is written to `backups/` in the same folder each time the app
 starts, and the last fourteen are kept. **File → Open Data Folder** takes you
