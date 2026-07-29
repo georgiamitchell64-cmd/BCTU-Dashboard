@@ -28,6 +28,9 @@ function createWindow() {
     minHeight: 620,
     title: 'Site Contact Mailer',
     backgroundColor: '#f5f7fa',
+    // Sets the window and taskbar icon at runtime, independently of whatever
+    // icon the .exe itself carries. See the icon section of the README.
+    icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

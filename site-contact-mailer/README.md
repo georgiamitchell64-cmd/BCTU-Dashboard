@@ -119,25 +119,54 @@ npm run sample
 ### Building an installer
 
 ```sh
-npm run dist:win     # Windows installer + portable .exe
-npm run dist:mac     # macOS .dmg
-npm run dist:linux   # Linux AppImage
+npm run dist
 ```
 
-Installers are written to `dist/`. Build on the platform you are targeting;
-cross-building from Linux to a signed Windows or macOS app needs extra tooling.
+Written to `dist/`: an NSIS installer and a portable `.exe`. Windows is the
+only target configured, and the build must run on Windows — cross-building from
+Linux needs wine and gains nothing here.
 
 **On a managed Windows machine**, the build config sets
 `win.signAndEditExecutable: false`. Without it, electron-builder downloads its
 `winCodeSign` toolkit, which contains macOS symlinks, and the extraction fails
 with *"Cannot create symbolic link: A required privilege is not held by the
 client"* — creating symlinks on Windows needs a privilege that a standard
-account does not have. Turning the option off skips that download entirely;
-the only cost is that the `.exe` keeps Electron's default file metadata
-(the app name and behaviour are unaffected).
+account does not have. Turning the option off skips that download entirely.
 
-If you have Developer Mode enabled, administrator rights, or a real
-code-signing certificate, delete that line to get proper executable metadata.
+That toolkit is also what electron-builder uses to write an icon and version
+information into the `.exe`, so switching it off would normally cost you those.
+It does not here — see below.
+
+### The icon
+
+The icon is drawn as SVG in `tools/make-icon.js` and rendered by:
+
+```sh
+npm run icon
+```
+
+An envelope in the same navy as the planner but in this app's green, so the two
+read as a pair in the taskbar without being mistaken for each other. Changing it
+means editing the shape in that script and re-running, rather than hunting for
+whatever tool produced a binary.
+
+| File | Used for |
+| --- | --- |
+| `build/icon.ico` | Windows — the `.exe`, its shortcuts, and the installer |
+| `build/icon.png` | The 1024×1024 master render |
+| `src/assets/icon.png` | Shipped inside the app; `BrowserWindow` uses it for the window and taskbar icon at runtime |
+
+Stamping an icon into a Windows executable is `rcedit`'s job, and
+electron-builder only runs it out of the `winCodeSign` toolkit we disabled
+above. So `build/after-pack.js` runs `rcedit` directly instead: the `rcedit` npm
+package ships `rcedit.exe` on its own, with no archive and no symlinks, so it
+needs no special privilege. Built on Windows, the `.exe`, its shortcuts, the
+installer and the running window all carry the icon.
+
+The hook is best-effort by design: if `rcedit` is missing or fails, it warns and
+the build carries on. A wrong icon is a blemish, a failed build is not. The one
+case where it does fail is cross-building from Linux, where `rcedit.exe` needs
+wine.
 
 ### Tests
 

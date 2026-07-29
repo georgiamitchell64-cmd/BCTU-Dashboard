@@ -6,6 +6,11 @@ dist/
 sample/site-contacts-sample.xlsx
 *.png
 
+# ...but the app icon is source, not a screenshot. src/assets/icon.png in
+# particular is loaded at runtime for the window icon, so it must be committed.
+!build/icon.png
+!src/assets/icon.png
+
 # Never commit a real contact list.
 *.xlsx
 *.xls

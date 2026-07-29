@@ -9,10 +9,8 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "sample": "node sample/make-sample.js",
-    "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac",
-    "dist:linux": "electron-builder --linux"
+    "icon": "node tools/make-icon.js",
+    "dist": "electron-builder --win"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -20,7 +18,9 @@
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "rcedit": "^5.0.2",
+    "sharp": "^0.33.5"
   },
   "build": {
     "appId": "uk.ac.bham.bctu.site-contact-mailer",
@@ -33,25 +33,23 @@
     "directories": {
       "output": "dist"
     },
+    "afterPack": "build/after-pack.js",
     "win": {
       "target": [
         "nsis",
         "portable"
       ],
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": false
-    },
-    "mac": {
-      "target": "dmg",
-      "category": "public.app-category.productivity"
-    },
-    "linux": {
-      "target": "AppImage",
-      "category": "Office"
+      "perMachine": false,
+      "shortcutName": "Site Contact Mailer",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   }
 }
