@@ -83,32 +83,32 @@ re-running it:
 
 | File | Used for |
 | --- | --- |
-| `build/icon.ico` | Windows — installer UI, and the `.exe` when signing is on |
+| `build/icon.ico` | Windows — the `.exe`, its shortcuts, and the installer |
 | `build/icon.png` | Linux AppImage, and the source macOS converts to `.icns` |
 | `src/assets/icon.png` | Shipped inside the app; `BrowserWindow` uses it for the window and taskbar icon at runtime |
 
-### What you actually get on Windows
+### How the icon reaches the .exe
 
-Because `win.signAndEditExecutable` is `false` (see above), electron-builder
-never runs `rcedit`, and `rcedit` is the thing that stamps an icon into an
-`.exe`. So with the default config:
+Stamping an icon into a Windows executable is `rcedit`'s job. electron-builder
+normally runs it out of its `winCodeSign` toolkit — the same download we
+disabled above, because it cannot be unpacked without the symlink privilege.
+
+So `build/after-pack.js` runs `rcedit` directly instead. The `rcedit` npm
+package ships `rcedit.exe` on its own, with no archive and no symlinks, so it
+needs no special privilege. Build on Windows and everything gets the icon:
 
 | Where | Icon |
 | --- | --- |
-| Setup window and Add/Remove Programs | ✅ ours |
-| App window and taskbar, while running | ✅ ours (set by `BrowserWindow`) |
-| The `.exe` in File Explorer | ❌ Electron's default |
-| Start-menu and desktop shortcut | ❌ Electron's default — a shortcut inherits its target's icon |
+| The `.exe` in File Explorer | ✅ |
+| Start-menu and desktop shortcuts | ✅ (a shortcut inherits its target's icon) |
+| Setup window and Add/Remove Programs | ✅ |
+| App window and taskbar, while running | ✅ (set by `BrowserWindow`) |
 
-**To get the icon everywhere**, turn on Developer Mode — *Settings → Privacy &
-security → For developers → Developer Mode*. It is a per-user toggle and does
-not normally need an administrator. That grants the create-symlink privilege,
-after which you can delete the `"signAndEditExecutable": false` line from
-`package.json` and rebuild. Administrator rights or a code-signing certificate
-work equally well.
-
-If you would rather not, you can point a single shortcut at the icon by hand:
-right-click it → *Properties* → *Change Icon* → browse to `build\icon.ico`.
+The hook is best-effort by design: if `rcedit` is missing or fails, it prints a
+warning and the build carries on. A wrong icon is a blemish, a failed build is
+not. The one case where it does fail is cross-building for Windows from Linux
+or macOS, where `rcedit.exe` needs wine — build on Windows and the question
+does not arise.
 
 ---
 
