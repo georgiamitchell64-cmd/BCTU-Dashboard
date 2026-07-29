@@ -11,6 +11,7 @@
     "dev": "electron . --dev",
     "test": "node --test \"test/*.test.mjs\"",
     "preview": "node tools/preview-server.js",
+    "icon": "node tools/make-icon.js",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
@@ -26,7 +27,8 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^43.2.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "sharp": "^0.33.5"
   },
   "build": {
     "appId": "uk.ac.bham.bctu.planner",
@@ -45,20 +47,26 @@
         "nsis",
         "portable"
       ],
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "shortcutName": "BCTU Planner"
+      "shortcutName": "BCTU Planner",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "mac": {
       "target": "dmg",
+      "icon": "build/icon.png",
       "category": "public.app-category.productivity"
     },
     "linux": {
       "target": "AppImage",
+      "icon": "build/icon.png",
       "category": "Office"
     }
   }

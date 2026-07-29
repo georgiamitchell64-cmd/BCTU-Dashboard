@@ -69,6 +69,47 @@ if you have Developer Mode, administrator rights, or a code-signing certificate.
 
 This is the same fix as the one in `site-contact-mailer`.
 
+## The icon
+
+The icon is drawn as SVG in `tools/make-icon.js` and rendered by:
+
+```bash
+npm run icon
+```
+
+That writes three files, all of them build output rather than hand-made
+binaries, so changing the icon means editing the shape in that script and
+re-running it:
+
+| File | Used for |
+| --- | --- |
+| `build/icon.ico` | Windows — installer UI, and the `.exe` when signing is on |
+| `build/icon.png` | Linux AppImage, and the source macOS converts to `.icns` |
+| `src/assets/icon.png` | Shipped inside the app; `BrowserWindow` uses it for the window and taskbar icon at runtime |
+
+### What you actually get on Windows
+
+Because `win.signAndEditExecutable` is `false` (see above), electron-builder
+never runs `rcedit`, and `rcedit` is the thing that stamps an icon into an
+`.exe`. So with the default config:
+
+| Where | Icon |
+| --- | --- |
+| Setup window and Add/Remove Programs | ✅ ours |
+| App window and taskbar, while running | ✅ ours (set by `BrowserWindow`) |
+| The `.exe` in File Explorer | ❌ Electron's default |
+| Start-menu and desktop shortcut | ❌ Electron's default — a shortcut inherits its target's icon |
+
+**To get the icon everywhere**, turn on Developer Mode — *Settings → Privacy &
+security → For developers → Developer Mode*. It is a per-user toggle and does
+not normally need an administrator. That grants the create-symlink privilege,
+after which you can delete the `"signAndEditExecutable": false` line from
+`package.json` and rebuild. Administrator rights or a code-signing certificate
+work equally well.
+
+If you would rather not, you can point a single shortcut at the icon by hand:
+right-click it → *Properties* → *Change Icon* → browse to `build\icon.ico`.
+
 ---
 
 ## What it does

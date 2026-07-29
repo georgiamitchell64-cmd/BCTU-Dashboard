@@ -86,6 +86,10 @@ async function createWindow() {
     show: false,
     backgroundColor: '#EEF3F8',
     title: 'Planner',
+    // Sets the window and taskbar icon at runtime. This matters on Windows
+    // because win.signAndEditExecutable is off, so the .exe file itself keeps
+    // Electron's default icon — see README.
+    icon: path.join(RENDERER_ROOT, 'assets', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
