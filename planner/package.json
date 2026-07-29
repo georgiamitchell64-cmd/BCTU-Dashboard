@@ -1,0 +1,19 @@
+{
+  "name": "bctu-planner",
+  "productName": "Planner",
+  "version": "1.0.0",
+  "description": "A desktop day-to-day planner for clinical trial work — daily, weekly and monthly tasks with urgency, trial tagging and full customisation.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node --test \"test/*.test.mjs\"",
+    "preview": "node tools/preview-server.js"
+  },
+  "keywords": ["planner", "tasks", "electron", "clinical-trials", "bctu"],
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^43.2.0"
+  }
+}
