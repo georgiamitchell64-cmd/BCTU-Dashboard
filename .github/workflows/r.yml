@@ -1,40 +1,87 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+# Syntax check for the Shiny dashboard.
 #
-# See https://github.com/r-lib/actions/tree/master/examples#readme for
-# additional example workflows available for the R community.
+# This replaces the stock GitHub "R package" workflow, which ran rcmdcheck on
+# macos-latest. That never suited this repository: rcmdcheck and
+# remotes::install_deps both expect a DESCRIPTION file, and this is a Shiny app,
+# not a package. It also stopped installing R at all once macos-latest moved to
+# Apple Silicon, because there is no arm64 build of R 3.6.3 to download.
+#
+# What runs instead: every .R and .Rmd file is parsed. That catches the failure
+# that actually bites — a syntax error committed to a module, which otherwise
+# only shows up when someone launches the app — and it needs nothing installed
+# beyond R itself and knitr.
 
 name: R
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        r-version: ['3.6.3', '4.1.1']
+  parse:
+    name: Parse R sources
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set up R ${{ matrix.r-version }}
-        uses: r-lib/actions/setup-r@f57f1301a053485946083d7a45022b278929a78a
+
+      - uses: r-lib/actions/setup-r@v2
         with:
-          r-version: ${{ matrix.r-version }}
-      - name: Install dependencies
+          r-version: "release"
+          use-public-rspm: true
+
+      - name: Install knitr
+        shell: Rscript {0}
+        run: install.packages("knitr")
+
+      - name: Parse every R and Rmd file
+        shell: Rscript {0}
         run: |
-          install.packages(c("remotes", "rcmdcheck"))
-          remotes::install_deps(dependencies = TRUE)
-        shell: Rscript {0}
-      - name: Check
-        run: rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "error")
-        shell: Rscript {0}
+          skip <- "(^|/)([.]git|[.]Rproj[.]user|renv|packrat|node_modules|planner)/"
+
+          collect <- function(pattern) {
+            files <- list.files(".", pattern = pattern, recursive = TRUE, full.names = TRUE)
+            sort(files[!grepl(skip, files)])
+          }
+
+          parse_r <- function(path) parse(path, keep.source = FALSE)
+
+          parse_rmd <- function(path) {
+            code <- knitr::purl(path, output = tempfile(fileext = ".R"),
+                                quiet = TRUE, documentation = 0L)
+            parse(code, keep.source = FALSE)
+          }
+
+          run <- function(files, fn, label) {
+            cat("\n", length(files), " ", label, " files\n", sep = "")
+            bad <- character()
+            for (path in files) {
+              message <- tryCatch({ fn(path); NA_character_ },
+                                  error = function(e) conditionMessage(e))
+              if (is.na(message)) {
+                cat("  ok  ", path, "\n", sep = "")
+              } else {
+                cat("FAIL  ", path, "\n", sep = "")
+                bad[path] <- message
+              }
+            }
+            bad
+          }
+
+          failures <- c(run(collect("[.][Rr]$"), parse_r, "R"),
+                        run(collect("[.][Rr]md$"), parse_rmd, "Rmd"))
+
+          if (length(failures) > 0) {
+            cat("\n", length(failures), " file(s) failed to parse:\n\n", sep = "")
+            for (path in names(failures)) {
+              cat(path, "\n  ", failures[[path]], "\n\n", sep = "")
+            }
+            quit(status = 1L)
+          }
+
+          cat("\nEverything parsed cleanly.\n")
