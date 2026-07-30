@@ -102,17 +102,30 @@
       }
     }
 
-    promptForLink() {
+    /**
+     * Electron has no window.prompt(), so this uses the app's own dialog.
+     * The selection is captured before the dialog opens, because showing it
+     * moves focus out of the editor and the range would otherwise be lost.
+     */
+    async promptForLink() {
       const selection = window.getSelection();
       const hasSelection = selection && String(selection).trim() !== '';
-      const url = window.prompt('Link address:', 'https://');
+      const range = hasSelection && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+
+      const url = await global.scmPrompt('Link address:', 'https://', { title: 'Insert link' });
       if (!url) return;
-      if (hasSelection) {
+
+      if (range) {
+        const restored = window.getSelection();
+        restored.removeAllRanges();
+        restored.addRange(range);
+        this.el.focus();
         this.exec('createLink', url);
-      } else {
-        const label = window.prompt('Text to show:', url) || url;
-        this.insertHtml(`<a href="${scmHtml.escapeHtml(url)}">${scmHtml.escapeHtml(label)}</a>`);
+        return;
       }
+
+      const label = await global.scmPrompt('Text to show:', url, { title: 'Insert link' }) || url;
+      this.insertHtml(`<a href="${scmHtml.escapeHtml(url)}">${scmHtml.escapeHtml(label)}</a>`);
     }
 
     insertHtml(html) {

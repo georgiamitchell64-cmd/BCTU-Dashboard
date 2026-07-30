@@ -207,6 +207,7 @@ handle('state:load', async () => ({
   settings: store.getSettings(),
   sites: store.getSites(),
   templates: store.getTemplates(),
+  drafts: store.getDrafts(),
   lastImport: store.state.lastImport,
   recruitment: store.getRecruitment(),
   recruitmentImport: store.state.recruitmentImport,
@@ -223,6 +224,8 @@ handle('state:saveSites', async (sites) => store.setSites(sites));
 handle('settings:update', async (patch) => store.updateSettings(patch));
 handle('templates:save', async (template) => store.saveTemplate(template));
 handle('templates:delete', async (id) => store.deleteTemplate(id));
+handle('drafts:save', async (draft) => store.saveDraft(draft));
+handle('drafts:delete', async (id) => store.deleteDraft(id));
 handle('smtp:setPassword', async (password) => store.setSmtpPassword(password));
 
 // ── Preparing messages ────────────────────────────────────────────────────

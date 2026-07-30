@@ -9,6 +9,14 @@ databases, and nothing leaves your machine unless you send an email.
 
 ## What it does
 
+**Work on several messages at once.** New email starts a fresh draft; whatever
+you were writing is saved automatically (subject, message, ticked sites, send
+mode) and listed in the Drafts sidebar, so you can park a monthly-update email
+half-written, switch to a quick questionnaire chase, and come back to the
+first later — the app reopens on whichever draft you touched last. Sending a
+draft removes it from the list, the way it leaves an Outlook Drafts folder
+once it's gone out.
+
 **Import** an `.xlsx` or `.csv` contact list. The app works out which columns
 are which and shows you the result before anything is saved. Two layouts are
 understood:
@@ -262,7 +270,7 @@ src/
   main/        Electron main process — the only code with disk/network access
     main.js      window, menu, IPC handlers, attachments, delivery
     workbook.js  reading .xlsx/.csv via ExcelJS
-    store.js     persisted list, templates, settings, encrypted credentials
+    store.js     persisted list, templates, drafts, settings, encrypted credentials
     preload.js   the IPC bridge exposed to the page
   renderer/    The user interface (no Node access)
     editor.js    the rich-text editor and its paste handling

@@ -1,6 +1,6 @@
 'use strict';
 
-/* global api */
+/* global api, scmHtml, RichTextEditor */
 // Renderer. No Node access here — everything privileged goes through the
 // `api` bridge defined in preload.js.
 
@@ -8,6 +8,8 @@ const state = {
   sites: [],
   settings: {},
   templates: [],
+  drafts: [],
+  activeDraftId: null,
   builtInFields: [],
   builtInTemplates: [],
   recruitmentFields: [],
@@ -15,7 +17,11 @@ const state = {
   recruitmentImport: null,
   recruitmentDraft: null,
   encryptionAvailable: false,
+  // 'one' | 'site' | 'person' drives the UI switch; `mode`/`perContact` are
+  // the shape the backend (shared/compose.js) actually expects.
+  sendMode: 'one',
   mode: 'combined',
+  perContact: false,
   search: '',
   statusFilter: new Set(),
   // Empty means "everyone at the selected sites". Adding roles narrows the
@@ -27,6 +33,7 @@ const state = {
   previewIndex: 0,
   previewTab: 'formatted',
   importDraft: null,
+  drawerOpen: true,
 };
 
 let editor = null;
@@ -67,6 +74,64 @@ function plural(count, singular, pluralForm) {
 
 function openModal(id) { $(id).classList.remove('hidden'); }
 function closeModal(id) { $(id).classList.add('hidden'); }
+
+/**
+ * Ask for a single line of text.
+ *
+ * Electron does not implement window.prompt() — it throws "prompt() is and
+ * will not be supported" — so every such request goes through this dialog.
+ *
+ * @returns {Promise<string|null>} the trimmed text, or null if cancelled.
+ */
+function askText(message, defaultValue = '', options = {}) {
+  const { title = 'Site Contact Mailer', okLabel = 'OK' } = options;
+  return new Promise((resolve) => {
+    const modal = $('promptModal');
+    const input = $('promptInput');
+    const cancels = [...modal.querySelectorAll('[data-prompt-cancel]')];
+    $('promptTitle').textContent = title;
+    $('promptMessage').textContent = message;
+    $('promptOk').textContent = okLabel;
+    input.value = defaultValue;
+
+    const finish = (value) => {
+      modal.classList.add('hidden');
+      $('promptOk').removeEventListener('click', onOk);
+      input.removeEventListener('keydown', onKey);
+      for (const button of cancels) button.removeEventListener('click', onCancel);
+      resolve(value);
+    };
+    const onOk = () => {
+      const value = input.value.trim();
+      finish(value === '' ? null : value);
+    };
+    const onCancel = () => finish(null);
+    const onKey = (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); onOk(); }
+      if (event.key === 'Escape') { event.preventDefault(); onCancel(); }
+    };
+
+    $('promptOk').addEventListener('click', onOk);
+    input.addEventListener('keydown', onKey);
+    for (const button of cancels) button.addEventListener('click', onCancel);
+
+    modal.classList.remove('hidden');
+    input.focus();
+    input.select();
+  });
+}
+
+// The editor is a separate script and needs the same dialog.
+window.scmPrompt = askText;
+
+const STATUS_DOTS = {
+  recruiting: '#12a47b', open: '#12a47b', setup: '#838190', identified: '#838190',
+  paused: '#d99a22', onhold: '#d99a22', closed: '#7c8b96', completed: '#7c8b96',
+};
+function statusDot(status) {
+  const key = String(status || '').toLowerCase().replace(/[^a-z]/g, '');
+  return STATUS_DOTS[key] || '#9c9aa8';
+}
 
 // ── Selection ─────────────────────────────────────────────────────────────
 
@@ -117,11 +182,11 @@ function matchesFilters(site) {
   return haystack.includes(query);
 }
 
-let saveTimer = null;
+let saveSitesTimer = null;
 function persistSites() {
-  clearTimeout(saveTimer);
+  clearTimeout(saveSitesTimer);
   // The contact tick boxes are edited rapidly; coalesce the writes.
-  saveTimer = setTimeout(() => {
+  saveSitesTimer = setTimeout(() => {
     api.saveSites(state.sites.map((site) => ({
       ...site,
       // `selected` on the site is a transient UI choice, not saved state.
@@ -142,16 +207,10 @@ function renderStatusFilters() {
   box.innerHTML = '';
   if (counts.size <= 1) return;
 
-  // Statuses come from the spreadsheet, so colour the ones we recognise and
-  // leave anything else neutral. Set as a class, not an inline style, because
-  // the content security policy forbids inline styles.
-  const knownStatuses = {
-    recruiting: 'recruiting', open: 'recruiting', setup: 'setup', identified: 'setup',
-    paused: 'paused', onhold: 'paused', closed: 'closed', completed: 'closed',
-  };
   const dotClass = (status) => {
     const key = String(status).toLowerCase().replace(/[^a-z]/g, '');
-    return knownStatuses[key] ? ` chip-dot--${knownStatuses[key]}` : '';
+    const known = ['recruiting', 'open', 'setup', 'identified', 'paused', 'onhold', 'closed', 'completed'];
+    return known.includes(key) ? ` chip-dot--${{ open: 'recruiting', identified: 'setup', onhold: 'paused', completed: 'closed' }[key] || key}` : '';
   };
 
   for (const [status, count] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
@@ -199,6 +258,7 @@ function renderRoleFilters() {
       if (on) state.roleFilter.delete(role);
       else state.roleFilter.add(role);
       renderSites();
+      scheduleDraftSave();
     });
     box.appendChild(chip);
   }
@@ -213,8 +273,7 @@ function renderSites() {
   if (state.sites.length === 0) {
     list.classList.add('hidden');
     empty.classList.remove('hidden');
-    $('siteCount').textContent = '';
-    renderRecipientBar();
+    renderRecipients();
     return;
   }
   list.classList.remove('hidden');
@@ -240,6 +299,7 @@ function renderSites() {
       event.stopPropagation();
       site.selected = box.checked;
       renderSites();
+      scheduleDraftSave();
     });
 
     const text = document.createElement('div');
@@ -276,6 +336,7 @@ function renderSites() {
     main.addEventListener('click', () => {
       site.selected = !site.selected;
       renderSites();
+      scheduleDraftSave();
     });
     row.appendChild(main);
 
@@ -314,79 +375,213 @@ function renderSites() {
     list.appendChild(row);
   }
 
-  const ticked = state.sites.filter((s) => s.selected).length;
-  const shown = visible.length === state.sites.length
-    ? plural(state.sites.length, 'site')
-    : `${visible.length} of ${state.sites.length} sites`;
-  $('siteCount').textContent = ticked ? `${shown} · ${ticked} selected` : shown;
-
   renderStatusFilters();
   renderRoleFilters();
-  renderRecipientBar();
+  renderRecipients();
 }
 
-// ── Recipient summary and send button ─────────────────────────────────────
+// ── Recipient summary, right rail and the send button ─────────────────────
 
-function renderRecipientBar() {
-  const bar = $('recipientBar');
+function computeRecipientState() {
   const chosen = selectedSites();
-  const button = $('btnSend');
-
-  // Ticked, but every address is either missing or unticked, so nothing can
-  // be sent to them. Say so rather than quietly leaving them out.
-  const skipped = state.sites.filter((s) => s.selected && !chosen.includes(s));
-  const reason = state.roleFilter.size ? 'nobody in those roles' : 'no contacts';
-  const skippedNote = skipped.length
-    ? ` · <span class="warn-text">${plural(skipped.length, 'selected site has', 'selected sites have')} `
-      + `${reason} and will be skipped</span>`
-    : '';
-
-  if (chosen.length === 0) {
-    bar.innerHTML = skipped.length
-      ? `<span class="warn-text">${plural(skipped.length, 'selected site has', 'selected sites have')} no email addresses, so there is nothing to send.</span>`
-      : '<span class="muted">Select one or more sites to address this email.</span>';
-    button.disabled = true;
-    button.textContent = 'Select sites first';
-    return;
-  }
-
+  const ticked = state.sites.filter((s) => s.selected);
+  const skipped = ticked.filter((s) => !chosen.includes(s));
   const recipients = new Set();
   for (const site of chosen) {
     for (const contact of activeContacts(site)) recipients.add(contact.email.toLowerCase());
   }
+  const useBcc = state.sendMode === 'one' && (chosen.length > 1 || state.settings.forceBcc);
+  return { chosen, ticked, skipped, recipients, useBcc };
+}
 
-  const roleNote = state.roleFilter.size
-    ? ` · <span class="role-note">${escapeHtml([...state.roleFilter].join(', '))} only</span>`
-    : '';
+/** The To/Bcc chips above the subject line — what will this send address? */
+function renderRecipientChips(ticked, useBcc) {
+  const bar = $('recipientSummary');
+  bar.innerHTML = '';
 
-  if (state.mode === 'merge') {
-    const perContact = $('perContact').checked;
-    const count = perContact ? recipients.size : chosen.length;
-    bar.innerHTML = `<span class="pill">TO</span>`
-      + `<strong>${plural(count, 'separate email')}</strong> — `
-      + `${perContact ? 'one to each contact' : 'one per site, addressed to that site\'s contacts'}, `
-      + `each with its own subject and message.${skippedNote}${roleNote}`;
-    button.textContent = state.settings.deliveryMethod === 'smtp'
-      ? `Send ${count}` : `Prepare ${count}`;
+  if (state.sites.length === 0) {
+    const span = document.createElement('span');
+    span.className = 'recipient-empty';
+    span.textContent = 'Import a contact list to begin.';
+    bar.appendChild(span);
+    return;
+  }
+
+  if (ticked.length > 0) {
+    const isTo = state.sendMode !== 'one' || !useBcc;
+    const pill = document.createElement('span');
+    pill.className = `addr-pill ${isTo ? 'to' : 'bcc'}`;
+    pill.textContent = isTo ? 'TO' : 'BCC';
+    bar.appendChild(pill);
+  }
+
+  const chipsBox = document.createElement('div');
+  chipsBox.className = 'recipient-chips';
+  if (ticked.length === 0) {
+    const span = document.createElement('span');
+    span.className = 'recipient-empty';
+    span.textContent = 'Select one or more sites to address this email.';
+    chipsBox.appendChild(span);
   } else {
-    const useBcc = chosen.length > 1 || state.settings.forceBcc;
-    const self = state.settings.senderAddress;
-    if (useBcc) {
-      bar.innerHTML = `<span class="pill bcc">BCC</span>`
-        + `<strong>${plural(recipients.size, 'address', 'addresses')}</strong> across `
-        + `${plural(chosen.length, 'site')}`
-        + (state.settings.putSelfInTo && self
-          ? ` · <span class="pill">TO</span>${escapeHtml(self)}`
-          : ' · <span class="warn-text">no To address set — add yours in Settings</span>')
-        + skippedNote + roleNote;
-    } else {
-      bar.innerHTML = `<span class="pill">TO</span>`
-        + `<strong>${plural(recipients.size, 'address', 'addresses')}</strong> at `
-        + `${escapeHtml(chosen[0].siteName)}${skippedNote}${roleNote}`;
+    for (const site of ticked) {
+      const n = activeContactCount(site);
+      const chip = document.createElement('span');
+      chip.className = `recipient-chip${n === 0 ? ' no-address' : ''}`;
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = statusDot(site.status);
+
+      const label = document.createElement('span');
+      label.textContent = `${site.siteId} · ${site.siteName.split(',')[0]}`;
+
+      const tail = document.createElement('span');
+      tail.className = 'tail';
+      tail.textContent = n === 0 ? 'no address' : `×${n}`;
+
+      const drop = document.createElement('span');
+      drop.className = 'drop';
+      drop.textContent = '×';
+      drop.title = `Remove ${site.siteName}`;
+      drop.addEventListener('click', (event) => {
+        event.stopPropagation();
+        site.selected = false;
+        renderSites();
+        scheduleDraftSave();
+      });
+
+      chip.append(dot, label, tail, drop);
+      chipsBox.appendChild(chip);
     }
-    button.textContent = 'Send';
+  }
+  bar.appendChild(chipsBox);
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = `drawer-toggle${state.drawerOpen ? ' is-open' : ''}`;
+  toggle.innerHTML = `${state.drawerOpen ? 'Hide recipients' : (ticked.length ? '+ Add sites' : 'Choose recipients')} `
+    + '<span class="caret">▾</span>';
+  toggle.addEventListener('click', () => {
+    state.drawerOpen = !state.drawerOpen;
+    $('recipientDrawer').classList.toggle('is-collapsed', !state.drawerOpen);
+    renderRecipientChips(ticked, useBcc);
+  });
+  bar.appendChild(toggle);
+}
+
+/** The "Who gets this" stats and addressing note in the right rail. */
+function renderSummaryRail(chosen, skipped, recipients, useBcc) {
+  $('statSites').textContent = chosen.length;
+  $('statPeople').textContent = recipients.size;
+
+  const note = $('addressingNote');
+  const self = state.settings.senderAddress;
+  const roleNote = state.roleFilter.size
+    ? ` · <span>${escapeHtml([...state.roleFilter].join(', '))} only</span>` : '';
+
+  if (state.sites.length === 0) {
+    note.innerHTML = '<span class="muted">Import a contact list to begin.</span>';
+  } else if (chosen.length === 0) {
+    note.innerHTML = '<span class="muted">Select sites to see how this will be addressed.</span>';
+  } else if (state.sendMode !== 'one') {
+    const count = state.sendMode === 'person' ? recipients.size : chosen.length;
+    note.innerHTML = `<span class="addr-pill to">TO</span>${plural(count, 'separate email')} — each addressed to `
+      + `${state.sendMode === 'person' ? 'one person' : "that site's own contacts"}.${roleNote}`;
+  } else if (useBcc) {
+    note.innerHTML = `<span class="addr-pill bcc">BCC</span>${plural(recipients.size, 'address', 'addresses')} across `
+      + `${plural(chosen.length, 'site')}`
+      + (state.settings.putSelfInTo && self
+        ? ' · your address is in To.'
+        : ' · <span style="color: var(--amber-ink);">no To address set — add yours in Settings.</span>')
+      + roleNote;
+  } else {
+    note.innerHTML = `<span class="addr-pill to">TO</span>${plural(recipients.size, 'address', 'addresses')} at `
+      + `${escapeHtml(chosen[0].siteName)}.${roleNote}`;
+  }
+
+  const skipEl = $('skipWarning');
+  if (skipped.length === 0) {
+    skipEl.classList.add('hidden');
+    skipEl.innerHTML = '';
+  } else {
+    skipEl.classList.remove('hidden');
+    const reason = state.roleFilter.size ? 'nobody in those roles' : 'no usable address';
+    skipEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+      + 'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 21 19.5H3z"></path>'
+      + '<path d="M12 9.5v4M12 16.5h.01"></path></svg>'
+      + `<span>${plural(skipped.length, 'selected site has', 'selected sites have')} ${reason} and will be skipped `
+      + `(${escapeHtml(skipped.map((s) => s.siteName.split(',')[0]).join(', '))}).</span>`;
+  }
+}
+
+function updateSendButton(chosen, recipients) {
+  const button = $('btnSend');
+  const modeCount = $('modeCount');
+  if (chosen.length === 0) {
+    button.disabled = true;
+    button.textContent = 'Select sites first';
+    modeCount.textContent = '';
+    return;
   }
   button.disabled = false;
+  if (state.sendMode === 'one') {
+    button.textContent = 'Send';
+    modeCount.textContent = '';
+  } else {
+    const count = state.sendMode === 'person' ? recipients.size : chosen.length;
+    button.textContent = state.settings.deliveryMethod === 'smtp' ? `Send ${count}` : `Prepare ${count}`;
+    modeCount.textContent = `${plural(count, 'email')} to prepare`;
+  }
+}
+
+function renderRecipients() {
+  const { chosen, ticked, skipped, recipients, useBcc } = computeRecipientState();
+  renderRecipientChips(ticked, useBcc);
+  renderSummaryRail(chosen, skipped, recipients, useBcc);
+  updateSendButton(chosen, recipients);
+  scheduleLivePreview();
+}
+
+// ── Live preview (right rail) ──────────────────────────────────────────────
+
+let livePreviewTimer = null;
+function scheduleLivePreview() {
+  clearTimeout(livePreviewTimer);
+  livePreviewTimer = setTimeout(renderLivePreview, 350);
+}
+
+async function renderLivePreview() {
+  const box = $('livePreview');
+  const pos = $('livePreviewPos');
+  const chosen = selectedSites();
+  if (chosen.length === 0) {
+    pos.textContent = '';
+    box.innerHTML = '<p class="muted" style="padding: 12px;">Select a site to see a live preview here.</p>';
+    return;
+  }
+
+  const planned = await call(api.planMessages(sendPayload()), { silent: true });
+  if (!planned || planned.length === 0) return;
+  const message = planned[0];
+  pos.textContent = planned.length === 1 ? '1 of 1' : `1 of ${planned.length}`;
+
+  const addressed = (message.to && message.to.length) ? message.to : (message.bcc || []);
+  const label = (message.to && message.to.length) ? 'To' : 'Bcc';
+  const names = addressed.map((c) => (c.name ? `${c.name} <${c.email}>` : c.email));
+  const addressLine = names.length > 2
+    ? `${names.slice(0, 2).join(', ')}, +${names.length - 2}`
+    : (names.join(', ') || '—');
+
+  const body = (!message.bodyHtml)
+    ? `<div class="live-preview-body">${escapeHtml(message.body).split('\n\n').map((p) => `<p>${p}</p>`).join('')}</div>`
+    : `<div class="live-preview-body">${scmHtml.sanitizeHtml(message.bodyHtml)}</div>`;
+
+  box.innerHTML = `
+    <div class="live-preview-headers">
+      <div class="row"><span class="k">Subject</span> ${escapeHtml(message.subject) || '<em>(empty)</em>'}</div>
+      <div class="row"><span class="k">${label}</span> ${escapeHtml(addressLine)}</div>
+    </div>
+    ${body}`;
 }
 
 // ── Compose ───────────────────────────────────────────────────────────────
@@ -432,43 +627,75 @@ function refreshPlaceholderPicker() {
   addGroup('From your spreadsheet', [...extra].sort().map((key) => ({ key, label: key })));
 }
 
-function refreshTemplatePicker() {
-  const picker = $('templatePicker');
-  picker.innerHTML = '<option value="">Templates…</option>';
+function renderTemplateList() {
+  const list = $('templateList');
+  list.innerHTML = '';
 
-  const addGroup = (label, templates) => {
+  // `state.builtInTemplates` only arrives non-empty once there is recruitment
+  // data to fill its charts — see availableBuiltIns() in shared/templates.js.
+  const addGroup = (label, templates, deletable) => {
     if (templates.length === 0) return;
-    const group = document.createElement('optgroup');
-    group.label = label;
+    const heading = document.createElement('div');
+    heading.className = 'template-group-label';
+    heading.textContent = label;
+    list.appendChild(heading);
+
     for (const template of templates) {
-      const option = document.createElement('option');
-      option.value = template.id;
-      option.textContent = template.name;
-      group.appendChild(option);
+      const item = document.createElement('div');
+      item.className = 'template-item';
+
+      const name = document.createElement('span');
+      name.textContent = template.name;
+      item.appendChild(name);
+
+      if (deletable) {
+        const remove = document.createElement('button');
+        remove.className = 'template-remove';
+        remove.textContent = '×';
+        remove.title = `Delete "${template.name}"`;
+        remove.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          if (!window.confirm(`Delete template "${template.name}"?`)) return;
+          const remaining = await call(api.deleteTemplate(template.id));
+          if (!remaining) return;
+          state.templates = remaining;
+          renderTemplateList();
+        });
+        item.appendChild(remove);
+      }
+
+      item.addEventListener('click', () => {
+        $('subject').value = template.subject;
+        // Templates saved before rich text carry only a plain body.
+        editor.setHtml(template.bodyHtml || scmHtml.textToHtmlFragment(template.body || ''));
+        renderRecipients();
+        scheduleDraftSave();
+        toast(`Loaded "${template.name}"`);
+      });
+      list.appendChild(item);
     }
-    picker.appendChild(group);
   };
 
-  addGroup('Ready-made', state.builtInTemplates);
-  addGroup('Saved', state.templates);
+  addGroup('Ready-made', state.builtInTemplates, false);
+  addGroup('Saved', state.templates, true);
+  $('templatesEmpty').classList.toggle('hidden', state.builtInTemplates.length > 0 || state.templates.length > 0);
 }
 
-/** Look in both the user's templates and the ones shipped with the app. */
-function findTemplate(id) {
-  return state.templates.find((t) => t.id === id)
-    || state.builtInTemplates.find((t) => t.id === id)
-    || null;
-}
-
-function setMode(mode) {
-  state.mode = mode;
+/** `one` | `site` | `person` — the design's three-way switch. Internally
+ *  this still drives `mode`/`perContact` the way shared/compose.js expects:
+ *  a combined email, or a merge queue with one message per site or per
+ *  contact. */
+function setSendMode(key, { skipSave = false } = {}) {
+  state.sendMode = key;
+  state.mode = key === 'one' ? 'combined' : 'merge';
+  state.perContact = key === 'person';
   for (const button of document.querySelectorAll('.mode-btn')) {
-    const active = button.dataset.mode === mode;
+    const active = button.dataset.mode === key;
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-checked', String(active));
   }
-  $('mergeOptions').classList.toggle('hidden', mode !== 'merge');
-  renderRecipientBar();
+  renderRecipients();
+  if (!skipSave) scheduleDraftSave();
 }
 
 function sendPayload() {
@@ -477,7 +704,7 @@ function sendPayload() {
     template: currentTemplate(),
     mode: state.mode,
     options: {
-      perContact: $('perContact').checked,
+      perContact: state.perContact,
       roles: [...state.roleFilter],
       cc: $('ccField').value,
       attachments: state.attachments,
@@ -498,7 +725,7 @@ function validateBeforeSend() {
     problems.push('Everyone will be bcc\'d but no To address is set. Add your email address in Settings.');
   }
   const bodyText = editor.getText();
-  if (state.mode === 'combined' && bodyText.includes('{{first_name}}')) {
+  if (state.sendMode === 'one' && bodyText.includes('{{first_name}}')) {
     problems.push('{{first_name}} only works on a per-site email — on one combined email it will come out blank. Use "One per site", or {{first_name|colleagues}}.');
   }
   return problems;
@@ -513,6 +740,16 @@ function showComposeWarnings(messages) {
   }
   box.classList.remove('hidden');
   box.innerHTML = `<ul>${messages.map((m) => `<li>${escapeHtml(m)}</li>`).join('')}</ul>`;
+}
+
+/** A send is done with this draft — drop it from the sidebar and start fresh,
+ *  the way sending an Outlook draft clears it out of the Drafts folder. */
+async function retireActiveDraft() {
+  if (state.activeDraftId) {
+    const remaining = await call(api.deleteDraft(state.activeDraftId), { silent: true });
+    if (remaining) state.drafts = remaining;
+  }
+  await startNewDraft();
 }
 
 async function doSend() {
@@ -555,13 +792,17 @@ async function doSend() {
         + 'silently truncate your text.\n\nUse "Draft in my email app" instead for a reliable copy.\n\nOpen it anyway?',
       )) return;
       const result = await call(api.sendViaMailto(payload));
-      if (result) toast(`Opened ${plural(result.opened, 'compose window')}`, 'success');
+      if (result) {
+        toast(`Opened ${plural(result.opened, 'compose window')}`, 'success');
+        await retireActiveDraft();
+      }
     } else if (method === 'eml') {
       const result = await call(api.createDrafts(payload));
       if (result && !result.cancelled) {
         toast(result.written === 1
           ? 'Draft opened in your email app — review it and press Send'
           : `${result.written} drafts saved to ${result.folder}`, 'success');
+        await retireActiveDraft();
       }
     } else {
       const result = await call(api.sendViaSmtp(payload));
@@ -572,12 +813,14 @@ async function doSend() {
         toast(message, result.failed ? 'error' : 'success');
         if (result.failed) {
           showComposeWarnings(result.results.filter((r) => !r.ok).map((r) => `${r.site}: ${r.error}`));
+        } else {
+          await retireActiveDraft();
         }
       }
     }
   } finally {
     $('btnSend').disabled = false;
-    renderRecipientBar();
+    renderRecipients();
   }
 }
 
@@ -649,6 +892,138 @@ async function openPreview() {
   state.previewIndex = 0;
   renderPreview();
   openModal('previewModal');
+}
+
+// ── Drafts ──────────────────────────────────────────────────────────────
+
+function draftPayloadFromState() {
+  return {
+    id: state.activeDraftId,
+    subject: $('subject').value,
+    bodyHtml: editor.getHtml(),
+    body: editor.getText(),
+    cc: $('ccField').value,
+    sendMode: state.sendMode,
+    roles: [...state.roleFilter],
+    siteKeys: state.sites.filter((s) => s.selected).map((s) => s.key),
+  };
+}
+
+let draftSaveTimer = null;
+function scheduleDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveActiveDraftNow, 700);
+}
+
+/** Persist the draft immediately, bypassing the debounce — used before
+ *  switching away from it, so nothing typed in the last second is lost. */
+async function flushDraftSave() {
+  if (!draftSaveTimer) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = null;
+  await saveActiveDraftNow();
+}
+
+async function saveActiveDraftNow() {
+  const payload = draftPayloadFromState();
+  const isEmpty = !payload.subject.trim() && editor.isEmpty() && payload.siteKeys.length === 0;
+  // Don't create a record out of a message nobody has actually started.
+  if (!state.activeDraftId && isEmpty) return;
+  const saved = await call(api.saveDraft(payload), { silent: true });
+  if (!saved) return;
+  state.activeDraftId = saved.id;
+  const index = state.drafts.findIndex((d) => d.id === saved.id);
+  if (index >= 0) state.drafts[index] = saved;
+  else state.drafts.unshift(saved);
+  renderDrafts();
+}
+
+function renderDrafts() {
+  const list = $('draftList');
+  list.innerHTML = '';
+  const sorted = [...state.drafts].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+  for (const draft of sorted) {
+    const item = document.createElement('div');
+    item.className = `draft-item${draft.id === state.activeDraftId ? ' is-active' : ''}`;
+
+    const title = document.createElement('div');
+    title.className = 'draft-title';
+    title.textContent = draft.subject.trim() || 'New email';
+
+    const sub = document.createElement('div');
+    sub.className = 'draft-sub';
+    const when = new Date(draft.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    sub.textContent = `${plural(draft.siteKeys.length, 'site')} · ${when}`;
+
+    const remove = document.createElement('button');
+    remove.className = 'draft-remove';
+    remove.textContent = '×';
+    remove.title = 'Delete draft';
+    remove.addEventListener('click', (event) => removeDraft(draft.id, event));
+
+    item.append(title, sub, remove);
+    item.addEventListener('click', () => openDraft(draft.id));
+    list.appendChild(item);
+  }
+  $('draftsEmpty').classList.toggle('hidden', sorted.length > 0);
+}
+
+/** Clear the compose area for a message that has not been saved as a draft
+ *  yet — it becomes one the moment there is something worth keeping. */
+async function startNewDraft() {
+  await flushDraftSave();
+  state.activeDraftId = null;
+  $('subject').value = '';
+  $('ccField').value = '';
+  editor.setHtml('');
+  if (editor.sourceMode) $('sourceBody').value = '';
+  state.attachments = [];
+  renderAttachments();
+  for (const site of state.sites) site.selected = false;
+  state.roleFilter.clear();
+  state.expanded.clear();
+  showComposeWarnings([]);
+  setSendMode('one', { skipSave: true });
+  renderSites();
+  renderDrafts();
+  $('subject').focus();
+}
+
+async function openDraft(id) {
+  if (id === state.activeDraftId) return;
+  await flushDraftSave();
+  const draft = state.drafts.find((d) => d.id === id);
+  if (!draft) return;
+
+  state.activeDraftId = draft.id;
+  $('subject').value = draft.subject || '';
+  $('ccField').value = draft.cc || '';
+  editor.setHtml(draft.bodyHtml || scmHtml.textToHtmlFragment(draft.body || ''));
+  state.roleFilter = new Set(draft.roles || []);
+  const keys = new Set(draft.siteKeys || []);
+  for (const site of state.sites) site.selected = keys.has(site.key);
+  state.expanded.clear();
+  showComposeWarnings([]);
+  setSendMode(draft.sendMode || 'one', { skipSave: true });
+  renderSites();
+  renderDrafts();
+}
+
+async function removeDraft(id, event) {
+  event.stopPropagation();
+  if (!window.confirm('Delete this draft?')) return;
+  const remaining = await call(api.deleteDraft(id));
+  if (!remaining) return;
+  state.drafts = remaining;
+  if (state.activeDraftId === id) {
+    state.activeDraftId = null;
+    const next = [...state.drafts].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+    if (next) await openDraft(next.id);
+    else await startNewDraft();
+  } else {
+    renderDrafts();
+  }
 }
 
 // ── Import wizard ─────────────────────────────────────────────────────────
@@ -1111,7 +1486,7 @@ async function saveSettings() {
     if (reloaded) state.settings = reloaded.settings;
   }
   closeModal('settingsModal');
-  renderRecipientBar();
+  renderRecipients();
   toast('Settings saved', 'success');
 }
 
@@ -1153,7 +1528,10 @@ function syncToolbarState() {
 
 function wireEditor() {
   editor = new RichTextEditor($('editorBody'), {
-    onChange: () => { renderRecipientBar(); },
+    onChange: () => {
+      renderRecipients();
+      scheduleDraftSave();
+    },
   });
 
   document.addEventListener('selectionchange', () => {
@@ -1194,7 +1572,10 @@ function wireEditor() {
     editor.focus();
   });
 
-  $('sourceBody').addEventListener('input', () => renderRecipientBar());
+  $('sourceBody').addEventListener('input', () => {
+    renderRecipients();
+    scheduleDraftSave();
+  });
 
   $('btnLoadHtml').addEventListener('click', async () => {
     const loaded = await call(api.loadHtmlBody());
@@ -1236,6 +1617,8 @@ function wireEvents() {
     for (const modal of document.querySelectorAll('.modal:not(.hidden)')) modal.classList.add('hidden');
   });
 
+  $('btnNewDraft').addEventListener('click', startNewDraft);
+
   $('siteSearch').addEventListener('input', (event) => {
     state.search = event.target.value;
     renderSites();
@@ -1243,20 +1626,31 @@ function wireEvents() {
   $('btnSelectAll').addEventListener('click', () => {
     for (const site of state.sites) site.selected = true;
     renderSites();
+    scheduleDraftSave();
   });
   $('btnSelectNone').addEventListener('click', () => {
     for (const site of state.sites) site.selected = false;
     renderSites();
+    scheduleDraftSave();
   });
   $('btnSelectFiltered').addEventListener('click', () => {
     for (const site of state.sites) if (matchesFilters(site)) site.selected = true;
     renderSites();
+    scheduleDraftSave();
   });
 
   for (const button of document.querySelectorAll('.mode-btn')) {
-    button.addEventListener('click', () => setMode(button.dataset.mode));
+    button.addEventListener('click', () => setSendMode(button.dataset.mode));
   }
-  $('perContact').addEventListener('change', renderRecipientBar);
+
+  $('subject').addEventListener('input', () => {
+    renderRecipients();
+    scheduleDraftSave();
+  });
+  $('ccField').addEventListener('input', () => {
+    renderRecipients();
+    scheduleDraftSave();
+  });
 
   $('placeholderPicker').addEventListener('change', (event) => {
     if (!event.target.value) return;
@@ -1264,36 +1658,29 @@ function wireEvents() {
     event.target.value = '';
   });
 
-  $('templatePicker').addEventListener('change', (event) => {
-    const template = findTemplate(event.target.value);
-    if (!template) return;
-    $('subject').value = template.subject;
-    // Templates saved before rich text carry only a plain body.
-    editor.setHtml(template.bodyHtml || scmHtml.textToHtmlFragment(template.body || ''));
-    event.target.value = '';
-    toast(`Loaded "${template.name}"`);
-  });
-
   $('btnAllRoles').addEventListener('click', () => {
     state.roleFilter.clear();
     renderSites();
+    scheduleDraftSave();
   });
 
   $('btnSaveTemplate').addEventListener('click', async () => {
-    const name = window.prompt('Save this subject and message as a template called:');
+    const name = await askText('Save this subject and message as a template called:', '', {
+      title: 'Save template', okLabel: 'Save',
+    });
     if (!name) return;
     const saved = await call(api.saveTemplate({ name, ...currentTemplate() }));
     if (!saved) return;
     const reloaded = await call(api.loadState(), { silent: true });
     if (reloaded) state.templates = reloaded.templates;
-    refreshTemplatePicker();
+    renderTemplateList();
     toast(`Saved "${saved.name}"`, 'success');
   });
 
   $('deliveryMethod').addEventListener('change', async (event) => {
     state.settings.deliveryMethod = event.target.value;
     await call(api.updateSettings({ deliveryMethod: event.target.value }), { silent: true });
-    renderRecipientBar();
+    renderRecipients();
   });
 
   $('btnSend').addEventListener('click', doSend);
@@ -1433,6 +1820,7 @@ async function init() {
   if (loaded) {
     state.settings = loaded.settings;
     state.templates = loaded.templates || [];
+    state.drafts = loaded.drafts || [];
     state.builtInFields = loaded.builtInFields || [];
     state.recruitmentFields = loaded.recruitmentFields || [];
     state.builtInTemplates = loaded.builtInTemplates || [];
@@ -1444,12 +1832,21 @@ async function init() {
     updateImportSummary(loaded.lastImport);
   }
 
-  refreshTemplatePicker();
+  renderTemplateList();
   refreshPlaceholderPicker();
   renderAttachments();
   updateRecruitmentSummary();
-  setMode('combined');
-  renderSites();
+  renderDrafts();
+
+  // Resume the most recently touched draft, the way Outlook reopens on
+  // whatever you were last writing, rather than a blank compose window.
+  const mostRecent = [...state.drafts].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+  if (mostRecent) {
+    await openDraft(mostRecent.id);
+  } else {
+    setSendMode('one', { skipSave: true });
+    renderSites();
+  }
 
   const info = await call(api.appInfo(), { silent: true });
   if (info) $('appInfo').textContent = `Version ${info.version} · data stored in ${info.userData}`;

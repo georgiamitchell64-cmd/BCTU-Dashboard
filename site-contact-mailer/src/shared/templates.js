@@ -3,6 +3,33 @@
 // Templates shipped with the app. They appear in the Templates menu below the
 // user's own and cannot be overwritten — loading one copies it into the editor.
 
+const fs = require('fs');
+const path = require('path');
+
+const LOGO_FILE = path.join(__dirname, '..', 'assets', 'tonic-logo.png');
+let logoTag = null;
+
+/**
+ * The TONIC logo as an inline `data:` image.
+ *
+ * It goes in as a data URI so the template is a self-contained string; the
+ * mailer turns every data: image into a proper `cid:` attachment when the
+ * message is built, because most clients refuse to render a data URI in
+ * received mail. Read once and cached.
+ */
+function logoHtml() {
+  if (logoTag !== null) return logoTag;
+  try {
+    const base64 = fs.readFileSync(LOGO_FILE).toString('base64');
+    logoTag = `<img src="data:image/png;base64,${base64}" alt="TONIC" width="150"`
+      + ' style="width:150px;height:auto;border:0;display:block;">';
+  } catch {
+    // A missing logo must not stop a template loading.
+    logoTag = '';
+  }
+  return logoTag;
+}
+
 const MONTHLY_RECRUITMENT = {
   id: 'builtin_monthly_recruitment',
   builtIn: true,
@@ -10,6 +37,9 @@ const MONTHLY_RECRUITMENT = {
   requires: 'recruitment',
   subject: '{{site_name}} — TONIC recruitment update, {{today}}',
   bodyHtml: [
+    // The trial's logo, so the message is recognisably from TONIC. It goes in
+    // as a data: URI and the mailer converts it to a cid: attachment on send.
+    `<p>${logoHtml()}</p>`,
     '<p>Dear {{first_name|colleagues}},</p>',
     '<p>Thank you for your continued work on TONIC. Here is where',
     ' <strong>{{site_name}}</strong> stands this month.</p>',

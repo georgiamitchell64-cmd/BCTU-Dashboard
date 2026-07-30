@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('api', {
   updateSettings: (patch) => invoke('settings:update', patch),
   saveTemplate: (template) => invoke('templates:save', template),
   deleteTemplate: (id) => invoke('templates:delete', id),
+  saveDraft: (draft) => invoke('drafts:save', draft),
+  deleteDraft: (id) => invoke('drafts:delete', id),
 
   planMessages: (payload) => invoke('compose:plan', payload),
   sendViaMailto: (payload) => invoke('send:mailto', payload),

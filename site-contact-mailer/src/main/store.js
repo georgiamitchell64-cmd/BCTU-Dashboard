@@ -43,6 +43,7 @@ const DEFAULT_STATE = {
   settings: DEFAULT_SETTINGS,
   sites: [],
   templates: [],
+  drafts: [],
   lastImport: null,
   lastMapping: null,
 };
@@ -175,6 +176,44 @@ class Store {
     this.state.templates = this.state.templates.filter((t) => t.id !== id);
     this.save();
     return this.state.templates;
+  }
+
+  getDrafts() {
+    return this.state.drafts || [];
+  }
+
+  /**
+   * Create or update an in-progress message, the way Outlook's Drafts folder
+   * holds several messages you haven't sent yet. `id` is supplied by the
+   * renderer so rapid autosaves of the same draft update one record instead
+   * of piling up new ones.
+   */
+  saveDraft(draft) {
+    if (!this.state.drafts) this.state.drafts = [];
+    const id = draft.id || `draft_${Date.now()}`;
+    const record = {
+      id,
+      subject: draft.subject || '',
+      bodyHtml: draft.bodyHtml || '',
+      body: draft.body || '',
+      cc: draft.cc || '',
+      sendMode: draft.sendMode || 'one',
+      roles: Array.isArray(draft.roles) ? draft.roles : [],
+      siteKeys: Array.isArray(draft.siteKeys) ? draft.siteKeys : [],
+      createdAt: draft.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const index = this.state.drafts.findIndex((d) => d.id === id);
+    if (index >= 0) this.state.drafts[index] = record;
+    else this.state.drafts.unshift(record);
+    this.save();
+    return record;
+  }
+
+  deleteDraft(id) {
+    this.state.drafts = (this.state.drafts || []).filter((d) => d.id !== id);
+    this.save();
+    return this.state.drafts;
   }
 
   /**

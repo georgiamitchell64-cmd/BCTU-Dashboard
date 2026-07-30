@@ -16,7 +16,8 @@
 
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">✉</span>
+    <img class="brand-logo" src="../assets/tonic-logo.png" alt="TONIC">
+    <span class="brand-divider"></span>
     <div>
       <h1>Site Contact Mailer</h1>
       <p id="importSummary" class="brand-sub">No contact list imported</p>
@@ -31,60 +32,74 @@
   </div>
 </header>
 
-<main class="layout">
+<main class="shell">
 
-  <!-- ── Sites ──────────────────────────────────────────────────────── -->
-  <section class="pane pane-sites">
-    <div class="pane-head">
-      <h2>Sites</h2>
-      <span id="siteCount" class="muted"></span>
+  <!-- ── Drafts & templates ─────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <button id="btnNewDraft" class="btn btn-primary btn-block">
+      <span class="plus">+</span> New email
+    </button>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Drafts</div>
+      <div id="draftList" class="draft-list"></div>
+      <p id="draftsEmpty" class="hint hint-inset hidden">Nothing saved yet — start typing and this becomes your first draft.</p>
     </div>
 
-    <div class="toolbar">
-      <input id="siteSearch" class="search" type="search"
-             placeholder="Search sites, IDs, contacts…" autocomplete="off">
-      <div class="toolbar-row">
-        <button id="btnSelectAll" class="link-btn">Select all</button>
-        <button id="btnSelectNone" class="link-btn">Clear</button>
-        <button id="btnSelectFiltered" class="link-btn">Select matching</button>
-      </div>
-      <div id="statusFilters" class="chips"></div>
-
-      <!-- Who at each site receives the message. Nothing selected means
-           everyone; picking roles narrows it to e.g. just PIs or just R&D. -->
-      <div class="role-filter">
-        <div class="role-filter-head">
-          <span class="role-filter-label">Send to</span>
-          <button id="btnAllRoles" class="link-btn">All contacts</button>
-        </div>
-        <div id="roleFilters" class="chips"></div>
-      </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Templates</div>
+      <div id="templateList" class="template-list"></div>
+      <p id="templatesEmpty" class="hint hint-inset hidden">No saved templates yet.</p>
     </div>
-
-    <div id="siteList" class="site-list" role="list"></div>
-
-    <div id="sitesEmpty" class="empty-state">
-      <p class="empty-title">No sites yet</p>
-      <p>Import an Excel or CSV contact list to get started.</p>
-      <button id="btnImportEmpty" class="btn btn-primary">Import contact list…</button>
-    </div>
-  </section>
+  </aside>
 
   <!-- ── Compose ────────────────────────────────────────────────────── -->
   <section class="pane pane-compose">
-    <div class="pane-head">
-      <h2>Compose</h2>
+    <div class="compose-head">
+      <span class="compose-title" id="composeTitle">New email</span>
       <div class="mode-switch" role="radiogroup" aria-label="Sending mode">
-        <button class="mode-btn is-active" data-mode="combined" role="radio" aria-checked="true">
-          One email
-        </button>
-        <button class="mode-btn" data-mode="merge" role="radio" aria-checked="false">
-          One per site
-        </button>
+        <button class="mode-btn is-active" data-mode="one" role="radio" aria-checked="true">One email</button>
+        <button class="mode-btn" data-mode="site" role="radio" aria-checked="false">One per site</button>
+        <button class="mode-btn" data-mode="person" role="radio" aria-checked="false">One per person</button>
       </div>
+      <span id="modeCount" class="muted"></span>
+      <div class="flex-spacer"></div>
+      <button id="btnPreview" class="btn btn-ghost">Preview</button>
+      <button id="btnSend" class="btn btn-primary" disabled>Select sites first</button>
     </div>
 
-    <div id="recipientBar" class="recipient-bar"></div>
+    <div id="recipientSummary" class="recipient-summary"></div>
+
+    <div id="recipientDrawer" class="recipient-drawer">
+      <div class="drawer-toolbar">
+        <input id="siteSearch" class="search" type="search"
+               placeholder="Search sites, IDs, contacts…" autocomplete="off">
+        <div class="toolbar-row">
+          <button id="btnSelectAll" class="link-btn">Select all</button>
+          <button id="btnSelectNone" class="link-btn">Clear</button>
+          <button id="btnSelectFiltered" class="link-btn">Select matching</button>
+        </div>
+        <div id="statusFilters" class="chips"></div>
+
+        <!-- Who at each site receives the message. Nothing selected means
+             everyone; picking roles narrows it to e.g. just PIs or just R&D. -->
+        <div class="role-filter">
+          <div class="role-filter-head">
+            <span class="role-filter-label">Send to</span>
+            <button id="btnAllRoles" class="link-btn">All contacts</button>
+          </div>
+          <div id="roleFilters" class="chips"></div>
+        </div>
+      </div>
+
+      <div id="siteList" class="site-list" role="list"></div>
+
+      <div id="sitesEmpty" class="empty-state">
+        <p class="empty-title">No sites yet</p>
+        <p>Import an Excel or CSV contact list to get started.</p>
+        <button id="btnImportEmpty" class="btn btn-primary">Import contact list…</button>
+      </div>
+    </div>
 
     <div class="field">
       <label for="subject">Subject</label>
@@ -105,10 +120,7 @@
           <select id="placeholderPicker" title="Insert a field from your spreadsheet">
             <option value="">Insert field…</option>
           </select>
-          <select id="templatePicker" title="Load a saved template">
-            <option value="">Templates…</option>
-          </select>
-          <button id="btnSaveTemplate" class="link-btn">Save template</button>
+          <button id="btnSaveTemplate" class="link-btn">Save as template</button>
         </div>
       </div>
 
@@ -186,15 +198,6 @@
       <span id="attachmentList" class="attachment-list"></span>
     </div>
 
-    <div id="mergeOptions" class="merge-options hidden">
-      <label class="checkline">
-        <input id="perContact" type="checkbox">
-        <span>A separate email to each individual contact
-          <small>Off: one email per site, addressed to all of that site's contacts.</small>
-        </span>
-      </label>
-    </div>
-
     <div id="composeWarnings" class="warnings hidden"></div>
 
     <footer class="compose-footer">
@@ -208,14 +211,65 @@
       </div>
       <div class="footer-actions">
         <button id="btnCopy" class="btn btn-ghost">Copy addresses</button>
-        <button id="btnPreview" class="btn btn-ghost">Preview</button>
-        <button id="btnSend" class="btn btn-primary" disabled>Select sites first</button>
       </div>
     </footer>
   </section>
+
+  <!-- ── Who gets this + live preview ───────────────────────────────── -->
+  <aside class="pane pane-summary">
+    <div class="summary-section">
+      <span class="pane-label">Who gets this</span>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-num" id="statSites">0</div>
+          <div class="stat-label">sites</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="statPeople">0</div>
+          <div class="stat-label">people</div>
+        </div>
+      </div>
+      <div id="addressingNote" class="addressing-note"></div>
+      <div id="skipWarning" class="skip-warning hidden"></div>
+    </div>
+
+    <div class="summary-section preview-mini">
+      <div class="pane-label-row">
+        <span class="pane-label">Live preview</span>
+        <span id="livePreviewPos" class="muted"></span>
+      </div>
+      <div id="livePreview" class="live-preview">
+        <p class="muted" style="padding: 12px;">Select a site to see a live preview here.</p>
+      </div>
+    </div>
+  </aside>
 </main>
 
 <div id="toast" class="toast hidden"></div>
+
+<!-- Electron does not implement window.prompt() — it throws outright — so
+     anything needing a line of text from the user goes through this. -->
+<div id="promptModal" class="modal hidden">
+  <div class="modal-card">
+    <header class="modal-head">
+      <h2 id="promptTitle">Site Contact Mailer</h2>
+      <button class="icon-btn" data-prompt-cancel aria-label="Cancel">×</button>
+    </header>
+    <div class="modal-body">
+      <div class="field">
+        <label id="promptMessage" for="promptInput">Value</label>
+        <input id="promptInput" type="text" autocomplete="off">
+      </div>
+    </div>
+    <footer class="modal-foot">
+      <div></div>
+      <div class="footer-actions">
+        <button class="btn btn-ghost" data-prompt-cancel>Cancel</button>
+        <button id="promptOk" class="btn btn-primary">OK</button>
+      </div>
+    </footer>
+  </div>
+</div>
 
 <!-- ── Import wizard ──────────────────────────────────────────────── -->
 <div id="importModal" class="modal hidden">

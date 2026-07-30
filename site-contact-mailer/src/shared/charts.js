@@ -17,14 +17,14 @@ const { formatMonthShort } = require('./recruitment');
 // Kept in one place so the whole set can be restyled to the design system
 // without touching the layout code.
 const THEME = {
-  focus: '#10B981',        // the recipient's own site
-  other: '#94A3B8',        // everyone else
-  overall: '#1B4F6B',      // trial-wide totals
+  focus: '#12A192',        // the recipient's own site — TONIC's teal
+  other: '#9FB3BC',        // everyone else, muted so the focus bar dominates
+  overall: '#00344C',      // trial-wide totals — TONIC's navy
   behind: '#F59E0B',       // under target
-  track: '#EEF3F6',        // the unfilled part of a bar
-  text: '#0F2733',
+  track: '#EDF3F5',        // the unfilled part of a bar
+  text: '#06283A',
   muted: '#7B8E99',
-  rule: '#DDE5EA',
+  rule: '#DBE5EA',
   font: 'Calibri, Arial, sans-serif',
 };
 

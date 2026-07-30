@@ -23,49 +23,44 @@ const sharp = require('sharp');
 const OUT = path.join(__dirname, '..', 'build');
 const ASSETS = path.join(__dirname, '..', 'src', 'assets');
 
-// Matches the tokens in src/renderer/styles.css.
-const BRAND = '#1B4F6B';
-const BRAND_DK = '#123B52';
-const GREEN = '#10B981';
+// TONIC brand colours, sampled from the trial's own logo. The teal is the
+// accent used across the app and the recruitment charts.
+const NAVY = '#00344C';
+const TEAL = '#12A192';
+const PAPER = '#FFFFFF';
+const EDGE = '#D7E3E8';
 
 /**
- * An envelope, in the same navy as the planner but with this app's green, so
- * the two read as a pair without being mistaken for each other in the taskbar.
- * The flap is the only element that has to survive at 16px, so it carries the
- * contrast.
+ * A light-themed envelope in the TONIC palette, with the trial's drip motif
+ * standing in for the seal.
+ *
+ * Light rather than dark on purpose: Windows taskbars and Start tiles are
+ * usually dark, so a pale tile separates from its background, and it matches
+ * the logo's own white-background lockup.
+ *
+ * Only three things have to survive at 16px — the tile, the flap and the
+ * droplet — so those carry the contrast and everything else is detail that is
+ * allowed to disappear.
  */
 const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="${BRAND}"/>
-      <stop offset="1" stop-color="${BRAND_DK}"/>
-    </linearGradient>
-    <linearGradient id="flap" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#34D9A4"/>
-      <stop offset="1" stop-color="${GREEN}"/>
-    </linearGradient>
-  </defs>
-
-  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <!-- tile -->
+  <rect width="1024" height="1024" rx="224" fill="${PAPER}"/>
+  <rect x="8" y="8" width="1008" height="1008" rx="216"
+        fill="none" stroke="${EDGE}" stroke-width="16"/>
 
   <!-- envelope body -->
-  <rect x="176" y="292" width="672" height="440" rx="64"
-        fill="#FFFFFF" opacity="0.12"/>
-  <rect x="176" y="292" width="672" height="440" rx="64"
-        fill="none" stroke="#FFFFFF" stroke-opacity="0.26" stroke-width="16"/>
+  <rect x="168" y="304" width="688" height="452" rx="56"
+        fill="none" stroke="${NAVY}" stroke-width="52"/>
 
-  <!-- the flap, drawn thick so it still reads at taskbar size -->
-  <path d="M214 356 L512 574 L810 356"
-        fill="none" stroke="url(#flap)" stroke-width="88"
+  <!-- the flap, the strongest element so it still reads in the taskbar -->
+  <path d="M206 368 L512 592 L818 368"
+        fill="none" stroke="${TEAL}" stroke-width="86"
         stroke-linecap="round" stroke-linejoin="round"/>
 
-  <!-- lower fold, faint, just enough to say "envelope" rather than "chevron" -->
-  <g stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="34"
-     stroke-linecap="round" fill="none">
-    <path d="M214 676 L392 536"/>
-    <path d="M810 676 L632 536"/>
-  </g>
+  <!-- TONIC's drip, as the seal -->
+  <path d="M512 690 C 512 690 452 762 452 800 a 60 60 0 0 0 120 0 C 572 762 512 690 512 690 Z"
+        fill="${TEAL}"/>
 </svg>`;
 
 /** Build a Windows .ico containing PNG-compressed entries (Vista and later). */
