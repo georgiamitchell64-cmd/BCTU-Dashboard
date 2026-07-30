@@ -65,8 +65,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
   flex: 0 0 auto;
 }
 .brand { display: flex; align-items: center; gap: 12px; }
-/* The trial's own logo, in its own navy and teal. It is a brand asset, so it
-   is not recoloured to the app's accent. */
+/* The unit's logo. It is a brand asset, so it keeps its own colours rather
+   than being recoloured to the app's accent. */
 .brand-logo {
   height: 28px;
   width: auto;
@@ -324,9 +324,16 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .recipient-skipped { color: var(--amber-ink); }
 
 /* ── Recipients drawer (collapsible site picker) ───────────────────── */
+/* The search box, status chips and role chips take a fixed ~150px off the
+   top of this drawer, so a 320px cap left barely one site visible. Scales
+   with the window, and the list below keeps a floor so it always shows
+   several sites. */
 .recipient-drawer {
-  flex: 0 1 auto;
-  max-height: 320px;
+  /* Must not shrink: as a flex child it would otherwise be squeezed below its
+     own content and `overflow: hidden` would clip the site list away. The
+     compose column scrolls, so taking full height here is safe. */
+  flex: 0 0 auto;
+  max-height: min(56vh, 560px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -368,7 +375,18 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .chip-dot--paused { background: var(--amber); }
 .chip-dot--closed { background: var(--closed); }
 
-.site-list { flex: 1 1 auto; overflow-y: auto; padding: 0 12px 12px; margin: 0 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.site-list {
+  flex: 1 1 auto;
+  /* Enough for roughly five sites before scrolling, whatever the chips above
+     take up. */
+  min-height: 210px;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+  margin: 0 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
 .site { border-bottom: 1px solid var(--line-3); }
 .site:last-child { border-bottom: 0; }
 .site.is-selected { background: var(--accent-tint); }

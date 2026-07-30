@@ -10,8 +10,8 @@ sample/site-contacts-sample.xlsx
 # particular is loaded at runtime for the window icon, so it must be committed.
 !build/icon.png
 !src/assets/icon.png
-# The TONIC logo shown in the app header and embedded in emails.
-!src/assets/tonic-logo.png
+# The BCTU logo shown in the app header and embedded in emails.
+!src/assets/bctu-logo.png
 
 # Never commit a real contact list.
 *.xlsx

@@ -6,11 +6,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOGO_FILE = path.join(__dirname, '..', 'assets', 'tonic-logo.png');
+const LOGO_FILE = path.join(__dirname, '..', 'assets', 'bctu-logo.png');
 let logoTag = null;
 
 /**
- * The TONIC logo as an inline `data:` image.
+ * The BCTU logo as an inline `data:` image.
  *
  * It goes in as a data URI so the template is a self-contained string; the
  * mailer turns every data: image into a proper `cid:` attachment when the
@@ -21,8 +21,8 @@ function logoHtml() {
   if (logoTag !== null) return logoTag;
   try {
     const base64 = fs.readFileSync(LOGO_FILE).toString('base64');
-    logoTag = `<img src="data:image/png;base64,${base64}" alt="TONIC" width="150"`
-      + ' style="width:150px;height:auto;border:0;display:block;">';
+    logoTag = `<img src="data:image/png;base64,${base64}" alt="University of Birmingham - Birmingham Clinical Trials Unit" width="190"`
+      + ' style="width:190px;height:auto;border:0;display:block;">';
   } catch {
     // A missing logo must not stop a template loading.
     logoTag = '';
@@ -37,7 +37,7 @@ const MONTHLY_RECRUITMENT = {
   requires: 'recruitment',
   subject: '{{site_name}} — TONIC recruitment update, {{today}}',
   bodyHtml: [
-    // The trial's logo, so the message is recognisably from TONIC. It goes in
+    // The unit's logo, so the message is recognisably from BCTU. It goes in
     // as a data: URI and the mailer converts it to a cid: attachment on send.
     `<p>${logoHtml()}</p>`,
     '<p>Dear {{first_name|colleagues}},</p>',
