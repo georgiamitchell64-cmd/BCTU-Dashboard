@@ -9,6 +9,11 @@ const state = {
   settings: {},
   templates: [],
   builtInFields: [],
+  builtInTemplates: [],
+  recruitmentFields: [],
+  recruitment: null,
+  recruitmentImport: null,
+  recruitmentDraft: null,
   encryptionAvailable: false,
   mode: 'combined',
   search: '',
@@ -419,18 +424,40 @@ function refreshPlaceholderPicker() {
     picker.appendChild(group);
   };
   addGroup('Standard', state.builtInFields);
+  // Only offered once there is data behind them, so the menu never advertises
+  // a chart that would come out blank.
+  if (state.recruitment && state.recruitment.sites && state.recruitment.sites.length) {
+    addGroup('Recruitment', state.recruitmentFields);
+  }
   addGroup('From your spreadsheet', [...extra].sort().map((key) => ({ key, label: key })));
 }
 
 function refreshTemplatePicker() {
   const picker = $('templatePicker');
   picker.innerHTML = '<option value="">Templates…</option>';
-  for (const template of state.templates) {
-    const option = document.createElement('option');
-    option.value = template.id;
-    option.textContent = template.name;
-    picker.appendChild(option);
-  }
+
+  const addGroup = (label, templates) => {
+    if (templates.length === 0) return;
+    const group = document.createElement('optgroup');
+    group.label = label;
+    for (const template of templates) {
+      const option = document.createElement('option');
+      option.value = template.id;
+      option.textContent = template.name;
+      group.appendChild(option);
+    }
+    picker.appendChild(group);
+  };
+
+  addGroup('Ready-made', state.builtInTemplates);
+  addGroup('Saved', state.templates);
+}
+
+/** Look in both the user's templates and the ones shipped with the app. */
+function findTemplate(id) {
+  return state.templates.find((t) => t.id === id)
+    || state.builtInTemplates.find((t) => t.id === id)
+    || null;
 }
 
 function setMode(mode) {
@@ -874,6 +901,166 @@ function updateImportSummary(meta) {
     + `${plural(state.sites.length, 'site')}, ${plural(contacts, 'contact')}${when ? ` · ${when}` : ''}`;
 }
 
+// ── Recruitment data ──────────────────────────────────────────────────────
+
+function recruitmentSheet() {
+  const draft = state.recruitmentDraft;
+  return draft.workbook.sheets.find((s) => s.name === draft.sheetName);
+}
+
+function renderRecruitmentMapping() {
+  const draft = state.recruitmentDraft;
+  const mapping = draft.mapping;
+  const headers = recruitmentSheet().headers;
+  $('recLayoutPicker').value = mapping.layout;
+
+  const select = (label, key, options) => {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const id = `rec_${key}`;
+    field.innerHTML = `<label for="${id}">${escapeHtml(label)}</label>`;
+    const picker = document.createElement('select');
+    picker.id = id;
+    picker.innerHTML = '<option value="">— none —</option>';
+    for (const header of options) {
+      const option = document.createElement('option');
+      option.value = header;
+      option.textContent = header;
+      if (mapping[key] === header) option.selected = true;
+      picker.appendChild(option);
+    }
+    picker.addEventListener('change', () => {
+      mapping[key] = picker.value || null;
+      rebuildRecruitmentPreview();
+    });
+    field.appendChild(picker);
+    return field;
+  };
+
+  const grid = $('recMappingFields');
+  grid.innerHTML = '';
+  grid.append(select('Site name', 'siteName', headers), select('Site ID (optional)', 'siteId', headers));
+
+  if (mapping.layout === 'participant') {
+    grid.append(select('Randomisation date', 'date', headers));
+  } else if (mapping.layout === 'site-month') {
+    grid.append(select('Month', 'month', headers), select('Number randomised', 'count', headers));
+  } else if (mapping.layout === 'site-total') {
+    grid.append(select('Number randomised', 'count', headers));
+  } else {
+    grid.append(select('Total column (optional)', 'count', headers),
+      select('Date opened (optional)', 'opened', headers));
+  }
+  grid.append(select('Target (optional)', 'target', headers));
+
+  if (mapping.layout === 'site-month-wide') {
+    const note = document.createElement('p');
+    note.className = 'hint';
+    const found = (mapping.monthColumns || []).length;
+    note.textContent = found
+      ? `${found} month columns detected: ${mapping.monthColumns.map((c) => c.column).join(', ')}`
+      : 'No month columns detected — check the layout is right.';
+    grid.appendChild(note);
+  }
+}
+
+async function rebuildRecruitmentPreview() {
+  const draft = state.recruitmentDraft;
+  const result = await call(api.buildRecruitment({ sheetName: draft.sheetName, mapping: draft.mapping }));
+  if (!result) return;
+  draft.result = result;
+
+  $('recStats').textContent = `${plural(result.sites.length, 'site')}, `
+    + `${result.totals.randomised} randomised`
+    + (result.months.length ? `, ${plural(result.months.length, 'month')}` : '');
+
+  const ranked = [...result.sites].sort((a, b) => a.rank - b.rank);
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th>#</th><th>Site</th><th>Randomised</th><th>Target</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  for (const site of ranked.slice(0, 40)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${site.rank}</td><td>${escapeHtml(site.siteName)}</td>`
+      + `<td>${site.randomised}</td><td>${site.target ?? '<span class="muted">—</span>'}</td>`;
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  $('recPreview').innerHTML = '';
+  $('recPreview').appendChild(table);
+
+  const warn = $('recWarnings');
+  if (result.warnings.length === 0) {
+    warn.classList.add('hidden');
+  } else {
+    warn.classList.remove('hidden');
+    const shown = result.warnings.slice(0, 10);
+    warn.innerHTML = `<strong>${plural(result.warnings.length, 'row needs', 'rows need')} a look</strong>`
+      + `<ul>${shown.map((w) => `<li>Row ${w.row}: ${escapeHtml(w.message)}</li>`).join('')}</ul>`;
+  }
+
+  // Recruitment rows are matched to the contact list by site ID then name;
+  // an unmatched site silently gets no chart, so it is called out here.
+  const match = $('recMatch');
+  const unmatched = (result.match && result.match.unmatched) || [];
+  const noTarget = result.sites.every((s) => !s.target);
+  const notes = [];
+  if (unmatched.length) {
+    notes.push(`${plural(unmatched.length, 'site')} in your contact list have no recruitment row and `
+      + `will get no charts: ${unmatched.slice(0, 6).join(', ')}${unmatched.length > 6 ? '…' : ''}`);
+  }
+  if (noTarget) {
+    notes.push('No target column found. The progress-against-target chart will fall back to a '
+      + '"Target" column in your contact list, if there is one.');
+  }
+  if (notes.length === 0) {
+    match.classList.add('hidden');
+  } else {
+    match.classList.remove('hidden');
+    match.innerHTML = `<ul>${notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>`;
+  }
+
+  $('btnConfirmRecruitment').disabled = result.sites.length === 0;
+}
+
+async function chooseRecruitmentFile() {
+  const workbook = await call(api.chooseRecruitment());
+  if (!workbook) return;
+
+  state.recruitmentDraft = {
+    workbook,
+    sheetName: workbook.sheets[0].name,
+    mapping: JSON.parse(JSON.stringify(workbook.sheets[0].mapping)),
+  };
+
+  const picker = $('recSheetPicker');
+  picker.innerHTML = '';
+  for (const sheet of workbook.sheets) {
+    const option = document.createElement('option');
+    option.value = sheet.name;
+    option.textContent = `${sheet.name} (${plural(sheet.rowCount, 'row')})`;
+    picker.appendChild(option);
+  }
+  picker.disabled = workbook.sheets.length === 1;
+  $('recruitmentIntro').textContent = `Reading ${workbook.fileName}.`;
+
+  renderRecruitmentMapping();
+  await rebuildRecruitmentPreview();
+}
+
+function updateRecruitmentSummary() {
+  const meta = state.recruitmentImport;
+  const button = $('btnImportRecruitment');
+  if (state.recruitment && state.recruitment.sites && state.recruitment.sites.length) {
+    button.textContent = `Recruitment: ${state.recruitment.sites.length} sites`;
+    button.title = meta && meta.fileName
+      ? `From ${meta.fileName}. Click to replace.`
+      : 'Click to replace the imported recruitment data.';
+  } else {
+    button.textContent = 'Recruitment data…';
+    button.title = 'Import randomisation data for the recruitment charts';
+  }
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────
 
 function fillSettingsForm() {
@@ -1078,7 +1265,7 @@ function wireEvents() {
   });
 
   $('templatePicker').addEventListener('change', (event) => {
-    const template = state.templates.find((t) => t.id === event.target.value);
+    const template = findTemplate(event.target.value);
     if (!template) return;
     $('subject').value = template.subject;
     // Templates saved before rich text carry only a plain body.
@@ -1169,6 +1356,55 @@ function wireEvents() {
 
   $('btnConfirmImport').addEventListener('click', confirmImport);
 
+  $('btnImportRecruitment').addEventListener('click', async () => {
+    openModal('recruitmentModal');
+    if (!state.recruitmentDraft) await chooseRecruitmentFile();
+  });
+  $('btnChooseRecruitment').addEventListener('click', chooseRecruitmentFile);
+  $('recSheetPicker').addEventListener('change', (event) => {
+    const draft = state.recruitmentDraft;
+    draft.sheetName = event.target.value;
+    draft.mapping = JSON.parse(JSON.stringify(recruitmentSheet().mapping));
+    renderRecruitmentMapping();
+    rebuildRecruitmentPreview();
+  });
+  $('recLayoutPicker').addEventListener('change', (event) => {
+    state.recruitmentDraft.mapping.layout = event.target.value;
+    renderRecruitmentMapping();
+    rebuildRecruitmentPreview();
+  });
+  $('btnConfirmRecruitment').addEventListener('click', async () => {
+    const draft = state.recruitmentDraft;
+    if (!draft || !draft.result) return;
+    const { match, ...dataset } = draft.result;
+    const saved = await call(api.commitRecruitment({
+      dataset,
+      meta: {
+        fileName: draft.workbook.fileName,
+        sheet: draft.sheetName,
+        importedAt: new Date().toISOString(),
+      },
+    }));
+    if (!saved) return;
+    state.recruitment = saved.recruitment;
+    state.recruitmentImport = { fileName: draft.workbook.fileName, importedAt: new Date().toISOString() };
+    closeModal('recruitmentModal');
+    refreshPlaceholderPicker();
+    updateRecruitmentSummary();
+    toast(`Recruitment data loaded for ${plural(saved.recruitment.sites.length, 'site')}`, 'success');
+  });
+  $('btnClearRecruitment').addEventListener('click', async () => {
+    if (!window.confirm('Remove the imported recruitment data? Charts will stop working until you import again.')) return;
+    await call(api.clearRecruitment());
+    state.recruitment = null;
+    state.recruitmentImport = null;
+    state.recruitmentDraft = null;
+    closeModal('recruitmentModal');
+    refreshPlaceholderPicker();
+    updateRecruitmentSummary();
+    toast('Recruitment data removed');
+  });
+
   api.onSendProgress(({ done, total, site }) => {
     $('btnSend').textContent = `Sending ${done}/${total}…`;
     if (site && done === total) toast(`Finished sending ${total}`, 'success');
@@ -1198,6 +1434,10 @@ async function init() {
     state.settings = loaded.settings;
     state.templates = loaded.templates || [];
     state.builtInFields = loaded.builtInFields || [];
+    state.recruitmentFields = loaded.recruitmentFields || [];
+    state.builtInTemplates = loaded.builtInTemplates || [];
+    state.recruitment = loaded.recruitment || null;
+    state.recruitmentImport = loaded.recruitmentImport || null;
     state.encryptionAvailable = loaded.encryptionAvailable;
     state.sites = (loaded.sites || []).map((site) => ({ ...site, selected: false }));
     $('deliveryMethod').value = state.settings.deliveryMethod || 'eml';
@@ -1207,6 +1447,7 @@ async function init() {
   refreshTemplatePicker();
   refreshPlaceholderPicker();
   renderAttachments();
+  updateRecruitmentSummary();
   setMode('combined');
   renderSites();
 

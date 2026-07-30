@@ -4,6 +4,13 @@
 
 const { dedupeContacts, firstNameOf, formatAddress } = require('./emails');
 const { renderPlaceholdersInHtml, htmlToText, isEmptyHtml } = require('./html');
+const { findRecruitmentSite } = require('./recruitment');
+const { rankedBarChart, progressChart, overallChart, siteTrendChart } = require('./charts');
+
+// Fields whose value is generated HTML and must not be escaped on the way in.
+const RAW_FIELDS = new Set([
+  'recruitment_chart', 'progress_chart', 'overall_chart', 'trend_chart',
+]);
 
 const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*(?:\|([^}]*))?\}\}/g;
 
@@ -18,6 +25,23 @@ const BUILT_IN_FIELDS = [
   { key: 'recipient_names', label: 'All recipient names, comma separated' },
   { key: 'site_count', label: 'Number of sites in this send' },
   { key: 'today', label: "Today's date" },
+];
+
+// Only offered once randomisation data has been imported.
+const RECRUITMENT_FIELDS = [
+  { key: 'recruitment_chart', label: 'Chart: all sites ranked (yours highlighted)' },
+  { key: 'progress_chart', label: 'Chart: your progress against target' },
+  { key: 'overall_chart', label: 'Chart: whole-trial recruitment' },
+  { key: 'trend_chart', label: 'Chart: your recruitment by month' },
+  { key: 'site_randomised', label: 'Your site: randomised to date' },
+  { key: 'site_target', label: 'Your site: recruitment target' },
+  { key: 'site_percent', label: 'Your site: percent of target' },
+  { key: 'site_rank', label: 'Your site: rank (e.g. 4)' },
+  { key: 'site_rank_of', label: 'Your site: rank out of (e.g. 4 of 23)' },
+  { key: 'site_quartile', label: 'Your site: quartile (1 = top)' },
+  { key: 'trial_randomised', label: 'Whole trial: randomised to date' },
+  { key: 'trial_target', label: 'Whole trial: target' },
+  { key: 'trial_sites', label: 'Whole trial: number of sites' },
 ];
 
 function formatToday(date = new Date()) {
@@ -55,6 +79,53 @@ function buildContext(site, options = {}) {
       if (!(key in context)) context[key] = value;
     }
   }
+
+  // Recruitment figures and charts, when randomisation data has been imported.
+  // A site the data does not cover simply gets no values, so a missing site
+  // shows up as an empty placeholder warning rather than a wrong number.
+  const dataset = options.recruitment;
+  if (dataset && dataset.sites && dataset.sites.length) {
+    const match = site ? findRecruitmentSite(dataset, site) : null;
+    const anonymise = options.anonymiseOtherSites !== false;
+
+    if (match) {
+      // Recruitment exports often carry no target. Fall back to one from the
+      // contact list, where a "Target" column is common, so the progress
+      // chart still works without editing the trial's export.
+      const fallbackTarget = Number(
+        (site.fields || {}).target
+        ?? (site.fields || {}).recruitment_target
+        ?? (site.fields || {}).site_target,
+      );
+      const resolved = {
+        ...match,
+        target: match.target ?? (Number.isFinite(fallbackTarget) && fallbackTarget > 0 ? fallbackTarget : null),
+      };
+      resolved.percentOfTarget = resolved.target
+        ? Math.round((resolved.randomised / resolved.target) * 100)
+        : null;
+
+      context.site_randomised = String(resolved.randomised);
+      if (resolved.target !== null) context.site_target = String(resolved.target);
+      if (resolved.percentOfTarget !== null) context.site_percent = `${resolved.percentOfTarget}%`;
+      context.site_rank = String(resolved.rank);
+      context.site_rank_of = `${resolved.rank} of ${resolved.of}`;
+      context.site_quartile = String(resolved.quartile);
+      if (resolved.opened) context.site_opened = String(resolved.opened);
+      context.progress_chart = progressChart(resolved);
+      context.trend_chart = siteTrendChart(resolved);
+    }
+
+    context.recruitment_chart = rankedBarChart(dataset, {
+      focusKey: match ? match.key : null,
+      anonymise,
+    });
+    context.overall_chart = overallChart(dataset);
+    context.trial_randomised = String(dataset.totals.randomised);
+    if (dataset.totals.target) context.trial_target = String(dataset.totals.target);
+    context.trial_sites = String(dataset.totals.siteCount);
+  }
+
   return context;
 }
 
@@ -165,7 +236,7 @@ function renderBody(template, context) {
   const subject = renderTemplate(template.subject, context);
 
   if (template.bodyHtml && !isEmptyHtml(template.bodyHtml)) {
-    const rendered = renderPlaceholdersInHtml(template.bodyHtml, context);
+    const rendered = renderPlaceholdersInHtml(template.bodyHtml, context, { rawFields: RAW_FIELDS });
     return {
       subject: subject.text,
       bodyHtml: rendered.html,
@@ -200,6 +271,8 @@ function buildMergeQueue(sites, template, options = {}) {
         recipients: group,
         siteCount: sites.length,
         today,
+        recruitment: options.recruitment,
+        anonymiseOtherSites: options.anonymiseOtherSites,
       });
       const rendered = renderBody(template, context);
       messages.push({
@@ -225,6 +298,8 @@ function buildCombinedMessage(sites, template, options = {}) {
     recipients: all,
     siteCount: sites.length,
     today: options.today || new Date(),
+    recruitment: options.recruitment,
+    anonymiseOtherSites: options.anonymiseOtherSites,
   });
   if (sites.length !== 1) {
     context.site_name = sites.map((s) => s.siteName).join(', ');
@@ -248,6 +323,8 @@ function addressLine(contacts) {
 
 module.exports = {
   BUILT_IN_FIELDS,
+  RECRUITMENT_FIELDS,
+  RAW_FIELDS,
   buildContext,
   renderTemplate,
   renderBody,

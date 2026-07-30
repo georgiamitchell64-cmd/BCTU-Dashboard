@@ -24,6 +24,8 @@
   </div>
   <div class="topbar-actions">
     <button id="btnImport" class="btn btn-primary">Import contact list…</button>
+    <button id="btnImportRecruitment" class="btn btn-ghost"
+            title="Import randomisation data for the recruitment charts">Recruitment data…</button>
     <button id="btnExport" class="btn btn-ghost" title="Export the current list as CSV">Export</button>
     <button id="btnSettings" class="btn btn-ghost" title="Settings">Settings</button>
   </div>
@@ -260,6 +262,59 @@
       <div class="footer-actions">
         <button class="btn btn-ghost" data-close="importModal">Cancel</button>
         <button id="btnConfirmImport" class="btn btn-primary">Import</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- ── Randomisation data import ──────────────────────────────────── -->
+<div id="recruitmentModal" class="modal hidden">
+  <div class="modal-card modal-wide">
+    <header class="modal-head">
+      <h2>Recruitment data</h2>
+      <button class="icon-btn" data-close="recruitmentModal" aria-label="Close">×</button>
+    </header>
+    <div class="modal-body">
+      <p class="hint" id="recruitmentIntro">
+        Import your randomisation export to add recruitment charts to emails. Any
+        layout works — one row per participant, per site, per site per month, or
+        months across the columns.
+      </p>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="recSheetPicker">Sheet</label>
+          <select id="recSheetPicker"></select>
+        </div>
+        <div class="field">
+          <label for="recLayoutPicker">Layout</label>
+          <select id="recLayoutPicker">
+            <option value="site-month-wide">One row per site, months across columns</option>
+            <option value="participant">One row per randomised participant</option>
+            <option value="site-month">One row per site per month</option>
+            <option value="site-total">One row per site, totals only</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="recMappingFields" class="mapping-grid"></div>
+
+      <div class="preview-block">
+        <div class="label-row">
+          <h3>Result</h3>
+          <span id="recStats" class="muted"></span>
+        </div>
+        <div id="recPreview" class="import-preview"></div>
+        <div id="recWarnings" class="warnings hidden"></div>
+        <div id="recMatch" class="warnings hidden"></div>
+      </div>
+    </div>
+    <footer class="modal-foot">
+      <button id="btnClearRecruitment" class="link-btn">Remove imported data</button>
+      <div class="footer-actions">
+        <button class="btn btn-ghost" data-close="recruitmentModal">Cancel</button>
+        <button id="btnChooseRecruitment" class="btn btn-ghost">Choose file…</button>
+        <button id="btnConfirmRecruitment" class="btn btn-primary" disabled>Use this data</button>
       </div>
     </footer>
   </div>

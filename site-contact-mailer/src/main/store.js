@@ -17,6 +17,9 @@ const DEFAULT_SETTINGS = {
   putSelfInTo: true,
   bodyFormat: 'html',
   deliveryMethod: 'eml',
+  // In the ranked chart, name only the recipient's own site and show the rest
+  // anonymously, so nobody is identified to their peers as the worst recruiter.
+  anonymiseOtherSites: true,
   draftFolder: '',
   smtp: {
     host: '',
@@ -34,6 +37,9 @@ const CURRENT_VERSION = 2;
 
 const DEFAULT_STATE = {
   version: CURRENT_VERSION,
+  // Imported randomisation data, normalised by shared/recruitment.js.
+  recruitment: null,
+  recruitmentImport: null,
   settings: DEFAULT_SETTINGS,
   sites: [],
   templates: [],
@@ -122,6 +128,23 @@ class Store {
 
   setLastMapping(mapping) {
     this.state.lastMapping = mapping;
+    this.save();
+  }
+
+  getRecruitment() {
+    return this.state.recruitment;
+  }
+
+  setRecruitment(dataset, meta = null) {
+    this.state.recruitment = dataset;
+    this.state.recruitmentImport = meta;
+    this.save();
+    return this.state.recruitment;
+  }
+
+  clearRecruitment() {
+    this.state.recruitment = null;
+    this.state.recruitmentImport = null;
     this.save();
   }
 

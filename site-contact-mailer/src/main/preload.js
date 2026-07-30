@@ -26,6 +26,11 @@ contextBridge.exposeInMainWorld('api', {
   setSmtpPassword: (password) => invoke('smtp:setPassword', password),
   verifySmtp: () => invoke('smtp:verify'),
 
+  chooseRecruitment: () => invoke('recruitment:choose'),
+  buildRecruitment: (payload) => invoke('recruitment:build', payload),
+  commitRecruitment: (payload) => invoke('recruitment:commit', payload),
+  clearRecruitment: () => invoke('recruitment:clear'),
+
   chooseAttachments: () => invoke('attachments:choose'),
   loadHtmlBody: () => invoke('body:loadHtml'),
 

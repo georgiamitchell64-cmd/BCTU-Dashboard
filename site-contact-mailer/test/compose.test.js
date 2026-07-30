@@ -366,3 +366,80 @@ test('nodemailer gets html, a text alternative and attachments', () => {
   assert.strictEqual(payload.attachments[0].filename, 'x.pdf');
   assert.strictEqual(payload.attachments[0].encoding, 'base64');
 });
+
+// ── Recruitment merge fields and charts ───────────────────────────────────
+
+const RECRUITMENT = {
+  sites: [
+    { key: '001', siteId: '001', siteName: 'Queen Elizabeth', randomised: 12, target: null, opened: '07-04-2026', monthly: [{ month: '2026-04', count: 12 }], rank: 2, of: 3, quartile: 2, percentOfTarget: null },
+    { key: '002', siteId: '002', siteName: 'Addenbrookes', randomised: 20, target: 40, opened: null, monthly: [{ month: '2026-04', count: 20 }], rank: 1, of: 3, quartile: 1, percentOfTarget: 50 },
+    { key: '003', siteId: '003', siteName: 'Royal Free', randomised: 2, target: null, opened: null, monthly: [{ month: '2026-04', count: 2 }], rank: 3, of: 3, quartile: 3, percentOfTarget: null },
+  ],
+  months: ['2026-04'],
+  totals: { randomised: 34, target: 40, siteCount: 3, monthly: [{ month: '2026-04', count: 34 }] },
+};
+
+test('recruitment numbers reach the merge fields', () => {
+  const context = buildContext(qe, { siteCount: 1, recruitment: RECRUITMENT });
+  assert.strictEqual(context.site_randomised, '12');
+  assert.strictEqual(context.site_rank, '2');
+  assert.strictEqual(context.site_rank_of, '2 of 3');
+  assert.strictEqual(context.trial_randomised, '34');
+  assert.strictEqual(context.trial_sites, '3');
+  assert.strictEqual(context.site_opened, '07-04-2026');
+});
+
+test('a missing target falls back to one from the contact list', () => {
+  // The recruitment export has no target for site 001; the contact sheet does.
+  const withTarget = { ...qe, fields: { ...qe.fields, target: '30' } };
+  const context = buildContext(withTarget, { siteCount: 1, recruitment: RECRUITMENT });
+  assert.strictEqual(context.site_target, '30');
+  assert.strictEqual(context.site_percent, '40%');
+  assert.match(context.progress_chart, /40%/);
+});
+
+test('a site with no recruitment row gets no figures rather than wrong ones', () => {
+  const unknown = site('999', 'Nowhere General', [{ email: 'a@nhs.net' }]);
+  const context = buildContext(unknown, { siteCount: 1, recruitment: RECRUITMENT });
+  assert.strictEqual(context.site_randomised, undefined);
+  assert.strictEqual(context.progress_chart, undefined);
+  // The trial-wide chart still applies, since it does not depend on the site.
+  assert.ok(context.overall_chart);
+});
+
+test('chart placeholders are inserted as HTML, not escaped text', () => {
+  const messages = buildMergeQueue([qe], {
+    subject: 'x',
+    bodyHtml: '<p>Here:</p>{{recruitment_chart}}',
+  }, { recruitment: RECRUITMENT });
+  assert.match(messages[0].bodyHtml, /<table/);
+  assert.ok(!messages[0].bodyHtml.includes('&lt;table'), 'chart HTML must not be escaped');
+});
+
+test('ordinary fields are still escaped alongside raw chart fields', () => {
+  const risky = site('004', "Guy's & St Thomas'", [{ email: 'a@nhs.net' }]);
+  const messages = buildMergeQueue([risky], {
+    subject: 'x',
+    bodyHtml: '<p>{{site_name}}</p>{{overall_chart}}',
+  }, { recruitment: RECRUITMENT });
+  assert.match(messages[0].bodyHtml, /Guy&#39;s &amp; St Thomas&#39;|Guy's &amp; St Thomas'/);
+  assert.match(messages[0].bodyHtml, /<table/);
+});
+
+test('without recruitment data the chart fields are simply absent', () => {
+  const context = buildContext(qe, { siteCount: 1 });
+  assert.strictEqual(context.recruitment_chart, undefined);
+  const messages = buildMergeQueue([qe], { subject: 'x', bodyHtml: '{{recruitment_chart}}' }, {});
+  assert.deepStrictEqual(messages[0].missing, ['recruitment_chart']);
+});
+
+test('the built-in monthly template renders with no missing fields', () => {
+  const { MONTHLY_RECRUITMENT } = require('../src/shared/templates');
+  const withTarget = { ...qe, fields: { ...qe.fields, target: '30' } };
+  const messages = buildMergeQueue([withTarget], MONTHLY_RECRUITMENT, {
+    recruitment: RECRUITMENT, perContact: true,
+  });
+  assert.deepStrictEqual(messages[0].missing, []);
+  assert.match(messages[0].subject, /Queen Elizabeth — TONIC recruitment update/);
+  assert.match(messages[0].body, /You have randomised 12 participants/);
+});

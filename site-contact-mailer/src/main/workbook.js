@@ -67,8 +67,32 @@ function rowValues(row, width) {
 }
 
 /**
+ * A machine-generated column code rather than a human label: "_", "__",
+ * "M1", "M36", "Fst". Trial data exports often carry a row of these above the
+ * real headers.
+ */
+function isCodeLikeLabel(text) {
+  const value = String(text || '').trim();
+  if (!value) return false;
+  if (/^[\W_]+$/.test(value)) return true;          // _  __  ---
+  return /^[A-Za-z]{1,3}\d*$/.test(value);          // M1  M36  Fst  N
+}
+
+function majorityCodeLike(row) {
+  const filled = row.filter((c) => c !== '');
+  if (filled.length < 3) return false;
+  const codes = filled.filter(isCodeLikeLabel).length;
+  return codes / filled.length > 0.6;
+}
+
+/**
  * Pick the header row: within the first few rows, the one with the most
  * filled cells that also has data underneath it.
+ *
+ * Some exports put a row of machine codes above the real headers, and because
+ * that row is fully populated across every unused column it would otherwise
+ * win on cell count alone. When the winner looks like codes and the row below
+ * it looks like labels, the labels are used instead.
  */
 function findHeaderRow(grid) {
   let best = -1;
@@ -81,6 +105,13 @@ function findHeaderRow(grid) {
       best = i;
       bestCount = filled;
     }
+  }
+
+  if (best >= 0 && best + 1 < grid.length
+    && majorityCodeLike(grid[best]) && !majorityCodeLike(grid[best + 1])
+    && grid[best + 1].filter((c) => c !== '').length >= 2
+    && grid.slice(best + 2).some((r) => r.some((c) => c !== ''))) {
+    return best + 1;
   }
   return best;
 }

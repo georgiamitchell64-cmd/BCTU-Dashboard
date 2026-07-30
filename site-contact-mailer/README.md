@@ -78,6 +78,48 @@ Placeholders keep working inside formatted text. Bolding half of a
 `{{site_name}}` splits it across tags, which would otherwise leave the raw
 `{{site_name}}` in the sent email; the app repairs that before merging.
 
+### Recruitment charts
+
+**Recruitment data…** in the toolbar imports a randomisation export, which
+unlocks a set of chart and figure fields for the message. Four layouts are
+recognised, so most trial exports import without being reshaped first:
+
+| Layout | Looks like |
+| --- | --- |
+| Months across columns | `Site · Opened · Total · Apr-2026 · May-2026 · …` |
+| One row per participant | `Participant ID · Site · Randomisation Date` |
+| One row per site per month | `Site · Month · Randomised` |
+| One row per site | `Site · Randomised · Target` |
+
+A row of machine codes above the real headers is skipped, a trailing `Total`
+row is not counted as a site, and `-` (the site was not open that month) is
+kept distinct from `0` (open, recruited nobody). Dates are read as UK format,
+so `07-04-2026` is April, not July. If the file's own total disagrees with its
+monthly columns, the app says so rather than quietly picking one.
+
+The charts are `{{recruitment_chart}}` (all sites ranked, the recipient's own
+highlighted), `{{progress_chart}}` (their progress against target),
+`{{trend_chart}}` (their recruitment by month) and `{{overall_chart}}`
+(the whole trial). Alongside them are plain figures — `{{site_randomised}}`,
+`{{site_rank_of}}`, `{{site_percent}}`, `{{trial_randomised}}` and others.
+
+**Other sites are anonymised by default.** The recipient sees their own site
+named and everyone else as "Site A", "Site B", so they can see exactly where
+they stand without any site being identified to its peers as the worst
+recruiter. Turn that off in Settings if your trial publishes a named league
+table.
+
+Charts are built from HTML tables with `bgcolor` and pixel widths, not images
+or JavaScript, because Outlook renders mail through Word and blocks both. They
+survive in the plain-text alternative as a readable list.
+
+If your randomisation export has no target column — many do not — the progress
+chart falls back to a `Target` column in your **contact list**, so you can keep
+targets there without editing the trial's export.
+
+The **Monthly recruitment update** template under *Templates → Ready-made*
+puts all of this together, and only appears once recruitment data is loaded.
+
 **Send** one of three ways:
 
 | Mode | What happens | When to use it |
@@ -209,11 +251,14 @@ will be asked for it again each session.
 ```
 src/
   shared/      Pure logic, no Electron — unit tested directly
-    emails.js    address parsing, validation, de-duplication
-    importer.js  column detection, role grouping, rows into sites
-    compose.js   template rendering, the To/Bcc rule, role filtering, merges
-    html.js      paste cleaning, sanitising, HTML->text, HTML placeholders
-    mailer.js    MIME drafts, mailto links, nodemailer payloads
+    emails.js      address parsing, validation, de-duplication
+    importer.js    column detection, role grouping, rows into sites
+    recruitment.js randomisation layouts, monthly totals, ranking
+    charts.js      email-safe HTML charts (tables, no JS, no images)
+    templates.js   the ready-made messages shipped with the app
+    compose.js     template rendering, To/Bcc, role filtering, merges
+    html.js        paste cleaning, sanitising, HTML->text, HTML placeholders
+    mailer.js      MIME drafts, mailto links, nodemailer payloads
   main/        Electron main process — the only code with disk/network access
     main.js      window, menu, IPC handlers, attachments, delivery
     workbook.js  reading .xlsx/.csv via ExcelJS

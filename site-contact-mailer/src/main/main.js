@@ -10,7 +10,11 @@ const { Store } = require('./store');
 const { detectMapping, buildSites, mergeSiteLists } = require('../shared/importer');
 const { parseAddressCell } = require('../shared/emails');
 const { sanitizeHtml, cleanPastedHtml } = require('../shared/html');
-const { buildCombinedMessage, buildMergeQueue, BUILT_IN_FIELDS } = require('../shared/compose');
+const {
+  buildCombinedMessage, buildMergeQueue, BUILT_IN_FIELDS, RECRUITMENT_FIELDS,
+} = require('../shared/compose');
+const { detectRecruitmentMapping, buildRecruitment, matchReport } = require('../shared/recruitment');
+const { availableBuiltIns } = require('../shared/templates');
 const { buildEml, buildMailto, draftFileName, toNodemailer } = require('../shared/mailer');
 
 let mainWindow = null;
@@ -147,6 +151,56 @@ handle('workbook:commit', async ({ sites, strategy, meta, mapping }) => {
   return merged;
 });
 
+// ── Randomisation data ────────────────────────────────────────────────────
+
+// Kept separately from the contact workbook so importing recruitment figures
+// never disturbs a contact-list import that is mid-flow.
+let loadedRecruitmentWorkbook = null;
+
+handle('recruitment:choose', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose a randomisation export',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Spreadsheets', extensions: ['xlsx', 'xlsm', 'csv', 'tsv'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  loadedRecruitmentWorkbook = await readWorkbook(result.filePaths[0]);
+  return {
+    filePath: loadedRecruitmentWorkbook.filePath,
+    fileName: loadedRecruitmentWorkbook.fileName,
+    sheets: loadedRecruitmentWorkbook.sheets.map((sheet) => ({
+      name: sheet.name,
+      headers: sheet.headers,
+      rowCount: sheet.rowCount,
+      mapping: detectRecruitmentMapping(sheet.headers),
+      preview: sheet.rows.slice(0, 8),
+    })),
+  };
+});
+
+handle('recruitment:build', async ({ sheetName, mapping }) => {
+  if (!loadedRecruitmentWorkbook) throw new Error('No randomisation file is open.');
+  const sheet = loadedRecruitmentWorkbook.sheets.find((s) => s.name === sheetName);
+  if (!sheet) throw new Error(`Sheet "${sheetName}" not found.`);
+  const dataset = buildRecruitment(sheet.rows, mapping, { firstDataRow: sheet.firstDataRow });
+  // Tell the user up front how much of their contact list this data covers.
+  return { ...dataset, match: matchReport(dataset, store.getSites()) };
+});
+
+handle('recruitment:commit', async ({ dataset, meta }) => {
+  const stored = store.setRecruitment(dataset, meta);
+  return { recruitment: stored, match: matchReport(stored, store.getSites()) };
+});
+
+handle('recruitment:clear', async () => {
+  store.clearRecruitment();
+  return true;
+});
+
 // ── Stored state ──────────────────────────────────────────────────────────
 
 handle('state:load', async () => ({
@@ -154,7 +208,13 @@ handle('state:load', async () => ({
   sites: store.getSites(),
   templates: store.getTemplates(),
   lastImport: store.state.lastImport,
+  recruitment: store.getRecruitment(),
+  recruitmentImport: store.state.recruitmentImport,
   builtInFields: BUILT_IN_FIELDS,
+  recruitmentFields: RECRUITMENT_FIELDS,
+  builtInTemplates: availableBuiltIns({
+    hasRecruitment: Boolean(store.getRecruitment() && store.getRecruitment().sites.length),
+  }),
   encryptionAvailable: Boolean(safeStorage && safeStorage.isEncryptionAvailable()),
   platform: process.platform,
 }));
@@ -178,6 +238,9 @@ function planMessages({ sites, template, mode, options }) {
     senderAddress: settings.senderAddress,
     forceBcc: settings.forceBcc,
     alwaysBccSelfAddress: settings.putSelfInTo,
+    // Charts and recruitment figures come from whatever was last imported.
+    recruitment: store.getRecruitment(),
+    anonymiseOtherSites: settings.anonymiseOtherSites !== false,
     ...options,
   };
   // "Plain text only" in Settings discards the formatting rather than
