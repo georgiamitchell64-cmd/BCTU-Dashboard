@@ -265,7 +265,7 @@ thr <- rc$pilot_thresholds %||% list(
        stop_lbl = "< 70% returned", mod_lbl = "70 – 99% returned",
        go_lbl   = "100% returned"),
   list(name = "Intervention delivery — intervention arm",
-       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants.",
+       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants. Not determinable from the REDCap export (no randomisation-arm field) — assessed manually from source data at pilot review.",
        stop_lbl = "< 70% within 48 h", mod_lbl = "75 – 99% within 48 h",
        go_lbl   = "100% within 48 h"),
   list(name = "Contamination — control arm",

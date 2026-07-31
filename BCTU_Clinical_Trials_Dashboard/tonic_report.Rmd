@@ -182,7 +182,7 @@ thr <- rc$pilot_thresholds %||% list(
        stop_lbl = "< 70% returned", mod_lbl = "70 – 99% returned",
        go_lbl   = "100% returned"),
   list(name = "Intervention delivery — intervention arm",
-       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants.",
+       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants. Not determinable from the REDCap export (no randomisation-arm field) — assessed manually from source data at pilot review.",
        stop_lbl = "< 70% within 48 h", mod_lbl = "75 – 99% within 48 h",
        go_lbl   = "100% within 48 h"),
   list(name = "Contamination — control arm",
@@ -201,7 +201,7 @@ band_for <- function(idx) {
     recruit_rate_box,   # 1 — same figure as shown in the card (n randomised ÷ expected)
     NA,                  # 2 data completeness — we approximate below
     pilot$fu_90_rate,    # 3
-    pilot$interv_rate,   # 4
+    NA_real_,            # 4 — not derivable: REDCap export lacks the data (see pc_cards)
     pilot$contam_rate,   # 5
     pilot$crossover_rate # 6
   )
@@ -226,7 +226,10 @@ pc_cards <- list(
   list(title = "Recruitment rate",            val = recruit_rate_box,     sub = sprintf("%s / %s expected", fmt_int(n_rand), fmt_int(exp_to_date)), fmt = "pct"),
   list(title = "Data completeness",           val = (rd$primary_outcome %||% list())$pct, sub = "primary outcome forms", fmt = "pct"),
   list(title = "90-day questionnaire return", val = pilot$fu_90_rate,     sub = if (safe(pilot$fu_90_elig, 0) == 0) "not yet due" else sprintf("%s / %s eligible", fmt_int(pilot$fu_90_comp), fmt_int(pilot$fu_90_elig)), fmt = "pct"),
-  list(title = "Intervention delivery <48 h", val = pilot$interv_rate,    sub = "intervention arm", fmt = "pct"),
+  # The REDCap export does not carry the data needed to derive intervention
+  # delivery (no allocation field; PN timing incomplete), so this criterion is
+  # shown as pending with an explanatory caption rather than a misleading 0%.
+  list(title = "Intervention delivery <48 h", val = NA_real_,             sub = "cannot be calculated from the REDCap export", fmt = "pct"),
   list(title = "Contamination",               val = pilot$contam_rate,    sub = if (is.na(safe(pilot$contam_rate, NA))) "not determinable from export" else "late/early PN reason recorded", fmt = "pct"),
   list(title = "Crossover rate",              val = pilot$crossover_rate, sub = "target 0%", fmt = "pct")
 )

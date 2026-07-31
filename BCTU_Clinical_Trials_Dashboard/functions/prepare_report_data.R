@@ -746,13 +746,13 @@ prepare_report_data <- function(df,
   has_pn_late    <- "pn_late"  %in% names(filtered)
   has_pn_early   <- "pn_early" %in% names(filtered)
 
-  interv_df  <- filtered[!is.na(filtered$trial_arm) & filtered$trial_arm == "Intervention", ]
-  interv_rate <- if (nrow(interv_df) > 0 && has_pn_fields) {
-    hrs <- as.numeric(difftime(interv_df$pn_start, interv_df$op_dttm, units = "hours"))
-    hl  <- if (has_pn_late) !is.na(interv_df$pn_late) else rep(FALSE, nrow(interv_df))
-    w48 <- !is.na(hrs) & hrs >= 0 & hrs <= 48 & !hl
-    round(mean(w48) * 100, 1)
-  } else NA
+  # Intervention delivery (early PN started within 48 h for intervention-arm
+  # participants) cannot be derived from the REDCap export: the export carries
+  # no genuine randomisation-arm field, so `trial_arm` is itself inferred from
+  # the same PN timing/reason fields the metric would measure — the calculation
+  # would be circular and unreliable. Report NA ("not determinable from export");
+  # this criterion is assessed manually from source data at pilot review.
+  interv_rate <- NA_real_
 
   # Contamination cannot be derived from allocation (the export carries no
   # randomisation-arm field). Per TMG guidance a participant counts as
