@@ -814,7 +814,23 @@ render_ms_group(ms_future2,   "p-a", "Upcoming", "Pilot · recruitment · close-
 ```
 </div>
 
-<h2 class="sec">
+```{r page1-footer}
+pf_footer(1)
+```
+
+</section>
+
+<!-- ============================================================
+     PAGE 2 — PILOT PROGRESSION · PROJECT TIMELINE · RECRUITMENT VS TARGET
+============================================================== -->
+
+<section class="page">
+
+```{r page2-header}
+ph_header("Page 2 — Pilot, timeline & recruitment")
+```
+
+<h2 class="sec" style="margin-top:0">
 
 <span class="num">02</span> Internal pilot progression <span class="hint">6-month pilot · review `r esc(pilot_end)`</span>
 
@@ -835,26 +851,10 @@ for (i in seq_along(pc_cards)) {
 </div>
 
 <div class="note">
-Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on page 4.
+Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on pages 5–6.
 </div>
 
-```{r page1-footer}
-pf_footer(1)
-```
-
-</section>
-
-<!-- ============================================================
-     PAGE 2 — PROJECT TIMELINE · RECRUITMENT VS TARGET
-============================================================== -->
-
-<section class="page">
-
-```{r page2-header}
-ph_header("Page 2 — Timeline & recruitment")
-```
-
-<h2 class="sec" style="margin-top:0">
+<h2 class="sec">
 
 <span class="num">03</span> Project timeline <span class="hint">`r esc(proj_start)` → `r esc(safe(rc$timeline_end, "Feb 2029"))` · `r fmt_int(safe(rc$timeline_months, 57))` mo end-to-end</span>
 
