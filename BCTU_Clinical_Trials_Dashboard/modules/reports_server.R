@@ -1336,7 +1336,11 @@ reports_server <- function(input, output, session, state) {
 
       # Build the report_data the same way the legacy download_report does
       # (same prepare_report_data() pipeline so output is identical).
-      use_filters    <- !identical(input$rb_scope, "full")
+      # Default scope is full-trial: only apply date/site filters when the
+      # user has explicitly switched to "Filtered". This keeps every section
+      # (demographics, site-by-site recruitment, monthly counts) consistent
+      # with the headline total instead of showing a stale rolling window.
+      use_filters    <- identical(input$rb_scope, "filtered")
       sites_for_prep <- if (use_filters) input$rpt_sites else NULL
       from_for_prep  <- if (use_filters) input$rpt_dates[1] else NULL
       to_for_prep    <- if (use_filters) input$rpt_dates[2] else NULL
@@ -1631,7 +1635,9 @@ reports_server <- function(input, output, session, state) {
       return(NULL)
     }
 
-    use_filters    <- !identical(input$rb_scope, "full")
+    # Default scope is full-trial (see the generate handler above) so the
+    # live preview matches the headline totals rather than a rolling window.
+    use_filters    <- identical(input$rb_scope, "filtered")
     sites_for_prep <- if (use_filters) input$rpt_sites else NULL
     from_for_prep  <- if (use_filters) input$rpt_dates[1] else NULL
     to_for_prep    <- if (use_filters) input$rpt_dates[2] else NULL
