@@ -405,9 +405,10 @@ body{padding:24px 0}
   /* Real @page margins frame every sheet — including table continuation
      sheets — so the fixed 297mm canvas and its 14mm padding go. The flex
      column with min-height keeps each footer at the base of a full page;
-     1mm slack below the 274mm printable height avoids rounding spilling a
-     blank sheet. */
-  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:273mm;padding:0;page-break-after:always}
+     Generous slack below the 274mm printable height stops sub-pixel rounding
+     tipping a page onto a second sheet, which page-break-after would then
+     turn into an entirely blank page. */
+  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:266mm;padding:0;page-break-after:always}
   .page:last-child{page-break-after:auto}
   /* Blocks never split mid-element: anything that will not fit in the space
      left on the current page starts on the next one instead. */
@@ -533,7 +534,10 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
 .card .ct{font-size:8.5pt;color:var(--navy);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .chart-wrap{position:relative;height:140px}
-.mon-chart-wrap{position:relative;height:360px}
+/* Sized so section 04 sits on the same sheet as the sections above it: a
+   taller chart cannot fit in the space left on the page, so print moves the
+   whole card to a fresh sheet and leaves the page above half empty. */
+.mon-chart-wrap{position:relative;height:200px}
 
 .demo{display:flex;gap:6px;margin-top:4px}
 .demo .chip{flex:1;text-align:center;padding:8px 6px;border-radius:6px;background:var(--navy-tint-2);border:1px solid var(--line)}

@@ -509,7 +509,10 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
 .card .ct{font-size:8.5pt;color:var(--navy);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .chart-wrap{position:relative;height:140px}
-.mon-chart-wrap{position:relative;height:360px}
+/* Sized so section 04 sits on the same sheet as sections 02–03: a taller
+   chart cannot fit in the space left on the page, so print moves the whole
+   card to a fresh sheet and leaves the page above half empty. */
+.mon-chart-wrap{position:relative;height:200px}
 
 .demo{display:flex;gap:6px;margin-top:4px}
 .demo .chip{flex:1;text-align:center;padding:8px 6px;border-radius:6px;background:var(--navy-tint-2);border:1px solid var(--line)}
