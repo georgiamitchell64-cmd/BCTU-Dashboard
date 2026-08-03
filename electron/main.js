@@ -3,12 +3,7 @@ const path = require("path");
 
 let win = null;
 
-const ICON = path.join(
-  __dirname,
-  "..",
-  "build",
-  process.platform === "win32" ? "icon.ico" : "icon.png"
-);
+const ICON = path.join(__dirname, "..", "build", "icon.ico");
 
 app.on("ready", () => {
   win = new BrowserWindow({
