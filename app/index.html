@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>TONIC Dashboard</title>
+  <style>
+    :root {
+      --navy: #1B4F6B;
+      --navy-dk: #143D54;
+      --teal: #2EC4A5;
+      --teal-dk: #0FA88E;
+      --amber: #F59E0B;
+      --red: #EF4444;
+      --blue: #3B82F6;
+      --bg: #EEF3F8;
+      --card: #ffffff;
+      --border: #DDE5EE;
+      --text: #1E293B;
+      --muted: #64748B;
+      --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* ── Header ──────────────────────────────────── */
+    .header {
+      background: var(--navy);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .header-logo {
+      width: 38px; height: 38px;
+      background: var(--teal);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 16px; color: #fff;
+    }
+    .header-title {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+    }
+    .header-subtitle {
+      color: rgba(255,255,255,.55);
+      font-size: 11px;
+      font-weight: 400;
+      margin-top: 1px;
+    }
+    .header-badge {
+      background: rgba(46,196,165,.18);
+      color: var(--teal);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid rgba(46,196,165,.25);
+    }
+
+    /* ── Layout ───────────────────────────────────── */
+    .dashboard {
+      padding: 22px 28px 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ── Metric cards ─────────────────────────────── */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .metric-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+    .metric-label {
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      margin-bottom: 6px;
+    }
+    .metric-value {
+      font-size: 30px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .metric-sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .metric-sub .up   { color: #10B981; font-weight: 600; }
+    .metric-sub .down { color: var(--red); font-weight: 600; }
+    .metric-sub .even { color: var(--blue); font-weight: 600; }
+
+    /* ── Chart panels ─────────────────────────────── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .panel-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+    .panel-full {
+      grid-column: 1 / -1;
+    }
+    .chart-box {
+      position: relative;
+      height: 260px;
+    }
+
+    /* ── Completion table ─────────────────────────── */
+    .completion-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .completion-card {
+      text-align: center;
+      padding: 16px 12px;
+      border-radius: 8px;
+      background: #F8FAFD;
+      border: 1px solid var(--border);
+    }
+    .completion-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+    }
+    .completion-ring {
+      width: 80px; height: 80px;
+      margin: 0 auto 10px;
+      position: relative;
+    }
+    .completion-ring svg {
+      transform: rotate(-90deg);
+    }
+    .completion-pct {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .completion-detail {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Site table ────────────────────────────────── */
+    .site-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .site-table th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      padding: 8px 10px;
+      border-bottom: 2px solid var(--border);
+    }
+    .site-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #F1F5F9;
+      vertical-align: middle;
+    }
+    .site-table tr:last-child td { border-bottom: none; }
+    .site-bar-cell { width: 40%; }
+    .site-bar-bg {
+      height: 8px;
+      background: #F1F5F9;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .site-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: var(--teal);
+      transition: width .4s ease;
+    }
+    .site-rank {
+      color: var(--muted);
+      font-weight: 500;
+      width: 28px;
+    }
+
+    /* ── Responsive ────────────────────────────────── */
+    @media (max-width: 960px) {
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .charts-row { grid-template-columns: 1fr; }
+      .completion-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <img class="header-logo" src="tonic-logo.png" alt="TONIC" style="border-radius:6px;object-fit:contain;background:#fff;padding:3px">
+      <div>
+        <div class="header-title">TONIC Dashboard</div>
+        <div class="header-subtitle">Early Parenteral Nutrition vs Standard Care</div>
+      </div>
+    </div>
+    <span class="header-badge">ISRCTN 59200516</span>
+  </header>
+
+  <main class="dashboard">
+
+    <!-- Metric cards -->
+    <section class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">Total Recruited</div>
+        <div class="metric-value" id="m-recruited">—</div>
+        <div class="metric-sub">of <span id="m-target">898</span> target</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">This Month</div>
+        <div class="metric-value" id="m-month">—</div>
+        <div class="metric-sub" id="m-month-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Active Sites</div>
+        <div class="metric-value" id="m-sites">—</div>
+        <div class="metric-sub" id="m-sites-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">On Target</div>
+        <div class="metric-value" id="m-ontarget">—</div>
+        <div class="metric-sub" id="m-ontarget-sub"></div>
+      </div>
+    </section>
+
+    <!-- Charts: recruitment trend + by site -->
+    <section class="charts-row">
+      <div class="panel">
+        <div class="panel-title">Cumulative Recruitment vs Target</div>
+        <div class="chart-box"><canvas id="chart-trend"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Monthly Recruitment</div>
+        <div class="chart-box"><canvas id="chart-monthly"></canvas></div>
+      </div>
+    </section>
+
+    <!-- Completion rates -->
+    <section class="charts-row">
+      <div class="panel">
+        <div class="panel-title">Follow-Up Completion Rates</div>
+        <div class="completion-grid" id="completion-grid"></div>
+      </div>
+
+      <!-- Site breakdown -->
+      <div class="panel">
+        <div class="panel-title">Recruitment by Site</div>
+        <table class="site-table" id="site-table">
+          <thead>
+            <tr>
+              <th style="width:28px">#</th>
+              <th>Site</th>
+              <th style="text-align:right;width:50px">N</th>
+              <th class="site-bar-cell"></th>
+            </tr>
+          </thead>
+          <tbody id="site-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="chart.umd.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
