@@ -136,6 +136,44 @@
       color: var(--text);
       margin-bottom: 16px;
     }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .panel-head .panel-title { margin-bottom: 0; }
+
+    /* ── Toggles ──────────────────────────────────── */
+    .toggles { display: flex; gap: 6px; align-items: center; }
+    .toggle {
+      padding: 4px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .toggle:hover { border-color: var(--navy); color: var(--navy); }
+    .toggle.on {
+      background: var(--navy);
+      border-color: var(--navy);
+      color: #fff;
+      font-weight: 600;
+    }
+    .toggle-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      margin: 0 3px;
+    }
     .panel-full {
       grid-column: 1 / -1;
     }
@@ -156,6 +194,12 @@
       border-radius: 8px;
       background: #F8FAFD;
       border: 1px solid var(--border);
+      cursor: default;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .completion-card:hover {
+      border-color: var(--navy);
+      box-shadow: 0 2px 8px rgba(27,79,107,.08);
     }
     .completion-name {
       font-size: 12px;
@@ -210,6 +254,40 @@
       vertical-align: middle;
     }
     .site-table tr:last-child td { border-bottom: none; }
+    .site-table tbody tr { transition: background .12s; }
+    .site-table tbody tr:hover { background: #F8FAFD; }
+
+    /* ── Custom tooltip ───────────────────────────── */
+    #tip {
+      position: fixed;
+      z-index: 50;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .12s;
+      background: var(--navy);
+      color: #fff;
+      border-radius: 7px;
+      padding: 9px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      box-shadow: 0 4px 16px rgba(0,0,0,.18);
+      max-width: 260px;
+    }
+    #tip.show { opacity: 1; }
+    #tip .tip-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+      font-size: 12.5px;
+    }
+    #tip .tip-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      color: rgba(255,255,255,.85);
+    }
+    #tip .tip-row b { color: #fff; font-weight: 600; }
+    #tip .tip-ahead  { color: #6EE7B7; font-weight: 600; }
+    #tip .tip-behind { color: #FCA5A5; font-weight: 600; }
     .site-bar-cell { width: 40%; }
     .site-bar-bg {
       height: 8px;
@@ -280,12 +358,26 @@
     <!-- Charts: recruitment trend + by site -->
     <section class="charts-row">
       <div class="panel">
-        <div class="panel-title">Cumulative Recruitment vs Target</div>
+        <div class="panel-head">
+          <div class="panel-title" id="trend-title">Cumulative Recruitment</div>
+          <div class="toggles">
+            <button class="toggle on" data-view="cumulative">Cumulative</button>
+            <button class="toggle" data-view="monthly">Monthly</button>
+            <span class="toggle-sep"></span>
+            <button class="toggle on" id="toggle-target" title="Show or hide the protocol target">Target</button>
+          </div>
+        </div>
         <div class="chart-box"><canvas id="chart-trend"></canvas></div>
       </div>
       <div class="panel">
-        <div class="panel-title">Monthly Recruitment</div>
-        <div class="chart-box"><canvas id="chart-monthly"></canvas></div>
+        <div class="panel-head">
+          <div class="panel-title">Recruitment by Site</div>
+          <div class="toggles">
+            <button class="toggle on" data-sort="count">By count</button>
+            <button class="toggle" data-sort="name">A–Z</button>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="chart-sites"></canvas></div>
       </div>
     </section>
 
@@ -296,15 +388,22 @@
         <div class="completion-grid" id="completion-grid"></div>
       </div>
 
-      <!-- Site breakdown -->
+      <!-- Site table -->
       <div class="panel">
-        <div class="panel-title">Recruitment by Site</div>
+        <div class="panel-head">
+          <div class="panel-title">Site Detail</div>
+          <div class="toggles">
+            <button class="toggle on" data-sites="all">All sites</button>
+            <button class="toggle" data-sites="top5">Top 5</button>
+          </div>
+        </div>
         <table class="site-table" id="site-table">
           <thead>
             <tr>
               <th style="width:28px">#</th>
               <th>Site</th>
               <th style="text-align:right;width:50px">N</th>
+              <th style="text-align:right;width:56px">Share</th>
               <th class="site-bar-cell"></th>
             </tr>
           </thead>
@@ -313,6 +412,8 @@
       </div>
     </section>
   </main>
+
+  <div id="tip"></div>
 
   <script src="chart.umd.js"></script>
   <script src="dashboard.js"></script>
