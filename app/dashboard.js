@@ -1,368 +1,977 @@
-// ── Trial data ─────────────────────────────────────────────────────────────
-// Sample figures pending a REDCap export feed.
-const TRIAL_TARGET = 898;
-const TARGET_SITES = 24;
+// ============================================================================
+// TONIC Dashboard — rendering
+// ============================================================================
 
-const months = ["Mar 2026", "Apr 2026", "May 2026", "Jun 2026", "Jul 2026"];
-const monthlyActual = [3, 7, 10, 14, 13];
-const cumulativeTarget = [4, 12, 24, 36, 48];
+// ── Derived figures ─────────────────────────────────────────────────────────
+const cumActual = [];
+const cumTarget = [];
+MONTHS.reduce((a, m) => { a += m.randomised; cumActual.push(a); return a; }, 0);
+MONTHS.reduce((a, m) => { a += m.target; cumTarget.push(a); return a; }, 0);
 
-const cumulativeActual = [];
-monthlyActual.reduce((sum, v) => {
-  sum += v;
-  cumulativeActual.push(sum);
-  return sum;
-}, 0);
+const totalRand = cumActual.at(-1);
+const targetToDate = cumTarget.at(-1);
+const pctOfTarget = Math.round((totalRand / targetToDate) * 100);
+const pctOfTotal = (totalRand / TRIAL.target) * 100;
 
-const monthlyTarget = cumulativeTarget.map((v, i) =>
-  i === 0 ? v : v - cumulativeTarget[i - 1]
-);
+const last3 = MONTHS.slice(-3).reduce((s, m) => s + m.randomised, 0);
+const rateRecent = last3 / 3;
+const rateAll = totalRand / MONTHS.length;
+const remaining = TRIAL.target - totalRand;
 
-const sites = [
-  { name: "Queen Elizabeth Hospital Birmingham", n: 8, opened: "Mar 2026" },
-  { name: "University Hospital Coventry", n: 6, opened: "Mar 2026" },
-  { name: "Royal Liverpool Hospital", n: 5, opened: "Apr 2026" },
-  { name: "St James's Hospital Leeds", n: 5, opened: "Apr 2026" },
-  { name: "Bristol Royal Infirmary", n: 4, opened: "Apr 2026" },
-  { name: "Sheffield Teaching Hospital", n: 4, opened: "May 2026" },
-  { name: "Oxford University Hospitals", n: 3, opened: "May 2026" },
-  { name: "Newcastle Royal Victoria", n: 3, opened: "May 2026" },
-  { name: "Southampton General Hospital", n: 3, opened: "Jun 2026" },
-  { name: "Glasgow Royal Infirmary", n: 2, opened: "Jun 2026" },
-  { name: "Nottingham University Hospital", n: 2, opened: "Jun 2026" },
-  { name: "Addenbrooke's Hospital Cambridge", n: 2, opened: "Jul 2026" },
-];
+const recruitingSites = SITES.filter((s) => s.n > 0);
+const openSites = SITES.filter((s) => s.status === "Recruiting" || s.status === "Open");
 
-const completion = [
-  { name: "Baseline", complete: 47, eligible: 47, color: "#7C3AED" },
-  { name: "Discharge", complete: 43, eligible: 45, color: "#3B82F6" },
-  { name: "Day 30", complete: 34, eligible: 38, color: "#2EC4A5" },
-  { name: "Day 90", complete: 16, eligible: 20, color: "#059669" },
-];
+// A site is dormant when it has opened but not randomised in 60 days.
+const CUT = new Date("2026-07-31");
+function daysSince(d) {
+  if (!d) return Infinity;
+  return Math.round((CUT - new Date(d)) / 86400000);
+}
+const dormantSites = recruitingSites.filter((s) => daysSince(s.lastRand) > 60);
 
-const totalRecruited = cumulativeActual[cumulativeActual.length - 1];
-const thisMonth = monthlyActual[monthlyActual.length - 1];
-const lastMonth = monthlyActual[monthlyActual.length - 2];
-const latestTarget = cumulativeTarget[cumulativeTarget.length - 1];
-const siteTotal = sites.reduce((s, x) => s + x.n, 0);
+const fuComplete = FOLLOWUP.reduce((s, f) => s + f.complete, 0);
+const fuExpected = FOLLOWUP.reduce((s, f) => s + f.expected, 0);
+const fuRate = Math.round((fuComplete / fuExpected) * 100);
 
-// ── Shared tooltip ─────────────────────────────────────────────────────────
-const tip = document.getElementById("tip");
+// Month at which the current rate would reach target.
+function projectedClose(rate) {
+  if (rate <= 0) return "—";
+  const monthsNeeded = Math.ceil(remaining / rate);
+  const d = new Date("2026-07-01");
+  d.setMonth(d.getMonth() + monthsNeeded);
+  return d.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+}
+
+// ── Tooltip ─────────────────────────────────────────────────────────────────
+const tipEl = document.getElementById("tip");
 
 function showTip(html, x, y) {
-  tip.innerHTML = html;
-  tip.classList.add("show");
-  const r = tip.getBoundingClientRect();
-  let left = x + 14;
-  let top = y + 14;
-  if (left + r.width > window.innerWidth - 8) left = x - r.width - 14;
-  if (top + r.height > window.innerHeight - 8) top = y - r.height - 14;
-  tip.style.left = left + "px";
-  tip.style.top = top + "px";
+  tipEl.innerHTML = html;
+  tipEl.classList.add("show");
+  const r = tipEl.getBoundingClientRect();
+  let left = x + 15, top = y + 15;
+  if (left + r.width > innerWidth - 10) left = x - r.width - 15;
+  if (top + r.height > innerHeight - 10) top = y - r.height - 15;
+  tipEl.style.left = left + "px";
+  tipEl.style.top = top + "px";
 }
+const hideTip = () => tipEl.classList.remove("show");
 
-function hideTip() {
-  tip.classList.remove("show");
+function row(label, value) {
+  return `<div class="tip-row"><span>${label}</span><b>${value}</b></div>`;
 }
-
-function varianceHtml(actual, target) {
+function variance(actual, target) {
   const d = actual - target;
-  if (d === 0) return `<span class="tip-ahead">on target</span>`;
-  const cls = d > 0 ? "tip-ahead" : "tip-behind";
-  const word = d > 0 ? "ahead" : "behind";
-  return `<span class="${cls}">${Math.abs(d)} ${word}</span>`;
+  if (d === 0) return `<div class="tip-row"><span>Variance</span><span class="tip-good">on target</span></div>`;
+  const cls = d > 0 ? "tip-good" : "tip-bad";
+  return `<div class="tip-row"><span>Variance</span><span class="${cls}">${Math.abs(d)} ${d > 0 ? "ahead" : "behind"}</span></div>`;
 }
 
-// ── Headline metrics ───────────────────────────────────────────────────────
-document.getElementById("m-recruited").textContent = totalRecruited;
-document.getElementById("m-target").textContent = TRIAL_TARGET;
-document.getElementById("m-month").textContent = thisMonth;
+// Attach a hover tooltip to any DOM element.
+function hoverTip(el, html) {
+  el.addEventListener("mousemove", (e) => showTip(html, e.clientX, e.clientY));
+  el.addEventListener("mouseleave", hideTip);
+}
 
-const diff = thisMonth - lastMonth;
-document.getElementById("m-month-sub").innerHTML =
-  `<span class="${diff > 0 ? "up" : diff < 0 ? "down" : "even"}">` +
-  `${diff > 0 ? "+" : ""}${diff}</span> vs last month`;
+// ── Chart defaults ──────────────────────────────────────────────────────────
+Chart.defaults.font.family = "'IBM Plex Sans', system-ui, sans-serif";
+Chart.defaults.font.size = 11.5;
+Chart.defaults.color = "#93A09C";
 
-document.getElementById("m-sites").textContent = sites.length;
-document.getElementById("m-sites-sub").textContent = `of ${TARGET_SITES} target sites`;
+const GRID = "#EDEBE4";
+const MONO = "'IBM Plex Mono', monospace";
 
-const pctOfTarget = Math.round((totalRecruited / latestTarget) * 100);
-document.getElementById("m-ontarget").textContent = pctOfTarget + "%";
-document.getElementById("m-ontarget-sub").innerHTML =
-  `<span class="${pctOfTarget >= 100 ? "up" : pctOfTarget >= 80 ? "even" : "down"}">` +
-  `${totalRecruited}/${latestTarget}</span> current target`;
-
-// ── Chart defaults ─────────────────────────────────────────────────────────
-Chart.defaults.font.family = "system-ui, -apple-system, sans-serif";
-Chart.defaults.font.size = 12;
-Chart.defaults.color = "#64748B";
-
-// Render our own tooltip so the charts and the DOM widgets share one style.
-function externalTooltip(buildHtml) {
-  return (ctx) => {
-    const model = ctx.tooltip;
-    if (!model || model.opacity === 0) return hideTip();
-    const i = model.dataPoints[0].dataIndex;
-    const box = ctx.chart.canvas.getBoundingClientRect();
-    showTip(buildHtml(i), box.left + model.caretX, box.top + model.caretY);
+// Shared axis styling so every chart reads as one family.
+function axes(opts = {}) {
+  return {
+    x: {
+      grid: { display: false },
+      border: { color: GRID },
+      ticks: { font: { family: MONO, size: 10.5 } },
+      ...(opts.x || {}),
+    },
+    y: {
+      beginAtZero: true,
+      grid: { color: GRID },
+      border: { display: false },
+      ticks: { font: { family: MONO, size: 10.5 }, precision: 0 },
+      ...(opts.y || {}),
+    },
   };
 }
 
-// ── Recruitment chart (cumulative / monthly, target on / off) ──────────────
-let view = "cumulative";
+// Render tooltips through our own element rather than Chart.js's canvas one.
+function external(build) {
+  return (ctx) => {
+    const t = ctx.tooltip;
+    if (!t || t.opacity === 0) return hideTip();
+    const box = ctx.chart.canvas.getBoundingClientRect();
+    showTip(build(t.dataPoints[0].dataIndex), box.left + t.caretX, box.top + t.caretY);
+  };
+}
+
+const noLegend = { legend: { display: false } };
+
+// ── KPI cards ───────────────────────────────────────────────────────────────
+function kpiCard({ label, value, unit, pct, colour, note, tip }) {
+  const el = document.createElement("div");
+  el.className = "kpi";
+  el.innerHTML = `
+    <div class="kicker">${label}</div>
+    <div class="kpi-val">
+      <span class="kpi-num">${value}</span>
+      ${unit ? `<span class="kpi-unit">${unit}</span>` : ""}
+    </div>
+    <div class="kpi-bar"><div style="width:${Math.min(pct, 100)}%;background:${colour}"></div></div>
+    <div class="kpi-note">${note}</div>
+  `;
+  if (tip) hoverTip(el, tip);
+  return el;
+}
+
+function fillKpis(id, cards) {
+  const host = document.getElementById(id);
+  host.innerHTML = "";
+  cards.forEach((c) => host.appendChild(kpiCard(c)));
+}
+
+// ── Completion ring ─────────────────────────────────────────────────────────
+function ringCard(f) {
+  const pct = Math.round((f.complete / f.expected) * 100);
+  const r = 36, circ = 2 * Math.PI * r;
+  const el = document.createElement("div");
+  el.className = "ring-card";
+  el.innerHTML = `
+    <div class="ring-name">${f.name}</div>
+    <div class="ring-wrap">
+      <svg width="84" height="84" viewBox="0 0 84 84">
+        <circle cx="42" cy="42" r="${r}" fill="none" stroke="${GRID}" stroke-width="6"/>
+        <circle cx="42" cy="42" r="${r}" fill="none" stroke="${f.colour}" stroke-width="6"
+                stroke-dasharray="${circ}" stroke-dashoffset="${circ - (circ * pct) / 100}"
+                stroke-linecap="round"/>
+      </svg>
+      <div class="ring-pct">${pct}%</div>
+    </div>
+    <div class="ring-detail">${f.complete} / ${f.expected} forms</div>
+  `;
+  hoverTip(el, `
+    <div class="tip-title">${f.name}</div>
+    ${row("Received", f.complete)}
+    ${row("Due", f.expected)}
+    ${row("Outstanding", f.expected - f.complete)}
+    ${row("Rate", pct + "%")}
+    <div class="tip-note">${f.event}</div>
+  `);
+  return el;
+}
+
+function fillRings(id, list) {
+  const host = document.getElementById(id);
+  host.innerHTML = "";
+  list.forEach((f) => host.appendChild(ringCard(f)));
+}
+
+// ── Table helper ────────────────────────────────────────────────────────────
+function buildTable(el, cols, rows, opts = {}) {
+  const { sort, onSort } = opts;
+
+  const head = cols
+    .map((c, i) => {
+      const classes = [c.num ? "num" : "", c.sortKey ? "sortable" : ""];
+      let arrow = "";
+      if (c.sortKey && sort && sort.col === i) {
+        classes.push("sorted");
+        arrow = `<span class="arrow">${sort.dir === "asc" ? "↑" : "↓"}</span>`;
+      } else if (c.sortKey) {
+        arrow = `<span class="arrow">↓</span>`;
+      }
+      return `<th class="${classes.join(" ")}" data-col="${i}">${c.label}${arrow}</th>`;
+    })
+    .join("");
+
+  const body = rows
+    .map((r) => {
+      const tds = cols
+        .map((c) => `<td class="${c.num ? "num" : ""} ${c.cls || ""}">${c.get(r)}</td>`)
+        .join("");
+      return `<tr>${tds}</tr>`;
+    })
+    .join("");
+
+  el.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>`;
+
+  if (onSort) {
+    el.querySelectorAll("th.sortable").forEach((th) =>
+      th.addEventListener("click", () => onSort(Number(th.dataset.col)))
+    );
+  }
+
+  if (opts.tip) {
+    [...el.querySelectorAll("tbody tr")].forEach((tr, i) =>
+      hoverTip(tr, opts.tip(rows[i], i))
+    );
+  }
+}
+
+// Sort a copy of `rows` by a column's sortKey, nulls always last.
+function sortRows(rows, key, dir) {
+  const val = (r) => (typeof key === "function" ? key(r) : r[key]);
+  return [...rows].sort((a, b) => {
+    const x = val(a), y = val(b);
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    const c = typeof x === "string" ? x.localeCompare(y) : x - y;
+    return dir === "asc" ? c : -c;
+  });
+}
+
+const statusPill = (s) => {
+  const cls = { Recruiting: "pill-green", Open: "pill-amber", "Set-up": "pill-grey", Identified: "pill-grey" }[s];
+  return `<span class="pill ${cls}">${s}</span>`;
+};
+
+// ══ HEADER ═════════════════════════════════════════════════════════════════
+document.getElementById("side-sub").textContent = TRIAL.subtitle;
+document.getElementById("side-cut").textContent = TRIAL.dataCut;
+document.getElementById("head-close").textContent = projectedClose(rateRecent);
+
+const statusEl = document.getElementById("head-status");
+statusEl.textContent = `${pctOfTarget}% of time-adjusted target`;
+statusEl.style.color = pctOfTarget >= 95 ? "#0E6B5E" : pctOfTarget >= 80 ? "#B67A16" : "#A63D2F";
+
+const PAGES = {
+  overview: {
+    label: "Overview",
+    meta: `${totalRand}/${TRIAL.target}`,
+    kicker: "Live status",
+    title: "Trial overview",
+    blurb: "Recruitment, site activity and follow-up at a glance for the coordinating centre stand-up.",
+  },
+  recruitment: {
+    label: "Recruitment",
+    meta: `${rateRecent.toFixed(1)}/mo`,
+    kicker: "Accrual",
+    title: "Recruitment",
+    blurb: "Monthly accrual against the protocol schedule, and what the current rate implies for the recruitment window.",
+  },
+  sites: {
+    label: "Sites",
+    meta: `${recruitingSites.length}/${TRIAL.targetSites}`,
+    kicker: "Network",
+    title: "Sites",
+    blurb: "Where participants are coming from, which sites have opened, and which have gone quiet.",
+  },
+  randomisations: {
+    label: "Randomisations",
+    meta: `${totalRand}`,
+    kicker: "Participants",
+    title: "Randomisations",
+    blurb: "Every participant entered to date, with the baseline profile of the recruited population.",
+  },
+  followup: {
+    label: "Follow-up",
+    meta: `${fuRate}%`,
+    kicker: "Data return",
+    title: "Follow-up",
+    blurb: "Questionnaire return across the baseline, discharge, day 30 and day 90 windows.",
+  },
+};
+
+// ══ NAVIGATION ═════════════════════════════════════════════════════════════
+let currentPage = "overview";
+const navHost = document.getElementById("side-nav");
+
+Object.entries(PAGES).forEach(([key, p]) => {
+  const b = document.createElement("button");
+  b.className = "nav-item" + (key === currentPage ? " on" : "");
+  b.dataset.page = key;
+  b.innerHTML = `<span>${p.label}</span><span class="nav-meta">${p.meta}</span>`;
+  b.addEventListener("click", () => goTo(key));
+  navHost.appendChild(b);
+});
+
+function goTo(key) {
+  currentPage = key;
+  hideTip();
+
+  document.querySelectorAll(".nav-item").forEach((b) =>
+    b.classList.toggle("on", b.dataset.page === key)
+  );
+  document.querySelectorAll("[data-page]").forEach((s) => {
+    if (s.tagName === "SECTION") s.hidden = s.dataset.page !== key;
+  });
+
+  const p = PAGES[key];
+  document.getElementById("page-kicker").textContent = p.kicker;
+  document.getElementById("page-title").textContent = p.title;
+  document.getElementById("page-blurb").textContent = p.blurb;
+
+  // Charts built inside a hidden section start at zero size; Chart.js picks
+  // the real dimensions up through its ResizeObserver once the section shows.
+}
+
+document.querySelectorAll("[data-goto]").forEach((b) =>
+  b.addEventListener("click", () => goTo(b.dataset.goto))
+);
+
+// ══ OVERVIEW ═══════════════════════════════════════════════════════════════
+fillKpis("kpis", [
+  {
+    label: "Randomised", value: totalRand, unit: `of ${TRIAL.target}`,
+    pct: pctOfTotal, colour: "#0E6B5E",
+    note: `${pctOfTotal.toFixed(1)}% of the recruitment target; ${remaining} still to randomise.`,
+    tip: `<div class="tip-title">Randomised</div>${row("To date", totalRand)}${row("Target", TRIAL.target)}${row("Remaining", remaining)}${row("Since", TRIAL.firstRandomisation)}`,
+  },
+  {
+    label: "Last 3 months", value: last3, unit: "randomised",
+    pct: (rateRecent / 20) * 100, colour: "#3FA593",
+    note: `${rateRecent.toFixed(1)}/month against ${(MONTHS.slice(-3).reduce((s, m) => s + m.target, 0) / 3).toFixed(1)} scheduled.`,
+    tip: `<div class="tip-title">Recent accrual</div>${MONTHS.slice(-3).map((m) => row(m.label, m.randomised)).join("")}${row("Mean", rateRecent.toFixed(1) + "/mo")}`,
+  },
+  {
+    label: "Sites recruiting", value: recruitingSites.length, unit: `of ${TRIAL.targetSites}`,
+    pct: (recruitingSites.length / TRIAL.targetSites) * 100, colour: "#7FA79F",
+    note: `${openSites.length} open; ${dormantSites.length} with no randomisation in 60 days.`,
+    tip: `<div class="tip-title">Site network</div>${row("Recruiting", recruitingSites.length)}${row("Open, none yet", openSites.length - recruitingSites.length)}${row("In set-up", SITES.filter((s) => s.status === "Set-up").length)}${row("Target", TRIAL.targetSites)}`,
+  },
+  {
+    label: "Follow-up return", value: fuRate + "%", unit: "",
+    pct: fuRate, colour: fuRate >= 90 ? "#0E6B5E" : "#B67A16",
+    note: `${fuComplete} of ${fuExpected} forms received across all windows.`,
+    tip: `<div class="tip-title">Follow-up</div>${row("Received", fuComplete)}${row("Due", fuExpected)}${row("Outstanding", fuExpected - fuComplete)}`,
+  },
+]);
+
+document.getElementById("cum-sub").textContent =
+  `First randomisation ${TRIAL.firstRandomisation} · target n=${TRIAL.target} by ${TRIAL.targetClose}`;
+
+fillRings("rings-mini", FOLLOWUP);
+
+// Cumulative / monthly recruitment chart
+let cumView = "cumulative";
 let showTarget = true;
 
-function trendTooltipHtml(i) {
-  const actual = view === "cumulative" ? cumulativeActual[i] : monthlyActual[i];
-  const target = view === "cumulative" ? cumulativeTarget[i] : monthlyTarget[i];
-  const pct = Math.round((actual / target) * 100);
+function cumTip(i) {
+  const a = cumView === "cumulative" ? cumActual[i] : MONTHS[i].randomised;
+  const t = cumView === "cumulative" ? cumTarget[i] : MONTHS[i].target;
   return `
-    <div class="tip-title">${months[i]}</div>
-    <div class="tip-row"><span>Recruited</span><b>${actual}</b></div>
-    ${showTarget ? `
-      <div class="tip-row"><span>Target</span><b>${target}</b></div>
-      <div class="tip-row"><span>Variance</span>${varianceHtml(actual, target)}</div>
-      <div class="tip-row"><span>Of target</span><b>${pct}%</b></div>` : ""}
+    <div class="tip-title">${MONTHS[i].label}</div>
+    ${row("Randomised", a)}
+    ${showTarget ? row("Target", t) + variance(a, t) + row("Of target", Math.round((a / t) * 100) + "%") : ""}
   `;
 }
 
-function trendDatasets() {
-  const actual = view === "cumulative" ? cumulativeActual : monthlyActual;
-  const target = view === "cumulative" ? cumulativeTarget : monthlyTarget;
-  const line = view === "cumulative";
-
+function cumSets() {
+  const line = cumView === "cumulative";
+  const actual = line ? cumActual : MONTHS.map((m) => m.randomised);
+  const target = line ? cumTarget : MONTHS.map((m) => m.target);
   const sets = [];
   if (showTarget) {
     sets.push({
-      label: "Target",
-      data: target,
-      borderColor: "#C8D4E2",
-      backgroundColor: line ? "rgba(221,229,238,.18)" : "rgba(221,229,238,.55)",
-      borderWidth: line ? 2 : 1,
-      borderDash: line ? [6, 3] : undefined,
-      pointRadius: line ? 3 : 0,
-      pointHoverRadius: line ? 6 : 0,
-      pointBackgroundColor: "#C8D4E2",
-      fill: line,
-      tension: 0.3,
-      borderRadius: line ? undefined : 4,
+      label: "Target", data: target,
+      borderColor: "#B0AEA4", backgroundColor: line ? "transparent" : "#EDEBE4",
+      borderWidth: line ? 1.6 : 1, borderDash: line ? [5, 5] : undefined,
+      pointRadius: 0, pointHoverRadius: 0, fill: false, tension: .25,
+      borderRadius: line ? undefined : 3,
     });
   }
   sets.push({
-    label: "Recruited",
-    data: actual,
-    borderColor: line ? "#2EC4A5" : "#0FA88E",
-    backgroundColor: line ? "rgba(46,196,165,.12)" : "#2EC4A5",
-    borderWidth: line ? 2.5 : 1,
-    pointRadius: line ? 4 : 0,
-    pointHoverRadius: line ? 7 : 0,
-    pointBackgroundColor: "#2EC4A5",
-    fill: line,
-    tension: 0.3,
-    borderRadius: line ? undefined : 4,
+    label: "Actual", data: actual,
+    borderColor: "#0E6B5E", backgroundColor: line ? "rgba(221,234,231,.75)" : "#0E6B5E",
+    borderWidth: line ? 2.6 : 1, pointRadius: line ? 0 : 0,
+    pointHoverRadius: line ? 5 : 0, pointBackgroundColor: "#0E6B5E",
+    pointHoverBorderColor: "#fff", pointHoverBorderWidth: 2,
+    fill: line, tension: .25, borderRadius: line ? undefined : 3,
   });
   return sets;
 }
 
-const trendChart = new Chart(document.getElementById("chart-trend"), {
+const cumChart = new Chart(document.getElementById("chart-cum"), {
   type: "line",
-  data: { labels: months, datasets: trendDatasets() },
+  data: { labels: MONTHS.map((m) => m.label), datasets: cumSets() },
   options: {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
-    plugins: {
-      legend: { position: "bottom", labels: { usePointStyle: true, padding: 20 } },
-      tooltip: { enabled: false, external: externalTooltip(trendTooltipHtml) },
-    },
-    scales: {
-      y: { beginAtZero: true, grid: { color: "#F1F5F9" }, title: { display: true, text: "Participants" } },
-      x: { grid: { display: false } },
-    },
+    plugins: { ...noLegend, tooltip: { enabled: false, external: external(cumTip) } },
+    scales: axes(),
   },
 });
 
-function renderTrend() {
-  trendChart.config.type = view === "cumulative" ? "line" : "bar";
-  trendChart.data.datasets = trendDatasets();
-  trendChart.update();
-  document.getElementById("trend-title").textContent =
-    view === "cumulative" ? "Cumulative Recruitment" : "Monthly Recruitment";
+function renderCum() {
+  cumChart.config.type = cumView === "cumulative" ? "line" : "bar";
+  cumChart.data.datasets = cumSets();
+  cumChart.update();
+  document.getElementById("cum-title").textContent =
+    cumView === "cumulative" ? "Cumulative recruitment vs target" : "Randomisations per month";
 }
 
-document.querySelectorAll("[data-view]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    view = btn.dataset.view;
-    document.querySelectorAll("[data-view]").forEach((b) =>
-      b.classList.toggle("on", b === btn)
-    );
-    hideTip();
-    renderTrend();
-  });
-});
-
+document.querySelectorAll("[data-view]").forEach((b) =>
+  b.addEventListener("click", () => {
+    cumView = b.dataset.view;
+    document.querySelectorAll("[data-view]").forEach((x) => x.classList.toggle("on", x === b));
+    hideTip(); renderCum();
+  })
+);
 document.getElementById("toggle-target").addEventListener("click", (e) => {
   showTarget = !showTarget;
   e.currentTarget.classList.toggle("on", showTarget);
-  hideTip();
-  renderTrend();
+  hideTip(); renderCum();
 });
 
-// ── Site chart (sortable) ──────────────────────────────────────────────────
-let siteSort = "count";
+buildTable(
+  document.getElementById("tbl-recent"),
+  [
+    { label: "ID", get: (r) => `<span class="mono">${r.id}</span>` },
+    { label: "Site", get: (r) => r.site },
+    { label: "Randomised", get: (r) => `<span class="mono">${r.date}</span>` },
+    { label: "Age", num: true, get: (r) => r.age },
+    { label: "Sex", get: (r) => r.sex },
+  ],
+  RANDOMISATIONS.slice(0, 6),
+  {
+    tip: (r) => `<div class="tip-title">${r.id}</div>${row("Site", r.site)}${row("Randomised", r.date)}${row("Age", r.age)}${row("NELA risk", r.nela + "%")}<div class="tip-note">Allocation withheld — blinded view</div>`,
+  }
+);
 
-function sortedSites() {
-  const copy = [...sites];
-  return siteSort === "count"
-    ? copy.sort((a, b) => b.n - a.n)
-    : copy.sort((a, b) => a.name.localeCompare(b.name));
+// ══ RECRUITMENT ════════════════════════════════════════════════════════════
+fillKpis("rec-kpis", [
+  {
+    label: "Current rate", value: rateRecent.toFixed(1), unit: "per month",
+    pct: (rateRecent / 20) * 100, colour: "#0E6B5E",
+    note: `Mean over the last 3 months; ${rateAll.toFixed(1)}/month since opening.`,
+    tip: `<div class="tip-title">Recruitment rate</div>${row("Last 3 months", rateRecent.toFixed(2))}${row("All time", rateAll.toFixed(2))}`,
+  },
+  {
+    label: "Rate required", value: (remaining / 23).toFixed(1), unit: "per month",
+    pct: 100, colour: "#B67A16",
+    note: `To reach ${TRIAL.target} by ${TRIAL.targetClose} from the current position.`,
+    tip: `<div class="tip-title">Required rate</div>${row("Remaining", remaining)}${row("Months left", 23)}${row("Needed", (remaining / 23).toFixed(1) + "/mo")}`,
+  },
+  {
+    label: "Best month", value: Math.max(...MONTHS.map((m) => m.randomised)), unit: "randomised",
+    pct: (Math.max(...MONTHS.map((m) => m.randomised)) / 20) * 100, colour: "#3FA593",
+    note: `${MONTHS.find((m) => m.randomised === Math.max(...MONTHS.map((x) => x.randomised))).label} — the strongest month so far.`,
+  },
+  {
+    label: "Projected close", value: projectedClose(rateRecent), unit: "",
+    pct: 60, colour: "#A63D2F",
+    note: `At the current rate. Protocol close is ${TRIAL.targetClose}.`,
+    tip: `<div class="tip-title">Projection</div>${row("At current rate", projectedClose(rateRecent))}${row("Protocol close", TRIAL.targetClose)}<div class="tip-note">Assumes no further sites open</div>`,
+  },
+]);
+
+document.getElementById("rec-legend").innerHTML = `
+  <div class="legend-item"><span class="legend-line" style="border-top:2px solid #0E6B5E"></span>Randomised</div>
+  <div class="legend-item"><span class="legend-line" style="border-top:2px dashed #B0AEA4"></span>Protocol target</div>
+`;
+
+new Chart(document.getElementById("chart-permonth"), {
+  type: "bar",
+  data: {
+    labels: MONTHS.map((m) => m.label),
+    datasets: [
+      { label: "Target", data: MONTHS.map((m) => m.target), backgroundColor: "#EDEBE4", borderColor: "#B0AEA4", borderWidth: 1, borderRadius: 3 },
+      { label: "Randomised", data: MONTHS.map((m) => m.randomised), backgroundColor: "#0E6B5E", borderRadius: 3 },
+    ],
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      ...noLegend,
+      tooltip: {
+        enabled: false,
+        external: external((i) => {
+          const m = MONTHS[i];
+          return `<div class="tip-title">${m.label}</div>${row("Randomised", m.randomised)}${row("Target", m.target)}${variance(m.randomised, m.target)}`;
+        }),
+      },
+    },
+    scales: axes(),
+  },
+});
+
+// Forecast: actual to date, then a straight projection at the chosen rate,
+// against the protocol curve.
+let rateMode = "recent";
+const fcLabels = [...MONTHS.map((m) => m.label), ...TARGET_SCHEDULE.map((t) => t.label)];
+
+function fcSets() {
+  const rate = rateMode === "recent" ? rateRecent : rateAll;
+  const actual = [...cumActual, ...TARGET_SCHEDULE.map(() => null)];
+  const target = [...cumTarget, ...TARGET_SCHEDULE.map((t) => t.cumulative)];
+
+  const proj = MONTHS.map(() => null);
+  proj[MONTHS.length - 1] = totalRand;
+  let running = totalRand;
+  TARGET_SCHEDULE.forEach(() => {
+    running = Math.min(running + rate, TRIAL.target);
+    proj.push(Math.round(running));
+  });
+
+  return [
+    { label: "Target", data: target, borderColor: "#B0AEA4", borderWidth: 1.6, borderDash: [5, 5], pointRadius: 0, fill: false, tension: .2 },
+    { label: "Projection", data: proj, borderColor: "#B67A16", borderWidth: 2, borderDash: [3, 4], pointRadius: 0, fill: false, tension: .2 },
+    { label: "Actual", data: actual, borderColor: "#0E6B5E", backgroundColor: "rgba(221,234,231,.75)", borderWidth: 2.6, pointRadius: 0, fill: true, tension: .2 },
+  ];
 }
 
-// Trim the long NHS trust names so the axis stays readable.
-function shortName(name) {
-  return name.length > 26 ? name.slice(0, 25) + "…" : name;
+const fcChart = new Chart(document.getElementById("chart-forecast"), {
+  type: "line",
+  data: { labels: fcLabels, datasets: fcSets() },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      ...noLegend,
+      tooltip: {
+        enabled: false,
+        external: external((i) => {
+          const ds = fcChart.data.datasets;
+          const pick = (n) => (ds[n].data[i] == null ? "—" : ds[n].data[i]);
+          return `<div class="tip-title">${fcLabels[i]}</div>${row("Actual", pick(2))}${row("Projection", pick(1))}${row("Target", pick(0))}`;
+        }),
+      },
+    },
+    scales: axes({ x: { ticks: { maxTicksLimit: 10, font: { family: MONO, size: 10 } } } }),
+  },
+});
+
+function renderForecast() {
+  const rate = rateMode === "recent" ? rateRecent : rateAll;
+  fcChart.data.datasets = fcSets();
+  fcChart.update();
+  document.getElementById("fc-sub").textContent =
+    `At ${rate.toFixed(1)}/month the target is reached ${projectedClose(rate)}`;
+  buildRateTable();
+}
+
+document.querySelectorAll("[data-rate]").forEach((b) =>
+  b.addEventListener("click", () => {
+    rateMode = b.dataset.rate;
+    document.querySelectorAll("[data-rate]").forEach((x) => x.classList.toggle("on", x === b));
+    hideTip(); renderForecast();
+  })
+);
+
+function buildRateTable() {
+  const rate = rateMode === "recent" ? rateRecent : rateAll;
+  const rows = [
+    { k: "Randomised to date", v: totalRand },
+    { k: "Remaining to target", v: remaining },
+    { k: "Rate in use", v: rate.toFixed(1) + " / month" },
+    { k: "Rate required", v: (remaining / 23).toFixed(1) + " / month" },
+    { k: "Months at this rate", v: Math.ceil(remaining / rate) },
+    { k: "Projected close", v: projectedClose(rate) },
+    { k: "Protocol close", v: TRIAL.targetClose },
+  ];
+  buildTable(
+    document.getElementById("tbl-rate"),
+    [
+      { label: "Measure", get: (r) => r.k },
+      { label: "Value", num: true, cls: "mono", get: (r) => r.v },
+    ],
+    rows
+  );
+}
+renderForecast();
+
+// ══ SITES ══════════════════════════════════════════════════════════════════
+const siteTotal = recruitingSites.reduce((s, x) => s + x.n, 0);
+const topSite = [...recruitingSites].sort((a, b) => b.n - a.n)[0];
+
+fillKpis("site-kpis", [
+  {
+    label: "Recruiting", value: recruitingSites.length, unit: `of ${TRIAL.targetSites}`,
+    pct: (recruitingSites.length / TRIAL.targetSites) * 100, colour: "#0E6B5E",
+    note: `${TRIAL.targetSites - recruitingSites.length} more sites to reach the planned network.`,
+  },
+  {
+    label: "Open, none yet", value: openSites.length - recruitingSites.length, unit: "sites",
+    pct: ((openSites.length - recruitingSites.length) / TRIAL.targetSites) * 100, colour: "#B67A16",
+    note: "Green-lit but yet to randomise a first participant.",
+  },
+  {
+    label: "Dormant", value: dormantSites.length, unit: "sites",
+    pct: (dormantSites.length / Math.max(recruitingSites.length, 1)) * 100, colour: "#A63D2F",
+    note: dormantSites.length
+      ? `${dormantSites.map((s) => s.name.split(" ").slice(0, 2).join(" ")).join(", ")} — no randomisation in 60 days.`
+      : "Every recruiting site has randomised recently.",
+    tip: dormantSites.length
+      ? `<div class="tip-title">Dormant sites</div>${dormantSites.map((s) => row(s.name, daysSince(s.lastRand) + "d")).join("")}`
+      : null,
+  },
+  {
+    label: "Top recruiter", value: topSite.n, unit: "participants",
+    pct: (topSite.n / siteTotal) * 100, colour: "#3FA593",
+    note: `${topSite.name} — ${((topSite.n / siteTotal) * 100).toFixed(0)}% of all randomisations.`,
+  },
+]);
+
+let siteSort = "n";
+const shortName = (n) => (n.length > 30 ? n.slice(0, 29) + "…" : n);
+
+function sortedSites() {
+  const c = [...recruitingSites];
+  if (siteSort === "n") return c.sort((a, b) => b.n - a.n);
+  if (siteSort === "name") return c.sort((a, b) => a.name.localeCompare(b.name));
+  return c.sort((a, b) => new Date(a.opened) - new Date(b.opened) || b.n - a.n);
 }
 
 const siteChart = new Chart(document.getElementById("chart-sites"), {
   type: "bar",
   data: {
     labels: sortedSites().map((s) => shortName(s.name)),
-    datasets: [
-      {
-        label: "Participants",
-        data: sortedSites().map((s) => s.n),
-        backgroundColor: "#2EC4A5",
-        borderColor: "#0FA88E",
-        borderWidth: 1,
-        borderRadius: 4,
-      },
-    ],
+    datasets: [{ data: sortedSites().map((s) => s.n), backgroundColor: "#0E6B5E", borderRadius: 3, barThickness: 14 }],
   },
   options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    indexAxis: "y",
+    responsive: true, maintainAspectRatio: false, indexAxis: "y",
     interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { display: false },
+      ...noLegend,
       tooltip: {
         enabled: false,
-        external: externalTooltip((i) => {
+        external: external((i) => {
           const s = sortedSites()[i];
-          const share = ((s.n / siteTotal) * 100).toFixed(1);
-          return `
-            <div class="tip-title">${s.name}</div>
-            <div class="tip-row"><span>Recruited</span><b>${s.n}</b></div>
-            <div class="tip-row"><span>Share of total</span><b>${share}%</b></div>
-            <div class="tip-row"><span>Opened</span><b>${s.opened}</b></div>
-          `;
+          return `<div class="tip-title">${s.name}</div>${row("Randomised", s.n)}${row("Share", ((s.n / siteTotal) * 100).toFixed(1) + "%")}${row("Opened", s.opened)}${row("Last randomisation", s.lastRand)}<div class="tip-note">${s.region}</div>`;
         }),
       },
     },
     scales: {
-      x: { beginAtZero: true, grid: { color: "#F1F5F9" }, ticks: { precision: 0 } },
-      y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+      x: { beginAtZero: true, grid: { color: GRID }, border: { display: false }, ticks: { font: { family: MONO, size: 10.5 }, precision: 0 } },
+      y: { grid: { display: false }, border: { color: GRID }, ticks: { font: { size: 11 } } },
     },
   },
 });
 
-function renderSiteChart() {
-  const data = sortedSites();
-  siteChart.data.labels = data.map((s) => shortName(s.name));
-  siteChart.data.datasets[0].data = data.map((s) => s.n);
-  siteChart.update();
-}
-
-document.querySelectorAll("[data-sort]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    siteSort = btn.dataset.sort;
-    document.querySelectorAll("[data-sort]").forEach((b) =>
-      b.classList.toggle("on", b === btn)
-    );
+document.querySelectorAll("[data-sitesort]").forEach((b) =>
+  b.addEventListener("click", () => {
+    siteSort = b.dataset.sitesort;
+    document.querySelectorAll("[data-sitesort]").forEach((x) => x.classList.toggle("on", x === b));
     hideTip();
-    renderSiteChart();
-  });
+    const d = sortedSites();
+    siteChart.data.labels = d.map((s) => shortName(s.name));
+    siteChart.data.datasets[0].data = d.map((s) => s.n);
+    siteChart.update();
+  })
+);
+
+// Site status doughnut
+const STATUSES = ["Recruiting", "Open", "Set-up", "Identified"];
+const statusCounts = STATUSES.map((s) => SITES.filter((x) => x.status === s).length);
+const statusColours = ["#0E6B5E", "#B67A16", "#B0AEA4", "#D9D6CC"];
+
+new Chart(document.getElementById("chart-status"), {
+  type: "doughnut",
+  data: { labels: STATUSES, datasets: [{ data: statusCounts, backgroundColor: statusColours, borderWidth: 2, borderColor: "#fff" }] },
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: "62%",
+    plugins: {
+      legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 7, padding: 14, font: { size: 11.5 } } },
+      tooltip: {
+        enabled: false,
+        external: external((i) => `<div class="tip-title">${STATUSES[i]}</div>${row("Sites", statusCounts[i])}${row("Share", Math.round((statusCounts[i] / SITES.length) * 100) + "%")}`),
+      },
+    },
+  },
 });
 
-// ── Completion rings ───────────────────────────────────────────────────────
-const grid = document.getElementById("completion-grid");
-completion.forEach((tp) => {
-  const pct = Math.round((tp.complete / tp.eligible) * 100);
-  const r = 34, circ = 2 * Math.PI * r;
-  const offset = circ - (circ * pct) / 100;
-  const card = document.createElement("div");
-  card.className = "completion-card";
-  card.innerHTML = `
-    <div class="completion-name">${tp.name}</div>
-    <div class="completion-ring">
-      <svg width="80" height="80" viewBox="0 0 80 80">
-        <circle cx="40" cy="40" r="${r}" fill="none" stroke="#F1F5F9" stroke-width="6"/>
-        <circle cx="40" cy="40" r="${r}" fill="none" stroke="${tp.color}" stroke-width="6"
-                stroke-dasharray="${circ}" stroke-dashoffset="${offset}" stroke-linecap="round"/>
-      </svg>
-      <div class="completion-pct">${pct}%</div>
-    </div>
-    <div class="completion-detail">${tp.complete} / ${tp.eligible} forms</div>
-  `;
+buildTable(
+  document.getElementById("tbl-status"),
+  [
+    { label: "Status", get: (r) => statusPill(r.s) },
+    { label: "Sites", num: true, cls: "mono", get: (r) => r.n },
+    { label: "Participants", num: true, cls: "mono", get: (r) => r.p },
+  ],
+  STATUSES.map((s) => ({
+    s, n: SITES.filter((x) => x.status === s).length,
+    p: SITES.filter((x) => x.status === s).reduce((a, x) => a + x.n, 0),
+  }))
+);
 
-  const html = `
-    <div class="tip-title">${tp.name} follow-up</div>
-    <div class="tip-row"><span>Complete</span><b>${tp.complete}</b></div>
-    <div class="tip-row"><span>Expected</span><b>${tp.eligible}</b></div>
-    <div class="tip-row"><span>Outstanding</span><b>${tp.eligible - tp.complete}</b></div>
-    <div class="tip-row"><span>Rate</span><b>${pct}%</b></div>
-  `;
-  card.addEventListener("mousemove", (e) => showTip(html, e.clientX, e.clientY));
-  card.addEventListener("mouseleave", hideTip);
-  grid.appendChild(card);
-});
+// Full site table with filters and click-to-sort headings
+let siteFilter = "all";
+let siteTableSort = { col: 4, dir: "desc" };
 
-// ── Site table ─────────────────────────────────────────────────────────────
-let siteLimit = "all";
-const tbody = document.getElementById("site-tbody");
+const STATUS_ORDER = { Recruiting: 0, Open: 1, "Set-up": 2, Identified: 3 };
+
+const SITE_COLS = [
+  { label: "Site", sortKey: "name", get: (r) => r.name },
+  { label: "Region", sortKey: "region", get: (r) => `<span style="color:var(--muted)">${r.region}</span>` },
+  { label: "Status", sortKey: (r) => STATUS_ORDER[r.status], get: (r) => statusPill(r.status) },
+  { label: "Opened", cls: "mono", sortKey: (r) => (r.opened ? new Date(r.opened).getTime() : null), get: (r) => r.opened || "—" },
+  { label: "N", num: true, cls: "mono", sortKey: "n", get: (r) => r.n },
+  { label: "", cls: "bar-cell", get: () => "" },
+];
 
 function renderSiteTable() {
-  const ranked = [...sites].sort((a, b) => b.n - a.n);
-  const rows = siteLimit === "top5" ? ranked.slice(0, 5) : ranked;
-  const maxN = ranked[0].n;
+  let rows = SITES;
+  if (siteFilter === "recruiting") rows = rows.filter((s) => s.status === "Recruiting");
+  if (siteFilter === "dormant") rows = rows.filter((s) => dormantSites.includes(s));
 
-  tbody.innerHTML = "";
-  rows.forEach((s, i) => {
-    const share = ((s.n / siteTotal) * 100).toFixed(1);
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="site-rank">${i + 1}</td>
-      <td>${s.name}</td>
-      <td style="text-align:right;font-weight:600">${s.n}</td>
-      <td style="text-align:right;color:var(--muted)">${share}%</td>
-      <td class="site-bar-cell">
-        <div class="site-bar-bg">
-          <div class="site-bar-fill" style="width:${(s.n / maxN) * 100}%"></div>
-        </div>
-      </td>
-    `;
-    const html = `
-      <div class="tip-title">${s.name}</div>
-      <div class="tip-row"><span>Recruited</span><b>${s.n}</b></div>
-      <div class="tip-row"><span>Share of total</span><b>${share}%</b></div>
-      <div class="tip-row"><span>Opened</span><b>${s.opened}</b></div>
-      <div class="tip-row"><span>Rank</span><b>${i + 1} of ${ranked.length}</b></div>
-    `;
-    tr.addEventListener("mousemove", (e) => showTip(html, e.clientX, e.clientY));
-    tr.addEventListener("mouseleave", hideTip);
-    tbody.appendChild(tr);
+  const host = document.getElementById("tbl-sites");
+  if (!rows.length) {
+    host.innerHTML = `<tbody><tr><td class="empty">No sites match this filter.</td></tr></tbody>`;
+    return;
+  }
+
+  const key = SITE_COLS[siteTableSort.col].sortKey;
+  rows = sortRows(rows, key, siteTableSort.dir);
+
+  const maxN = Math.max(...rows.map((s) => s.n), 1);
+  const cols = SITE_COLS.map((c, i) =>
+    i === 5
+      ? {
+          ...c,
+          get: (r) => `<div class="bar-bg"><div class="bar-fill" style="width:${(r.n / maxN) * 100}%;background:${dormantSites.includes(r) ? "#B67A16" : "#0E6B5E"}"></div></div>`,
+        }
+      : c
+  );
+
+  buildTable(host, cols, rows, {
+    sort: siteTableSort,
+    onSort: (col) => {
+      if (!SITE_COLS[col].sortKey) return;
+      // Re-clicking the active column flips direction; a new column starts
+      // descending for counts and ascending for text.
+      siteTableSort =
+        siteTableSort.col === col
+          ? { col, dir: siteTableSort.dir === "asc" ? "desc" : "asc" }
+          : { col, dir: SITE_COLS[col].num ? "desc" : "asc" };
+      hideTip();
+      renderSiteTable();
+    },
+    tip: (r) => `
+      <div class="tip-title">${r.name}</div>
+      ${row("Status", r.status)}
+      ${row("Randomised", r.n)}
+      ${row("Opened", r.opened || "not yet")}
+      ${row("Last randomisation", r.lastRand || "none")}
+      ${dormantSites.includes(r) ? `<div class="tip-note">Dormant — ${daysSince(r.lastRand)} days since last randomisation</div>` : ""}
+    `,
   });
 }
 
-document.querySelectorAll("[data-sites]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    siteLimit = btn.dataset.sites;
-    document.querySelectorAll("[data-sites]").forEach((b) =>
-      b.classList.toggle("on", b === btn)
-    );
-    hideTip();
-    renderSiteTable();
+document.querySelectorAll("[data-sitefilter]").forEach((b) =>
+  b.addEventListener("click", () => {
+    siteFilter = b.dataset.sitefilter;
+    document.querySelectorAll("[data-sitefilter]").forEach((x) => x.classList.toggle("on", x === b));
+    hideTip(); renderSiteTable();
+  })
+);
+renderSiteTable();
+
+// ══ RANDOMISATIONS ═════════════════════════════════════════════════════════
+let randFilter = "all";
+const randSites = [...new Set(RANDOMISATIONS.map((r) => r.site))];
+
+const filterHost = document.getElementById("rand-filters");
+[{ k: "all", l: "All sites" }, ...randSites.slice(0, 3).map((s) => ({ k: s, l: s.split(" ").slice(0, 2).join(" ") }))]
+  .forEach(({ k, l }) => {
+    const b = document.createElement("button");
+    b.className = "toggle" + (k === "all" ? " on" : "");
+    b.textContent = l;
+    b.addEventListener("click", () => {
+      randFilter = k;
+      [...filterHost.children].forEach((x) => x.classList.toggle("on", x === b));
+      hideTip(); renderRandTable();
+    });
+    filterHost.appendChild(b);
   });
+
+function renderRandTable() {
+  const rows = randFilter === "all" ? RANDOMISATIONS : RANDOMISATIONS.filter((r) => r.site === randFilter);
+  document.getElementById("rand-sub").textContent =
+    `Showing ${rows.length} of ${RANDOMISATIONS.length} most recent · ${totalRand} randomised in total`;
+
+  const host = document.getElementById("tbl-rand");
+  if (!rows.length) {
+    host.innerHTML = `<tbody><tr><td class="empty">No randomisations at this site.</td></tr></tbody>`;
+    return;
+  }
+  buildTable(
+    host,
+    [
+      { label: "ID", cls: "mono", get: (r) => r.id },
+      { label: "Site", get: (r) => r.site },
+      { label: "Randomised", cls: "mono", get: (r) => r.date },
+      { label: "Age", num: true, cls: "mono", get: (r) => r.age },
+      { label: "Sex", get: (r) => r.sex },
+      { label: "NELA risk", num: true, cls: "mono", get: (r) => r.nela.toFixed(1) + "%" },
+      { label: "Allocation", get: () => `<span class="pill pill-grey">Blinded</span>` },
+    ],
+    rows,
+    {
+      tip: (r) => `<div class="tip-title">${r.id}</div>${row("Site", r.site)}${row("Randomised", r.date)}${row("Age", r.age)}${row("Sex", r.sex)}${row("NELA risk", r.nela + "%")}<div class="tip-note">Allocation withheld — blinded view</div>`,
+    }
+  );
+}
+renderRandTable();
+
+// Age distribution
+const AGE_BINS = [
+  { label: "<60", lo: 0,  hi: 60 },
+  { label: "60–69", lo: 60, hi: 70 },
+  { label: "70–79", lo: 70, hi: 80 },
+  { label: "80+",  lo: 80, hi: 200 },
+];
+const ageCounts = AGE_BINS.map((b) => RANDOMISATIONS.filter((r) => r.age >= b.lo && r.age < b.hi).length);
+
+new Chart(document.getElementById("chart-age"), {
+  type: "bar",
+  data: { labels: AGE_BINS.map((b) => b.label), datasets: [{ data: ageCounts, backgroundColor: "#0E6B5E", borderRadius: 3 }] },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      ...noLegend,
+      tooltip: {
+        enabled: false,
+        external: external((i) => `<div class="tip-title">Age ${AGE_BINS[i].label}</div>${row("Participants", ageCounts[i])}${row("Share", Math.round((ageCounts[i] / RANDOMISATIONS.length) * 100) + "%")}`),
+      },
+    },
+    scales: axes(),
+  },
 });
 
-renderSiteTable();
+// NELA risk distribution
+const NELA_BINS = [
+  { label: "<5%", lo: 0, hi: 5 },
+  { label: "5–10%", lo: 5, hi: 10 },
+  { label: "10–20%", lo: 10, hi: 20 },
+  { label: "20%+", lo: 20, hi: 1000 },
+];
+const nelaCounts = NELA_BINS.map((b) => RANDOMISATIONS.filter((r) => r.nela >= b.lo && r.nela < b.hi).length);
+
+new Chart(document.getElementById("chart-nela"), {
+  type: "bar",
+  data: { labels: NELA_BINS.map((b) => b.label), datasets: [{ data: nelaCounts, backgroundColor: "#B67A16", borderRadius: 3 }] },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      ...noLegend,
+      tooltip: {
+        enabled: false,
+        external: external((i) => `<div class="tip-title">NELA ${NELA_BINS[i].label}</div>${row("Participants", nelaCounts[i])}${row("Share", Math.round((nelaCounts[i] / RANDOMISATIONS.length) * 100) + "%")}<div class="tip-note">Predicted 30-day mortality</div>`),
+      },
+    },
+    scales: axes(),
+  },
+});
+
+// ══ FOLLOW-UP ══════════════════════════════════════════════════════════════
+const worstWindow = [...FOLLOWUP].sort((a, b) => a.complete / a.expected - b.complete / b.expected)[0];
+const outstanding = fuExpected - fuComplete;
+
+fillKpis("fu-kpis", [
+  {
+    label: "Overall return", value: fuRate + "%", unit: "",
+    pct: fuRate, colour: fuRate >= 90 ? "#0E6B5E" : "#B67A16",
+    note: `${fuComplete} of ${fuExpected} forms received across all windows.`,
+  },
+  {
+    label: "Outstanding", value: outstanding, unit: "forms",
+    pct: (outstanding / fuExpected) * 100, colour: "#B67A16",
+    note: "Due at the data cut but not yet received.",
+  },
+  {
+    label: "Weakest window", value: Math.round((worstWindow.complete / worstWindow.expected) * 100) + "%", unit: "",
+    pct: (worstWindow.complete / worstWindow.expected) * 100, colour: "#A63D2F",
+    note: `${worstWindow.name} — ${worstWindow.expected - worstWindow.complete} forms outstanding.`,
+  },
+  {
+    label: "Sites at 100%", value: SITE_COMPLIANCE.filter((s) => s.complete === s.due).length, unit: `of ${SITE_COMPLIANCE.length}`,
+    pct: (SITE_COMPLIANCE.filter((s) => s.complete === s.due).length / SITE_COMPLIANCE.length) * 100, colour: "#0E6B5E",
+    note: "Sites with no outstanding follow-up forms.",
+  },
+]);
+
+fillRings("rings-full", FOLLOWUP);
+
+// Instrument completion, per window
+let fuWindow = FOLLOWUP[1].name;
+const fuToggleHost = document.getElementById("fu-window-toggles");
+
+FOLLOWUP.forEach((f) => {
+  const b = document.createElement("button");
+  b.className = "toggle" + (f.name === fuWindow ? " on" : "");
+  b.textContent = f.name;
+  b.addEventListener("click", () => {
+    fuWindow = f.name;
+    [...fuToggleHost.children].forEach((x) => x.classList.toggle("on", x === b));
+    hideTip(); renderInstruments();
+  });
+  fuToggleHost.appendChild(b);
+});
+
+const instChart = new Chart(document.getElementById("chart-instruments"), {
+  type: "bar",
+  data: { labels: [], datasets: [] },
+  options: {
+    responsive: true, maintainAspectRatio: false, indexAxis: "y",
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      ...noLegend,
+      tooltip: {
+        enabled: false,
+        external: external((i) => {
+          const w = FOLLOWUP.find((f) => f.name === fuWindow);
+          const inst = w.instruments[i];
+          const pct = Math.round((inst.complete / inst.expected) * 100);
+          return `<div class="tip-title">${inst.label}</div>${row("Received", inst.complete)}${row("Due", inst.expected)}${row("Outstanding", inst.expected - inst.complete)}${row("Rate", pct + "%")}<div class="tip-note">${w.name} window</div>`;
+        }),
+      },
+    },
+    scales: {
+      x: { beginAtZero: true, max: 100, grid: { color: GRID }, border: { display: false }, ticks: { font: { family: MONO, size: 10.5 }, callback: (v) => v + "%" } },
+      y: { grid: { display: false }, border: { color: GRID }, ticks: { font: { size: 11.5 } } },
+    },
+  },
+});
+
+function renderInstruments() {
+  const w = FOLLOWUP.find((f) => f.name === fuWindow);
+  instChart.data.labels = w.instruments.map((i) => i.label);
+  instChart.data.datasets = [
+    {
+      data: w.instruments.map((i) => Math.round((i.complete / i.expected) * 100)),
+      backgroundColor: w.colour,
+      borderRadius: 3,
+      barThickness: 18,
+    },
+  ];
+  instChart.update();
+}
+renderInstruments();
+
+// Compliance by site
+const compRows = [...SITE_COMPLIANCE].sort((a, b) => a.complete / a.due - b.complete / b.due);
+
+buildTable(
+  document.getElementById("tbl-compliance"),
+  [
+    { label: "Site", get: (r) => r.name },
+    { label: "Received", num: true, cls: "mono", get: (r) => r.complete },
+    { label: "Due", num: true, cls: "mono", get: (r) => r.due },
+    {
+      label: "Rate", num: true,
+      get: (r) => {
+        const p = Math.round((r.complete / r.due) * 100);
+        const cls = p === 100 ? "pill-green" : p >= 85 ? "pill-grey" : "pill-amber";
+        return `<span class="pill ${cls}">${p}%</span>`;
+      },
+    },
+  ],
+  compRows,
+  {
+    tip: (r) => {
+      const p = Math.round((r.complete / r.due) * 100);
+      return `<div class="tip-title">${r.name}</div>${row("Received", r.complete)}${row("Due", r.due)}${row("Outstanding", r.due - r.complete)}${row("Rate", p + "%")}`;
+    },
+  }
+);
+
+// ── Start ───────────────────────────────────────────────────────────────────
+goTo("overview");
