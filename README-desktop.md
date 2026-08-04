@@ -13,6 +13,16 @@ npm start
 
 **Node.js 20 or newer.** Check with `node -v`; get it from <https://nodejs.org>.
 
+Older Node fails in ways that do not name the real cause — `Cannot find module
+'readline/promises'` means Node is below 17, and `ERR_REQUIRE_ESM` means it is
+below 22.12. If you upgrade Node, reinstall from scratch, because the existing
+tree was built against the old version:
+
+```bash
+rm -rf node_modules package-lock.json   # PowerShell: Remove-Item -Recurse -Force
+npm install
+```
+
 ## Building the Windows installer
 
 ```bash
