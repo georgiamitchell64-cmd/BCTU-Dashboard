@@ -45,6 +45,22 @@ const TARGET_SCHEDULE = [
   { label: "Apr 2028", cumulative: 873 }, { label: "May 2028", cumulative: 898 },
 ];
 
+// Projection assumptions, mirroring the Shiny dashboard's model: each month a
+// few more sites open, and every open site recruits at a per-site rate.
+//
+// `ratePerSite` and `sitesPerMonth` below are only fallbacks. When there are at
+// least three months of recruitment the app derives both from what has actually
+// happened, the same way functions/projection_math.R does, and the sliders on
+// the Recruitment page start from those derived values rather than these.
+const PROJECTION = {
+  targetSites: 24,
+  ratePerSite: 0.75,      // participants per open site per month
+  sitesPerMonth: 2.0,     // new sites opening per month
+  // Optimistic and pessimistic are the central case bent by these factors.
+  rateSpread: 0.2,        // ±20% on the per-site rate
+  siteSpread: 1.0,        // ±1 site per month on the opening rate
+};
+
 // Site registry — maintained by hand, not derived from the data export.
 //
 // A REDCap export only evidences sites that have randomised someone, so a site

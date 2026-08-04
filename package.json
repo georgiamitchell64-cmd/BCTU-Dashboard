@@ -10,8 +10,11 @@
   },
   "author": "Birmingham Clinical Trials Unit",
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "devDependencies": {
-    "electron": "^32.0.0",
+    "electron": "^43.0.0",
     "electron-builder": "^26.0.0",
     "chart.js": "^4.4.0"
   },

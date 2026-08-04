@@ -11,17 +11,26 @@ npm install     # first time only
 npm start
 ```
 
-**Node.js 20 or newer.** Check with `node -v`; get it from <https://nodejs.org>.
+**Node.js 20 or newer — the current LTS (24.x) is the safe choice.** Check with
+`node -v`; get the Windows `.msi` from <https://nodejs.org>.
 
-Older Node fails in ways that do not name the real cause — `Cannot find module
-'readline/promises'` means Node is below 17, and `ERR_REQUIRE_ESM` means it is
-below 22.12. If you upgrade Node, reinstall from scratch, because the existing
-tree was built against the old version:
+`.npmrc` sets `engine-strict=true`, so an unsupported Node now fails
+immediately with a message naming the version, rather than crashing later with
+something misleading. For reference, `Cannot find module 'readline/promises'`
+means Node is below 17, and `ERR_REQUIRE_ESM` means below 22.12.
+
+After upgrading Node, reinstall from scratch — the existing tree was built
+against the old version, and `node -v` reporting the new version is not enough
+on its own:
 
 ```bash
 rm -rf node_modules package-lock.json   # PowerShell: Remove-Item -Recurse -Force
 npm install
 ```
+
+If `node -v` still reports the old version after installing, close **every**
+terminal window and open a new one; PATH does not refresh in shells that were
+already open.
 
 ## Building the Windows installer
 
@@ -109,6 +118,26 @@ curve, the current rate and the forecast.
 
 Cumulative targets for months *after* the data cut, used to draw the target
 line on the forecast. Already filled in from the trial config through May 2028.
+
+### 3a. `PROJECTION` — how the forecast is modelled
+
+The projection on the Recruitment page works the way the Shiny dashboard does
+(`functions/projection_math.R`): each month a few more sites open, up to
+`targetSites`, and **every open site recruits at a per-site rate**. This matters
+— a straight line through the current monthly rate assumes the network never
+grows, which understates a trial that is still opening sites.
+
+The `ratePerSite` and `sitesPerMonth` values here are only fallbacks. Once
+there are three months of recruitment the app derives both from what actually
+happened:
+
+- **per-site rate** = participants ÷ (months elapsed × open sites)
+- **site opening rate** = sites opened ÷ months since the first opened
+
+The two sliders let you test other assumptions without touching the data;
+**Reset** returns them to the derived figures. Optimistic and pessimistic are
+the central case bent by `rateSpread` (±20% on the rate) and `siteSpread`
+(±1 site per month).
 
 ### 4. `SITES` — the site register
 

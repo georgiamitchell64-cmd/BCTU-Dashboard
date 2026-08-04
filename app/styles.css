@@ -292,6 +292,54 @@ html, body {
 }
 .toggle-sep { width: 1px; height: 16px; background: var(--border); margin: 0 3px; }
 
+/* ── Assumption controls ──────────────────────────────────────────────────── */
+.controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 26px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.ctrl { display: flex; flex-direction: column; gap: 7px; min-width: 210px; flex: 1 1 210px; }
+.ctrl-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ctrl-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green-dk);
+}
+.ctrl input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--border-light);
+  outline: none;
+  cursor: pointer;
+}
+.ctrl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 3px rgba(22,33,30,.28);
+  cursor: pointer;
+}
+.ctrl input[type="range"]:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+
 .legend { display: flex; gap: 16px; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--body); }
 .legend-line { width: 16px; height: 0; border-top-width: 2px; }

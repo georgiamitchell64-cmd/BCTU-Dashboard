@@ -435,31 +435,35 @@ buildTable(
 );
 
 // ══ RECRUITMENT ════════════════════════════════════════════════════════════
-fillKpis("rec-kpis", [
-  {
-    label: "Current rate", value: rateRecent.toFixed(1), unit: "per month",
-    pct: (rateRecent / 20) * 100, colour: "#0E6B5E",
-    note: `Mean over the last 3 months; ${rateAll.toFixed(1)}/month since opening.`,
-    tip: `<div class="tip-title">Recruitment rate</div>${row("Last 3 months", rateRecent.toFixed(2))}${row("All time", rateAll.toFixed(2))}`,
-  },
-  {
-    label: "Rate required", value: (remaining / 23).toFixed(1), unit: "per month",
-    pct: 100, colour: "#B67A16",
-    note: `To reach ${TRIAL.target} by ${TRIAL.targetClose} from the current position.`,
-    tip: `<div class="tip-title">Required rate</div>${row("Remaining", remaining)}${row("Months left", 23)}${row("Needed", (remaining / 23).toFixed(1) + "/mo")}`,
-  },
-  {
-    label: "Best month", value: Math.max(...MONTHS.map((m) => m.randomised)), unit: "randomised",
-    pct: (Math.max(...MONTHS.map((m) => m.randomised)) / 20) * 100, colour: "#3FA593",
-    note: `${MONTHS.find((m) => m.randomised === Math.max(...MONTHS.map((x) => x.randomised))).label} — the strongest month so far.`,
-  },
-  {
-    label: "Projected close", value: projectedClose(rateRecent), unit: "",
-    pct: 60, colour: "#A63D2F",
-    note: `At the current rate. Protocol close is ${TRIAL.targetClose}.`,
-    tip: `<div class="tip-title">Projection</div>${row("At current rate", projectedClose(rateRecent))}${row("Protocol close", TRIAL.targetClose)}<div class="tip-note">Assumes no further sites open</div>`,
-  },
-]);
+function buildRecKpis() {
+  fillKpis("rec-kpis", [
+    {
+      label: "Current rate", value: rateRecent.toFixed(1), unit: "per month",
+      pct: (rateRecent / 20) * 100, colour: "#0E6B5E",
+      note: `Mean over the last 3 months; ${rateAll.toFixed(1)}/month since opening.`,
+      tip: `<div class="tip-title">Recruitment rate</div>${row("Last 3 months", rateRecent.toFixed(2))}${row("All time", rateAll.toFixed(2))}`,
+    },
+    {
+      label: "Rate required", value: (remaining / 23).toFixed(1), unit: "per month",
+      pct: 100, colour: "#B67A16",
+      note: `To reach ${TRIAL.target} by ${TRIAL.targetClose} from the current position.`,
+      tip: `<div class="tip-title">Required rate</div>${row("Remaining", remaining)}${row("Months left", 23)}${row("Needed", (remaining / 23).toFixed(1) + "/mo")}`,
+    },
+    {
+      label: "Best month", value: Math.max(...MONTHS.map((m) => m.randomised)), unit: "randomised",
+      pct: (Math.max(...MONTHS.map((m) => m.randomised)) / 20) * 100, colour: "#3FA593",
+      note: `${MONTHS.find((m) => m.randomised === Math.max(...MONTHS.map((x) => x.randomised))).label} — the strongest month so far.`,
+    },
+    {
+      label: "Projected close", value: centralClose() || "beyond", unit: "",
+      pct: 60, colour: centralClose() ? "#0E6B5E" : "#A63D2F",
+      note: centralClose()
+        ? `Central scenario, with sites still opening toward ${PROJECTION.targetSites}.`
+        : `Central scenario does not reach ${TRIAL.target} inside the protocol window.`,
+      tip: `<div class="tip-title">Projection</div>${row("Central scenario", centralClose() || "not reached")}${row("Protocol close", TRIAL.targetClose)}${row("Flat rate, no new sites", projectedClose(rateRecent))}<div class="tip-note">The flat rate ignores sites still to open</div>`,
+    },
+  ]);
+}
 
 document.getElementById("rec-legend").innerHTML = `
   <div class="legend-item"><span class="legend-line" style="border-top:2px solid #0E6B5E"></span>Randomised</div>
@@ -492,34 +496,122 @@ new Chart(document.getElementById("chart-permonth"), {
   },
 });
 
-// Forecast: actual to date, then a straight projection at the chosen rate,
-// against the protocol curve.
-let rateMode = "recent";
-const fcLabels = [...MONTHS.map((m) => m.label), ...TARGET_SCHEDULE.map((t) => t.label)];
+// ── Recruitment projection ──────────────────────────────────────────────────
+// Mirrors the Shiny dashboard's model (functions/projection_math.R): each month
+// a few more sites open, up to the target, and every open site recruits at a
+// per-site rate. That matters because a straight line through the current rate
+// assumes the network never grows, which understates a trial still opening
+// sites — and overstates one that has stopped.
 
-function fcSets() {
-  const rate = rateMode === "recent" ? rateRecent : rateAll;
-  const actual = [...cumActual, ...TARGET_SCHEDULE.map(() => null)];
-  const target = [...cumTarget, ...TARGET_SCHEDULE.map((t) => t.cumulative)];
+// Derive both rates from what has actually happened, the way
+// .projection_smart_defaults does, falling back to the configured values when
+// there is too little history to be meaningful.
+function derivedRates() {
+  const out = { rate: PROJECTION.ratePerSite, sites: PROJECTION.sitesPerMonth, derived: false };
 
-  const proj = MONTHS.map(() => null);
-  proj[MONTHS.length - 1] = totalRand;
-  let running = totalRand;
-  TARGET_SCHEDULE.forEach(() => {
-    running = Math.min(running + rate, TRIAL.target);
-    proj.push(Math.round(running));
-  });
+  const elapsed = (CUT - new Date(TRIAL.firstRandomisation)) / (86400000 * 30.44);
+  if (elapsed >= 3 && openSites.length > 0) {
+    out.rate = totalRand / (elapsed * openSites.length);
+    out.derived = true;
+  }
 
-  return [
-    { label: "Target", data: target, borderColor: "#B0AEA4", borderWidth: 1.6, borderDash: [5, 5], pointRadius: 0, fill: false, tension: .2 },
-    { label: "Projection", data: proj, borderColor: "#B67A16", borderWidth: 2, borderDash: [3, 4], pointRadius: 0, fill: false, tension: .2 },
-    { label: "Actual", data: actual, borderColor: "#0E6B5E", backgroundColor: "rgba(221,234,231,.75)", borderWidth: 2.6, pointRadius: 0, fill: true, tension: .2 },
-  ];
+  // Site opening rate: how quickly the network has actually grown.
+  const openedDates = SITES.filter((s) => s.opened).map((s) => new Date(s.opened));
+  if (openedDates.length > 1) {
+    const span = (CUT - Math.min(...openedDates)) / (86400000 * 30.44);
+    if (span >= 1) out.sites = openedDates.length / span;
+  }
+  return out;
 }
 
-const fcChart = new Chart(document.getElementById("chart-forecast"), {
+const BASE = derivedRates();
+let projRate = BASE.rate;
+let projSites = BASE.sites;
+let projView = "cumulative";
+let projBand = true;
+
+// One scenario: step forward month by month, opening sites and recruiting.
+// Returns cumulative totals, and stops growing once the target is reached.
+function simulate(months, startCum, startSites, ratePerSite, sitesPerMonth) {
+  const out = [];
+  let cum = startCum;
+  let sites = startSites;
+  for (let i = 0; i < months; i++) {
+    sites += Math.min(sitesPerMonth, Math.max(0, PROJECTION.targetSites - sites));
+    cum = Math.min(cum + sites * ratePerSite, TRIAL.target);
+    out.push(cum);
+  }
+  return out;
+}
+
+const projLabels = [...MONTHS.map((m) => m.label), ...TARGET_SCHEDULE.map((t) => t.label)];
+const anchor = MONTHS.length - 1; // last month with real data
+
+function scenario(rate, sites) {
+  const tail = simulate(TARGET_SCHEDULE.length, totalRand, openSites.length, rate, sites);
+  // Start at the last actual so the projection joins the observed curve.
+  const series = MONTHS.map(() => null);
+  series[anchor] = totalRand;
+  return series.concat(tail.map((v) => Math.round(v)));
+}
+
+// Month in which a scenario reaches the target, or null if it never does.
+function reachMonth(series) {
+  const i = series.findIndex((v) => v != null && v >= TRIAL.target);
+  return i === -1 ? null : projLabels[i];
+}
+
+// Close month under the central scenario, for the headline KPI.
+function centralClose() {
+  return reachMonth(scenario(projRate, projSites));
+}
+
+function toMonthly(cum) {
+  return cum.map((v, i) => {
+    if (v == null) return null;
+    const prev = i > 0 ? cum[i - 1] : 0;
+    return prev == null ? null : Math.max(0, Math.round(v - prev));
+  });
+}
+
+function projSets() {
+  const central = scenario(projRate, projSites);
+  const optimistic = scenario(projRate * (1 + PROJECTION.rateSpread), projSites + PROJECTION.siteSpread);
+  const pessimistic = scenario(projRate * (1 - PROJECTION.rateSpread), Math.max(0, projSites - PROJECTION.siteSpread));
+
+  const actualCum = [...cumActual, ...TARGET_SCHEDULE.map(() => null)];
+  const planCum = [...cumTarget, ...TARGET_SCHEDULE.map((t) => t.cumulative)];
+
+  const monthly = projView === "monthly";
+  const shape = (c) => (monthly ? toMonthly(c) : c);
+
+  const line = (label, data, colour, width, dash, fill) => ({
+    label, data: shape(data), borderColor: colour, borderWidth: width,
+    borderDash: dash, pointRadius: 0, pointHoverRadius: 0,
+    backgroundColor: fill || "transparent", fill: fill ? "-1" : false, tension: 0.25,
+  });
+
+  const sets = [line("Protocol plan", planCum, "#B0AEA4", 1.6, [5, 5])];
+
+  if (projBand) {
+    // Drawn as a pair so the optimistic line fills down to the pessimistic one.
+    sets.push(line("Pessimistic", pessimistic, "#CFCCC2", 1.2, [2, 3]));
+    sets.push(line("Optimistic", optimistic, "#CFCCC2", 1.2, [2, 3], "rgba(221,234,231,.55)"));
+  }
+
+  sets.push(line("Projection", central, "#B67A16", 2.2, [4, 4]));
+  sets.push(line("Actual", actualCum, "#0E6B5E", 2.8, undefined,
+                 monthly ? undefined : "rgba(221,234,231,.8)"));
+  if (!monthly) sets.at(-1).fill = "origin";
+
+  return { sets, central, optimistic, pessimistic };
+}
+
+let projState = projSets();
+
+const projChart = new Chart(document.getElementById("chart-projection"), {
   type: "line",
-  data: { labels: fcLabels, datasets: fcSets() },
+  data: { labels: projLabels, datasets: projState.sets },
   options: {
     responsive: true, maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
@@ -528,42 +620,101 @@ const fcChart = new Chart(document.getElementById("chart-forecast"), {
       tooltip: {
         enabled: false,
         external: external((i) => {
-          const ds = fcChart.data.datasets;
-          const pick = (n) => (ds[n].data[i] == null ? "—" : ds[n].data[i]);
-          return `<div class="tip-title">${fcLabels[i]}</div>${row("Actual", pick(2))}${row("Projection", pick(1))}${row("Target", pick(0))}`;
+          const at = (s) => (s[i] == null ? "—" : Math.round(s[i]));
+          const past = i <= anchor;
+          return `
+            <div class="tip-title">${projLabels[i]}</div>
+            ${past ? row("Randomised", cumActual[i] ?? "—") : row("Projected", at(projState.central))}
+            ${!past && projBand ? row("Range", `${at(projState.pessimistic)} – ${at(projState.optimistic)}`) : ""}
+            ${row("Protocol plan", i < cumTarget.length ? cumTarget[i] : TARGET_SCHEDULE[i - cumTarget.length].cumulative)}
+            <div class="tip-note">${past ? "Actual" : "Projected at " + projRate.toFixed(2) + "/site/month"}</div>
+          `;
         }),
       },
     },
-    scales: axes({ x: { ticks: { maxTicksLimit: 10, font: { family: MONO, size: 10 } } } }),
+    scales: axes({ x: { ticks: { maxTicksLimit: 12, font: { family: MONO, size: 10 } } } }),
   },
 });
 
-function renderForecast() {
-  const rate = rateMode === "recent" ? rateRecent : rateAll;
-  fcChart.data.datasets = fcSets();
-  fcChart.update();
-  document.getElementById("fc-sub").textContent =
-    `At ${rate.toFixed(1)}/month the target is reached ${projectedClose(rate)}`;
+document.getElementById("proj-legend").innerHTML = `
+  <div class="legend-item"><span class="legend-line" style="border-top:2.8px solid #0E6B5E"></span>Randomised</div>
+  <div class="legend-item"><span class="legend-line" style="border-top:2.2px dashed #B67A16"></span>Projection</div>
+  <div class="legend-item"><span class="legend-line" style="border-top:1.6px dashed #B0AEA4"></span>Protocol plan</div>
+  <div class="legend-item"><span class="legend-line" style="border-top:1.2px dotted #CFCCC2"></span>Optimistic / pessimistic</div>
+`;
+
+function renderProjection() {
+  projState = projSets();
+  projChart.data.datasets = projState.sets;
+  projChart.update();
+
+  document.getElementById("out-rate").textContent = projRate.toFixed(2) + " / site / month";
+  document.getElementById("out-sites").textContent =
+    projSites.toFixed(2) + " site" + (projSites === 1 ? "" : "s") + " / month";
+
+  const reach = reachMonth(projState.central);
+
+  // The header stat follows the same model, so the two never disagree.
+  const head = document.getElementById("head-close");
+  head.textContent = reach || "beyond window";
+  head.style.color = reach ? "" : "#A63D2F";
+
+  document.getElementById("proj-sub").textContent =
+    `${openSites.length} sites open now, ramping to ${PROJECTION.targetSites}. ` +
+    (reach ? `Target reached ${reach}.` : `Target not reached within the protocol window.`) +
+    (BASE.derived ? " Rates derived from recruitment to date." : "");
+
+  buildRecKpis();
+  buildScenarioTable();
   buildRateTable();
 }
 
-document.querySelectorAll("[data-rate]").forEach((b) =>
-  b.addEventListener("click", () => {
-    rateMode = b.dataset.rate;
-    document.querySelectorAll("[data-rate]").forEach((x) => x.classList.toggle("on", x === b));
-    hideTip(); renderForecast();
-  })
-);
+// ── Scenario summary ────────────────────────────────────────────────────────
+function buildScenarioTable() {
+  const rows = [
+    { name: "Optimistic", series: projState.optimistic, rate: projRate * (1 + PROJECTION.rateSpread), sites: projSites + PROJECTION.siteSpread },
+    { name: "Central", series: projState.central, rate: projRate, sites: projSites },
+    { name: "Pessimistic", series: projState.pessimistic, rate: projRate * (1 - PROJECTION.rateSpread), sites: Math.max(0, projSites - PROJECTION.siteSpread) },
+  ];
 
+  buildTable(
+    document.getElementById("tbl-scenarios"),
+    [
+      { label: "Scenario", get: (r) => r.name },
+      { label: "Per site", num: true, cls: "mono", get: (r) => r.rate.toFixed(2) },
+      { label: "Sites/mo", num: true, cls: "mono", get: (r) => r.sites.toFixed(2) },
+      { label: "By close", num: true, cls: "mono", get: (r) => Math.round(r.series.at(-1)) },
+      {
+        label: "Target met", num: true,
+        get: (r) => {
+          const m = reachMonth(r.series);
+          if (!m) return `<span class="pill pill-red">not met</span>`;
+          const late = TARGET_SCHEDULE.findIndex((t) => t.label === m) > TARGET_SCHEDULE.length - 3;
+          return `<span class="pill ${late ? "pill-amber" : "pill-green"}">${m}</span>`;
+        },
+      },
+    ],
+    rows,
+    {
+      tip: (r) => {
+        const m = reachMonth(r.series);
+        return `<div class="tip-title">${r.name}</div>${row("Per site / month", r.rate.toFixed(2))}${row("New sites / month", r.sites.toFixed(2))}${row("At protocol close", Math.round(r.series.at(-1)))}${row("Target met", m || "not within window")}<div class="tip-note">Target ${TRIAL.target} by ${TRIAL.targetClose}</div>`;
+      },
+    }
+  );
+}
+
+// ── Observed rate summary ───────────────────────────────────────────────────
 function buildRateTable() {
-  const rate = rateMode === "recent" ? rateRecent : rateAll;
+  const monthsLeft = TARGET_SCHEDULE.length;
   const rows = [
     { k: "Randomised to date", v: totalRand },
     { k: "Remaining to target", v: remaining },
-    { k: "Rate in use", v: rate.toFixed(1) + " / month" },
-    { k: "Rate required", v: (remaining / 23).toFixed(1) + " / month" },
-    { k: "Months at this rate", v: Math.ceil(remaining / rate) },
-    { k: "Projected close", v: projectedClose(rate) },
+    { k: "Observed, last 3 months", v: rateRecent.toFixed(1) + " / month" },
+    { k: "Observed, all time", v: rateAll.toFixed(1) + " / month" },
+    { k: "Per open site", v: BASE.rate.toFixed(2) + " / month" },
+    { k: "Sites opened per month", v: BASE.sites.toFixed(2) },
+    { k: "Rate required", v: (remaining / monthsLeft).toFixed(1) + " / month" },
     { k: "Protocol close", v: TRIAL.targetClose },
   ];
   buildTable(
@@ -575,7 +726,44 @@ function buildRateTable() {
     rows
   );
 }
-renderForecast();
+
+// ── Controls ────────────────────────────────────────────────────────────────
+const rateInput = document.getElementById("ctrl-rate");
+const sitesInput = document.getElementById("ctrl-sites");
+
+rateInput.value = projRate;
+sitesInput.value = projSites;
+
+rateInput.addEventListener("input", (e) => {
+  projRate = Number(e.target.value);
+  hideTip(); renderProjection();
+});
+sitesInput.addEventListener("input", (e) => {
+  projSites = Number(e.target.value);
+  hideTip(); renderProjection();
+});
+document.getElementById("ctrl-reset").addEventListener("click", () => {
+  projRate = BASE.rate;
+  projSites = BASE.sites;
+  rateInput.value = projRate;
+  sitesInput.value = projSites;
+  hideTip(); renderProjection();
+});
+
+document.querySelectorAll("[data-projview]").forEach((b) =>
+  b.addEventListener("click", () => {
+    projView = b.dataset.projview;
+    document.querySelectorAll("[data-projview]").forEach((x) => x.classList.toggle("on", x === b));
+    hideTip(); renderProjection();
+  })
+);
+document.querySelector("[data-projband]").addEventListener("click", (e) => {
+  projBand = !projBand;
+  e.currentTarget.classList.toggle("on", projBand);
+  hideTip(); renderProjection();
+});
+
+renderProjection();
 
 // ══ SITES ══════════════════════════════════════════════════════════════════
 const siteTotal = recruitingSites.reduce((s, x) => s + x.n, 0);

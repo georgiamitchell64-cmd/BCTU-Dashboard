@@ -115,23 +115,51 @@
         <div class="chart-box"><canvas id="chart-permonth"></canvas></div>
       </div>
 
-      <div class="grid-2">
-        <div class="panel">
-          <div class="panel-head">
-            <div class="panel-head-text">
-              <h2>Forecast to target</h2>
-              <p class="panel-sub" id="fc-sub"></p>
-            </div>
-            <div class="toggles">
-              <button class="toggle on" data-rate="recent">Last 3 months</button>
-              <button class="toggle" data-rate="all">All time</button>
-            </div>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>Recruitment projection</h2>
+            <p class="panel-sub" id="proj-sub"></p>
           </div>
-          <div class="chart-box"><canvas id="chart-forecast"></canvas></div>
+          <div class="toggles">
+            <button class="toggle on" data-projview="cumulative">Cumulative</button>
+            <button class="toggle" data-projview="monthly">Monthly</button>
+            <span class="toggle-sep"></span>
+            <button class="toggle on" data-projband="on">Range</button>
+          </div>
         </div>
 
+        <div class="controls">
+          <label class="ctrl">
+            <span class="ctrl-label">Participants per site per month</span>
+            <input type="range" id="ctrl-rate" min="0.1" max="3" step="0.05">
+            <output class="ctrl-val" id="out-rate"></output>
+          </label>
+          <label class="ctrl">
+            <span class="ctrl-label">New sites opening per month</span>
+            <input type="range" id="ctrl-sites" min="0" max="5" step="0.25">
+            <output class="ctrl-val" id="out-sites"></output>
+          </label>
+          <button class="toggle" id="ctrl-reset" title="Back to rates derived from actuals">Reset</button>
+        </div>
+
+        <div class="legend" id="proj-legend"></div>
+        <div class="chart-box tall"><canvas id="chart-projection"></canvas></div>
+      </div>
+
+      <div class="grid-2eq">
         <div class="panel">
-          <h2>Rate summary</h2>
+          <div class="panel-head-text">
+            <h2>Scenario outcomes</h2>
+            <p class="panel-sub">Where each scenario lands against the protocol close</p>
+          </div>
+          <table class="tbl" id="tbl-scenarios"></table>
+        </div>
+        <div class="panel">
+          <div class="panel-head-text">
+            <h2>Rate summary</h2>
+            <p class="panel-sub">Observed performance to the data cut</p>
+          </div>
           <table class="tbl" id="tbl-rate"></table>
         </div>
       </div>
