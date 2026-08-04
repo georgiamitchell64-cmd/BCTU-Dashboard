@@ -96,25 +96,56 @@ let SITES = [
   { name: "Derriford Hospital Plymouth",         region: "South West",    status: "Identified", opened: null,      n: 0, lastRand: null },
 ];
 
+// Ethnicity — the 19-code REDCap scheme from the trial config (base_ethnic_gp),
+// with the high-level grouping used for the chart. Codes 13–17 are White, which
+// is what the config's white_ethnicity_codes refers to.
+const ETHNICITY = {
+  "1":  { label: "Indian",                    group: "Asian" },
+  "2":  { label: "Pakistani",                 group: "Asian" },
+  "3":  { label: "Bangladeshi",               group: "Asian" },
+  "4":  { label: "Chinese",                   group: "Asian" },
+  "5":  { label: "Any other Asian background",group: "Asian" },
+  "6":  { label: "Caribbean",                 group: "Black" },
+  "7":  { label: "African",                   group: "Black" },
+  "8":  { label: "Any other Black background",group: "Black" },
+  "9":  { label: "White and Black Caribbean", group: "Mixed" },
+  "10": { label: "White and Black African",   group: "Mixed" },
+  "11": { label: "White and Asian",           group: "Mixed" },
+  "12": { label: "Any other Mixed background",group: "Mixed" },
+  "13": { label: "English, Welsh, Scottish, Northern Irish or British", group: "White" },
+  "14": { label: "Irish",                     group: "White" },
+  "15": { label: "Gypsy or Irish Traveller",  group: "White" },
+  "16": { label: "Roma",                      group: "White" },
+  "17": { label: "Any other White background",group: "White" },
+  "18": { label: "Arab",                      group: "Other" },
+  "19": { label: "Any other ethnic group",    group: "Other" },
+};
+
+const ETHNIC_GROUPS = ["White", "Asian", "Black", "Mixed", "Other"];
+
+// Randomisations outside normal working hours. Emergency laparotomy runs around
+// the clock, so this is a workload measure, not a data-quality flag.
+const IN_HOURS = { startHour: 8, endHour: 18, weekdaysOnly: true };
+
 // Individual randomisations. Allocation is deliberately absent — the
 // coordinating-centre view is blinded.
 let RANDOMISATIONS = [
-  { id: "TON-0047", site: "Royal Liverpool Hospital",            date: "30 Jul 2026", age: 71, sex: "F", nela: 8.4 },
-  { id: "TON-0046", site: "Addenbrooke's Hospital Cambridge",    date: "29 Jul 2026", age: 66, sex: "M", nela: 5.1 },
-  { id: "TON-0045", site: "Queen Elizabeth Hospital Birmingham", date: "28 Jul 2026", age: 78, sex: "F", nela: 14.2 },
-  { id: "TON-0044", site: "Southampton General Hospital",        date: "27 Jul 2026", age: 59, sex: "M", nela: 3.8 },
-  { id: "TON-0043", site: "Bristol Royal Infirmary",             date: "26 Jul 2026", age: 82, sex: "F", nela: 19.6 },
-  { id: "TON-0042", site: "University Hospital Coventry",        date: "24 Jul 2026", age: 64, sex: "M", nela: 6.3 },
-  { id: "TON-0041", site: "Sheffield Teaching Hospital",         date: "21 Jul 2026", age: 73, sex: "M", nela: 11.0 },
-  { id: "TON-0040", site: "St James's Hospital Leeds",           date: "19 Jul 2026", age: 68, sex: "F", nela: 7.7 },
-  { id: "TON-0039", site: "Queen Elizabeth Hospital Birmingham", date: "17 Jul 2026", age: 55, sex: "M", nela: 2.9 },
-  { id: "TON-0038", site: "Oxford University Hospitals",         date: "15 Jul 2026", age: 80, sex: "F", nela: 16.4 },
-  { id: "TON-0037", site: "Royal Liverpool Hospital",            date: "13 Jul 2026", age: 62, sex: "M", nela: 4.5 },
-  { id: "TON-0036", site: "Newcastle Royal Victoria",            date: "11 Jul 2026", age: 75, sex: "F", nela: 12.8 },
-  { id: "TON-0035", site: "University Hospital Coventry",        date: "09 Jul 2026", age: 69, sex: "M", nela: 8.9 },
-  { id: "TON-0034", site: "Glasgow Royal Infirmary",             date: "08 Jul 2026", age: 57, sex: "F", nela: 3.2 },
-  { id: "TON-0033", site: "Queen Elizabeth Hospital Birmingham", date: "06 Jul 2026", age: 84, sex: "M", nela: 21.3 },
-  { id: "TON-0032", site: "Bristol Royal Infirmary",             date: "02 Jul 2026", age: 70, sex: "F", nela: 9.6 },
+  { id: "TON-0047", site: "Royal Liverpool Hospital",            date: "30 Jul 2026", age: 71, sex: "F", nela: 8.4 , time: "16:54", eth: "7" },
+  { id: "TON-0046", site: "Addenbrooke's Hospital Cambridge",    date: "29 Jul 2026", age: 66, sex: "M", nela: 5.1 , time: "17:12", eth: "13" },
+  { id: "TON-0045", site: "Queen Elizabeth Hospital Birmingham", date: "28 Jul 2026", age: 78, sex: "F", nela: 14.2 , time: "15:40", eth: "13" },
+  { id: "TON-0044", site: "Southampton General Hospital",        date: "27 Jul 2026", age: 59, sex: "M", nela: 3.8 , time: "04:09", eth: "13" },
+  { id: "TON-0043", site: "Bristol Royal Infirmary",             date: "26 Jul 2026", age: 82, sex: "F", nela: 19.6 , time: "08:38", eth: "2" },
+  { id: "TON-0042", site: "University Hospital Coventry",        date: "24 Jul 2026", age: 64, sex: "M", nela: 6.3 , time: "17:41", eth: "13" },
+  { id: "TON-0041", site: "Sheffield Teaching Hospital",         date: "21 Jul 2026", age: 73, sex: "M", nela: 11.0 , time: "16:04", eth: "13" },
+  { id: "TON-0040", site: "St James's Hospital Leeds",           date: "19 Jul 2026", age: 68, sex: "F", nela: 7.7 , time: "03:38", eth: "13" },
+  { id: "TON-0039", site: "Queen Elizabeth Hospital Birmingham", date: "17 Jul 2026", age: 55, sex: "M", nela: 2.9 , time: "13:28", eth: "13" },
+  { id: "TON-0038", site: "Oxford University Hospitals",         date: "15 Jul 2026", age: 80, sex: "F", nela: 16.4 , time: "12:31", eth: "13" },
+  { id: "TON-0037", site: "Royal Liverpool Hospital",            date: "13 Jul 2026", age: 62, sex: "M", nela: 4.5 , time: "15:41", eth: "13" },
+  { id: "TON-0036", site: "Newcastle Royal Victoria",            date: "11 Jul 2026", age: 75, sex: "F", nela: 12.8 , time: "16:59", eth: "13" },
+  { id: "TON-0035", site: "University Hospital Coventry",        date: "09 Jul 2026", age: 69, sex: "M", nela: 8.9 , time: "13:48", eth: "13" },
+  { id: "TON-0034", site: "Glasgow Royal Infirmary",             date: "08 Jul 2026", age: 57, sex: "F", nela: 3.2 , time: "08:04", eth: "13" },
+  { id: "TON-0033", site: "Queen Elizabeth Hospital Birmingham", date: "06 Jul 2026", age: 84, sex: "M", nela: 21.3 , time: "12:24", eth: "13" },
+  { id: "TON-0032", site: "Bristol Royal Infirmary",             date: "02 Jul 2026", age: 70, sex: "F", nela: 9.6 , time: "08:13", eth: "13" },
 ];
 
 // Follow-up windows. `expected` counts participants who have reached the

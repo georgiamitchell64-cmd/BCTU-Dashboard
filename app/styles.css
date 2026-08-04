@@ -589,3 +589,92 @@ html, body {
   .rings { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .page-head { flex-direction: column; align-items: flex-start; }
 }
+
+/* ── Lock screen ──────────────────────────────────────────────────────────── */
+.lock {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.lock[hidden] { display: none; }
+.lock-card {
+  width: min(400px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 14px 44px rgba(22,33,30,.14);
+  padding: 34px 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.lock-logo { width: 128px; height: auto; margin-bottom: 4px; }
+.lock-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -.015em;
+}
+.lock-blurb { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--body); }
+.lock-field { display: flex; flex-direction: column; gap: 6px; }
+.lock-field input {
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.lock-field input:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(14,107,94,.14);
+}
+.lock-go {
+  all: unset;
+  cursor: pointer;
+  text-align: center;
+  padding: 11px;
+  border-radius: 8px;
+  background: var(--green);
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.lock-go:hover { background: var(--green-dk); }
+.lock-go[disabled] { opacity: .6; cursor: progress; }
+.lock-err {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--red-dk);
+  background: #FBEAE7;
+  border: 1px solid #E8C4BD;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.lock-reset {
+  all: unset;
+  cursor: pointer;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 6px;
+}
+.lock-reset:hover { color: var(--red-dk); text-decoration: underline; }
+.lock-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
+  margin-top: 2px;
+}

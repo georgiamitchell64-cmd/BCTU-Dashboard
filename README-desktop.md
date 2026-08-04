@@ -81,6 +81,64 @@ restrictive Content-Security-Policy.
 
 ---
 
+# Security
+
+## What the password does
+
+On first run the app asks you to set a password. It is not a user account — it
+is an encryption key. Any trial data you import is encrypted with a key derived
+from it (PBKDF2-SHA256, 250,000 rounds → AES-GCM-256) before being written to
+local storage, using the browser's own Web Crypto implementation.
+
+Without the password the stored data is unreadable. The key exists only in
+memory for the session, and nothing renders until the password is accepted.
+
+**There is no password recovery.** That is a consequence of encrypting properly
+rather than an oversight — if the password could be recovered from the machine,
+so could the data. If it is lost, use *Forgotten the password* on the lock
+screen to clear the stored data and import again.
+
+## What it does not do
+
+Be clear about the boundary, because a login box invites more confidence than
+it deserves:
+
+- It does **not** protect a machine that is already unlocked with the app open.
+  Anyone sitting at it can read what is on screen.
+- It is **not** a multi-user system. One password, shared by whoever uses the
+  machine, with no audit trail of who looked at what.
+- It does **not** protect the source CSVs sitting in a folder, or anything you
+  export out of the app.
+
+It protects data at rest in the app's own storage. It complements BitLocker and
+network-share permissions; it does not replace them, and it is not on its own a
+defensible answer to an information-governance review.
+
+## Importing an encrypted spreadsheet
+
+**A password-protected `.xlsx` cannot be read by the app.** Excel's "Encrypt
+with Password" applies real AES encryption to the whole file, so nothing can
+open it without the password — including this app, which has no code to decrypt
+that format.
+
+There are two very different Excel features worth separating:
+
+| Excel feature | What it does |
+|---|---|
+| File → Info → **Encrypt with Password** | Genuine AES encryption. The app cannot read it. |
+| Review → **Protect Sheet / Workbook** | Only stops casual editing in Excel. Trivially bypassed, and no protection at all. |
+
+The practical route is to keep the protected workbook as the master, and export
+a CSV when you import. The exported CSV is unencrypted while it exists, so put
+it somewhere covered by disk encryption and delete it afterwards — the app
+encrypts the data once imported, so the CSV only needs to survive the import.
+
+If decrypting a protected workbook directly would genuinely help, it can be
+added — it is a bounded piece of work — but it moves the password prompt rather
+than removing it.
+
+---
+
 # Putting your own data in
 
 ## The import button

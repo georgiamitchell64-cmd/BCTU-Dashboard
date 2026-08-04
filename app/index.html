@@ -255,6 +255,43 @@
           <div class="chart-box short"><canvas id="chart-nela"></canvas></div>
         </div>
       </div>
+
+      <div class="grid-2eq">
+        <div class="panel">
+          <div class="panel-head-text">
+            <h2>Randomisations by day of week</h2>
+            <p class="panel-sub" id="dow-sub"></p>
+          </div>
+          <div class="chart-box short"><canvas id="chart-dow"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-head-text">
+              <h2>Out-of-hours recruitment</h2>
+              <p class="panel-sub" id="ooh-sub"></p>
+            </div>
+            <div class="toggles">
+              <button class="toggle on" data-oohview="split">In / out</button>
+              <button class="toggle" data-oohview="hour">By hour</button>
+            </div>
+          </div>
+          <div class="chart-box short"><canvas id="chart-ooh"></canvas></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>Ethnicity</h2>
+            <p class="panel-sub" id="eth-sub"></p>
+          </div>
+          <div class="toggles">
+            <button class="toggle on" data-ethview="group">Grouped</button>
+            <button class="toggle" data-ethview="detail">All categories</button>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="chart-eth"></canvas></div>
+      </div>
     </section>
 
     <!-- ── Follow-up ───────────────────────────────────────────────────── -->
@@ -348,9 +385,31 @@
   </div>
 </div>
 
-<script src="chart.umd.js"></script>
-<script src="data.js"></script>
-<script src="import.js"></script>
-<script src="dashboard.js"></script>
+<!-- ══ Lock screen ═══════════════════════════════════════════════════════ -->
+<div class="lock" id="lock">
+  <form class="lock-card" id="lock-form" autocomplete="off">
+    <img class="lock-logo" src="tonic-logo.png" alt="TONIC">
+    <div class="kicker">Coordinating centre</div>
+    <h1 class="lock-title" id="lock-title">Unlock</h1>
+    <p class="lock-blurb" id="lock-blurb"></p>
+
+    <label class="lock-field">
+      <span class="ctrl-label">Password</span>
+      <input type="password" id="lock-pw" autocomplete="current-password" required>
+    </label>
+    <label class="lock-field" id="lock-confirm-wrap" hidden>
+      <span class="ctrl-label">Confirm password</span>
+      <input type="password" id="lock-pw2" autocomplete="new-password">
+    </label>
+
+    <div class="lock-err" id="lock-err" hidden></div>
+    <button class="lock-go" id="lock-go" type="submit">Unlock</button>
+    <button class="lock-reset" id="lock-reset" type="button" hidden>
+      Forgotten the password — clear stored data
+    </button>
+  </form>
+</div>
+
+<script src="auth.js"></script>
 </body>
 </html>

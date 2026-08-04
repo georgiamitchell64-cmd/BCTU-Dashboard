@@ -120,11 +120,39 @@ const REDCAP_FIELDS = {
   age:   ["cae_age", "age", "base_age"],
   sex:   ["base_sex", "sex", "gender"],
   nela:  ["base_nela_score_mort", "nela_score", "nela"],
+  eth:   ["base_ethnic_gp", "ethnicity", "ethnic_group", "eth"],
 };
+
+// REDCap exports coded values, not labels. Text is unambiguous; a bare 1/2 is
+// not, so we apply the usual REDCap convention and say so rather than guessing
+// silently — a sex breakdown printed the wrong way round would be worse than
+// one that is flagged.
+let sexWasCoded = false;
+function readSex(v) {
+  const t = String(v || "").trim().toUpperCase();
+  if (!t) return "—";
+  if (t.startsWith("F")) return "F";
+  if (t.startsWith("M")) return "M";
+  if (t === "1" || t === "2") {
+    sexWasCoded = true;
+    return t === "1" ? "M" : "F";
+  }
+  return "—";
+}
+
+// REDCap datetimes carry the time after the date; the out-of-hours chart needs
+// it, so pull it out separately rather than discarding it with the date parse.
+function parseTime(v) {
+  const m = String(v || "").match(/(?:^|[ T])(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  return h >= 0 && h < 24 ? `${String(h).padStart(2, "0")}:${m[2]}` : null;
+}
 
 function mapRedcap(text) {
   const { header, rows } = parseCSV(text);
   const warnings = [];
+  sexWasCoded = false;
   if (!rows.length) throw new Error("The file has a header but no data rows.");
 
   const f = {};
@@ -135,6 +163,12 @@ function mapRedcap(text) {
     throw new Error(
       "No randomisation date column found (looked for " +
       REDCAP_FIELDS.rand.join(", ") + ")."
+    );
+  }
+  if (!f.eth) {
+    warnings.push(
+      "No ethnicity column found (looked for " + REDCAP_FIELDS.eth.join(", ") +
+      ") — the ethnicity chart will be empty."
     );
   }
   if (!f.site) warnings.push("No site column found — every participant will be filed under “Unknown”.");
@@ -155,6 +189,7 @@ function mapRedcap(text) {
     take("age", f.age);
     take("sex", f.sex);
     take("nela", f.nela);
+    take("eth", f.eth);
   }
 
   const people = [];
@@ -168,9 +203,10 @@ function mapRedcap(text) {
       date: fmtDate(d),
       _d: d,
       age: rec.age ? Math.round(Number(rec.age)) : null,
-      sex: (rec.sex || "").toUpperCase().startsWith("F") ? "F"
-         : (rec.sex || "").toUpperCase().startsWith("M") ? "M" : "—",
+      sex: readSex(rec.sex),
       nela: rec.nela ? Number(rec.nela) : null,
+      time: parseTime(rec.rand),
+      eth: rec.eth ? String(rec.eth).trim() : null,
     });
   }
 
@@ -179,6 +215,14 @@ function mapRedcap(text) {
     warnings.push(
       `${undated} record${undated === 1 ? " had" : "s had"} no randomisation date and ` +
       `${undated === 1 ? "was" : "were"} skipped — presumably consented but not yet randomised.`
+    );
+  }
+
+  if (sexWasCoded) {
+    warnings.push(
+      "Sex was exported as codes rather than labels, and has been read as " +
+      "1 = Male, 2 = Female. Check that against the TONIC data dictionary — " +
+      "if it is the other way round the sex column will be reversed."
     );
   }
 
@@ -381,18 +425,18 @@ function mapReturnRates(text) {
 }
 
 // ── Persistence ─────────────────────────────────────────────────────────────
+// The stored payload is encrypted at rest; auth.js decrypts it during unlock
+// and hands the plaintext over on window.__STORED. Writing goes back through
+// the same key, which never leaves that module.
 function loadStored() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return null;
-  }
+  return window.__STORED || null;
 }
 
-function saveStored(obj) {
+async function saveStored(obj) {
+  if (!window.__CRYPTO) return false;
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(obj));
+    const blob = await window.__CRYPTO.encryptJSON(obj);
+    localStorage.setItem(window.__CRYPTO.DATA_KEY, JSON.stringify(blob));
     return true;
   } catch (e) {
     return false;
@@ -499,7 +543,7 @@ function saveStored(obj) {
   wireDrop("drop-redcap", "redcap", mapRedcap);
   wireDrop("drop-rr", "rr", mapReturnRates);
 
-  applyBtn.addEventListener("click", () => {
+  applyBtn.addEventListener("click", async () => {
     const stored = loadStored() || {};
     const meta = { at: new Date().toISOString(), files: [] };
 
@@ -518,18 +562,24 @@ function saveStored(obj) {
     }
     stored.meta = meta;
 
-    if (!saveStored(stored)) {
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Encrypting…";
+    if (!(await saveStored(stored))) {
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Apply";
       log.hidden = false;
       log.innerHTML =
-        `<div class="err"><b>Could not save.</b> The browser refused local storage, ` +
-        `so the import cannot be kept between sessions.</div>`;
+        `<div class="err"><b>Could not save.</b> The data could not be encrypted ` +
+        `and written to local storage, so the import cannot be kept.</div>`;
       return;
     }
     location.reload();
   });
 
   document.getElementById("import-revert").addEventListener("click", () => {
-    try { localStorage.removeItem(STORE_KEY); } catch (e) { /* nothing to clear */ }
+    try {
+      localStorage.removeItem(window.__CRYPTO ? window.__CRYPTO.DATA_KEY : STORE_KEY);
+    } catch (e) { /* nothing to clear */ }
     location.reload();
   });
 })();

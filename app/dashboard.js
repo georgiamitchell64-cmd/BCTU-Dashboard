@@ -1180,3 +1180,216 @@ buildTable(
 
 // ── Start ───────────────────────────────────────────────────────────────────
 goTo("overview");
+
+// ── Day of week, out-of-hours, ethnicity ────────────────────────────────────
+// All three read the randomisation timestamp. Emergency laparotomy runs around
+// the clock, so the out-of-hours split is a picture of when the service is
+// actually randomising, not a data-quality flag.
+
+const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// Monday-first index from a "30 Jul 2026" date string.
+function dowIndex(dateStr) {
+  const d = new Date(dateStr);
+  return isNaN(d) ? null : (d.getDay() + 6) % 7;
+}
+const hourOf = (r) => (r.time ? Number(String(r.time).split(":")[0]) : null);
+
+function isOutOfHours(r) {
+  const h = hourOf(r);
+  const wd = dowIndex(r.date);
+  if (h == null || wd == null) return null;
+  if (IN_HOURS.weekdaysOnly && wd >= 5) return true;      // weekend
+  return h < IN_HOURS.startHour || h >= IN_HOURS.endHour;
+}
+
+const timed = RANDOMISATIONS.filter((r) => hourOf(r) != null && dowIndex(r.date) != null);
+
+// Day of week
+const dowCounts = DOW.map((_, i) => RANDOMISATIONS.filter((r) => dowIndex(r.date) === i).length);
+const weekendN = dowCounts[5] + dowCounts[6];
+const dowTotal = dowCounts.reduce((a, b) => a + b, 0);
+
+document.getElementById("dow-sub").textContent = dowTotal
+  ? `${weekendN} of ${dowTotal} (${Math.round((weekendN / dowTotal) * 100)}%) randomised at a weekend`
+  : "No dated randomisations to summarise";
+
+new Chart(document.getElementById("chart-dow"), {
+  type: "bar",
+  data: {
+    labels: DOW,
+    datasets: [{
+      data: dowCounts,
+      backgroundColor: DOW.map((_, i) => (i >= 5 ? "#B67A16" : "#0E6B5E")),
+      borderRadius: 3,
+    }],
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      ...noLegend,
+      tooltip: {
+        enabled: false,
+        external: external((i) => `
+          <div class="tip-title">${DOW[i]}${i >= 5 ? " — weekend" : ""}</div>
+          ${row("Randomised", dowCounts[i])}
+          ${row("Share", dowTotal ? Math.round((dowCounts[i] / dowTotal) * 100) + "%" : "—")}
+        `),
+      },
+    },
+    scales: axes(),
+  },
+});
+
+// Out of hours
+const oohN = timed.filter((r) => isOutOfHours(r) === true).length;
+const inHoursN = timed.length - oohN;
+const oohPct = timed.length ? Math.round((oohN / timed.length) * 100) : 0;
+
+document.getElementById("ooh-sub").textContent = timed.length
+  ? `${oohPct}% outside ${IN_HOURS.startHour}:00–${IN_HOURS.endHour}:00 on a weekday`
+  : "No randomisation times recorded";
+
+let oohView = "split";
+const hourBuckets = Array.from({ length: 24 }, (_, h) => timed.filter((r) => hourOf(r) === h).length);
+
+const oohChart = new Chart(document.getElementById("chart-ooh"), {
+  type: "bar",
+  data: { labels: [], datasets: [] },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      ...noLegend,
+      tooltip: {
+        enabled: false,
+        external: external((i) => {
+          if (oohView === "split") {
+            const n = i === 0 ? inHoursN : oohN;
+            return `<div class="tip-title">${i === 0 ? "In hours" : "Out of hours"}</div>${row("Randomised", n)}${row("Share", Math.round((n / timed.length) * 100) + "%")}<div class="tip-note">In hours = ${IN_HOURS.startHour}:00–${IN_HOURS.endHour}:00, Mon–Fri</div>`;
+          }
+          const out = i < IN_HOURS.startHour || i >= IN_HOURS.endHour;
+          return `<div class="tip-title">${String(i).padStart(2, "0")}:00</div>${row("Randomised", hourBuckets[i])}<div class="tip-note">${out ? "Outside working hours" : "Within working hours"}</div>`;
+        }),
+      },
+    },
+    scales: axes(),
+  },
+});
+
+function renderOoh() {
+  if (oohView === "split") {
+    oohChart.data.labels = ["In hours", "Out of hours"];
+    oohChart.data.datasets = [{
+      data: [inHoursN, oohN],
+      backgroundColor: ["#0E6B5E", "#B67A16"],
+      borderRadius: 3, barThickness: 64,
+    }];
+  } else {
+    oohChart.data.labels = hourBuckets.map((_, h) => String(h).padStart(2, "0"));
+    oohChart.data.datasets = [{
+      data: hourBuckets,
+      backgroundColor: hourBuckets.map((_, h) =>
+        h < IN_HOURS.startHour || h >= IN_HOURS.endHour ? "#B67A16" : "#0E6B5E"),
+      borderRadius: 2,
+    }];
+  }
+  oohChart.update();
+}
+renderOoh();
+
+document.querySelectorAll("[data-oohview]").forEach((b) =>
+  b.addEventListener("click", () => {
+    oohView = b.dataset.oohview;
+    document.querySelectorAll("[data-oohview]").forEach((x) => x.classList.toggle("on", x === b));
+    hideTip(); renderOoh();
+  })
+);
+
+// Ethnicity
+const withEth = RANDOMISATIONS.filter((r) => r.eth && ETHNICITY[r.eth]);
+const ethMissing = RANDOMISATIONS.length - withEth.length;
+
+const groupCounts = ETHNIC_GROUPS.map(
+  (g) => withEth.filter((r) => ETHNICITY[r.eth].group === g).length
+);
+// Minority ethnic share is a recruitment-equity measure the TMG reports on.
+const nonWhite = withEth.length - groupCounts[ETHNIC_GROUPS.indexOf("White")];
+
+document.getElementById("eth-sub").textContent = withEth.length
+  ? `${Math.round((nonWhite / withEth.length) * 100)}% from a minority ethnic group` +
+    (ethMissing ? ` · ${ethMissing} not recorded` : "")
+  : "Ethnicity not recorded for any participant";
+
+let ethView = "group";
+const ethChart = new Chart(document.getElementById("chart-eth"), {
+  type: "bar",
+  data: { labels: [], datasets: [] },
+  options: {
+    responsive: true, maintainAspectRatio: false, indexAxis: "y",
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      ...noLegend,
+      tooltip: {
+        enabled: false,
+        external: external((i) => {
+          if (ethView === "group") {
+            const g = ETHNIC_GROUPS[i];
+            const inGroup = Object.entries(ETHNICITY).filter(([, v]) => v.group === g);
+            const detail = inGroup
+              .map(([code, v]) => [v.label, withEth.filter((r) => r.eth === code).length])
+              .filter(([, n]) => n > 0)
+              .map(([l, n]) => row(l, n)).join("");
+            return `<div class="tip-title">${g}</div>${row("Participants", groupCounts[i])}${row("Share", Math.round((groupCounts[i] / withEth.length) * 100) + "%")}${detail ? `<div class="tip-note">Breakdown</div>${detail}` : ""}`;
+          }
+          const [code, v] = ethDetail[i];
+          const n = withEth.filter((r) => r.eth === code).length;
+          return `<div class="tip-title">${v.label}</div>${row("Participants", n)}${row("Share", Math.round((n / withEth.length) * 100) + "%")}<div class="tip-note">${v.group} · code ${code}</div>`;
+        }),
+      },
+    },
+    scales: {
+      x: { beginAtZero: true, grid: { color: GRID }, border: { display: false },
+           ticks: { font: { family: MONO, size: 10.5 }, precision: 0 } },
+      y: { grid: { display: false }, border: { color: GRID }, ticks: { font: { size: 11.5 } } },
+    },
+  },
+});
+
+// Only categories with at least one participant, so the detailed view does not
+// become nineteen mostly-empty rows.
+let ethDetail = [];
+function renderEth() {
+  if (ethView === "group") {
+    ethChart.data.labels = ETHNIC_GROUPS;
+    ethChart.data.datasets = [{
+      data: groupCounts,
+      backgroundColor: ETHNIC_GROUPS.map((g) => (g === "White" ? "#7FA79F" : "#0E6B5E")),
+      borderRadius: 3, barThickness: 22,
+    }];
+  } else {
+    ethDetail = Object.entries(ETHNICITY)
+      .map(([code, v]) => [code, v, withEth.filter((r) => r.eth === code).length])
+      .filter(([, , n]) => n > 0)
+      .sort((a, b) => b[2] - a[2])
+      .map(([code, v]) => [code, v]);
+    ethChart.data.labels = ethDetail.map(([, v]) =>
+      v.label.length > 34 ? v.label.slice(0, 33) + "…" : v.label);
+    ethChart.data.datasets = [{
+      data: ethDetail.map(([code]) => withEth.filter((r) => r.eth === code).length),
+      backgroundColor: ethDetail.map(([, v]) => (v.group === "White" ? "#7FA79F" : "#0E6B5E")),
+      borderRadius: 3, barThickness: 16,
+    }];
+  }
+  ethChart.update();
+}
+renderEth();
+
+document.querySelectorAll("[data-ethview]").forEach((b) =>
+  b.addEventListener("click", () => {
+    ethView = b.dataset.ethview;
+    document.querySelectorAll("[data-ethview]").forEach((x) => x.classList.toggle("on", x === b));
+    hideTip(); renderEth();
+  })
+);
