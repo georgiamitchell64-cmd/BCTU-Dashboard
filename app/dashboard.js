@@ -21,8 +21,12 @@ const remaining = TRIAL.target - totalRand;
 const recruitingSites = SITES.filter((s) => s.n > 0);
 const openSites = SITES.filter((s) => s.status === "Recruiting" || s.status === "Open");
 
-// A site is dormant when it has opened but not randomised in 60 days.
-const CUT = new Date("2026-07-31");
+// A site is dormant when it has opened but not randomised in 60 days. The
+// reference point follows the declared data cut, so an import moves it.
+const CUT = (() => {
+  const d = new Date(TRIAL.dataCut);
+  return isNaN(d) ? new Date() : d;
+})();
 function daysSince(d) {
   if (!d) return Infinity;
   return Math.round((CUT - new Date(d)) / 86400000);
@@ -33,12 +37,12 @@ const fuComplete = FOLLOWUP.reduce((s, f) => s + f.complete, 0);
 const fuExpected = FOLLOWUP.reduce((s, f) => s + f.expected, 0);
 const fuRate = Math.round((fuComplete / fuExpected) * 100);
 
-// Month at which the current rate would reach target.
+// Month at which a flat rate would reach target, counted from the last month
+// that has data rather than a fixed point.
 function projectedClose(rate) {
   if (rate <= 0) return "—";
-  const monthsNeeded = Math.ceil(remaining / rate);
-  const d = new Date("2026-07-01");
-  d.setMonth(d.getMonth() + monthsNeeded);
+  const d = new Date(CUT.getFullYear(), CUT.getMonth(), 1);
+  d.setMonth(d.getMonth() + Math.ceil(remaining / rate));
   return d.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
 }
 
@@ -234,6 +238,19 @@ const statusPill = (s) => {
 // ══ HEADER ═════════════════════════════════════════════════════════════════
 document.getElementById("side-sub").textContent = TRIAL.subtitle;
 document.getElementById("side-cut").textContent = TRIAL.dataCut;
+
+// Say plainly whether the figures on screen are imported or the shipped demo
+// set, so nobody mistakes one for the other.
+(function showProvenance() {
+  const meta = window.__IMPORT_META;
+  const note = document.getElementById("side-note");
+  if (!meta) return;
+  const when = new Date(meta.at);
+  note.classList.add("imported");
+  note.innerHTML =
+    "Imported " + when.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
+    "<br>" + (meta.files || []).join("<br>");
+})();
 document.getElementById("head-close").textContent = projectedClose(rateRecent);
 
 const statusEl = document.getElementById("head-status");

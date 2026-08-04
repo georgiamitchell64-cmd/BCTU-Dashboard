@@ -83,10 +83,64 @@ restrictive Content-Security-Policy.
 
 # Putting your own data in
 
+## The import button
+
+**Import data**, bottom-left, takes the two exports the Shiny dashboard already
+uses:
+
+| File | Shape | Drives |
+|---|---|---|
+| **REDCap export** | Long format — one row per record per event, with `record_id` and `redcap_event_name` | Recruitment by month, sites, the randomisation log, age and NELA profiles |
+| **Return rates** | `Site, Event, Form, Expected, Due, Entered` | Follow-up return by window and by site |
+
+Either file works on its own; you do not need both. Both are read **in the
+window** with the browser's own file API — nothing is uploaded, and no file
+leaves the machine. The result is kept in local storage, so it survives closing
+the app, and **Revert to demonstration data** puts the sample figures back.
+
+Before applying, the dialog reports what it found and what it could not make
+sense of: records with no randomisation date, sites in the export that are not
+in the register, missing columns. Read that summary — it is where a mismatched
+site name or a wrong file shows up.
+
+Column names are matched leniently (`site_name`, `site`, `centre` all work), so
+a slightly different export usually still imports. If a required column really
+is absent the dialog says which, and lists the headers it did find.
+
+### What the import does and does not touch
+
+It sets participant counts, dates, recruitment by month, follow-up figures and
+the data cut. It **does not** overwrite the manual parts of the site register —
+region, status and opening date stay as you set them, and sites still in set-up
+keep their place in the denominator rather than vanishing because the export
+has never heard of them.
+
+A site in the export that is not in the register is added, with no region, and
+flagged in the summary. If that is a spelling difference rather than a genuinely
+new site, fix the name in `data.js` — otherwise its participants are counted
+separately from the site they belong to.
+
+### After importing
+
+The projection re-derives itself: per-site recruitment rate and site-opening
+rate both come from the imported data, so the Recruitment page reflects the new
+figures without any further work. The sidebar shows the import date and the
+filenames, so it is always clear whether you are looking at real data or the
+shipped sample.
+
+## Editing the file directly
+
+The importer writes the same values you can set by hand, so this remains
+available for anything the exports do not carry — the site register especially.
+
 **Everything the app displays comes from `app/data.js`.** Nothing is hardcoded
 anywhere else — every percentage, rate, projection, ranking and status in the
 interface is calculated from that one file when the app starts. Edit it, save,
 and either restart the app or press `Ctrl+R`.
+
+Note that an import takes precedence over this file. If your edits appear to do
+nothing, an import is in effect — use **Revert to demonstration data** to clear
+it first.
 
 Open it in any text editor. It has seven blocks.
 

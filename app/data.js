@@ -6,7 +6,7 @@
 // swapping in real data means replacing this file alone.
 // ============================================================================
 
-const TRIAL = {
+let TRIAL = {
   code: "TONIC",
   name: "TONIC",
   subtitle:
@@ -21,7 +21,7 @@ const TRIAL = {
 };
 
 // Recruitment by month. `target` is the protocol schedule from the trial config.
-const MONTHS = [
+let MONTHS = [
   { label: "Mar 2026", short: "Mar", randomised: 3,  target: 4  },
   { label: "Apr 2026", short: "Apr", randomised: 7,  target: 8  },
   { label: "May 2026", short: "May", randomised: 10, target: 12 },
@@ -31,7 +31,7 @@ const MONTHS = [
 
 // Protocol recruitment schedule (cumulative target by month end), taken from
 // the trial config. Drives the forecast chart beyond the data cut.
-const TARGET_SCHEDULE = [
+let TARGET_SCHEDULE = [
   { label: "Aug 2026", cumulative: 60  }, { label: "Sep 2026", cumulative: 76  },
   { label: "Oct 2026", cumulative: 96  }, { label: "Nov 2026", cumulative: 120 },
   { label: "Dec 2026", cumulative: 148 }, { label: "Jan 2027", cumulative: 180 },
@@ -52,7 +52,7 @@ const TARGET_SCHEDULE = [
 // least three months of recruitment the app derives both from what has actually
 // happened, the same way functions/projection_math.R does, and the sliders on
 // the Recruitment page start from those derived values rather than these.
-const PROJECTION = {
+let PROJECTION = {
   targetSites: 24,
   ratePerSite: 0.75,      // participants per open site per month
   sitesPerMonth: 2.0,     // new sites opening per month
@@ -75,7 +75,7 @@ const PROJECTION = {
 // appear immediately with the right status.
 //
 // `lastRand` drives the dormant-site calculation (>60 days before the cut).
-const SITES = [
+let SITES = [
   { name: "Queen Elizabeth Hospital Birmingham", region: "West Midlands", status: "Recruiting", opened: "Mar 2026", n: 8, lastRand: "28 Jul 2026" },
   { name: "University Hospital Coventry",        region: "West Midlands", status: "Recruiting", opened: "Mar 2026", n: 6, lastRand: "24 Jul 2026" },
   { name: "Royal Liverpool Hospital",            region: "North West",    status: "Recruiting", opened: "Apr 2026", n: 5, lastRand: "30 Jul 2026" },
@@ -98,7 +98,7 @@ const SITES = [
 
 // Individual randomisations. Allocation is deliberately absent — the
 // coordinating-centre view is blinded.
-const RANDOMISATIONS = [
+let RANDOMISATIONS = [
   { id: "TON-0047", site: "Royal Liverpool Hospital",            date: "30 Jul 2026", age: 71, sex: "F", nela: 8.4 },
   { id: "TON-0046", site: "Addenbrooke's Hospital Cambridge",    date: "29 Jul 2026", age: 66, sex: "M", nela: 5.1 },
   { id: "TON-0045", site: "Queen Elizabeth Hospital Birmingham", date: "28 Jul 2026", age: 78, sex: "F", nela: 14.2 },
@@ -119,7 +119,7 @@ const RANDOMISATIONS = [
 
 // Follow-up windows. `expected` counts participants who have reached the
 // window given the data cut; `complete` counts forms received.
-const FOLLOWUP = [
+let FOLLOWUP = [
   {
     name: "Baseline", event: "baseline_arm_1", colour: "#0E6B5E",
     complete: 47, expected: 47,
@@ -154,7 +154,7 @@ const FOLLOWUP = [
 ];
 
 // Per-site follow-up compliance (forms received / forms due across all windows).
-const SITE_COMPLIANCE = [
+let SITE_COMPLIANCE = [
   { name: "Queen Elizabeth Hospital Birmingham", complete: 24, due: 25 },
   { name: "University Hospital Coventry",        complete: 18, due: 19 },
   { name: "Royal Liverpool Hospital",            complete: 13, due: 15 },

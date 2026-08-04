@@ -442,6 +442,113 @@ html, body {
   font-size: 13.5px;
 }
 
+/* ── Import ───────────────────────────────────────────────────────────────── */
+.import-btn {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--green);
+  color: var(--green-dk);
+  background: var(--surface);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background .13s, color .13s;
+}
+.import-btn:hover { background: var(--green); color: #fff; }
+.import-btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.modal-back {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(22,33,30,.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(22,33,30,.28);
+  width: min(760px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 26px 28px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.modal-head h2 { margin: 4px 0 0; font-family: var(--serif); font-size: 26px; font-weight: 400; letter-spacing: -.01em; }
+.modal-x {
+  all: unset; cursor: pointer;
+  font-size: 26px; line-height: 1; color: var(--muted);
+  padding: 2px 8px; border-radius: 6px;
+}
+.modal-x:hover { color: var(--ink); background: var(--surface-3); }
+.modal-blurb { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--body); }
+
+.drops { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+.drop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color .14s, background .14s;
+}
+.drop:hover, .drop.over { border-color: var(--green); background: var(--green-pale); }
+.drop.loaded { border-style: solid; border-color: var(--green); background: var(--surface); }
+.drop.bad { border-color: var(--red); background: #FBEAE7; }
+.drop-name { font-size: 14px; font-weight: 600; }
+.drop-hint { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.drop-hint code { font-family: var(--mono); font-size: 11px; color: var(--body); }
+.drop-state {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  word-break: break-all;
+}
+.drop.loaded .drop-state { color: var(--green-dk); font-weight: 600; }
+.drop.bad .drop-state { color: var(--red-dk); font-weight: 600; }
+
+.import-log {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--body);
+  max-height: 210px;
+  overflow-y: auto;
+}
+.import-log b { color: var(--ink); }
+.import-log .warn { color: var(--amber-ink); }
+.import-log .err { color: var(--red-dk); }
+.import-log ul { margin: 6px 0 0; padding-left: 18px; }
+
+.modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.modal-actions { display: flex; gap: 8px; }
+.toggle[disabled] { opacity: .45; cursor: not-allowed; }
+.toggle[disabled]:hover { border-color: var(--border); color: var(--body); }
+
+.side-note.imported { color: var(--green-dk); font-weight: 500; }
+
+@media (max-width: 700px) { .drops { grid-template-columns: minmax(0,1fr); } }
+
 /* ── Tooltip ──────────────────────────────────────────────────────────────── */
 #tip {
   position: fixed;

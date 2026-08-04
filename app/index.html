@@ -23,6 +23,14 @@
     <nav class="side-nav" id="side-nav"></nav>
 
     <div class="side-foot">
+      <button class="import-btn" id="open-import">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>
+        </svg>
+        <span>Import data</span>
+      </button>
       <div>
         <div class="kicker">Data cut</div>
         <div class="side-cut" id="side-cut"></div>
@@ -31,7 +39,7 @@
         <span class="side-dot"></span>
         <span>Blinded view — allocation hidden</span>
       </div>
-      <div class="side-note">
+      <div class="side-note" id="side-note">
         Demonstration data. Not for clinical or regulatory use.
       </div>
     </div>
@@ -294,8 +302,55 @@
 
 <div id="tip"></div>
 
+<!-- ══ Import dialog ═════════════════════════════════════════════════════ -->
+<div class="modal-back" id="import-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div class="modal-head">
+      <div>
+        <div class="kicker">Data</div>
+        <h2 id="import-title">Import trial data</h2>
+      </div>
+      <button class="modal-x" id="close-import" aria-label="Close">&times;</button>
+    </div>
+
+    <p class="modal-blurb">
+      Drop in the exports the Shiny dashboard uses. Everything is read in this
+      window — no file leaves the machine, and nothing is uploaded anywhere.
+    </p>
+
+    <div class="drops">
+      <label class="drop" id="drop-redcap">
+        <input type="file" accept=".csv,text/csv" hidden>
+        <div class="drop-name">REDCap export</div>
+        <div class="drop-hint">One row per record per event, with
+          <code>record_id</code> and <code>redcap_event_name</code>.</div>
+        <div class="drop-state" data-state>Choose or drop a .csv</div>
+      </label>
+
+      <label class="drop" id="drop-rr">
+        <input type="file" accept=".csv,text/csv" hidden>
+        <div class="drop-name">Return rates</div>
+        <div class="drop-hint">Columns <code>Site, Event, Form, Expected,
+          Due, Entered</code>.</div>
+        <div class="drop-state" data-state>Choose or drop a .csv</div>
+      </label>
+    </div>
+
+    <div class="import-log" id="import-log" hidden></div>
+
+    <div class="modal-foot">
+      <button class="toggle" id="import-revert">Revert to demonstration data</button>
+      <div class="modal-actions">
+        <button class="toggle" id="import-cancel">Cancel</button>
+        <button class="toggle on" id="import-apply" disabled>Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="chart.umd.js"></script>
 <script src="data.js"></script>
+<script src="import.js"></script>
 <script src="dashboard.js"></script>
 </body>
 </html>
