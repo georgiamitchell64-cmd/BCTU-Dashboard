@@ -12,10 +12,11 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "electron": "^32.0.0",
-    "electron-builder": "^25.0.0"
-  },
-  "dependencies": {
+    "electron-builder": "^26.0.0",
     "chart.js": "^4.4.0"
+  },
+  "overrides": {
+    "@noble/hashes": "^1.4.0"
   },
   "build": {
     "appId": "uk.ac.bham.bctu.tonic-dashboard",
