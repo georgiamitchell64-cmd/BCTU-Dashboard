@@ -45,7 +45,20 @@ const TARGET_SCHEDULE = [
   { label: "Apr 2028", cumulative: 873 }, { label: "May 2028", cumulative: 898 },
 ];
 
-// Sites. `lastRand` drives the dormant-site calculation.
+// Site registry — maintained by hand, not derived from the data export.
+//
+// A REDCap export only evidences sites that have randomised someone, so a site
+// in set-up or merely identified would be invisible if this list were built
+// from participant records. Keeping the roster here means the denominator
+// ("12 of 24 recruiting", the status doughnut, the dormant count) stays honest
+// about sites that exist but have not yet contributed a participant.
+//
+// When a live feed is wired in, only `n` and `lastRand` should come from it,
+// joined onto these rows by `name`; everything else stays manual. Add a new
+// site the moment it is identified, with n: 0 and lastRand: null, and it will
+// appear immediately with the right status.
+//
+// `lastRand` drives the dormant-site calculation (>60 days before the cut).
 const SITES = [
   { name: "Queen Elizabeth Hospital Birmingham", region: "West Midlands", status: "Recruiting", opened: "Mar 2026", n: 8, lastRand: "28 Jul 2026" },
   { name: "University Hospital Coventry",        region: "West Midlands", status: "Recruiting", opened: "Mar 2026", n: 6, lastRand: "24 Jul 2026" },

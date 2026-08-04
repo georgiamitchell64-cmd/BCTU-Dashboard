@@ -26,14 +26,17 @@
   --green-lt:    #3FA593;
   --green-pale:  #DDEAE7;
 
-  /* Sidebar */
-  --side-bg:     #16211E;
-  --side-hover:  #22322E;
-  --side-border: #2C3B37;
-  --side-fg:     #E8EEEC;
-  --side-muted:  #9DB8B2;
-  --side-faint:  #7FA79F;
-  --side-dim:    #6E8B85;
+  /* Sidebar — a light panel, so the logo sits on white rather than in a
+     bright box punched out of a dark field. */
+  --side-bg:     #FFFFFF;
+  --side-hover:  #F1EFE9;
+  --side-border: #E2E0D9;
+  --side-fg:     #16211E;
+  --side-muted:  #5D6B67;
+  /* Darker than the muted greys used on the page: these label small mono
+     text on white, where #7B8A85 would drop under the 4.5:1 AA floor. */
+  --side-faint:  #66746F;
+  --side-dim:    #5D6B67;
 
   /* Status */
   --amber:        #B67A16;
@@ -92,6 +95,7 @@ html, body {
   position: sticky;
   top: 0;
   height: 100vh;
+  border-right: 1px solid var(--side-border);
 }
 .side-brand { display: flex; flex-direction: column; gap: 10px; }
 .side-brand .kicker { color: var(--side-faint); font-size: 11px; letter-spacing: 0.16em; }
@@ -101,7 +105,7 @@ html, body {
   font-size: 30px;
   line-height: 1.05;
   letter-spacing: -0.01em;
-  color: #fff;
+  color: var(--side-fg);
 }
 .side-sub { font-size: 13px; line-height: 1.5; color: var(--side-muted); }
 
@@ -123,13 +127,13 @@ html, body {
 }
 .nav-item:hover { background: var(--side-hover); color: var(--side-fg); }
 .nav-item.on {
-  background: var(--side-hover);
-  color: #fff;
-  border-left-color: var(--green-lt);
+  background: var(--green-pale);
+  color: var(--green-dk);
+  border-left-color: var(--green);
   font-weight: 600;
 }
 .nav-meta { font-family: var(--mono); font-size: 11.5px; color: var(--side-faint); }
-.nav-item.on .nav-meta { color: var(--green-lt); }
+.nav-item.on .nav-meta { color: var(--green); }
 
 .side-foot {
   margin-top: auto;
