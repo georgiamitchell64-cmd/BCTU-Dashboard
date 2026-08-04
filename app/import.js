@@ -149,7 +149,7 @@ function parseTime(v) {
   return h >= 0 && h < 24 ? `${String(h).padStart(2, "0")}:${m[2]}` : null;
 }
 
-function mapRedcap(text) {
+function mapRedcap(text, opts = {}) {
   const { header, rows } = parseCSV(text);
   const warnings = [];
   sexWasCoded = false;
@@ -272,7 +272,12 @@ function mapRedcap(text) {
   // Merge onto the hand-maintained registry: counts come from the export,
   // everything else (region, status, opening date) stays manual, and sites in
   // set-up keep their place in the denominator.
-  const sites = SITES.map((s) => {
+  // With replaceSites the export is taken as the whole register, which is how
+  // you clear the sample sites out. Without it, sites the export has never
+  // heard of are kept at zero — that is what stops a site still in set-up from
+  // vanishing and quietly flattering the "n of 24 recruiting" denominator.
+  const base = opts.replaceSites ? SITES.filter((s) => siteAgg.has(s.name)) : SITES;
+  const sites = base.map((s) => {
     const hit = siteAgg.get(s.name);
     if (!hit) return { ...s, n: 0, lastRand: null };
     siteAgg.delete(s.name);
@@ -301,6 +306,17 @@ function mapRedcap(text) {
       `. If that is a spelling difference rather than a genuinely new site, correct the ` +
       `name in data.js so the counts do not split across two entries.`
     );
+  }
+
+  if (opts.replaceSites) {
+    const dropped = SITES.length - base.length;
+    if (dropped) {
+      warnings.push(
+        `${dropped} site${dropped === 1 ? "" : "s"} in the register ${dropped === 1 ? "was" : "were"} ` +
+        `not in the export and ${dropped === 1 ? "has" : "have"} been dropped. Any site that has ` +
+        `opened but not yet randomised will need adding back to data.js.`
+      );
+    }
   }
 
   const total = people.length;
@@ -531,6 +547,8 @@ async function saveStored(obj) {
     };
 
     input.addEventListener("change", (e) => handle(e.target.files[0]));
+    // Re-read the staged file when an option changes the mapping.
+    el._rehandle = () => { if (input.files[0]) handle(input.files[0]); };
     ["dragenter", "dragover"].forEach((ev) =>
       el.addEventListener(ev, (e) => { e.preventDefault(); el.classList.add("over"); })
     );
@@ -540,8 +558,16 @@ async function saveStored(obj) {
     el.addEventListener("drop", (e) => handle(e.dataTransfer.files[0]));
   }
 
-  wireDrop("drop-redcap", "redcap", mapRedcap);
+  const replaceOpt = document.getElementById("opt-replace-sites");
+  const redcapMapper = (text) => mapRedcap(text, { replaceSites: replaceOpt.checked });
+
+  wireDrop("drop-redcap", "redcap", redcapMapper);
   wireDrop("drop-rr", "rr", mapReturnRates);
+
+  replaceOpt.addEventListener("change", () => {
+    const el = document.getElementById("drop-redcap");
+    if (el._rehandle) el._rehandle();
+  });
 
   applyBtn.addEventListener("click", async () => {
     const stored = loadStored() || {};

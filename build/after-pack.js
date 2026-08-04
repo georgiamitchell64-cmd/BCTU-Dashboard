@@ -28,15 +28,32 @@ exports.default = async function afterPack(context) {
   const productName = build.productName;
   const company = typeof author === "string" ? author : author?.name ?? productName;
 
-  const exePath = path.join(context.appOutDir, `${productName}.exe`);
   const iconPath = path.join(__dirname, "icon.ico");
 
+  // Prefer the executable named after the product, but fall back to whatever
+  // .exe is in the output directory. Guessing the filename is the easiest way
+  // for this to silently do nothing, and a missing icon is hard to trace back
+  // to a warning nobody read.
+  let exePath = path.join(context.appOutDir, `${productName}.exe`);
   if (!fs.existsSync(exePath)) {
-    console.warn(`  • icon skipped  reason=${exePath} not found`);
-    return;
+    const candidates = fs
+      .readdirSync(context.appOutDir)
+      .filter((f) => f.toLowerCase().endsWith(".exe"))
+      // Electron ships helper executables; the app is the largest.
+      .map((f) => ({ f, size: fs.statSync(path.join(context.appOutDir, f)).size }))
+      .sort((a, b) => b.size - a.size);
+
+    if (!candidates.length) {
+      console.warn(`  • icon SKIPPED  reason=no .exe found in ${context.appOutDir}`);
+      return;
+    }
+    exePath = path.join(context.appOutDir, candidates[0].f);
+    console.warn(
+      `  • icon: "${productName}.exe" not found, using "${candidates[0].f}" instead`
+    );
   }
   if (!fs.existsSync(iconPath)) {
-    console.warn("  • icon skipped  reason=build/icon.ico not found");
+    console.warn("  • icon SKIPPED  reason=build/icon.ico not found");
     return;
   }
 
@@ -46,12 +63,12 @@ exports.default = async function afterPack(context) {
     const mod = require("rcedit");
     rcedit = typeof mod === "function" ? mod : mod.rcedit ?? mod.default;
   } catch {
-    console.warn("  • icon skipped  reason=rcedit is not installed");
+    console.warn("  • icon SKIPPED  reason=rcedit is not installed (npm install)");
     return;
   }
 
   if (typeof rcedit !== "function") {
-    console.warn("  • icon skipped  reason=rcedit did not export a callable");
+    console.warn("  • icon SKIPPED  reason=rcedit did not export a callable");
     return;
   }
 
@@ -68,10 +85,10 @@ exports.default = async function afterPack(context) {
         OriginalFilename: `${productName}.exe`,
       },
     });
-    console.log(`  • icon applied to ${productName}.exe`);
+    console.log(`  • icon APPLIED to ${path.basename(exePath)}`);
   } catch (error) {
     // Almost always "wine is required" when building for Windows off Windows.
-    console.warn(`  • icon skipped  reason=${error.message.split("\n")[0]}`);
+    console.warn(`  • icon SKIPPED  reason=${error.message.split("\n")[0]}`);
     console.warn("    Build on Windows to get the executable icon; the app itself is unaffected.");
   }
 };

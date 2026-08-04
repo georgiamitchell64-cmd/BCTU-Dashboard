@@ -678,3 +678,20 @@ html, body {
   padding-top: 12px;
   margin-top: 2px;
 }
+
+.import-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--body);
+  cursor: pointer;
+}
+.import-opt:hover { border-color: var(--green); }
+.import-opt input { margin-top: 2px; accent-color: var(--green); flex: 0 0 auto; }
+.import-opt b { color: var(--ink); }
