@@ -32,33 +32,44 @@ If `node -v` still reports the old version after installing, close **every**
 terminal window and open a new one; PATH does not refresh in shells that were
 already open.
 
-## Building the Windows installer
+## Building a Windows executable
+
+Two targets, and **try the second if the installer build fails**:
 
 ```bash
-npm run build
+npm run build            # NSIS installer  -> dist\TONIC Dashboard Setup 1.0.0.exe
+npm run build:portable   # unpacked folder -> dist\win-unpacked\TONIC Dashboard.exe
 ```
 
-Must be run **on Windows** — the NSIS installer cannot be produced from macOS
-or Linux without extra setup. Output lands in `dist/`, as
-`TONIC Dashboard Setup 1.0.0.exe`.
+Must be run **on Windows**. Running the installer `.exe` installs per-user under
+`%LOCALAPPDATA%`, with no administrator rights. `build:portable` produces a
+folder you can run or copy to a share directly — no installer and no Start-menu
+entry, but no code-signing step either, which is where the installer build tends
+to fall over.
 
-Note the two steps: `npm run build` *builds* the installer; running the
-resulting `.exe` *installs* the app. It installs per-user under
-`%LOCALAPPDATA%` and needs no administrator rights.
+### If the build fails with "Cannot create symbolic link"
 
-### If the build fails with `ERR_REQUIRE_ESM`
-
-Fixed in this version, recorded here in case it resurfaces. `electron-builder`
-pulls `@noble/hashes`, which went ESM-only at v2. Older Node cannot `require()`
-an ESM module, so the build dies before it starts. The `overrides` block in
-`package.json` pins that dependency to the last CommonJS release:
-
-```json
-"overrides": { "@noble/hashes": "^1.4.0" }
+```
+ERROR: Cannot create symbolic link : A required privilege is not held by the
+client. : ...winCodeSign\...\darwin\10.12\lib\libcrypto.dylib
 ```
 
-If you hit it again after upgrading anything, delete `node_modules` and
-`package-lock.json` and reinstall.
+electron-builder downloads a code-signing toolkit whose archive contains **macOS**
+symlinks. Creating a symlink on Windows needs a privilege ordinary accounts do
+not hold, so extraction fails — on files a Windows-only build never uses.
+
+In order of preference:
+
+1. **Enable Developer Mode.** Settings → Privacy & security → For developers →
+   Developer Mode. That grants your account the symlink privilege, which is what
+   the error is asking for. Then delete
+   `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign` and build again.
+2. **Use `npm run build:portable`**, which skips signing entirely so the toolkit
+   is never fetched.
+3. **Run PowerShell as Administrator**, if you have local admin — administrators
+   hold the privilege by default.
+
+If Developer Mode is blocked by group policy, option 2 needs nothing from IT.
 
 ## What's in here
 

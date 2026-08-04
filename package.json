@@ -1,12 +1,13 @@
 {
   "name": "tonic-dashboard",
   "version": "1.0.0",
-  "description": "TONIC Trial Dashboard — Desktop App",
+  "description": "TONIC Trial Dashboard \u2014 Desktop App",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win"
+    "build": "electron-builder --win",
+    "build:portable": "electron-builder --win dir"
   },
   "author": "Birmingham Clinical Trials Unit",
   "license": "UNLICENSED",
