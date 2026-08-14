@@ -1,4 +1,7 @@
-DB_PATH <- file.path(getwd(), "data", "tonic.sqlite")
+# Writable location (see globals/app_paths.R). Must NOT be relative to getwd():
+# in the desktop build the working directory is the read-only app bundle and is
+# replaced on every update, which silently destroys the database.
+DB_PATH <- app_data_dir("data", "tonic.sqlite")
 
 db_connect <- function() {
   if (!dir.exists(dirname(DB_PATH))) {

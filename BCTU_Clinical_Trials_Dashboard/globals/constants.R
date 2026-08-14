@@ -6,7 +6,8 @@
 # =============================================================================
 
 TRIAL_TARGET <- 0L          # Overwritten when trial is selected
-DATA_DIR     <- file.path(getwd(), "data")  # Overwritten when trial is selected
+# Writable — see globals/app_paths.R. Overwritten when a trial is selected.
+DATA_DIR     <- app_data_dir("data")
 
 # Air-gap toggle: set to TRUE only if you want the dashboard to call out to
 # OpenStreetMap Nominatim for geocoding new sites. Default FALSE keeps the

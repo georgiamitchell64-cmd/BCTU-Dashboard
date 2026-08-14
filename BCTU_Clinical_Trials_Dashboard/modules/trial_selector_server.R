@@ -2467,7 +2467,7 @@ trial_selector_server <- function(input, output, session, state) {
       return()
     }
 
-    trials_dir <- file.path(getwd(), "trials")
+    trials_dir <- app_trials_dir()
     trial_dir  <- file.path(trials_dir, code)
 
     if (dir.exists(trial_dir)) {

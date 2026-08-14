@@ -1,0 +1,69 @@
+{
+  "name": "bctu-clinical-trials-dashboard",
+  "productName": "BCTU Clinical Trials Dashboard",
+  "version": "1.0.0",
+  "description": "Desktop build of the BCTU Clinical Trials Dashboard (Shiny + bundled R).",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "fetch-r": "powershell -ExecutionPolicy Bypass -File scripts/fetch-r.ps1",
+    "dist": "electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "uk.ac.bham.bctu.dashboard",
+    "productName": "BCTU Clinical Trials Dashboard",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "splash.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../BCTU_Clinical_Trials_Dashboard",
+        "to": "app",
+        "filter": [
+          "**/*",
+          "!**/*.sqlite",
+          "!**/*.sqlite3",
+          "!**/.Rhistory",
+          "!**/.Rproj.user",
+          "!tests/**",
+          "!mockups/**",
+          "!**/*.zip"
+        ]
+      },
+      {
+        "from": "runtime/R",
+        "to": "R"
+      },
+      {
+        "from": "runtime/pandoc",
+        "to": "pandoc"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "BCTU-Dashboard-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "BCTU Dashboard"
+    }
+  }
+}

@@ -93,7 +93,10 @@ wp_effective_target <- function(cfg, active_wp = NULL) {
 
 #' Discover all available trial configs
 #' @return Named list of trial config lists, keyed by trial code
-discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
+# Reads from the WRITABLE trials directory (see globals/app_paths.R), which is
+# seeded from the bundle on first launch. Trial configs, overrides.json and
+# per-trial databases must all be writable and survive app updates.
+discover_trials <- function(trials_dir = app_trials_dir()) {
   if (!dir.exists(trials_dir)) {
     message("No trials/ directory found at: ", trials_dir)
     return(list())
@@ -212,7 +215,7 @@ validate_trial_config <- function(cfg) {
 #' Create a blank trial config template (for new trials)
 #' @param trial_code Short lowercase code (e.g. "mytrial")
 #' @param output_dir Where to create the trial folder
-create_trial_template <- function(trial_code, output_dir = file.path(getwd(), "trials")) {
+create_trial_template <- function(trial_code, output_dir = app_trials_dir()) {
   trial_dir <- file.path(output_dir, trial_code)
   if (dir.exists(trial_dir)) {
     message("Trial folder already exists: ", trial_dir)
