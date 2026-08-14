@@ -95,10 +95,11 @@ build_app_ui <- function() {
             actionButton("go_returns",    "Return Rates",      class = "sidebar-nav-btn")),
         actionButton("go_sites",          "Manage Sites",      class = "sidebar-nav-btn"),
         actionButton("go_upload",         "Data / Export",     class = "sidebar-nav-btn"),
-        div(id = "go_postal_wrap",
-            actionButton("go_postal",     "Postal Tracking",   class = "sidebar-nav-btn")),
-        div(id = "accounts_nav",
-            actionButton("go_accounts",   "Accounts",          class = "sidebar-nav-btn")),
+        # Postal Tracking and Accounts removed in the desktop build.
+        # Hidden placeholders keep shinyjs::show()/hide() calls in
+        # trial_selector_server.R and trial_settings_server.R harmless.
+        div(id = "go_postal_wrap", style = "display:none"),
+        div(id = "accounts_nav",   style = "display:none"),
         div(id = "settings_nav",
             actionButton("go_settings",   "Trial Settings",    class = "sidebar-nav-btn")),
         # Binding for the "All trials" home control rendered in the tab bar.
@@ -188,9 +189,9 @@ build_app_ui <- function() {
             tags$button(id = "tn_randomisations", class = "topnav-tab", type = "button",
                         onclick = "Shiny.setInputValue('go_randomisations', Math.random(), {priority:'event'}); setActiveTab('tn_randomisations');",
                         "Randomisations"),
-            tags$button(id = "tn_postal",         class = "topnav-tab", type = "button",
-                        onclick = "Shiny.setInputValue('go_postal', Math.random(), {priority:'event'}); setActiveTab('tn_postal');",
-                        "Postal tracking"),
+            # Postal tracking tab removed in the desktop build. Hidden
+            # placeholder keeps shinyjs::show("tn_postal") calls harmless.
+            tags$span(id = "tn_postal", style = "display:none"),
             tags$button(id = "tn_returns",        class = "topnav-tab", type = "button",
                         onclick = "Shiny.setInputValue('go_returns', Math.random(), {priority:'event'}); setActiveTab('tn_returns');",
                         "Return rates"),
@@ -231,9 +232,9 @@ build_app_ui <- function() {
                           sites_tab_ui(),
                           upload_tab_ui(),
                           return_rates_tab_ui(),
-                          postal_tracking_tab_ui(),
-                          trial_settings_tab_ui(),
-                          accounts_tab_ui()
+                          # Postal tracking and Accounts tabs removed in the
+                          # desktop build.
+                          trial_settings_tab_ui()
               )
           )
         )

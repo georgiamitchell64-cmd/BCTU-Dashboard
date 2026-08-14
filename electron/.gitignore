@@ -1,0 +1,6 @@
+# Electron build artefacts and the bundled R runtime.
+# runtime/R is ~700MB and is produced locally by `npm run fetch-r`;
+# it must never be committed.
+node_modules/
+dist/
+runtime/

@@ -7,6 +7,9 @@
 # =============================================================================
 
 source("globals/packages.R",       local = TRUE)
+# app_paths.R must come first: constants.R and database.R resolve their
+# writable locations through app_data_dir().
+source("globals/app_paths.R",      local = TRUE)
 source("globals/constants.R",      local = TRUE)
 source("globals/datasets.R",       local = TRUE)
 source("globals/trial_config.R",   local = TRUE)
@@ -77,16 +80,20 @@ source("modules/accounts.R",           local = TRUE)
 source("modules/accounts_server.R",     local = TRUE)
 source("modules/return_rates_ui.R",     local = TRUE)
 source("modules/return_rates_server.R", local = TRUE)
-source("modules/postal_tracking_ui.R",      local = TRUE)
-source("modules/postal_tracking_server.R",  local = TRUE)
+# Postal tracking modules removed in the desktop build.
 source("modules/trial_settings.R",          local = TRUE)
 source("modules/trial_settings_server.R",   local = TRUE)
 source("modules/modifications.R",           local = TRUE)
 source("modules/modifications_server.R",    local = TRUE)
 
 
-# ── Initialise database & profiles table ──────────────────────────────────────
-if (!dir.exists("data")) dir.create("data", recursive = TRUE)
+# ── Seed writable user data, then initialise databases ────────────────────────
+# In the desktop build BCTU_DATA_ROOT points at a per-user writable folder that
+# survives app updates. seed_user_data() copies the trial configs out of the
+# read-only bundle on first launch (configs and logos only, never databases —
+# a fresh install starts with an empty database).
+seed_user_data()
+message("Data root: ", app_data_root())
 db_init()
 shared_db_init()
 notifications_db_init()
@@ -111,9 +118,15 @@ ui <- build_app_ui()
 server <- function(input, output, session) {
   state <- init_app_state(input, output, session)
 
-  # Welcome screen (self-registration)
-  tryCatch(welcome_server(input, output, session, state),
-           error = function(e) message("WELCOME: ", e$message))
+  # ── Desktop build: no login ─────────────────────────────────────────────────
+  # This is a single-user app on the user's own machine, so the self-registration
+  # / password gate is bypassed. welcome_server() is deliberately NOT called, but
+  # modules/welcome_server.R is still sourced because trial_selector_server()
+  # calls apply_trial_role_visibility() from it.
+  # Full rights are granted so manager-only controls (.tm-only) stay visible.
+  state$rv$username <- Sys.getenv("USERNAME", Sys.getenv("USER", "Local user"))
+  shinyjs::hide("welcome_screen")
+  shinyjs::runjs("$('.tm-only').show(); $('.dl-data-btn').show();")
 
   # Trial selector
   tryCatch(trial_selector_server(input, output, session, state),
@@ -132,8 +145,7 @@ server <- function(input, output, session) {
            error = function(e) message("SITES: ", e$message))
   tryCatch(upload_server(input, output, session, state),
            error = function(e) message("UPLOAD: ", e$message))
-  tryCatch(accounts_server(input, output, session, state),
-           error = function(e) message("ACCOUNTS: ", e$message))
+  # Accounts tab removed in the desktop build (no login, single user).
   tryCatch(trial_settings_server(input, output, session, state),
            error = function(e) message("SETTINGS: ", e$message))
   tryCatch(modifications_tab_server(input, output, session, state),
@@ -151,36 +163,7 @@ server <- function(input, output, session) {
   tryCatch(return_rates_server("rr", rr_data = rr_data),
            error = function(e) message("RETURN RATES: ", e$message))
 
-  tryCatch(
-    postal_tracking_server(
-      "postal",
-      redcap_data  = reactive({ state$rv$raw_redcap }),
-      current_user = reactive({ state$rv$username %||% "unknown" }),
-      id_col       = "record_id",
-      op_col       = reactive({
-        cfg <- state$rv$trial_config
-        if (!is.null(cfg)) cfg$redcap_fields$operation_date %||% "iop_op_end_dt"
-        else "iop_op_end_dt"
-      }),
-      pref_col     = reactive({
-        cfg <- state$rv$trial_config
-        if (!is.null(cfg)) cfg$redcap_fields$contact_preference %||% "cntct_questionnaires_pref"
-        else "cntct_questionnaires_pref"
-      }),
-      site_col     = reactive({
-        cfg <- state$rv$trial_config
-        if (!is.null(cfg)) cfg$redcap_fields$site_name %||% "site_name"
-        else "site_name"
-      }),
-      baseline_event = reactive({
-        cfg <- state$rv$trial_config
-        if (!is.null(cfg)) cfg$redcap_events$baseline %||% "baseline_arm_1"
-        else "baseline_arm_1"
-      }),
-      lead_days    = 7
-    ),
-    error = function(e) message("POSTAL: ", e$message)
-  )
+  # Postal tracking tab removed in the desktop build.
 
   session$onSessionEnded(function() {
     tryCatch({

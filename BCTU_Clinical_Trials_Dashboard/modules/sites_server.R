@@ -4,6 +4,24 @@ sites_server <- function(input, output, session, state) {
   editing_orig_id  <- reactiveVal(NULL)   # site_id being edited (NULL = adding)
   pending_delete_id <- reactiveVal(NULL)
 
+  # ── Persist site edits immediately ──────────────────────────────────────
+  # Sites used to be written only on session end (app.R) or on trial switch
+  # (core.R). A crash, a force-quit, or closing the desktop window before
+  # Shiny's shutdown hook finished therefore lost every edit made that
+  # session — manually added sites, corrected open dates, changed targets.
+  #
+  # This observer writes through on every change to rv$sites, so the database
+  # always matches what is on screen. The trial_code guard matters: DB_PATH is
+  # a process-wide global, so saving while no trial is loaded (or mid-switch)
+  # would write this trial's sites into another trial's database.
+  observeEvent(rv$sites, {
+    req(rv$trial_code)
+    tryCatch(
+      db_save_sites(rv$sites),
+      error = function(e) message("Site autosave failed: ", e$message)
+    )
+  }, ignoreInit = TRUE)
+
   # ── Summary stats tiles ─────────────────────────────────────────────────
   output$sites_summary_stats <- renderUI({
     df <- rv$sites
