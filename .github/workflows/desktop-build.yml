@@ -1,0 +1,111 @@
+# Builds the Windows desktop installer.
+#
+# Run this from the Actions tab (Run workflow) and download the finished
+# installer from the run's Artifacts section. It exists because the installer
+# needs a Windows machine plus network access to CRAN, and produces a ~400MB
+# artefact that has no business in git.
+#
+# Roughly 20-30 minutes, most of it installing R packages.
+
+name: Desktop build (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      r-version:
+        description: "R version to bundle"
+        required: false
+        default: "4.4.2"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Install R via the standard action rather than fetch-r.ps1: the action
+      # caches, and we copy the result into electron/runtime/R so the packaged
+      # layout is identical to a local `npm run fetch-r`.
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ inputs.r-version || '4.4.2' }}
+          use-public-rspm: true
+
+      - name: Install R packages
+        shell: Rscript {0}
+        run: |
+          pkgs <- c(
+            "shiny", "bslib", "shinyWidgets", "shinyjs", "reactable", "echarts4r",
+            "shinycssloaders", "dplyr", "tidyr", "stringr", "lubridate", "writexl",
+            "readxl", "leaflet", "tibble", "rlang", "DBI", "RSQLite", "jsonlite",
+            "digest", "rmarkdown", "knitr", "purrr", "htmltools", "base64enc",
+            "officer", "flextable", "scales"
+          )
+          missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(missing)) install.packages(missing)
+          still <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(still)) stop("Failed to install: ", paste(still, collapse = ", "))
+          cat("All", length(pkgs), "packages present.\n")
+
+      - name: Stage the R runtime into electron/runtime/R
+        shell: pwsh
+        run: |
+          $rHome = & Rscript -e "cat(R.home())"
+          Write-Host "R.home() = $rHome"
+          $dest = "electron/runtime/R"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Path "$rHome\*" -Destination $dest -Recurse -Force
+          # Fold the user library in, so the packaged R can see the packages.
+          $libs = & Rscript -e "cat(paste(.libPaths(), collapse=';'))"
+          foreach ($lib in $libs -split ';') {
+            if ($lib -and (Test-Path $lib) -and ($lib -notlike "$rHome*")) {
+              Copy-Item -Path "$lib\*" -Destination "$dest\library" -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          $n = (Get-ChildItem "$dest\library" -Directory).Count
+          Write-Host "Bundled library contains $n packages"
+          if (-not (Test-Path "$dest\bin\x64\Rscript.exe") -and -not (Test-Path "$dest\bin\Rscript.exe")) {
+            throw "Rscript.exe missing from the staged runtime"
+          }
+
+      # pandoc is what rmarkdown shells out to for HTML/PDF report export.
+      # It normally arrives with RStudio, which a packaged app does not have,
+      # so bundle it explicitly or report generation fails on a clean machine.
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Bundle pandoc alongside R
+        shell: pwsh
+        run: |
+          $pandoc = (Get-Command pandoc).Source
+          $dest = "electron/runtime/pandoc"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item $pandoc -Destination $dest -Force
+          Write-Host "Bundled: $pandoc"
+
+      - name: Install Electron tooling
+        working-directory: electron
+        run: npm install
+
+      - name: Build installer
+        working-directory: electron
+        run: npm run dist
+
+      - name: List output
+        shell: pwsh
+        run: Get-ChildItem electron/dist -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BCTU-Dashboard-Windows-Installer
+          path: electron/dist/*.exe
+          retention-days: 14
+          if-no-files-found: error

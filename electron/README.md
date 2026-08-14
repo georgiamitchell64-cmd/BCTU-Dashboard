@@ -4,28 +4,38 @@ Packages the Shiny dashboard as a standalone Windows application with its own
 private copy of R. Users install one `.exe`; they do not need R, RStudio, or
 any packages installed.
 
-## Building the installer
+## Getting the installer
 
-Everything below runs on a **Windows** machine. You only do steps 1–2 once.
+### Easiest: let GitHub build it
+
+You do not need R, Node or a build environment.
+
+1. Go to the repository's **Actions** tab
+2. Choose **Desktop build (Windows)** -> **Run workflow**
+3. Wait ~20-30 minutes
+4. Download **BCTU-Dashboard-Windows-Installer** from the run's Artifacts
+
+That artefact contains the `.exe`. Run it to install - no admin rights needed.
+
+### Alternative: build locally on Windows
 
 ```powershell
 cd electron
-
-# 1. Download R and install the dashboard's package dependencies into it.
-#    Takes 10-20 minutes. Produces electron/runtime/R (~700MB before packing).
-npm run fetch-r
-
-# 2. Install the Electron build tooling.
+npm run fetch-r     # downloads R + 28 packages + pandoc (10-20 min, one-off)
 npm install
-
-# 3. Build the installer.
-npm run dist
+npm run dist        # -> dist\BCTU-Dashboard-Setup-1.0.0.exe
 ```
 
-The installer lands in `electron/dist/BCTU-Dashboard-Setup-1.0.0.exe`.
+To run without building an installer, use `npm start`.
 
-To run the app without building an installer (R runtime must already be
-fetched), use `npm start`.
+## Does the user need R installed?
+
+**No.** R is bundled inside the installer, along with pandoc for report export.
+The app launches `Rscript.exe` from its own `resources/R` folder and never
+consults the system `PATH` or registry, so a user's own R installation (if any)
+is neither required nor touched.
+
+The trade is size: expect a 300-500MB installer.
 
 ## Where user data lives
 

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<title>BCTU Clinical Trials Dashboard</title>
+<style>
+  :root{
+    --navy:#1B4F6B; --teal:#2EC4A5; --bg:#EEF3F8;
+    --ink:#1a2b36; --muted:#64748B;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg);
+    font-family:'Segoe UI',-apple-system,system-ui,sans-serif;
+    color:var(--ink);
+    display:flex;align-items:center;justify-content:center;
+    -webkit-user-select:none; user-select:none;
+    cursor:default;
+  }
+  .card{text-align:center;max-width:460px;padding:0 32px}
+  .mark{
+    width:64px;height:64px;margin:0 auto 22px;border-radius:14px;
+    background:var(--navy);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    /* 18px keeps the four letters inside the 64px tile; larger overflows it */
+    font-size:18px;font-weight:700;letter-spacing:.3px;
+  }
+  h1{font-size:19px;font-weight:600;margin:0 0 6px;color:var(--navy)}
+  .sub{font-size:13px;color:var(--muted);margin:0 0 26px}
+
+  .track{height:4px;border-radius:99px;background:#dbe4ec;overflow:hidden}
+  .fill{
+    height:100%;width:35%;border-radius:99px;background:var(--teal);
+    animation:slide 1.35s ease-in-out infinite;
+  }
+  /* Fill is 35% of the track, so its right edge clears the track at 285%.
+     Going further just parks it out of sight and the bar looks dead. */
+  @keyframes slide{
+    0%{transform:translateX(-100%)}
+    100%{transform:translateX(285%)}
+  }
+
+  .status{margin-top:16px;font-size:12.5px;color:var(--muted);min-height:1.2em}
+  .hint{margin-top:26px;font-size:11.5px;color:#94a3b8;line-height:1.5}
+
+  /* Error state */
+  .err{display:none;text-align:left}
+  body.failed .loading{display:none}
+  body.failed .err{display:block}
+  .err h1{color:#B4321E;text-align:center}
+  .err pre{
+    background:#fff;border:1px solid #dbe4ec;border-radius:8px;
+    padding:12px;font-size:11px;line-height:1.5;color:#5a1a08;
+    max-height:190px;overflow:auto;white-space:pre-wrap;
+    -webkit-user-select:text; user-select:text;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="loading">
+      <div class="mark">BCTU</div>
+      <h1>Clinical Trials Dashboard</h1>
+      <p class="sub">Starting up</p>
+      <div class="track"><div class="fill"></div></div>
+      <div class="status" id="status">Preparing…</div>
+      <p class="hint">The statistical engine takes a few moments to start<br>the first time after installing.</p>
+    </div>
+
+    <div class="err">
+      <div class="mark" style="background:#B4321E">!</div>
+      <h1>Could not start</h1>
+      <p class="sub" style="text-align:center">The dashboard's R engine did not start.</p>
+      <pre id="errtext"></pre>
+      <p class="hint" style="text-align:center">
+        If this persists, reinstall the app.<br>
+        Details are in the log folder under Help → Open data folder.
+      </p>
+    </div>
+  </div>
+
+<script>
+  // Status text is driven from the main process via a query-string ping,
+  // avoiding any need for a preload bridge or node integration on this page.
+  window.addEventListener('message', (e) => {
+    const d = e.data || {};
+    if (d.status) document.getElementById('status').textContent = d.status;
+    if (d.error) {
+      document.body.classList.add('failed');
+      document.getElementById('errtext').textContent = d.error;
+    }
+  });
+</script>
+</body>
+</html>

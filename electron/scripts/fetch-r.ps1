@@ -84,6 +84,36 @@ cat("All packages present.\n")
 & $rscript -e $rCode
 if ($LASTEXITCODE -ne 0) { throw "R package installation failed." }
 
+# ── pandoc ───────────────────────────────────────────────────────────────────
+# rmarkdown shells out to pandoc to render the TMG/TSC reports. It normally
+# ships with RStudio, which a packaged app does not have, so bundle it or
+# report export fails on a clean machine.
+$pandocDir = Join-Path $runtimeDir "pandoc"
+$pandocExe = Join-Path $pandocDir "pandoc.exe"
+
+if ((Test-Path $pandocExe) -and -not $Force) {
+  Write-Host "pandoc already present at $pandocDir" -ForegroundColor Yellow
+} else {
+  New-Item -ItemType Directory -Force -Path $pandocDir | Out-Null
+  $pandocVer = "3.1.11"
+  $zipUrl = "https://github.com/jgm/pandoc/releases/download/$pandocVer/pandoc-$pandocVer-windows-x86_64.zip"
+  $zip    = Join-Path $env:TEMP "pandoc-$pandocVer.zip"
+  $tmp    = Join-Path $env:TEMP "pandoc-extract"
+
+  Write-Host "Downloading pandoc $pandocVer ..." -ForegroundColor Cyan
+  Invoke-WebRequest -Uri $zipUrl -OutFile $zip
+  if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+  Expand-Archive -Path $zip -DestinationPath $tmp -Force
+
+  $found = Get-ChildItem $tmp -Recurse -Filter "pandoc.exe" | Select-Object -First 1
+  if (-not $found) { throw "pandoc.exe not found in the downloaded archive" }
+  Copy-Item $found.FullName -Destination $pandocExe -Force
+
+  Remove-Item $zip -Force
+  Remove-Item $tmp -Recurse -Force
+  Write-Host "pandoc ready at $pandocDir" -ForegroundColor Green
+}
+
 Write-Host ""
 Write-Host "R runtime ready at $rDir" -ForegroundColor Green
 Write-Host "Next: npm install; npm run dist" -ForegroundColor Green

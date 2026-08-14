@@ -22,6 +22,7 @@
     },
     "files": [
       "main.js",
+      "splash.html",
       "package.json"
     ],
     "extraResources": [
@@ -42,6 +43,10 @@
       {
         "from": "runtime/R",
         "to": "R"
+      },
+      {
+        "from": "runtime/pandoc",
+        "to": "pandoc"
       }
     ],
     "win": {
