@@ -452,12 +452,14 @@ prepare_report_data <- function(df,
 
   # ── 16. Follow-up completion ──────────────────────────────────────────────
   op_dates <- if ("op_date" %in% names(filtered)) filtered$op_date else rep(NA_Date_, nrow(filtered))
-  reached_po <- !is.na(op_dates) & (op_dates + 7) <= today
-  elig_po <- sum(reached_po)
-  comp_po <- if ("disc_done" %in% names(filtered) && elig_po > 0)
-    sum(filtered$disc_done[reached_po] == 2, na.rm = TRUE) else 0
-  pct_po  <- if (elig_po > 0) round(comp_po/elig_po*100, 1) else NA_real_
-  primary_outcome <- list(eligible = elig_po, complete = comp_po, pct = pct_po, threshold_days = 7)
+  rand_dates_f <- if ("rand_date" %in% names(filtered)) filtered$rand_date else rep(NA_Date_, nrow(filtered))
+
+  # Primary-outcome completeness is the Index Operation form return rate
+  # (entered ÷ due), taken straight from the CRF return-rate CSV below. No
+  # REDCap-derived approximation is computed here, so nothing overrides that
+  # figure; it stays NA (renders "—") until a return-rate CSV is loaded.
+  primary_outcome <- list(eligible = NA_integer_, complete = NA_integer_,
+                          pct = NA_real_, source = "index_op_due")
 
   elig_dc <- nrow(filtered)
   comp_dc <- if ("disc_done" %in% names(filtered))
@@ -466,7 +468,13 @@ prepare_report_data <- function(df,
   elig_30 <- sum(reached_30)
   comp_30 <- if ("fu_30_complete" %in% names(filtered) && elig_30 > 0)
     sum(filtered$fu_30_complete[reached_30] == 1, na.rm = TRUE) else NA
-  reached_90 <- !is.na(op_dates) & (op_dates + 90) <= today
+  # 90-day questionnaire eligibility opens 90 days after the operation END
+  # date. When a participant has no operation date recorded, fall back to
+  # their randomisation date + 2 days (the protocol's assumed op timing) so
+  # they are still counted in the denominator once the window has elapsed.
+  fu_base_90 <- as.Date(ifelse(!is.na(op_dates), op_dates, rand_dates_f + 2),
+                        origin = "1970-01-01")
+  reached_90 <- !is.na(fu_base_90) & (fu_base_90 + 90) <= today
   elig_90 <- sum(reached_90)
   comp_90 <- if ("fu_90_complete" %in% names(filtered) && elig_90 > 0)
     sum(filtered$fu_90_complete[reached_90] == 1, na.rm = TRUE) else NA
@@ -479,7 +487,7 @@ prepare_report_data <- function(df,
     timepoint = c("Discharge","30-day","90-day"),
     denominator_note = c("all randomised participants",
       paste0("op date + 30 days ≤ ", format(today, "%d %b %Y")),
-      paste0("op date + 90 days ≤ ", format(today, "%d %b %Y"))),
+      paste0("op date (or randomisation + 2 days) + 90 days ≤ ", format(today, "%d %b %Y"))),
     eligible   = c(elig_dc, elig_30, elig_90),
     complete   = c(comp_dc, comp_30, comp_90),
     assessable = c(TRUE, elig_30 > 0, elig_90 > 0),
@@ -665,35 +673,29 @@ prepare_report_data <- function(df,
     }, error = function(e) { message("CRF: error reading ", crf_csv_path, ": ", e$message); NULL })
   } else NULL
 
-  # Primary-outcome completeness follows the same logic as the CRF return
-  # rates by timepoint & form — entered ÷ due for the Discharge form, capped
-  # at 100% — whenever a return-rate CSV is loaded. The REDCap disc_done
-  # approximation above (which saturates at 100% once every entered form is
-  # complete) is only the fallback when no CSV is available.
+  # Primary-outcome completeness is the Index Operation form return rate:
+  # numerator = entered, denominator = due, taken straight from the CRF
+  # return-rate CSV. This is the sole source — no other calculation overrides
+  # it — so the figure matches the Index Operation row in the return-rate
+  # table below exactly.
   if (!is.null(crf_data) && nrow(crf_data) > 0) {
     gcol <- function(pat) {
       m <- grep(pat, names(crf_data), ignore.case = TRUE, value = TRUE)
       if (length(m)) crf_data[[m[1]]] else NULL
     }
-    ev_col   <- gcol("^(event|timepoint|time.?point|visit)")
     form_col <- gcol("^(stage|form|instrument)")
     due_v    <- suppressWarnings(as.numeric(gcol("^due")))
     ent_v    <- suppressWarnings(as.numeric(gcol("entered|received")))
     if (!is.null(form_col) && !is.null(due_v) && !is.null(ent_v)) {
-      sel_form <- grepl("discharge", as.character(form_col), ignore.case = TRUE)
-      sel_ev   <- if (!is.null(ev_col))
-        grepl("^discharge", trimws(as.character(ev_col)), ignore.case = TRUE)
-        else rep(FALSE, length(form_col))
-      sel <- if (any(sel_form & sel_ev)) sel_form & sel_ev
-             else if (any(sel_form)) sel_form else sel_ev
+      sel <- grepl("index[[:space:]_-]*operation", as.character(form_col),
+                   ignore.case = TRUE)
       if (any(sel)) {
         d_due <- sum(due_v[sel], na.rm = TRUE)
         d_ent <- sum(ent_v[sel], na.rm = TRUE)
         primary_outcome <- list(
           eligible = d_due, complete = d_ent,
-          pct = if (d_due > 0) round(min(d_ent, d_due) / d_due * 100, 1)
-                else NA_real_,
-          source = "crf_due")
+          pct = if (d_due > 0) round(d_ent / d_due * 100, 1) else NA_real_,
+          source = "index_op_due")
       }
     }
   }
@@ -744,13 +746,13 @@ prepare_report_data <- function(df,
   has_pn_late    <- "pn_late"  %in% names(filtered)
   has_pn_early   <- "pn_early" %in% names(filtered)
 
-  interv_df  <- filtered[!is.na(filtered$trial_arm) & filtered$trial_arm == "Intervention", ]
-  interv_rate <- if (nrow(interv_df) > 0 && has_pn_fields) {
-    hrs <- as.numeric(difftime(interv_df$pn_start, interv_df$op_dttm, units = "hours"))
-    hl  <- if (has_pn_late) !is.na(interv_df$pn_late) else rep(FALSE, nrow(interv_df))
-    w48 <- !is.na(hrs) & hrs >= 0 & hrs <= 48 & !hl
-    round(mean(w48) * 100, 1)
-  } else NA
+  # Intervention delivery (early PN started within 48 h for intervention-arm
+  # participants) cannot be derived from the REDCap export: the export carries
+  # no genuine randomisation-arm field, so `trial_arm` is itself inferred from
+  # the same PN timing/reason fields the metric would measure — the calculation
+  # would be circular and unreliable. Report NA ("not determinable from export");
+  # this criterion is assessed manually from source data at pilot review.
+  interv_rate <- NA_real_
 
   # Contamination cannot be derived from allocation (the export carries no
   # randomisation-arm field). Per TMG guidance a participant counts as

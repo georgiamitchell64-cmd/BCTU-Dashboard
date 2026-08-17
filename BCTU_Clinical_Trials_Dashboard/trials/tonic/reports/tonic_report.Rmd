@@ -257,7 +257,7 @@ thr <- rc$pilot_thresholds %||% list(
        stop_lbl = "< 60% of sites at rate", mod_lbl = "60 – 99% of sites at rate",
        go_lbl   = "100% of sites at rate"),
   list(name = "Primary-outcome data completeness",
-       det  = "Discharge forms entered as a proportion of discharge forms due — same forms-due logic as the CRF return rates by timepoint & form.",
+       det  = "Index Operation forms entered as a proportion of Index Operation forms due — the CRF return rate for the index operation form.",
        stop_lbl = "< 90% complete", mod_lbl = "90 – 99% complete",
        go_lbl   = "100% complete"),
   list(name = "90-day questionnaire return rate",
@@ -265,7 +265,7 @@ thr <- rc$pilot_thresholds %||% list(
        stop_lbl = "< 70% returned", mod_lbl = "70 – 99% returned",
        go_lbl   = "100% returned"),
   list(name = "Intervention delivery — intervention arm",
-       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants.",
+       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants. Not determinable from the REDCap export (no randomisation-arm field) — assessed manually from source data at pilot review.",
        stop_lbl = "< 70% within 48 h", mod_lbl = "75 – 99% within 48 h",
        go_lbl   = "100% within 48 h"),
   list(name = "Contamination — control arm",
@@ -405,14 +405,15 @@ body{padding:24px 0}
   /* Real @page margins frame every sheet — including table continuation
      sheets — so the fixed 297mm canvas and its 14mm padding go. The flex
      column with min-height keeps each footer at the base of a full page;
-     1mm slack below the 274mm printable height avoids rounding spilling a
-     blank sheet. */
-  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:273mm;padding:0;page-break-after:always}
+     Generous slack below the 274mm printable height stops sub-pixel rounding
+     tipping a page onto a second sheet, which page-break-after would then
+     turn into an entirely blank page. */
+  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:266mm;padding:0;page-break-after:always}
   .page:last-child{page-break-after:auto}
   /* Blocks never split mid-element: anything that will not fit in the space
      left on the current page starts on the next one instead. */
   .ph,.ph-info,.card,.row2,.row3,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
-  .ol-chart-wrap,.ol-phases,.ol-status,.milestones,.ml-grp,.chart-wrap,
+  .ol-chart-wrap,.ol-phases,.ol-status,.milestones,.ml-grp,.chart-wrap,.mon-chart-wrap,
   .demo,.note,.scale-key,.eth-bar,.eth-legend,svg{
     break-inside:avoid;page-break-inside:avoid}
   /* Headings and table captions stay with the content they introduce. */
@@ -533,6 +534,10 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
 .card .ct{font-size:8.5pt;color:var(--navy);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .chart-wrap{position:relative;height:140px}
+/* Sized so section 04 sits on the same sheet as the sections above it: a
+   taller chart cannot fit in the space left on the page, so print moves the
+   whole card to a fresh sheet and leaves the page above half empty. */
+.mon-chart-wrap{position:relative;height:200px}
 
 .demo{display:flex;gap:6px;margin-top:4px}
 .demo .chip{flex:1;text-align:center;padding:8px 6px;border-radius:6px;background:var(--navy-tint-2);border:1px solid var(--line)}
@@ -809,7 +814,23 @@ render_ms_group(ms_future2,   "p-a", "Upcoming", "Pilot · recruitment · close-
 ```
 </div>
 
-<h2 class="sec">
+```{r page1-footer}
+pf_footer(1)
+```
+
+</section>
+
+<!-- ============================================================
+     PAGE 2 — PILOT PROGRESSION · PROJECT TIMELINE · RECRUITMENT VS TARGET
+============================================================== -->
+
+<section class="page">
+
+```{r page2-header}
+ph_header("Page 2 — Pilot, timeline & recruitment")
+```
+
+<h2 class="sec" style="margin-top:0">
 
 <span class="num">02</span> Internal pilot progression <span class="hint">6-month pilot · review `r esc(pilot_end)`</span>
 
@@ -830,26 +851,10 @@ for (i in seq_along(pc_cards)) {
 </div>
 
 <div class="note">
-Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on page 4.
+Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on pages 5–6.
 </div>
 
-```{r page1-footer}
-pf_footer(1)
-```
-
-</section>
-
-<!-- ============================================================
-     PAGE 2 — PROJECT TIMELINE · RECRUITMENT VS TARGET
-============================================================== -->
-
-<section class="page">
-
-```{r page2-header}
-ph_header("Page 2 — Timeline & recruitment")
-```
-
-<h2 class="sec" style="margin-top:0">
+<h2 class="sec">
 
 <span class="num">03</span> Project timeline <span class="hint">`r esc(proj_start)` → `r esc(safe(rc$timeline_end, "Feb 2029"))` · `r fmt_int(safe(rc$timeline_months, 57))` mo end-to-end</span>
 
@@ -895,15 +900,10 @@ cat(sprintf('<g><line x1="%d" y1="16" x2="%d" y2="162" stroke="#B4321E" stroke-w
   <span>Full target: <b>`r fmt_int(n_target)` by `r esc(full_end)`</b></span>
 </div>
 
-<div class="row2" style="margin-top:8px">
+<div style="margin-top:8px">
 <div class="card">
-<div class="ct">Cumulative recruitment · actual vs. target</div>
-<div class="chart-wrap"><canvas id="cumC"></canvas></div>
-</div>
-
-<div class="card">
-<div class="ct">Monthly randomisations</div>
-<div class="chart-wrap"><canvas id="monC"></canvas></div>
+<div class="ct">Monthly randomisations · participants randomised each month</div>
+<div class="mon-chart-wrap"><canvas id="monC"></canvas></div>
 </div>
 </div>
 
@@ -1038,7 +1038,7 @@ ph_header("Page 4 — Data, safety & outcomes")
 <div class="ct" style="color:var(--teal)">Primary outcome completeness</div>
 <div style="display:flex;gap:18px;align-items:baseline;margin-top:4px">
   <div style="font-size:24pt;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;line-height:1">`r fmt_pct((rd$primary_outcome %||% list())$pct, 0)`</div>
-  <div class="note" style="margin:0">`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Due" else "Eligible"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$eligible, 0))`</b> · `r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Entered" else "Complete"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$complete, 0))`</b><br>`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Discharge form · entered ÷ due, as per return rates below" else "Discharge form, ≥7&nbsp;d post-op"`</div>
+  <div class="note" style="margin:0">Due: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$eligible, 0))`</b> · Entered: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$complete, 0))`</b><br>Index Operation form · entered ÷ due, as per return rates below</div>
 </div>
 </div>
 
@@ -1142,23 +1142,51 @@ if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0) {
 
 </h2>
 
-<div class="sw-grid">
-<div class="sw-cell `r if (sae_count == 0) "safe" else ""`">
-
-<div class="lab2">
-Serious adverse events (SAE)
+<div class="keyline">
+  <span>Serious adverse events (SAE): <b>`r fmt_int(sae_count)`</b></span>
+  <span>`r if (sae_count == 0) "No SUSARs · no urgent safety measures" else "See SAE log below for detail"`</span>
+  <span>Participant withdrawals: <b>`r fmt_int(n_wd)` / `r fmt_int(n_rand)`</b></span>
 </div>
 
-<div class="big">`r fmt_int(sae_count)`</div>
-<div class="det">`r if (sae_count == 0) sprintf("SAEs reported since trial start.<br><b>No SUSARs · no urgent safety measures.</b>") else "See SAE log for detail."`</div>
-</div>
+<p class="lab" style="margin-top:10px">SAE log</p>
 
-<div class="sw-cell wd">
-<div class="lab2">Participant withdrawals</div>
-<div class="big">`r fmt_int(n_wd)`<small> / `r fmt_int(n_rand)`</small></div>
-<div class="det">
+```{r sae-log}
+sl <- rd$sae_log
+if (!is.null(sl) && nrow(sl) > 0) {
+  cols <- c(record_id = "Participant", site_name = "Site",
+            reported = "Reported", diagnosis = "Diagnosis",
+            soc = "System organ class", category = "Category",
+            severity = "Severity", outcome = "Outcome",
+            related = "Causality", expected = "Expectedness",
+            death_yn = "Death", death = "Death date")
+  # Columns carrying at least one value render (keeps the table narrow); if no
+  # detail column has data yet, show them all with "—" placeholders.
+  present  <- names(cols)[names(cols) %in% names(sl)]
+  has_data <- present[vapply(present, function(cc)
+    any(!is.na(sl[[cc]]) & nzchar(trimws(as.character(sl[[cc]])))), logical(1))]
+  if (length(setdiff(has_data, c("record_id", "site_name"))) > 0)
+    present <- has_data
+  fmt_cell <- function(x) {
+    x <- trimws(as.character(x))
+    ifelse(is.na(x) | !nzchar(x), "—", x)
+  }
+  cat('<table class="rt"><thead><tr>',
+      paste(sprintf('<th class="l">%s</th>', cols[present]), collapse = ""),
+      '</tr></thead><tbody>', sep = "")
+  for (i in seq_len(nrow(sl))) {
+    vals <- vapply(present, function(cc) esc(fmt_cell(sl[[cc]][i])), character(1))
+    cat(sprintf('<tr>%s</tr>',
+                paste(sprintf('<td class="l">%s</td>', vals), collapse = "")))
+  }
+  cat("</tbody></table>")
+} else {
+  cat('<table class="rt"><tbody><tr><td class="l" style="color:var(--muted)">No SAEs reported since trial start. No SUSARs · no urgent safety measures.</td></tr></tbody></table>')
+}
+```
 
-```{r wd-detail}
+<p class="lab" style="margin-top:12px">Withdrawal log</p>
+
+```{r wd-log}
 if (!is.null(wd_log) && nrow(wd_log) > 0) {
   fmt_wd_date <- function(x) {
     d <- suppressWarnings(as.Date(as.character(x)))
@@ -1179,7 +1207,7 @@ if (!is.null(wd_log) && nrow(wd_log) > 0) {
   reasons[is.na(reasons) | !nzchar(trimws(reasons))] <- "—"
   sites <- if ("site_name" %in% names(wd_log)) as.character(wd_log$site_name) else rep("", nrow(wd_log))
   has_site <- any(nzchar(sites) & !is.na(sites))
-  cat('<table class="rt" style="margin-top:2px"><thead><tr><th class="l">Date withdrawn</th><th class="l">Type</th>',
+  cat('<table class="rt"><thead><tr><th class="l">Date withdrawn</th><th class="l">Type</th>',
       if (has_reason) '<th class="l">Reason</th>' else "",
       if (has_site) '<th class="l">Site</th>' else "", '</tr></thead><tbody>', sep = "")
   for (i in seq_len(nrow(wd_log))) {
@@ -1189,40 +1217,9 @@ if (!is.null(wd_log) && nrow(wd_log) > 0) {
                 if (has_site) sprintf('<td class="l">%s</td>', esc(sites[i])) else ""))
   }
   cat("</tbody></table>")
-  cat('<div style="margin-top:6px"><b>Full consent retained for outcome data collection.</b></div>')
-} else cat("No withdrawals to date.")
-```
-
-</div>
-</div>
-
-</div>
-
-```{r sae-log}
-sl <- rd$sae_log
-if (!is.null(sl) && nrow(sl) > 0) {
-  cols <- c(record_id = "Participant", site_name = "Site", onset = "Onset date",
-            event = "Event", severity = "Severity", outcome = "Outcome",
-            related = "Causality", expected = "Expectedness",
-            death = "Death date")
-  # Every column present in the export renders; cells pending entry read "—".
-  present <- names(cols)[names(cols) %in% names(sl)]
-  if (length(present) > 0) {
-    fmt_cell <- function(x) {
-      x <- trimws(as.character(x))
-      ifelse(is.na(x) | !nzchar(x), "—", x)
-    }
-    cat('<p class="lab" style="margin-top:8px">SAE log — TMG export</p>')
-    cat('<table class="rt"><thead><tr>',
-        paste(sprintf('<th class="l">%s</th>', cols[present]), collapse = ""),
-        '</tr></thead><tbody>', sep = "")
-    for (i in seq_len(nrow(sl))) {
-      vals <- vapply(present, function(cc) esc(fmt_cell(sl[[cc]][i])), character(1))
-      cat(sprintf('<tr>%s</tr>',
-                  paste(sprintf('<td class="l">%s</td>', vals), collapse = "")))
-    }
-    cat("</tbody></table>")
-  }
+  cat('<div class="note" style="margin-top:6px"><b>Full consent retained for outcome data collection.</b></div>')
+} else {
+  cat('<table class="rt"><tbody><tr><td class="l" style="color:var(--muted)">No withdrawals to date.</td></tr></tbody></table>')
 }
 ```
 
@@ -1440,30 +1437,28 @@ pf_footer(6)
   const target = `r j(chart_target)`;
   const actual = `r j(chart_actual)`;
 
-  // Page 2: cumulative recruitment
-  const cumEl = document.getElementById('cumC');
-  if (cumEl) {
-    new Chart(cumEl, {
-      type:'line',
-      data:{
-        labels: labels,
-        datasets:[
-          {label:'Target (protocol)', data: target, borderColor:'#bcd2dc', borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false, tension:.25},
-          {label:'Actual', data: actual, borderColor: navy, backgroundColor:'rgba(18,161,146,.18)', fill:true, borderWidth:2, pointBackgroundColor: navy, pointRadius:3, tension:.3, spanGaps:false}
-        ]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:true,labels:{boxWidth:10,boxHeight:10,padding:8,font:{size:9}}}},
-        scales:{
-          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{padding:4}}
-        }
-      }
-    });
-  }
+  // Draws the count above each bar so every month's number is explicit.
+  const barValueLabels = {
+    id:'barValueLabels',
+    afterDatasetsDraw(chart){
+      const ds = chart.data.datasets[0];
+      const meta = chart.getDatasetMeta(0);
+      const {ctx} = chart;
+      ctx.save();
+      ctx.font = '700 11px ' + (Chart.defaults.font.family || 'sans-serif');
+      ctx.fillStyle = navy;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      meta.data.forEach((bar, i) => {
+        const v = ds.data[i];
+        if (v == null) return;
+        ctx.fillText(v, bar.x, bar.y - 4);
+      });
+      ctx.restore();
+    }
+  };
 
-  // Page 2: monthly randomisations
+  // Page 2: monthly randomisations — large, month-by-month with counts.
   const monEl = document.getElementById('monC');
   if (monEl) {
     // Derive monthly counts from actual diffs
@@ -1479,17 +1474,19 @@ pf_footer(6)
         datasets:[{
           data: monthly,
           backgroundColor: ctx => (ctx.parsed && ctx.parsed.y) ? navy : '#edf2f5',
-          borderRadius:4, maxBarThickness:24
+          borderRadius:4, maxBarThickness:48
         }]
       },
       options:{
         responsive:true, maintainAspectRatio:false,
+        layout:{padding:{top:18}},
         plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(c.parsed.y||0)+' randomised'}}},
         scales:{
-          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{stepSize:1,padding:4}}
+          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:45,minRotation:0,autoSkip:false,font:{size:9}}},
+          y:{beginAtZero:true,grace:'12%',grid:{color:'#eef2f5'},border:{display:false},ticks:{stepSize:1,padding:4}}
         }
-      }
+      },
+      plugins:[barValueLabels]
     });
   }
 

@@ -734,9 +734,9 @@ reports_tab_ui <- function() {
                          start = floor_date(Sys.Date() %m-% months(2), "month"),
                          end   = Sys.Date(),
                          format = "d M yyyy"),
-          tags$button(id = "rb_scope_filtered", class = "on action-button",
+          tags$button(id = "rb_scope_filtered", class = "action-button",
                       type = "button", "Filtered"),
-          tags$button(id = "rb_scope_full", class = "action-button",
+          tags$button(id = "rb_scope_full", class = "on action-button",
                       type = "button", "Full trial")
       )
     ),
