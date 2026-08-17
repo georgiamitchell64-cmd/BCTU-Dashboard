@@ -5,6 +5,11 @@
 # needs a Windows machine plus network access to CRAN, and produces a ~400MB
 # artefact that has no business in git.
 #
+# Pick a branch that actually contains electron/ in the "Run workflow" dropdown.
+# The workflow lives on main, but the desktop app it packages may not have been
+# merged there yet, and the two are easy to get out of step. The preflight step
+# below checks for that before spending 20 minutes on R packages.
+#
 # Roughly 20-30 minutes, most of it installing R packages.
 
 name: Desktop build (Windows)
@@ -27,6 +32,35 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Fail here rather than 4 minutes in at `npm install`, where a missing
+      # desktop app surfaces as a bare ENOENT on electron/package.json and
+      # looks like an npm or Electron fault instead of a wrong-branch one.
+      - name: Preflight - the desktop app must exist on this branch
+        shell: pwsh
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          $missing = @()
+          foreach ($p in "electron/package.json", "electron/main.js", "BCTU_Clinical_Trials_Dashboard/app.R") {
+            if (-not (Test-Path $p)) { $missing += $p }
+          }
+          if ($missing.Count) {
+            Write-Host "::error::Branch '$env:BRANCH' is missing: $($missing -join ', ')"
+            Write-Host ""
+            Write-Host "This workflow packages the Electron desktop app in electron/, but that"
+            Write-Host "directory is not present on the branch this run was started from."
+            Write-Host ""
+            Write-Host "Fix it by either:"
+            Write-Host "  1. Re-running from a branch that has the desktop app. Actions tab ->"
+            Write-Host "     Desktop build (Windows) -> Run workflow -> pick that branch."
+            Write-Host "  2. Merging the desktop app into main, then re-running from main."
+            Write-Host ""
+            Write-Host "Top level of '$env:BRANCH':"
+            Get-ChildItem -Name | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "Desktop app present on '$env:BRANCH'."
 
       - uses: actions/setup-node@v4
         with:
