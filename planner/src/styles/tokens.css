@@ -1,0 +1,109 @@
+/* ============================================================================
+ * tokens.css — design tokens
+ * ----------------------------------------------------------------------------
+ * Palette borrowed from the BCTU/TONIC dashboards so the two feel related.
+ * The accent is a live variable: Settings rewrites --accent and everything
+ * downstream follows.
+ * ========================================================================== */
+
+:root {
+  /* Brand */
+  --navy: #1B4F6B;
+  --navy-dk: #143D54;
+  --navy-lt: #26647F;
+  --accent: #2EC4A5;
+  --accent-dk: #0FA88E;
+  --accent-soft: rgba(46, 196, 165, 0.14);
+  --accent-ink: #0B5F52;
+
+  /* Urgency */
+  --u-critical: #EF4444;
+  --u-high: #F59E0B;
+  --u-medium: #3B82F6;
+  --u-low: #94A3B8;
+
+  /* Surfaces (light) */
+  --bg: #EEF3F8;
+  --bg-alt: #E6EDF5;
+  --card: #FFFFFF;
+  --card-2: #F8FAFD;
+  --border: #DDE5EE;
+  --border-strong: #C6D3E2;
+  --text: #1E293B;
+  --muted: #64748B;
+  --faint: #94A3B8;
+  --sidebar: var(--navy);
+  --sidebar-text: rgba(255, 255, 255, 0.72);
+  --overlay: rgba(15, 33, 48, 0.48);
+
+  /* Type */
+  --font: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 28px;
+
+  /* Shape */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* Space — density-aware */
+  --gap: 14px;
+  --row-pad-y: 11px;
+  --row-pad-x: 13px;
+  --card-pad: 18px;
+
+  /* Elevation */
+  --sh-1: 0 1px 2px rgba(16, 40, 62, 0.06), 0 1px 3px rgba(16, 40, 62, 0.05);
+  --sh-2: 0 2px 6px rgba(16, 40, 62, 0.08), 0 6px 16px rgba(16, 40, 62, 0.07);
+  --sh-3: 0 8px 24px rgba(16, 40, 62, 0.14), 0 20px 48px rgba(16, 40, 62, 0.12);
+  --ring: 0 0 0 3px var(--accent-soft);
+
+  /* Motion */
+  --t-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-med: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-spring: 320ms cubic-bezier(0.22, 1.2, 0.36, 1);
+
+  --sidebar-w: 232px;
+  --topbar-h: 56px;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0F172A;
+  --bg-alt: #131F38;
+  --card: #1A2438;
+  --card-2: #212D45;
+  --border: #2B3950;
+  --border-strong: #3A4A65;
+  --text: #E7EDF6;
+  --muted: #9AAAC2;
+  --faint: #6C7E99;
+  --sidebar: #101B2E;
+  --sidebar-text: rgba(255, 255, 255, 0.66);
+  --overlay: rgba(3, 8, 18, 0.66);
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sh-2: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --sh-3: 0 12px 36px rgba(0, 0, 0, 0.55);
+  --u-low: #7C8CA5;
+}
+
+:root[data-density='compact'] {
+  --gap: 10px;
+  --row-pad-y: 7px;
+  --row-pad-x: 10px;
+  --card-pad: 13px;
+  --fs-md: 13px;
+  --fs-sm: 12px;
+  --topbar-h: 50px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-fast: 1ms; --t-med: 1ms; --t-spring: 1ms; }
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}

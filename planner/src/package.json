@@ -1,0 +1,4 @@
+{
+  "//": "Marks everything under src/ as ES modules. The renderer is loaded by the browser engine, which does not read this file, but Node does when running the unit tests against these same source files.",
+  "type": "module"
+}
