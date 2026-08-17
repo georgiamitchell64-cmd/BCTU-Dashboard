@@ -99,6 +99,18 @@ overview_tab_ui <- function() {
                 span(class = "pov-delta-label", "pp this period"))),
           div(class = "pov-kpi-spark",
               pov_sparkline(c(32,35,39,42,45,48,50,53,55,57,59,61.6), "#F59E0B"))
+        ),
+        # Needed / site / month — the required rate to reach target on time.
+        # No sparkline: this is a forward-looking requirement, so there is no
+        # history to trend.
+        div(class = "pov-kpi",
+          div(class = "pov-kpi-body",
+            div(class = "pov-kpi-label", "Needed / site / month"),
+            div(class = "pov-kpi-value", textOutput("n_need_rate", inline = TRUE)),
+            div(class = "pov-kpi-sub", textOutput("n_need_rate_sub", inline = TRUE)),
+            div(class = "pov-kpi-delta-row",
+                uiOutput("need_rate_badge", inline = TRUE),
+                span(class = "pov-delta-label", "vs central assumption")))
         )
       ),
 
