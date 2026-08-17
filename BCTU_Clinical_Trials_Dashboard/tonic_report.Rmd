@@ -267,40 +267,15 @@ if (nrow(sched) > 0) {
   chart_actual <- ca
 }
 
-# ── Average monthly recruits needed per site ──────────────────────────────────
-# The forward-looking counterpart to "recruitment vs. protocol": how many
-# participants each recruiting site must randomise per month, from this month to
-# the end of recruitment, for the trial to land on its target.
-#
-#   need / site / month = (target − randomised) ÷ months left ÷ sites recruiting
-#
-# The horizon comes from the protocol target schedule (schedule_full), the same
-# series that drives the recruitment charts and the dashboard's projection — so
-# report and dashboard agree without either having to parse a date string. Only
-# when no schedule was supplied do we fall back to the free-text milestone
-# dates. The current month counts as available recruitment time, so the span is
-# inclusive of it.
-#
-# This mirrors .required_per_site_rate() in functions/projection_math.R, which
-# serves the dashboard. The Rmd renders in new.env(parent = globalenv()) and so
-# cannot see the app's functions; keep the two formulas in step.
+# ── Actual monthly average recruits per site ───────────────────────────────────
+# Support for the "Actual / mo" column in the all-sites table: the rate each
+# site has actually delivered, its randomisations over the months it has been
+# open. prepare_report_data() precomputes it via .actual_monthly_per_site() in
+# functions/projection_math.R and passes it as site_status$actual_monthly; the
+# helpers here back the fallback path and the colour banding.
 
-parse_month <- function(x) {
-  if (is.null(x) || length(x) == 0) return(as.Date(NA))
-  s <- trimws(as.character(x)[1])
-  if (is.na(s) || !nzchar(s)) return(as.Date(NA))
-  # as.Date() raises rather than returning NA on non-standard strings.
-  d <- tryCatch(as.Date(s), error = function(e) as.Date(NA))   # ISO "2028-06-01"
-  for (f in c("%d %b %Y", "%d %B %Y")) {                       # "Jun 2028"
-    if (is.na(d)) d <- suppressWarnings(as.Date(paste("01", s), format = f))
-  }
-  for (f in c("%d %b %Y", "%d %B %Y")) {                       # "30 Jun 2028"
-    if (is.na(d)) d <- suppressWarnings(as.Date(s, format = f))
-  }
-  if (is.na(d)) as.Date(NA) else as.Date(format(d, "%Y-%m-01"))
-}
-
-# Whole months from `from` to `to`, counting both end months.
+# Whole months from `from` to `to`, counting both end months, so a site that
+# opened this month reads as one month rather than zero.
 months_inclusive <- function(from, to) {
   if (is.na(from) || is.na(to)) return(NA_integer_)
   n <- (as.integer(format(to, "%Y")) - as.integer(format(from, "%Y"))) * 12L +
@@ -310,58 +285,12 @@ months_inclusive <- function(from, to) {
 
 this_month <- as.Date(format(Sys.Date(), "%Y-%m-01"))
 
-rec_end_date <- if (nrow(sched) > 0 && !is.null(sched$month_date))
-                  suppressWarnings(max(as.Date(sched$month_date), na.rm = TRUE)) else
-                  as.Date(NA)
-if (is.na(rec_end_date)) rec_end_date <- parse_month(full_end)
-if (is.na(rec_end_date)) rec_end_date <- parse_month(proj_end)
-months_left <- months_inclusive(this_month, rec_end_date)
-
-remaining_to_target <- if (is.na(n_target)) NA_real_ else
-  max(as.numeric(n_target) - as.numeric(safe(n_rand, 0)), 0)
-
 # Protocol benchmark — pilot criterion 1 ("an average of 2 participants per
 # month at each open site"). Overridable from report content.
 site_rate_target <- suppressWarnings(as.numeric(safe(rc$site_monthly_target, 2)))
 
-need_per_site <- function(n_sites) {
-  n_sites <- suppressWarnings(as.numeric(safe(n_sites, NA)))
-  if (is.na(remaining_to_target) || is.na(months_left) ||
-      is.na(n_sites) || n_sites < 1) return(NA_real_)
-  remaining_to_target / months_left / n_sites
-}
-
-# Against the sites recruiting today, and against the full planned network
-# (which is what the protocol schedule assumes).
-need_open    <- need_per_site(n_open_sites)
-need_planned <- need_per_site(n_sites_plan)
-
-# Achieved rate per open site per month — mean of the last three monthly deltas
-# in the schedule actuals, so the "needed" figure can be read against delivery.
-achieved_per_site <- NA_real_
-if (nrow(sched) > 0 && !is.null(sched$cumulative_actual)) {
-  ca_obs <- as.numeric(sched$cumulative_actual)
-  obs    <- which(!is.na(ca_obs) & sched$month_date <= this_month)
-  if (length(obs) >= 2 && !is.na(n_open_sites) && n_open_sites >= 1) {
-    obs     <- utils::tail(obs, 4)      # 4 cumulative points → 3 monthly deltas
-    monthly <- diff(ca_obs[obs])
-    if (length(monthly) > 0)
-      achieved_per_site <- mean(monthly, na.rm = TRUE) / n_open_sites
-  }
-}
-
-# Green when the required rate is within the protocol benchmark, red when it
-# needs half again as much per site as the protocol assumed.
-need_band <- if (is.na(need_open) || is.na(site_rate_target)) "amber" else
-  if (need_open <= site_rate_target)       "green" else
-  if (need_open <= site_rate_target * 1.5) "amber" else "red"
-
 fmt_rate <- function(x, dp = 1) if (is.null(x) || length(x) == 0 || is.na(x)) "—" else
   formatC(as.numeric(x), format = "f", digits = dp)
-
-# Label for the recruitment horizon, preferring the schedule over free text.
-rec_end_label <- if (is.na(rec_end_date)) esc(full_end) else
-  format(rec_end_date, "%b %Y")
 
 # JSON helper
 j <- function(x) {
@@ -905,7 +834,6 @@ cat(sprintf('<g><line x1="%d" y1="16" x2="%d" y2="162" stroke="#B4321E" stroke-w
   <span>Variance: <b style="color:var(--`r rec_band`)">`r fmt_pct(rec_pct, 0)`</b></span>
   <span>Pilot target (`r esc(pilot_end)`): <b>`r fmt_int(pilot_target)`</b></span>
   <span>Full target: <b>`r fmt_int(n_target)` by `r esc(full_end)`</b></span>
-  <span>Needed per open site: <b style="color:var(--`r need_band`)">`r fmt_rate(need_open)` / month</b></span>
 </div>
 
 <div class="row2" style="margin-top:8px">
@@ -1352,17 +1280,6 @@ ph_header("Page 6 — Recruitment outlook")
 <h2 class="sec" style="margin-top:0"><span class="num">10</span> Recruitment outlook <span class="hint">Protocol projection · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)`</span></h2>
 
 <div class="ol-status `r rec_band`"><div class="icon">`r if (rec_band == "green") "✓" else if (rec_band == "amber") "!" else "×"`</div><div class="txt"><div class="h">`r if (rec_band == "green") sprintf("On track — %.0f%% of protocol target at this point", safe(rec_pct, 0)) else if (rec_band == "amber") sprintf("Near track — %.0f%% of protocol target", safe(rec_pct, 0)) else sprintf("Behind track — %.0f%% of protocol target", safe(rec_pct, 0))`</div><div class="s"><b style="color:var(--navy)">`r fmt_int(n_rand)` randomised</b> against <b style="color:var(--navy)">`r fmt_int(exp_to_date)` expected</b> by `r esc(format(Sys.Date(), "%d %b %Y"))` · `r fmt_int(n_open_sites)` site`r if (n_open_sites == 1) "" else "s"` open.</div></div></div>
-
-<div class="keyline" style="margin:0 0 10px">
-  <span>Remaining to target: <b>`r fmt_int(remaining_to_target)`</b></span>
-  <span>Recruitment months left: <b>`r fmt_int(months_left)`</b> (to `r rec_end_label`)</span>
-  <span>Needed per open site: <b style="color:var(--`r need_band`)">`r fmt_rate(need_open)` / month</b></span>
-  <span>Recent achieved: <b>`r fmt_rate(achieved_per_site)` / month</b></span>
-  <span>Protocol benchmark: <b>`r fmt_rate(site_rate_target, 0)` / month</b></span>
-  <span>Across all `r fmt_int(n_sites_plan)` planned sites: <b>`r fmt_rate(need_planned)` / month</b></span>
-</div>
-
-<p class="note" style="margin:0 0 8px">Needed rate = (`r fmt_int(n_target)` target − `r fmt_int(n_rand)` randomised) ÷ `r fmt_int(months_left)` months ÷ `r fmt_int(n_open_sites)` open site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"`, the current month included. Recent achieved is the mean of the last three months' randomisations per open site. Opening the sites still in set-up lowers the per-site figure toward the `r fmt_rate(need_planned)` / month shown for the full network.</p>
 
 <div class="ol-chart"><div class="h"><span>Cumulative recruitment · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)` <b>(`r fmt_int(n_target)` target)</b></span><span>Source: protocol schedule</span></div><div class="ol-chart-wrap"><canvas id="outlookC"></canvas></div><div class="ol-leg"><span class="lg"><span class="ln"></span>Cumulative target (protocol)</span><span class="lg"><span class="sw" style="background:var(--teal)"></span>Actual randomised</span></div></div>
 

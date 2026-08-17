@@ -222,69 +222,6 @@ overview_server <- function(input, output, session, state) {
   })
   output$n_rand_sub <- renderText({ paste0("of ", trial_target_r(), " trial target") })
 
-  # ── Needed / site / month ────────────────────────────────────────────────
-  #
-  # What each recruiting site has to deliver per month, from now to the end of
-  # the protocol schedule, to land on target. Sits alongside the projection
-  # sliders: those set an assumed rate, this states the rate the target
-  # actually demands.
-  n_open_r <- reactive({
-    tryCatch(sum(sites_wp()$status %in% c("Open", "Recruiting"), na.rm = TRUE),
-             error = function(e) 0)
-  })
-
-  need_rate <- reactive({
-    done <- tryCatch(sum(filtered()$randomised, na.rm = TRUE),
-                     error = function(e) 0)
-    .required_per_site_rate(
-      n_rand       = done,
-      trial_target = trial_target_r(),
-      n_open       = n_open_r(),
-      target_sites = input$proj_target_sites
-    )
-  })
-
-  output$n_need_rate <- renderText({
-    nr <- need_rate()
-    if (is.na(nr$per_open_site)) "—" else
-      formatC(nr$per_open_site, format = "f", digits = 1)
-  })
-
-  output$n_need_rate_sub <- renderText({
-    nr <- need_rate()
-    if (is.na(nr$remaining)) return("trial target not set")
-    if (!nr$reachable) {
-      return(if (is.na(nr$months_left))
-               "recruitment horizon unavailable"
-             else
-               "past the end of the recruitment window")
-    }
-    if (is.na(nr$per_open_site)) return("no sites recruiting yet")
-    n_open <- n_open_r()
-    sprintf("%s to go ÷ %d mo ÷ %d open site%s",
-            format(round(nr$remaining), big.mark = ","),
-            nr$months_left, n_open, if (n_open == 1) "" else "s")
-  })
-
-  # Badge compares the required rate with the central projection assumption.
-  # Green when the assumption already covers what is needed, red when it does
-  # not — the opposite polarity to delta_badge_ui, which treats "up" as good.
-  output$need_rate_badge <- renderUI({
-    nr      <- need_rate()
-    central <- suppressWarnings(as.numeric(input$proj_rate_central %||% NA))
-    if (is.na(nr$per_open_site) || is.na(central)) return(NULL)
-
-    gap <- nr$per_open_site - central
-    lbl <- paste0(formatC(abs(gap), format = "f", digits = 1), " / site / mo")
-    if (abs(gap) < 0.05)
-      span(class = "delta-badge pov-delta-badge flat", "→ on assumption")
-    else if (gap < 0)
-      span(class = "delta-badge pov-delta-badge up", paste0("↓ ", lbl, " under"))
-    else
-      span(class = "delta-badge delta-neg pov-delta-badge down",
-           paste0("↑ ", lbl, " over"))
-  })
-
   output$delta_sites <- renderUI({
     delta_badge_ui(sites_at_to(), sites_at_meeting(), " site")
   })
@@ -564,26 +501,9 @@ overview_server <- function(input, output, session, state) {
     pd <- projection_data()
     if (is.null(pd) || nrow(pd) == 0) return("")
     n_actual <- sum(!is.na(pd$actual)) - 1  # subtract month 0 start
-
-    # State the rate the target demands next to the rate the sliders assume.
-    nr     <- need_rate()
-    n_open <- n_open_r()
-    rate1  <- function(x) formatC(x, format = "f", digits = 1)
-    need  <- if (is.na(nr$per_open_site)) "" else {
-      ramped <- if (is.na(nr$per_ramped_site)) "" else sprintf(
-        ", or %s once %d sites are open", rate1(nr$per_ramped_site),
-        as.integer(input$proj_target_sites)
-      )
-      sprintf(
-        " Reaching the target by %s needs %s per site per month from the %d site%s recruiting now%s.",
-        format(nr$end_date, "%b %Y"), rate1(nr$per_open_site),
-        n_open, if (n_open == 1) "" else "s", ramped
-      )
-    }
-
     sprintf(
-      "Shaded band = range between pessimistic and optimistic assumptions. Central line uses your current settings. Actuals based on %d recorded randomisations.%s",
-      max(0, n_actual), need
+      "Shaded band = range between pessimistic and optimistic assumptions. Central line uses your current settings. Actuals based on %d recorded randomisations.",
+      max(0, n_actual)
     )
   })
 

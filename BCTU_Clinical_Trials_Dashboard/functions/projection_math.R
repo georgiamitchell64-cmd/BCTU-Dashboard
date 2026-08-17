@@ -11,6 +11,13 @@
 #     → list with rate_pessimistic/central/optimistic derived from actuals
 #       when ≥3 months of randomisation data exist; NULL otherwise.
 #
+#   .actual_monthly_per_site(randomised, open_date, asof)
+#     → numeric vector: each site's achieved recruits per month, randomisations
+#       over the months it has been open. Backs the Sites tab's
+#       "Avg recruits / site / month" tile and the report's "Actual / mo" column.
+#
+#   .iso_date_chr(x) → dates normalised to "YYYY-MM-DD" character.
+#
 # Model:
 #   Starting from "now" (first of this month), we project forward
 #   month-by-month. Each month:
@@ -145,74 +152,6 @@
   )
 }
 
-# ── Required rate: what each open site must deliver to reach target ─────────
-#
-# The mirror image of the projection sliders. Those ask "given this per-site
-# rate, when do we finish?"; this asks "given the finish date, what rate does
-# each site have to run at?".
-#
-#   required / site / month = (target − randomised) ÷ months left ÷ sites
-#
-# The horizon defaults to the last month of the protocol schedule, so the
-# figure lines up with the right-hand edge of the projection chart. The current
-# month counts as available recruitment time, so the span is inclusive of it.
-#
-# Returns a list:
-#   remaining        participants still to recruit
-#   months_left      whole months from this month to the horizon, inclusive
-#   end_date         first of the horizon month
-#   per_open_site    required rate against the sites recruiting now
-#   per_ramped_site  required rate against target_sites (the ramped network)
-#   reachable        FALSE when the horizon has already passed
-#
-# Every unknown component comes back NA rather than raising, so callers can
-# render an em dash without guarding each field.
-.required_per_site_rate <- function(n_rand, trial_target, n_open,
-                                    target_sites = NULL, horizon = NULL) {
-
-  blank <- list(remaining = NA_real_, months_left = NA_integer_,
-                end_date = as.Date(NA), per_open_site = NA_real_,
-                per_ramped_site = NA_real_, reachable = FALSE)
-
-  target <- suppressWarnings(as.numeric(trial_target %||% NA)[1])
-  done   <- suppressWarnings(as.numeric(n_rand %||% 0)[1])
-  if (is.na(target) || target <= 0) return(blank)
-  if (is.na(done)) done <- 0
-
-  # as.Date() raises rather than returning NA on a non-standard string, so a
-  # caller-supplied horizon has to be coerced defensively.
-  end_date <- if (is.null(horizon)) {
-    max(.projection_protocol_schedule()$month_date)
-  } else {
-    tryCatch(suppressWarnings(as.Date(horizon)[1]),
-             error = function(e) as.Date(NA))
-  }
-  if (length(end_date) != 1 || is.na(end_date)) return(blank)
-
-  this_month <- as.Date(format(Sys.Date(), "%Y-%m-01"))
-  end_month  <- as.Date(format(end_date,   "%Y-%m-01"))
-
-  months_left <- (as.integer(format(end_month,  "%Y")) -
-                  as.integer(format(this_month, "%Y"))) * 12L +
-                 (as.integer(format(end_month,  "%m")) -
-                  as.integer(format(this_month, "%m"))) + 1L
-
-  out <- blank
-  out$remaining   <- max(target - done, 0)
-  out$months_left <- months_left
-  out$end_date    <- end_month
-  out$reachable   <- months_left >= 1L
-  if (!out$reachable) return(out)
-
-  rate_for <- function(n) {
-    n <- suppressWarnings(as.numeric(n %||% NA)[1])
-    if (is.na(n) || n < 1) NA_real_ else out$remaining / months_left / n
-  }
-  out$per_open_site   <- rate_for(n_open)
-  out$per_ramped_site <- rate_for(target_sites)
-  out
-}
-
 # ── Dates to ISO strings ────────────────────────────────────────────────────
 #
 # Site open dates arrive as Date (from the Sites tab), character (from an
@@ -231,8 +170,8 @@
 
 # ── Achieved rate: what each site has actually delivered per month ──────────
 #
-# The counterpart to .required_per_site_rate() — history rather than
-# projection:
+# Per-site recruitment history, the input to the Sites tab tile and the
+# report's "Actual / mo" column:
 #
 #   actual / month = randomisations ÷ months open
 #
