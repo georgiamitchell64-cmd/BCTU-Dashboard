@@ -213,6 +213,61 @@
   out
 }
 
+# ── Dates to ISO strings ────────────────────────────────────────────────────
+#
+# Site open dates arrive as Date (from the Sites tab), character (from an
+# imported sheet), or factor. Normalising to "YYYY-MM-DD" character keeps
+# rbind() from coercing a Date column into its numeric representation when the
+# other side is character.
+.iso_date_chr <- function(x) {
+  if (length(x) == 0) return(character(0))
+  d <- tryCatch(suppressWarnings(as.Date(x)),
+                error = function(e) rep(as.Date(NA), length(x)))
+  if (length(d) != length(x)) d <- rep(as.Date(NA), length(x))
+  out <- format(d, "%Y-%m-%d")
+  out[is.na(d)] <- NA_character_
+  out
+}
+
+# ── Achieved rate: what each site has actually delivered per month ──────────
+#
+# The counterpart to .required_per_site_rate() — history rather than
+# projection:
+#
+#   actual / month = randomisations ÷ months open
+#
+# Months open runs from the site's open date to `asof`, counting both end
+# months, so a site that opened this month reads as one month rather than zero.
+# A site with no open date recorded returns NA: without it there is no
+# denominator, which is why the Sites tab's open date has to reach the report.
+#
+# Vectorised over sites. Returns a numeric vector the same length as
+# `randomised`, NA wherever the rate cannot be computed.
+.actual_monthly_per_site <- function(randomised, open_date, asof = Sys.Date()) {
+  n <- length(randomised)
+  if (n == 0) return(numeric(0))
+
+  rand <- suppressWarnings(as.numeric(randomised))
+  # Dates arrive as Date, character, or factor depending on the caller.
+  od <- tryCatch(suppressWarnings(as.Date(open_date)),
+                 error = function(e) rep(as.Date(NA), n))
+  if (length(od) != n) od <- rep(as.Date(NA), n)
+
+  asof_month <- as.Date(format(as.Date(asof), "%Y-%m-01"))
+
+  vapply(seq_len(n), function(i) {
+    if (is.na(rand[i]) || is.na(od[i])) return(NA_real_)
+    open_month <- as.Date(format(od[i], "%Y-%m-01"))
+    months_open <- (as.integer(format(asof_month, "%Y")) -
+                    as.integer(format(open_month, "%Y"))) * 12L +
+                   (as.integer(format(asof_month, "%m")) -
+                    as.integer(format(open_month, "%m"))) + 1L
+    # A future open date has not started accruing yet.
+    if (months_open < 1L) return(NA_real_)
+    rand[i] / months_open
+  }, numeric(1))
+}
+
 # ── Smart defaults: derive per-site rates from actuals when ≥3 months ──────
 .projection_smart_defaults <- function(raw_redcap, sites) {
   rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")

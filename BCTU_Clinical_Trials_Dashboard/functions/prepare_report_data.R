@@ -514,8 +514,14 @@ prepare_report_data <- function(df,
   # ── 19. Pipeline + site status ────────────────────────────────────────────
   if (!is.null(pipeline_df) && nrow(pipeline_df) > 0) {
     pn <- names(pipeline_df)
+    # pipeline_df is rv$sites when the report is generated from the app, and an
+    # imported pipeline sheet when it comes from a spreadsheet — so the Sites-tab
+    # column name (site_open_date) and the sheet heading ("Open date") both have
+    # to land on the same canonical open_date. Without the first mapping, open
+    # dates entered on the Sites tab never reached the report's site table.
     rmap <- c("Trust name"="site_name","trust name"="site_name","Status"="stage","status"="stage",
-      "Open date"="open_date","open date"="open_date","Overall target"="target","overall target"="target",
+      "Open date"="open_date","open date"="open_date","site_open_date"="open_date",
+      "Overall target"="target","overall target"="target",
       "Monthly target"="monthly_target","monthly target"="monthly_target",
       "Site ID"="site_id","site id"="site_id","Identified"="identified",
       "Already randomised"="already_randomised")
@@ -548,6 +554,11 @@ prepare_report_data <- function(df,
   if (!"open_date"       %in% names(recruiting_sites)) recruiting_sites$open_date       <- NA_character_
   recruiting_sites$target[is.na(recruiting_sites$target)]                 <- 42
   recruiting_sites$monthly_target[is.na(recruiting_sites$monthly_target)] <- 2
+  # Normalise open_date to ISO character before the rbind below. rv$sites
+  # supplies a Date while pre_recruit supplies character, and rbind coerces to
+  # whichever side comes first — a character-first bind would silently turn the
+  # Dates into their numeric representation ("20544").
+  recruiting_sites$open_date <- .iso_date_chr(recruiting_sites$open_date)
 
   pre_recruit <- if (!is.null(pipeline_df) && nrow(pipeline_df) > 0 &&
                      "site_name" %in% names(pipeline_df)) {
@@ -558,19 +569,25 @@ prepare_report_data <- function(df,
       randomisations = 0L, source = "manual",
       target         = if ("target"         %in% names(p)) p$target         else 42L,
       monthly_target = if ("monthly_target" %in% names(p)) p$monthly_target else 2L,
-      open_date      = if ("open_date"      %in% names(p)) as.character(p$open_date) else NA_character_,
+      open_date      = if ("open_date"      %in% names(p)) .iso_date_chr(p$open_date) else NA_character_,
       stringsAsFactors = FALSE) else recruiting_sites[0, ]
   } else recruiting_sites[0, ]
 
   pipeline_combined <- rbind(recruiting_sites, pre_recruit)
   site_status_table <- if (nrow(pipeline_combined) > 0) {
-    st <- pipeline_combined[, c("site_name","stage","target","monthly_target","randomisations"), drop=FALSE]
+    st <- pipeline_combined[, c("site_name","stage","target","monthly_target",
+                                "randomisations","open_date"), drop=FALSE]
     st$randomisations[is.na(st$randomisations)] <- 0
     st$progress_pct <- round(st$randomisations / st$target * 100, 1)
+    # Actual monthly average recruits per site — randomisations over the months
+    # the site has been open. NA where no open date is recorded.
+    st$actual_monthly <- .actual_monthly_per_site(st$randomisations, st$open_date,
+                                                  asof = today)
     st[order(-st$randomisations, st$site_name), ]
   } else data.frame(site_name=character(0), stage=character(0),
                     target=integer(0), monthly_target=integer(0),
-                    randomisations=integer(0), progress_pct=numeric(0))
+                    randomisations=integer(0), open_date=character(0),
+                    progress_pct=numeric(0), actual_monthly=numeric(0))
 
   # ── 20. Monthly target achievement ────────────────────────────────────────
   current_month <- format(today, "%Y-%m")

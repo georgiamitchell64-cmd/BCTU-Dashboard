@@ -17,6 +17,16 @@ sites_server <- function(input, output, session, state) {
     n_manual     <- sum(src == "manual")
     n_flagged    <- sum(is.na(df$city) | is.na(df$site_open_date), na.rm = TRUE)
 
+    # Actual monthly average recruits per site — each site's randomisations over
+    # the months it has been open, averaged across the sites that have an open
+    # date recorded. A site without one has no denominator, so it is left out
+    # rather than counted as zero.
+    per_site_rates <- .actual_monthly_per_site(df$randomised, df$site_open_date)
+    avg_per_site   <- if (any(!is.na(per_site_rates)))
+                        mean(per_site_rates, na.rm = TRUE) else NA_real_
+    avg_label      <- if (is.na(avg_per_site)) "—" else
+                        formatC(avg_per_site, format = "f", digits = 1)
+
     make_stat <- function(value, label, color) {
       div(class = "sites-stat",
           div(class = "sites-stat-v", style = sprintf("color:%s;", color), value),
@@ -28,6 +38,7 @@ sites_server <- function(input, output, session, state) {
         make_stat(n_setup,       "In set-up",   "#94A3B8"),
         make_stat(n_paused,      "Paused",      "#F59E0B"),
         make_stat(n_closed,      "Closed",      "#64748B"),
+        make_stat(avg_label,     "Avg recruits / site / month", "#12A192"),
         make_stat(total_rand,    "Randomised",  "#1B4F6B"),
         if (n_flagged > 0) make_stat(n_flagged, "Incomplete", "#DC2626"))
   })

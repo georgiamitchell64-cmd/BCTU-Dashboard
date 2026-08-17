@@ -527,16 +527,16 @@ h2.sec .hint{margin-left:auto;font-size:8.5pt;color:var(--muted);font-weight:500
 
 .lab{font-size:8pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin:8px 0 4px}
 
-.snap{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:0 0 4px}
+.snap{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 4px}
 .snap .cell{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff;position:relative;overflow:hidden}
 .snap .cell::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--teal)}
 .snap .cell.amber::before{background:var(--amber)}
 .snap .cell.green::before{background:var(--green)}
 .snap .cell.red::before{background:var(--red)}
 .snap .cell.navy::before{background:var(--navy)}
-.snap .k{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;hyphens:auto}
-.snap .v{font-size:19pt;line-height:1;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;letter-spacing:-.02em;margin-top:3px}
-.snap .v small{font-size:10pt;color:var(--muted);font-weight:500;font-family:'Inter',sans-serif;letter-spacing:0}
+.snap .k{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.snap .v{font-size:22pt;line-height:1;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;letter-spacing:-.02em;margin-top:3px}
+.snap .v small{font-size:11pt;color:var(--muted);font-weight:500;font-family:'Inter',sans-serif;letter-spacing:0}
 .snap .s{font-size:8pt;color:var(--ink-2);margin-top:2px;line-height:1.25}
 
 .milestones .lane-head{display:grid;grid-template-columns:1fr 110px 110px;gap:8px;font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:4px 12px 4px 14px;margin-top:2px}
@@ -768,11 +768,6 @@ pilot opened <b>`r esc(proj_start)`</b>, `r if (rec_band == "green") "on protoco
     <div class="v">`r fmt_pct(rec_pct, 0)`</div>
     <div class="s">`r fmt_int(n_rand)` actual vs `r fmt_int(exp_to_date)` expected (`r format(Sys.Date(), "%b %y")`)</div>
   </div>
-  <div class="cell `r need_band`">
-    <div class="k">Recruits needed / site / mo</div>
-    <div class="v">`r fmt_rate(need_open)`</div>
-    <div class="s">`r fmt_int(remaining_to_target)` to go · `r fmt_int(months_left)` mo · `r fmt_int(n_open_sites)` open site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"`</div>
-  </div>
   <div class="cell `r if (sae_count == 0) "green" else "amber"`">
     <div class="k">SAEs to date</div>
     <div class="v">`r fmt_int(sae_count)`</div>
@@ -968,13 +963,28 @@ cat(esc(if (length(open_names)) paste(open_names, collapse = " · ") else "—")
 <table class="rt">
   <thead><tr>
     <th class="l">Site</th><th class="l">Status</th>
-    <th>Opened</th><th>Rand.</th><th>Target</th><th>Need&nbsp;/&nbsp;mo</th>
+    <th>Opened</th><th>Rand.</th><th>Target</th><th>Actual&nbsp;/&nbsp;mo</th>
     <th class="l" style="width:20%">Progress</th>
   </tr></thead>
   <tbody>
 ```{r site-table}
 ss <- site_status
 if (nrow(ss) == 0 && nrow(pipeline) > 0) ss <- pipeline
+
+# Fallback for the actual monthly average when report_data predates the
+# actual_monthly column (e.g. the Rmd knitted against an older payload).
+# Same calculation as .actual_monthly_per_site() in functions/projection_math.R:
+# randomisations ÷ months open, counting the opening month and this month.
+actual_monthly_row <- function(row) {
+  od <- suppressWarnings(tryCatch(as.Date(row$open_date), error = function(e) as.Date(NA)))
+  if (length(od) != 1 || is.na(od)) return(NA_real_)
+  rn <- suppressWarnings(as.numeric(row$randomisations %||% NA))
+  if (length(rn) != 1 || is.na(rn)) return(NA_real_)
+  open_month <- as.Date(format(od, "%Y-%m-01"))
+  n <- months_inclusive(open_month, this_month)
+  if (is.na(n)) NA_real_ else rn / n
+}
+
 if (nrow(ss) > 0) {
   # normalise columns
   if (!"randomisations" %in% names(ss)) ss$randomisations <- 0L
@@ -1000,21 +1010,24 @@ if (nrow(ss) > 0) {
     rand <- as.integer(r$randomisations %||% 0)
     tgt  <- as.integer(r$target %||% 42)
     pct  <- if (tgt > 0) round(rand/tgt*100, 1) else 0
-    # Average monthly recruits this site needs to reach its own target by the
-    # end of recruitment. Only meaningful for sites that are actually open.
-    need_site <- if (is_open(r$stage) && !is.na(months_left))
-                   max(tgt - rand, 0) / months_left else NA_real_
-    need_cell <- if (is.na(need_site)) '<span style="color:var(--muted)">—</span>' else
+    # Actual monthly average recruits this site has delivered: randomisations
+    # over the months it has been open. prepare_report_data() computes it with
+    # .actual_monthly_per_site(); recompute here only when rendering against
+    # data that predates that column. Blank without an open date — there is no
+    # denominator, which is what the "Opened" column is showing.
+    act_site <- suppressWarnings(as.numeric(r$actual_monthly %||% NA))
+    if (length(act_site) != 1 || is.na(act_site)) act_site <- actual_monthly_row(r)
+    act_cell <- if (is.na(act_site)) '<span style="color:var(--muted)">—</span>' else
       sprintf('<b style="color:var(--%s)">%s</b>',
-              if (!is.na(site_rate_target) && need_site > site_rate_target * 1.5) "red"
-              else if (!is.na(site_rate_target) && need_site > site_rate_target) "amber"
-              else "green",
-              fmt_rate(need_site))
+              if (!is.na(site_rate_target) && act_site >= site_rate_target) "green"
+              else if (!is.na(site_rate_target) && act_site >= site_rate_target * 0.5) "amber"
+              else "red",
+              fmt_rate(act_site))
     progress_html <- if (is_open(r$stage))
       sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><span class="lbl">%d/%d</span></div>', pct, rand, tgt)
       else sprintf('<span class="note" style="margin:0">%s</span>', esc(r$stage))
     cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%d</td><td>%s</td><td class="l">%s</td></tr>',
-                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, tgt, need_cell, progress_html))
+                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, tgt, act_cell, progress_html))
   }
 } else {
   cat('<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px">No site data available.</td></tr>')
@@ -1022,7 +1035,7 @@ if (nrow(ss) > 0) {
 ```
   </tbody>
 </table>
-<p class="note">Need&nbsp;/&nbsp;mo — average monthly recruits each open site needs from `r format(Sys.Date(), "%b %Y")` to `r rec_end_label` (`r fmt_int(months_left)` months) to reach <b>its own</b> target, coloured against the protocol benchmark of `r fmt_rate(site_rate_target, 0)` per site per month. This assumes the full `r fmt_int(n_sites_plan)`-site network delivers; the headline `r fmt_rate(need_open)`&nbsp;/&nbsp;month on page&nbsp;1 spreads the whole remaining trial target across the `r fmt_int(n_open_sites)` site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"` open today. See the recruitment outlook for both.</p>
+<p class="note">Actual&nbsp;/&nbsp;mo — the average monthly recruits each site has actually delivered: its randomisations divided by the months it has been open, counting the opening month and the current one. Coloured against the protocol benchmark of `r fmt_rate(site_rate_target, 0)` per site per month — green at or above it, amber from half the benchmark up, red below. Sites with no <b>Opened</b> date recorded show “—”: without an open date there is no number of months to divide by. Open dates are taken from the Sites tab.</p>
 
 ```{r page3-footer}
 pf_footer(3)
