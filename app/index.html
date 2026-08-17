@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'">
+  <title>TONIC Dashboard</title>
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+
+  <!-- ══ Sidebar ═══════════════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="side-brand">
+      <div class="kicker">Coordinating centre</div>
+      <img class="side-logo" src="tonic-logo.png" alt="TONIC">
+      <div class="side-sub" id="side-sub"></div>
+    </div>
+
+    <nav class="side-nav" id="side-nav"></nav>
+
+    <div class="side-foot">
+      <button class="import-btn" id="open-import">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>
+        </svg>
+        <span>Import data</span>
+      </button>
+      <div>
+        <div class="kicker">Data cut</div>
+        <div class="side-cut" id="side-cut"></div>
+      </div>
+      <div class="side-blind">
+        <span class="side-dot"></span>
+        <span>Blinded view — allocation hidden</span>
+      </div>
+      <div class="side-note" id="side-note">
+        Demonstration data. Not for clinical or regulatory use.
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══ Main ══════════════════════════════════════════════════════════════ -->
+  <main class="main">
+
+    <header class="page-head">
+      <div class="page-head-left">
+        <div class="kicker" id="page-kicker"></div>
+        <h1 class="page-title" id="page-title"></h1>
+        <p class="page-blurb" id="page-blurb"></p>
+      </div>
+      <div class="page-head-right">
+        <div class="head-stat">
+          <div class="kicker">Recruitment</div>
+          <div class="head-stat-val" id="head-status"></div>
+        </div>
+        <span class="head-rule"></span>
+        <div class="head-stat">
+          <div class="kicker">Projected close</div>
+          <div class="head-stat-val mono" id="head-close"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── Overview ────────────────────────────────────────────────────── -->
+    <section class="stack" data-page="overview">
+      <div class="kpis" id="kpis"></div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-head-text">
+              <h2 id="cum-title">Cumulative recruitment vs target</h2>
+              <p class="panel-sub" id="cum-sub"></p>
+            </div>
+            <div class="toggles">
+              <button class="toggle on" data-view="cumulative">Cumulative</button>
+              <button class="toggle" data-view="monthly">Monthly</button>
+              <span class="toggle-sep"></span>
+              <button class="toggle on" id="toggle-target">Target</button>
+            </div>
+          </div>
+          <div class="chart-box"><canvas id="chart-cum"></canvas></div>
+        </div>
+
+        <div class="panel">
+          <h2>Follow-up at a glance</h2>
+          <div class="rings" style="grid-template-columns:repeat(2,minmax(0,1fr))" id="rings-mini"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>Most recent randomisations</h2>
+            <p class="panel-sub">Latest participants entered, newest first</p>
+          </div>
+          <button class="toggle" data-goto="randomisations">All randomisations →</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl" id="tbl-recent"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Recruitment ─────────────────────────────────────────────────── -->
+    <section class="stack" data-page="recruitment" hidden>
+      <div class="kpis" id="rec-kpis"></div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>Randomisations per month</h2>
+            <p class="panel-sub">Monthly accrual against the protocol schedule</p>
+          </div>
+          <div class="legend" id="rec-legend"></div>
+        </div>
+        <div class="chart-box"><canvas id="chart-permonth"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>Recruitment projection</h2>
+            <p class="panel-sub" id="proj-sub"></p>
+          </div>
+          <div class="toggles">
+            <button class="toggle on" data-projview="cumulative">Cumulative</button>
+            <button class="toggle" data-projview="monthly">Monthly</button>
+            <span class="toggle-sep"></span>
+            <button class="toggle on" data-projband="on">Range</button>
+          </div>
+        </div>
+
+        <div class="controls">
+          <label class="ctrl">
+            <span class="ctrl-label">Participants per site per month</span>
+            <input type="range" id="ctrl-rate" min="0.1" max="3" step="0.05">
+            <output class="ctrl-val" id="out-rate"></output>
+          </label>
+          <label class="ctrl">
+            <span class="ctrl-label">New sites opening per month</span>
+            <input type="range" id="ctrl-sites" min="0" max="5" step="0.25">
+            <output class="ctrl-val" id="out-sites"></output>
+          </label>
+          <button class="toggle" id="ctrl-reset" title="Back to rates derived from actuals">Reset</button>
+        </div>
+
+        <div class="legend" id="proj-legend"></div>
+        <div class="chart-box tall"><canvas id="chart-projection"></canvas></div>
+      </div>
+
+      <div class="grid-2eq">
+        <div class="panel">
+          <div class="panel-head-text">
+            <h2>Scenario outcomes</h2>
+            <p class="panel-sub">Where each scenario lands against the protocol close</p>
+          </div>
+          <table class="tbl" id="tbl-scenarios"></table>
+        </div>
+        <div class="panel">
+          <div class="panel-head-text">
+            <h2>Rate summary</h2>
+            <p class="panel-sub">Observed performance to the data cut</p>
+          </div>
+          <table class="tbl" id="tbl-rate"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Sites ───────────────────────────────────────────────────────── -->
+    <section class="stack" data-page="sites" hidden>
+      <div class="kpis" id="site-kpis"></div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-head-text">
+              <h2>Site league table</h2>
+              <p class="panel-sub">Recruiting sites ranked by accrual</p>
+            </div>
+            <div class="toggles">
+              <button class="toggle on" data-sitesort="n">By count</button>
+              <button class="toggle" data-sitesort="name">A–Z</button>
+              <button class="toggle" data-sitesort="opened">By opening</button>
+            </div>
+          </div>
+          <div class="chart-box tall"><canvas id="chart-sites"></canvas></div>
+        </div>
+
+        <div class="panel">
+          <h2>Site status</h2>
+          <div class="chart-box short"><canvas id="chart-status"></canvas></div>
+          <table class="tbl" id="tbl-status"></table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>All sites</h2>
+            <p class="panel-sub">Click a column heading to sort</p>
+          </div>
+          <div class="toggles">
+            <button class="toggle on" data-sitefilter="all">All</button>
+            <button class="toggle" data-sitefilter="recruiting">Recruiting</button>
+            <button class="toggle" data-sitefilter="dormant">Dormant</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl" id="tbl-sites"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Randomisations ──────────────────────────────────────────────── -->
+    <section class="stack" data-page="randomisations" hidden>
+      <div class="notice">
+        <div style="flex:0 0 auto">
+          <div class="kicker">Blinded view</div>
+          <div class="notice-title">Allocation is not shown</div>
+        </div>
+        <div style="font-size:13.5px;line-height:1.5;color:#5C4A18">
+          Treatment allocation is withheld from the coordinating-centre dashboard.
+          Unblinded summaries are prepared separately for the DMC.
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>Randomisation log</h2>
+            <p class="panel-sub" id="rand-sub"></p>
+          </div>
+          <div class="toggles" id="rand-filters"></div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl" id="tbl-rand"></table>
+        </div>
+      </div>
+
+      <div class="grid-2eq">
+        <div class="panel">
+          <h2>Age distribution</h2>
+          <div class="chart-box short"><canvas id="chart-age"></canvas></div>
+        </div>
+        <div class="panel">
+          <h2>NELA predicted mortality</h2>
+          <p class="panel-sub">Risk profile of participants entered so far</p>
+          <div class="chart-box short"><canvas id="chart-nela"></canvas></div>
+        </div>
+      </div>
+
+      <div class="grid-2eq">
+        <div class="panel">
+          <div class="panel-head-text">
+            <h2>Randomisations by day of week</h2>
+            <p class="panel-sub" id="dow-sub"></p>
+          </div>
+          <div class="chart-box short"><canvas id="chart-dow"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-head-text">
+              <h2>Out-of-hours recruitment</h2>
+              <p class="panel-sub" id="ooh-sub"></p>
+            </div>
+            <div class="toggles">
+              <button class="toggle on" data-oohview="split">In / out</button>
+              <button class="toggle" data-oohview="hour">By hour</button>
+            </div>
+          </div>
+          <div class="chart-box short"><canvas id="chart-ooh"></canvas></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>Ethnicity</h2>
+            <p class="panel-sub" id="eth-sub"></p>
+          </div>
+          <div class="toggles">
+            <button class="toggle on" data-ethview="group">Grouped</button>
+            <button class="toggle" data-ethview="detail">All categories</button>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="chart-eth"></canvas></div>
+      </div>
+    </section>
+
+    <!-- ── Follow-up ───────────────────────────────────────────────────── -->
+    <section class="stack" data-page="followup" hidden>
+      <div class="kpis" id="fu-kpis"></div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <h2>By visit window</h2>
+            <p class="panel-sub">Forms received against forms due at the data cut</p>
+          </div>
+        </div>
+        <div class="rings" id="rings-full"></div>
+      </div>
+
+      <div class="grid-2r">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-head-text">
+              <h2>Instrument completion</h2>
+              <p class="panel-sub">Individual questionnaires within each window</p>
+            </div>
+            <div class="toggles" id="fu-window-toggles"></div>
+          </div>
+          <div class="chart-box"><canvas id="chart-instruments"></canvas></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-head-text">
+              <h2>Compliance by site</h2>
+              <p class="panel-sub">All windows combined</p>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="tbl" id="tbl-compliance"></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="tip"></div>
+
+<!-- ══ Import dialog ═════════════════════════════════════════════════════ -->
+<div class="modal-back" id="import-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div class="modal-head">
+      <div>
+        <div class="kicker">Data</div>
+        <h2 id="import-title">Import trial data</h2>
+      </div>
+      <button class="modal-x" id="close-import" aria-label="Close">&times;</button>
+    </div>
+
+    <p class="modal-blurb">
+      Drop in the exports the Shiny dashboard uses. Everything is read in this
+      window — no file leaves the machine, and nothing is uploaded anywhere.
+    </p>
+
+    <div class="drops">
+      <label class="drop" id="drop-redcap">
+        <input type="file" accept=".csv,text/csv" hidden>
+        <div class="drop-name">REDCap export</div>
+        <div class="drop-hint">One row per record per event, with
+          <code>record_id</code> and <code>redcap_event_name</code>.</div>
+        <div class="drop-state" data-state>Choose or drop a .csv</div>
+      </label>
+
+      <label class="drop" id="drop-rr">
+        <input type="file" accept=".csv,text/csv" hidden>
+        <div class="drop-name">Return rates</div>
+        <div class="drop-hint">Columns <code>Site, Event, Form, Expected,
+          Due, Entered</code>.</div>
+        <div class="drop-state" data-state>Choose or drop a .csv</div>
+      </label>
+    </div>
+
+    <div class="import-log" id="import-log" hidden></div>
+
+    <label class="import-opt">
+      <input type="checkbox" id="opt-replace-sites">
+      <span>
+        <b>Replace the site register</b> — drop any site not present in the
+        export. Leave unticked to keep sites that have opened but not yet
+        randomised; tick it to clear the sample sites out.
+      </span>
+    </label>
+
+    <div class="modal-foot">
+      <button class="toggle" id="import-revert">Revert to demonstration data</button>
+      <div class="modal-actions">
+        <button class="toggle" id="import-cancel">Cancel</button>
+        <button class="toggle on" id="import-apply" disabled>Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Lock screen ═══════════════════════════════════════════════════════ -->
+<div class="lock" id="lock">
+  <form class="lock-card" id="lock-form" autocomplete="off">
+    <img class="lock-logo" src="tonic-logo.png" alt="TONIC">
+    <div class="kicker">Coordinating centre</div>
+    <h1 class="lock-title" id="lock-title">Unlock</h1>
+    <p class="lock-blurb" id="lock-blurb"></p>
+
+    <label class="lock-field">
+      <span class="ctrl-label">Password</span>
+      <input type="password" id="lock-pw" autocomplete="current-password" required>
+    </label>
+    <label class="lock-field" id="lock-confirm-wrap" hidden>
+      <span class="ctrl-label">Confirm password</span>
+      <input type="password" id="lock-pw2" autocomplete="new-password">
+    </label>
+
+    <div class="lock-err" id="lock-err" hidden></div>
+    <button class="lock-go" id="lock-go" type="submit">Unlock</button>
+    <button class="lock-reset" id="lock-reset" type="button" hidden>
+      Forgotten the password — clear stored data
+    </button>
+  </form>
+</div>
+
+<script src="auth.js"></script>
+</body>
+</html>
