@@ -178,11 +178,11 @@ thr <- rc$pilot_thresholds %||% list(
        stop_lbl = "< 90% complete", mod_lbl = "90 – 99% complete",
        go_lbl   = "100% complete"),
   list(name = "90-day questionnaire return rate",
-       det  = "Proportion of due 90-day post-op questionnaires returned by participants.",
+       det  = "Day 90 forms entered as a proportion of Day 90 forms due, taken from the return-rate sheet — the same overall % entered (of due) as the CRF return rates by timepoint & form.",
        stop_lbl = "< 70% returned", mod_lbl = "70 – 99% returned",
        go_lbl   = "100% returned"),
   list(name = "Intervention delivery — intervention arm",
-       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants.",
+       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants. Not measurable from the REDCap export — no band is marked, and the criterion is assessed outside the dashboard.",
        stop_lbl = "< 70% within 48 h", mod_lbl = "75 – 99% within 48 h",
        go_lbl   = "100% within 48 h"),
   list(name = "Contamination — control arm",
@@ -195,13 +195,97 @@ thr <- rc$pilot_thresholds %||% list(
        go_lbl   = "0% crossed over")
 )
 
+# CRF return rates — derive a tidy stage summary if crf_data is present
+crf <- rd$crf_data
+crf_overall_pct <- NA_real_
+crf_stage_rows  <- NULL
+if (!is.null(crf) && nrow(crf) > 0) {
+  # Use whatever columns exist; common shape: Forms, Expected, Due, Entered, Pct
+  guess <- function(pat) {
+    m <- grep(pat, names(crf), ignore.case = TRUE, value = TRUE)
+    if (length(m)) crf[[m[1]]] else NULL
+  }
+  st <- list(
+    event    = guess("^(event|timepoint|time.?point|visit)"),
+    stage    = guess("^(stage|form|instrument)"),
+    forms    = guess("^forms$|^count"),
+    expected = guess("expected"),
+    due      = guess("^due"),
+    entered  = guess("entered|received"),
+    pct      = guess("pct|%|percent")
+  )
+  if (!is.null(st$stage)) {
+    n_rows <- length(st$stage)
+    crf_stage_rows <- data.frame(
+      event    = if (!is.null(st$event)) as.character(st$event) else rep(NA_character_, n_rows),
+      stage    = as.character(st$stage),
+      forms    = if (!is.null(st$forms))    as.integer(st$forms)    else rep(NA_integer_, n_rows),
+      expected = if (!is.null(st$expected)) as.integer(st$expected) else rep(NA_integer_, n_rows),
+      due      = if (!is.null(st$due))      as.integer(st$due)      else rep(NA_integer_, n_rows),
+      entered  = if (!is.null(st$entered))  as.integer(st$entered)  else rep(NA_integer_, n_rows),
+      stringsAsFactors = FALSE)
+
+    # Return rate is entered ÷ DUE, never ÷ expected. TONIC is longitudinal
+    # (Baseline, Discharge, Day 30, Day 90); "expected" counts participants who
+    # will eventually reach a timepoint, so windows that have not yet opened
+    # (e.g. Day 90, 0 due) would otherwise deflate the figure. Rows with 0 due
+    # are "not yet due" and contribute nothing to the denominator.
+    #
+    # Numerator is capped at due (min(entered, due)) so that early entries —
+    # forms submitted before the formal due window fires — cannot inflate the
+    # rate above 100%. e.g. Barthel Discharge: 12 entered, 10 due → 100%, not 120%.
+    crf_stage_rows$pct <- ifelse(crf_stage_rows$due > 0,
+                                 pmin(crf_stage_rows$entered, crf_stage_rows$due) /
+                                   crf_stage_rows$due * 100,
+                                 NA_real_)
+
+    # Order timepoints chronologically when an event column is present
+    if (!all(is.na(crf_stage_rows$event))) {
+      tp_levels <- c("Baseline", "Discharge", "Day 30", "Day 90")
+      crf_stage_rows$event <- factor(crf_stage_rows$event,
+                                     levels = union(tp_levels, unique(crf_stage_rows$event)))
+      crf_stage_rows <- crf_stage_rows[order(crf_stage_rows$event), , drop = FALSE]
+    }
+
+    # Overall rate: cap entered at due per row before summing so aggregate
+    # cannot exceed 100% either.
+    tot_due <- sum(crf_stage_rows$due, na.rm = TRUE)
+    tot_ent <- sum(pmin(crf_stage_rows$entered, crf_stage_rows$due), na.rm = TRUE)
+    crf_overall_pct <- if (tot_due > 0) round(tot_ent / tot_due * 100, 1) else NA
+  }
+}
+
+# Day-90 pilot criterion — taken from the return-rate sheet rather than from
+# REDCap follow-up flags, so it matches "CRF return rates by timepoint & form"
+# exactly. Same definition as that table: entered / due, with entered capped at
+# due per row so early returns cannot push a timepoint over 100%, aggregated
+# across the forms in the Day 90 window.
+fu90_return_pct <- NA_real_
+if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0 &&
+    !all(is.na(crf_stage_rows$event))) {
+  d90 <- crf_stage_rows[!is.na(crf_stage_rows$event) &
+                          as.character(crf_stage_rows$event) == "Day 90", , drop = FALSE]
+  if (nrow(d90) > 0) {
+    d90_due <- sum(d90$due, na.rm = TRUE)
+    d90_ent <- sum(pmin(d90$entered, d90$due), na.rm = TRUE)
+    fu90_return_pct <- if (d90_due > 0) round(d90_ent / d90_due * 100, 1) else NA_real_
+  }
+}
+
 # Map current values onto each threshold band (stop|mod|go|NA)
 band_for <- function(idx) {
+  # Intervention delivery cannot be determined from the REDCap export — there is
+  # no field recording whether early parenteral nutrition actually started
+  # within 48 h. The criterion stays on the report so the pilot decision set is
+  # complete, but with no band marked current rather than a figure that would
+  # only look authoritative.
+  if (idx == 4) return(list(band = NA_character_, val = NA))
+
   v <- switch(idx,
     recruit_rate_box,   # 1 — same figure as shown in the card (n randomised ÷ expected)
     NA,                  # 2 data completeness — we approximate below
-    pilot$fu_90_rate,    # 3
-    pilot$interv_rate,   # 4
+    fu90_return_pct,     # 3 — Day 90 % entered (of due) from the return-rate sheet
+    NA,                  # 4 — handled above, not measurable
     pilot$contam_rate,   # 5
     pilot$crossover_rate # 6
   )
@@ -225,8 +309,10 @@ band_for <- function(idx) {
 pc_cards <- list(
   list(title = "Recruitment rate",            val = recruit_rate_box,     sub = sprintf("%s / %s expected", fmt_int(n_rand), fmt_int(exp_to_date)), fmt = "pct"),
   list(title = "Data completeness",           val = (rd$primary_outcome %||% list())$pct, sub = "primary outcome forms", fmt = "pct"),
-  list(title = "90-day questionnaire return", val = pilot$fu_90_rate,     sub = if (safe(pilot$fu_90_elig, 0) == 0) "not yet due" else sprintf("%s / %s eligible", fmt_int(pilot$fu_90_comp), fmt_int(pilot$fu_90_elig)), fmt = "pct"),
-  list(title = "Intervention delivery <48 h", val = pilot$interv_rate,    sub = "intervention arm", fmt = "pct"),
+  list(title = "90-day questionnaire return", val = fu90_return_pct,
+       sub = if (is.na(fu90_return_pct)) "not yet due" else "entered / due, Day 90 forms", fmt = "pct"),
+  list(title = "Intervention delivery <48 h", val = NA,
+       sub = "not measurable from REDCap", fmt = "pct"),
   list(title = "Contamination",               val = pilot$contam_rate,    sub = if (is.na(safe(pilot$contam_rate, NA))) "not determinable from export" else "late/early PN reason recorded", fmt = "pct"),
   list(title = "Crossover rate",              val = pilot$crossover_rate, sub = "target 0%", fmt = "pct")
 )
@@ -314,66 +400,6 @@ if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
   }
 }
 eth_colours <- c("var(--navy)","var(--teal)","#f3b860","#9bd07a","#9bc3da","#e587a8")
-
-# CRF return rates — derive a tidy stage summary if crf_data is present
-crf <- rd$crf_data
-crf_overall_pct <- NA_real_
-crf_stage_rows  <- NULL
-if (!is.null(crf) && nrow(crf) > 0) {
-  # Use whatever columns exist; common shape: Forms, Expected, Due, Entered, Pct
-  guess <- function(pat) {
-    m <- grep(pat, names(crf), ignore.case = TRUE, value = TRUE)
-    if (length(m)) crf[[m[1]]] else NULL
-  }
-  st <- list(
-    event    = guess("^(event|timepoint|time.?point|visit)"),
-    stage    = guess("^(stage|form|instrument)"),
-    forms    = guess("^forms$|^count"),
-    expected = guess("expected"),
-    due      = guess("^due"),
-    entered  = guess("entered|received"),
-    pct      = guess("pct|%|percent")
-  )
-  if (!is.null(st$stage)) {
-    n_rows <- length(st$stage)
-    crf_stage_rows <- data.frame(
-      event    = if (!is.null(st$event)) as.character(st$event) else rep(NA_character_, n_rows),
-      stage    = as.character(st$stage),
-      forms    = if (!is.null(st$forms))    as.integer(st$forms)    else rep(NA_integer_, n_rows),
-      expected = if (!is.null(st$expected)) as.integer(st$expected) else rep(NA_integer_, n_rows),
-      due      = if (!is.null(st$due))      as.integer(st$due)      else rep(NA_integer_, n_rows),
-      entered  = if (!is.null(st$entered))  as.integer(st$entered)  else rep(NA_integer_, n_rows),
-      stringsAsFactors = FALSE)
-
-    # Return rate is entered ÷ DUE, never ÷ expected. TONIC is longitudinal
-    # (Baseline, Discharge, Day 30, Day 90); "expected" counts participants who
-    # will eventually reach a timepoint, so windows that have not yet opened
-    # (e.g. Day 90, 0 due) would otherwise deflate the figure. Rows with 0 due
-    # are "not yet due" and contribute nothing to the denominator.
-    #
-    # Numerator is capped at due (min(entered, due)) so that early entries —
-    # forms submitted before the formal due window fires — cannot inflate the
-    # rate above 100%. e.g. Barthel Discharge: 12 entered, 10 due → 100%, not 120%.
-    crf_stage_rows$pct <- ifelse(crf_stage_rows$due > 0,
-                                 pmin(crf_stage_rows$entered, crf_stage_rows$due) /
-                                   crf_stage_rows$due * 100,
-                                 NA_real_)
-
-    # Order timepoints chronologically when an event column is present
-    if (!all(is.na(crf_stage_rows$event))) {
-      tp_levels <- c("Baseline", "Discharge", "Day 30", "Day 90")
-      crf_stage_rows$event <- factor(crf_stage_rows$event,
-                                     levels = union(tp_levels, unique(crf_stage_rows$event)))
-      crf_stage_rows <- crf_stage_rows[order(crf_stage_rows$event), , drop = FALSE]
-    }
-
-    # Overall rate: cap entered at due per row before summing so aggregate
-    # cannot exceed 100% either.
-    tot_due <- sum(crf_stage_rows$due, na.rm = TRUE)
-    tot_ent <- sum(pmin(crf_stage_rows$entered, crf_stage_rows$due), na.rm = TRUE)
-    crf_overall_pct <- if (tot_due > 0) round(tot_ent / tot_due * 100, 1) else NA
-  }
-}
 
 ```
 

@@ -182,9 +182,16 @@ sites_server <- function(input, output, session, state) {
       if (!is.na(by_site$lat)) by_site
       else geocode_location(if (nzchar(city)) city else name, country)
     }, error = function(e) list(lat = NA_real_, lon = NA_real_))
+    # Clearing a dateInput sends a zero-length value, not NULL or "". The old
+    # guard ran that through nzchar(), producing logical(0), and `if` on a
+    # zero-length condition errors — which crashed the save when either date
+    # was left blank. Treat anything empty, NA or unparseable as "no date".
     as_d <- function(x) {
-      if (is.null(x) || !nzchar(as.character(x))) return(as.Date(NA))
-      tryCatch(as.Date(x), error = function(e) as.Date(NA))
+      if (is.null(x) || length(x) == 0) return(as.Date(NA))
+      x <- x[1]
+      if (is.na(x) || !nzchar(as.character(x))) return(as.Date(NA))
+      d <- tryCatch(suppressWarnings(as.Date(x)), error = function(e) as.Date(NA))
+      if (length(d) == 0) as.Date(NA) else d[1]
     }
     src <- if (is_new) "manual" else {
       sidx <- which(!is.na(rv$sites$site_id) & rv$sites$site_id == orig)

@@ -987,8 +987,14 @@ trial_settings_server <- function(input, output, session, state) {
     }
     for (f in .pr_date_fields) {
       v <- input[[paste0("pr_", f)]]
-      if (!is.null(v) && !is.na(v) && nzchar(as.character(v)))
-        pr[[f]] <- format(as.Date(v), "%d %b %Y")
+      # A cleared dateInput arrives zero-length, and is.na() on that yields
+      # logical(0), which `&&` cannot evaluate — the save used to error out
+      # rather than simply recording no date. Check the length first.
+      if (is.null(v) || length(v) == 0) next
+      v <- v[1]
+      if (is.na(v) || !nzchar(as.character(v))) next
+      d <- tryCatch(suppressWarnings(as.Date(v)), error = function(e) as.Date(NA))
+      if (length(d) == 1 && !is.na(d)) pr[[f]] <- format(d, "%d %b %Y")
     }
     tryCatch({
       update_overrides(cfg, portfolio_review = pr)
