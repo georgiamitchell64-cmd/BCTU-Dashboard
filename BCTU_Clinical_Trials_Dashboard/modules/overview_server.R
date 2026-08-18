@@ -510,7 +510,9 @@ overview_server <- function(input, output, session, state) {
 
   # ── Map (auto-fit worldwide) ─────────────────────────────────────────────
   output$site_map <- renderLeaflet({
-    df <- filtered() %>% filter(!is.na(lat), !is.na(lon))
+    # Fan apart any sites sharing a coordinate (several hospitals per city all
+    # geocode to the same point) so every marker stays visible and clickable.
+    df <- filtered() %>% filter(!is.na(lat), !is.na(lon)) %>% spread_colocated_sites()
     m  <- leaflet() %>%
       addProviderTiles(providers$CartoDB.Positron) %>%
       addLegend("bottomright", colors = unname(status_cols), labels = names(status_cols),

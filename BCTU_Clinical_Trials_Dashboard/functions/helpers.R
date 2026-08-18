@@ -861,16 +861,18 @@ make_monthly_df <- function(log_df, sites_df, site_filter = NULL) {
     dplyr::filter(!is.na(month))
   
   # --- Clean sites ---
+  # A blank open date means the site has not opened yet, so it has no months to
+  # account for. Previously such sites were backdated to 2024-01-01, which
+  # stretched the month grid back to that date and accrued a monthly target for
+  # every month since — inflating cumulative targets and padding the charts with
+  # empty months. Drop them from the grid instead; they rejoin once a real open
+  # date is entered on the Sites tab.
   sites_open <- sites_df %>%
     dplyr::mutate(
       site_open_date = as.Date(site_open_date),
-      site_open_date = dplyr::if_else(
-        is.na(site_open_date),
-        as.Date("2024-01-01"),
-        site_open_date
-      ),
       monthly_target = as.numeric(monthly_target)
-    )
+    ) %>%
+    dplyr::filter(!is.na(site_open_date))
   
   # --- Optional filter ---
   if (!is.null(site_filter) && length(site_filter) > 0) {
@@ -879,6 +881,11 @@ make_monthly_df <- function(log_df, sites_df, site_filter = NULL) {
   }
   
   # --- Month grid ---
+  # With no dated sites left there is no grid to build; min() on an empty vector
+  # would return Inf and blow up seq(). Callers already treat NULL as "no data"
+  # and fall through to their empty-state rendering.
+  if (nrow(sites_open) == 0) return(NULL)
+
   all_months <- seq(
     lubridate::floor_date(min(sites_open$site_open_date, na.rm = TRUE), "month"),
     lubridate::floor_date(Sys.Date(), "month"),
@@ -920,6 +927,46 @@ make_overall_df <- function(md) {
            month_label = format(month, "%b %Y"),
            cum_actual  = cumsum(actual),
            cum_target  = cumsum(monthly_target))
+}
+
+# ── Separate map markers that share a coordinate ───────────────────────────────
+#
+# Sites are geocoded to their hospital where one is known and to the city
+# centroid otherwise, so several sites in the same town can end up on exactly
+# the same point. Stacked markers hide each other completely — only the topmost
+# one is visible or clickable, whatever the zoom.
+#
+# Fan any such group evenly around a small circle so each marker is reachable.
+# The displacement is a few hundred metres, well inside the town the site sits
+# in and smaller than the error already carried by a city-centroid geocode, so
+# it costs no meaningful accuracy. Groups are keyed on the rounded coordinate
+# (~11 m) and ordered by site_id, making the layout stable between renders
+# rather than jumping around on each redraw.
+spread_colocated_sites <- function(df, radius_m = 400) {
+  if (is.null(df) || !nrow(df)) return(df)
+  if (!all(c("lat", "lon") %in% names(df))) return(df)
+
+  key <- paste(round(df$lat, 4), round(df$lon, 4))
+  ord <- if ("site_id" %in% names(df)) df$site_id else seq_len(nrow(df))
+
+  for (k in unique(key[!is.na(df$lat) & !is.na(df$lon)])) {
+    idx <- which(key == k & !is.na(df$lat) & !is.na(df$lon))
+    n   <- length(idx)
+    if (n < 2) next
+    idx <- idx[order(ord[idx])]          # stable, site_id-ordered placement
+
+    # A bigger group needs a bigger ring to stay legible, capped so markers
+    # never wander out of their locality.
+    r_m <- min(radius_m * sqrt(n / 2), radius_m * 2.5)
+    ang <- 2 * pi * (seq_len(n) - 1) / n
+
+    dlat <- r_m / 111320
+    dlon <- r_m / (111320 * pmax(cos(df$lat[idx] * pi / 180), 0.1))
+
+    df$lat[idx] <- df$lat[idx] + dlat * sin(ang)
+    df$lon[idx] <- df$lon[idx] + dlon * cos(ang)
+  }
+  df
 }
 
 make_map_icon <- function(count, status) {

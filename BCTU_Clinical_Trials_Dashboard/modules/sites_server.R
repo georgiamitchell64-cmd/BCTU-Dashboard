@@ -15,7 +15,12 @@ sites_server <- function(input, output, session, state) {
     total_rand   <- sum(df$randomised, na.rm = TRUE)
     src          <- ifelse(is.na(df$source) | df$source == "", "auto", df$source)
     n_manual     <- sum(src == "manual")
-    n_flagged    <- sum(is.na(df$city) | is.na(df$site_open_date), na.rm = TRUE)
+    # A missing open date is only a data gap for a site that has actually
+    # opened. Identified and Set-up sites have not opened yet, so leaving the
+    # date blank there is expected and must not raise an "Incomplete" flag.
+    opened_statuses <- c("Open", "Recruiting", "Paused", "Closed")
+    missing_open    <- is.na(df$site_open_date) & df$status %in% opened_statuses
+    n_flagged       <- sum(is.na(df$city) | missing_open, na.rm = TRUE)
 
     # Actual monthly average recruits per site — each site's randomisations over
     # the months it has been open, averaged across the sites that have an open
@@ -167,8 +172,16 @@ sites_server <- function(input, output, session, state) {
 
     city    <- trimws(input$se_city %||% "")
     country <- trimws(input$se_country %||% "")
-    ll <- tryCatch(geocode_location(if (nzchar(city)) city else name, country),
-                   error = function(e) list(lat = NA_real_, lon = NA_real_))
+    # Geocode the hospital first, and only fall back to the city. Geocoding the
+    # city gave every site in a town the identical centroid, so their map
+    # markers landed exactly on top of one another. .uk_hospital_coords holds
+    # per-hospital coordinates, so the site name resolves to the actual site.
+    ll <- tryCatch({
+      by_site <- if (nzchar(name)) hospital_latlon(name) else
+                   list(lat = NA_real_, lon = NA_real_)
+      if (!is.na(by_site$lat)) by_site
+      else geocode_location(if (nzchar(city)) city else name, country)
+    }, error = function(e) list(lat = NA_real_, lon = NA_real_))
     as_d <- function(x) {
       if (is.null(x) || !nzchar(as.character(x))) return(as.Date(NA))
       tryCatch(as.Date(x), error = function(e) as.Date(NA))
