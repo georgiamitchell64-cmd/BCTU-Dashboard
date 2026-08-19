@@ -51,9 +51,14 @@ status_pill_html <- function(status) {
 }
 
 prog_bar_html <- function(actual, target) {
-  pct <- pmin(100, ifelse(target > 0, round(100 * actual / target), 0))
-  sprintf('<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:%d%%"></div></div><span class="prog-lbl">%d/%d</span></div>',
-          pct, actual, target)
+  # Sites may have no target set (blank on a manually added site), so guard
+  # every arithmetic path against NA rather than printing "NA" into the bar.
+  actual  <- as.integer(ifelse(is.na(actual), 0L, actual))
+  has_tgt <- !is.na(target) & target > 0
+  pct     <- as.integer(ifelse(has_tgt, pmin(100, round(100 * actual / pmax(target, 1))), 0))
+  tgt_lbl <- ifelse(has_tgt, as.character(target), "\u2014")
+  sprintf('<div class="prog-wrap"><div class="prog-track"><div class="prog-fill" style="width:%d%%"></div></div><span class="prog-lbl">%d/%s</span></div>',
+          pct, actual, tgt_lbl)
 }
 
 empty_reactable <- function(msg = "No data") {

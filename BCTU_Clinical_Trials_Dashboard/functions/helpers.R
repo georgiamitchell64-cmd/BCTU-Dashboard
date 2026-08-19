@@ -938,19 +938,24 @@ make_map_icon <- function(count, status) {
 }
 
 make_popup <- function(site_name, site_id, region, status, rand, target) {
-  pct <- if (target > 0) min(100, round(100 * rand / target)) else 0
+  # A site can have no target set; treat that as "no progress bar" instead of
+  # erroring on `if (NA > 0)`.
+  if (is.null(rand)   || length(rand)   == 0 || is.na(rand))   rand   <- 0L
+  has_tgt <- !is.null(target) && length(target) > 0 && !is.na(target) && target > 0
+  pct     <- if (has_tgt) min(100, round(100 * rand / target)) else 0
+  tgt_lbl <- if (has_tgt) as.character(target) else "\u2014"
   sprintf(
     '<div style="font-family:Outfit,sans-serif;min-width:190px;">
     <div style="font-size:15px;font-weight:700;color:#1B4F6B;margin-bottom:2px;">%s</div>
     <div style="font-size:11px;color:#64748B;margin-bottom:10px;">%s &bull; %s</div>
     <table style="font-size:12px;width:100%%;border-collapse:collapse;">
       <tr><td style="color:#64748B;padding:3px 10px 3px 0">Status</td><td><strong>%s</strong></td></tr>
-      <tr><td style="color:#64748B;padding:3px 10px 3px 0">Randomised</td><td><strong>%d / %d</strong></td></tr>
+      <tr><td style="color:#64748B;padding:3px 10px 3px 0">Randomised</td><td><strong>%d / %s</strong></td></tr>
     </table>
     <div style="background:#E2EAF0;border-radius:4px;height:6px;margin:8px 0 3px;">
       <div style="width:%d%%;height:6px;border-radius:4px;background:linear-gradient(90deg,#0FA88E,#2EC4A5);"></div></div>
     <span style="font-size:10px;color:#64748B">%d%% of site target</span></div>',
-    site_name, site_id, coalesce(region, ""), status, rand, target, pct, pct)
+    site_name, site_id, coalesce(region, ""), status, rand, tgt_lbl, pct, pct)
 }
 
 hm_cell_html <- function(actual, target) {

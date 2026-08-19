@@ -98,7 +98,9 @@ site_edit_modal <- function(row = NULL, is_new = FALSE) {
     if (is.null(row) || is.null(row[[f]])) return(default)
     v <- row[[f]]; if (length(v) && is.na(v[1])) return(default); v
   }
-  gd <- function(f) { v <- g(f); if (is.null(v)) NULL else tryCatch(as.Date(v), error = function(e) NULL) }
+  # NA, not NULL: Shiny fills a dateInput with today's date when it is given
+  # no initial value, which silently invents an open/SIV date for a new site.
+  gd <- function(f) { v <- g(f); if (is.null(v)) NA else tryCatch(as.Date(v), error = function(e) NA) }
   src <- g("source", "manual")
 
   modalDialog(
@@ -165,9 +167,9 @@ site_edit_modal <- function(row = NULL, is_new = FALSE) {
       div(class = "se-group-label", "Recruitment"),
       div(class = "se-grid se-grid3",
         div(class = "se-field", tags$label("Monthly target"),
-            numericInput("se_mo_tgt", label = NULL, value = as.integer(g("monthly_target", 2)), min = 0, width = "100%")),
+            numericInput("se_mo_tgt", label = NULL, value = as.integer(g("monthly_target", NA_integer_)), min = 0, width = "100%")),
         div(class = "se-field", tags$label("Overall target"),
-            numericInput("se_tgt", label = NULL, value = as.integer(g("target", 42)), min = 0, width = "100%")),
+            numericInput("se_tgt", label = NULL, value = as.integer(g("target", NA_integer_)), min = 0, width = "100%")),
         div(class = "se-field", tags$label("Randomised"),
             numericInput("se_rand", label = NULL, value = as.integer(g("randomised", 0)), min = 0, width = "100%"))
       ),
