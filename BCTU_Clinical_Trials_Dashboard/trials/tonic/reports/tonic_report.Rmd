@@ -458,10 +458,12 @@ body{padding:24px 0}
   .doc{max-width:none}
   /* Real @page margins frame every sheet — including table continuation
      sheets — so the fixed 297mm canvas and its 14mm padding go. The flex
-     column with min-height keeps each footer at the base of a full page;
-     1mm slack below the 274mm printable height avoids rounding spilling a
-     blank sheet. */
-  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:273mm;padding:0;page-break-after:always}
+     column with min-height keeps each footer at the base of a full page.
+     The printable height is 274mm, but the footer is pinned to the bottom
+     edge by margin-top:auto and carries break-inside:avoid, so a box flush
+     with 274mm gets rounded onto the next sheet - taking the footer with it
+     and leaving an almost-empty extra page. 270mm keeps a few mm in hand. */
+  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:270mm;padding:0;page-break-after:always}
   .page:last-child{page-break-after:auto}
   /* Blocks never split mid-element: anything that will not fit in the space
      left on the current page starts on the next one instead. */
@@ -717,7 +719,7 @@ pf_footer <- function(n_page, n_total = 6) {
 ```
 
 <!-- ============================================================
-     PAGE 1 — KEY MILESTONES · PILOT PROGRESSION · TIMELINE
+     PAGE 1 — TRIAL SNAPSHOT · KEY MILESTONES
 ============================================================== -->
 
 <section class="page">
@@ -857,7 +859,23 @@ render_ms_group(ms_future2,   "p-a", "Upcoming", "Pilot · recruitment · close-
 ```
 </div>
 
-<h2 class="sec">
+```{r page1-footer}
+pf_footer(1)
+```
+
+</section>
+
+<!-- ============================================================
+     PAGE 2 — PILOT PROGRESSION · PROJECT TIMELINE · RECRUITMENT VS TARGET
+============================================================== -->
+
+<section class="page">
+
+```{r page2-header}
+ph_header("Page 2 — Pilot progression, timeline & recruitment")
+```
+
+<h2 class="sec" style="margin-top:0">
 
 <span class="num">02</span> Internal pilot progression <span class="hint">6-month pilot · review `r esc(pilot_end)`</span>
 
@@ -881,23 +899,7 @@ for (i in seq_along(pc_cards)) {
 Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on page 4.
 </div>
 
-```{r page1-footer}
-pf_footer(1)
-```
-
-</section>
-
-<!-- ============================================================
-     PAGE 2 — PROJECT TIMELINE · RECRUITMENT VS TARGET
-============================================================== -->
-
-<section class="page">
-
-```{r page2-header}
-ph_header("Page 2 — Timeline & recruitment")
-```
-
-<h2 class="sec" style="margin-top:0">
+<h2 class="sec">
 
 <span class="num">03</span> Project timeline <span class="hint">`r esc(proj_start)` → `r esc(safe(rc$timeline_end, "Feb 2029"))` · `r fmt_int(safe(rc$timeline_months, 57))` mo end-to-end</span>
 
