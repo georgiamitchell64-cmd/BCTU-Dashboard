@@ -159,8 +159,9 @@ sites_server <- function(input, output, session, state) {
     ll <- tryCatch(geocode_location(if (nzchar(city)) city else name, country),
                    error = function(e) list(lat = NA_real_, lon = NA_real_))
     as_d <- function(x) {
-      if (is.null(x) || !nzchar(as.character(x))) return(as.Date(NA))
-      tryCatch(as.Date(x), error = function(e) as.Date(NA))
+      if (is.null(x) || length(x) == 0 || is.na(x[1])) return(as.Date(NA))
+      if (!nzchar(as.character(x[1]))) return(as.Date(NA))
+      tryCatch(as.Date(x[1]), error = function(e) as.Date(NA))
     }
     src <- if (is_new) "manual" else {
       sidx <- which(!is.na(rv$sites$site_id) & rv$sites$site_id == orig)
