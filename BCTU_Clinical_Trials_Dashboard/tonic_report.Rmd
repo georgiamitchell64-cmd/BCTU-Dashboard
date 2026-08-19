@@ -539,6 +539,7 @@ table.rt td.l{text-align:left}
 table.rt tr:nth-child(even) td{background:var(--navy-tint-2)}
 table.rt tr:last-child td{border-bottom:0}
 table.rt td.sn{color:var(--navy);font-weight:500}
+table.rt th.nw,table.rt td.nw{white-space:nowrap}
 table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy);border-top:2px solid var(--navy)}
 
 .pill{display:inline-flex;align-items:center;gap:4px;font-size:8pt;padding:1px 8px;border-radius:11px;font-weight:600;letter-spacing:.02em}
@@ -1121,35 +1122,32 @@ if (!is.null(wd_log) && nrow(wd_log) > 0) {
 ```{r sae-log}
 sl <- rd$sae_log
 if (!is.null(sl) && nrow(sl) > 0) {
-  cols <- c(record_id = "Participant", site_name = "Site",
-            reported = "Reported", diagnosis = "Diagnosis",
-            soc = "System organ class", category = "Category",
-            severity = "Severity", outcome = "Outcome",
-            related = "Causality", expected = "Expectedness",
-            death_yn = "Death", death = "Death date")
-  # Columns carrying at least one value render (keeps the table narrow);
-  # if no detail column has data yet, show them all with "—" placeholders.
-  present  <- names(cols)[names(cols) %in% names(sl)]
-  has_data <- present[vapply(present, function(cc)
-    any(!is.na(sl[[cc]]) & nzchar(trimws(as.character(sl[[cc]])))), logical(1))]
-  if (length(setdiff(has_data, c("record_id", "site_name"))) > 0)
-    present <- has_data
-  if (length(present) > 0) {
-    fmt_cell <- function(x) {
-      x <- trimws(as.character(x))
-      ifelse(is.na(x) | !nzchar(x), "—", x)
-    }
-    cat('<p class="lab" style="margin-top:8px">SAE log — TMG export</p>')
-    cat('<table class="rt"><thead><tr>',
-        paste(sprintf('<th class="l">%s</th>', cols[present]), collapse = ""),
-        '</tr></thead><tbody>', sep = "")
-    for (i in seq_len(nrow(sl))) {
-      vals <- vapply(present, function(cc) esc(fmt_cell(sl[[cc]][i])), character(1))
-      cat(sprintf('<tr>%s</tr>',
-                  paste(sprintf('<td class="l">%s</td>', vals), collapse = "")))
-    }
-    cat("</tbody></table>")
+  # Fixed column set for the TMG SAE log. Every one of these renders even when
+  # the export carries no such field, so the table keeps the same shape from
+  # report to report; a missing or blank cell reads "—". Column keys match the
+  # names prepare_report_data.R builds sae_log with.
+  cols <- c(record_id = "Participant",  reported = "Reported",
+            diagnosis = "Diagnosis",    soc      = "System organ class",
+            category  = "Category",     severity = "Severity",
+            related   = "Causality",    death_yn = "Death",
+            death     = "Death date")
+  fmt_cell <- function(x) {
+    x <- trimws(as.character(x))
+    if (length(x) == 0 || is.na(x) || !nzchar(x)) "—" else x
   }
+  cell <- function(cc, i) if (cc %in% names(sl)) fmt_cell(sl[[cc]][i]) else "—"
+  cat('<p class="lab" style="margin-top:8px">SAE log — TMG export</p>')
+  # Dates read badly when they wrap mid-value in a narrow column.
+  cls <- ifelse(names(cols) %in% c("reported", "death"), "l nw", "l")
+  cat('<table class="rt"><thead><tr>',
+      paste(sprintf('<th class="%s">%s</th>', cls, cols), collapse = ""),
+      '</tr></thead><tbody>', sep = "")
+  for (i in seq_len(nrow(sl))) {
+    vals <- vapply(names(cols), function(cc) esc(cell(cc, i)), character(1))
+    cat(sprintf('<tr>%s</tr>',
+                paste(sprintf('<td class="%s">%s</td>', cls, vals), collapse = "")))
+  }
+  cat("</tbody></table>")
 }
 ```
 
