@@ -1,5 +1,5 @@
 ---
-title: "TONIC TMG Progress Report"
+pagetitle: "TONIC TMG Progress Report"
 output:
   html_document:
     theme: null
@@ -275,6 +275,59 @@ j <- function(x) {
   } else {
     paste0("[", paste(ifelse(is.na(x), "null", x), collapse = ","), "]")
   }
+}
+
+# Always-an-array JSON helper: auto_unbox above collapses a length-1 vector to
+# a bare scalar, which breaks a Chart.js dataset when only one month of data
+# exists.
+ja <- function(x) {
+  if (requireNamespace("jsonlite", quietly = TRUE))
+    return(jsonlite::toJSON(x, na = "null", null = "null", auto_unbox = FALSE))
+  # Fallback needs to handle a list of series and quote strings itself.
+  if (is.list(x))
+    return(paste0("[", paste(vapply(x, ja, character(1)), collapse = ","), "]"))
+  if (is.character(x))
+    return(paste0("[", paste0('"', gsub('"', '\\\\"', x), '"', collapse = ","), "]"))
+  paste0("[", paste(ifelse(is.na(x), "null", x), collapse = ","), "]")
+}
+
+# ── Page 2 randomisation charts ───────────────────────────────────────────────
+# Two views of the same counts, mirroring the Charts tab in the app: monthly
+# randomisations across all sites, and the same months stacked by site.
+mr  <- rd$monthly_recruit    %||% data.frame()
+smh <- rd$site_month_heatmap %||% data.frame()
+
+rand_months <- sort(unique(c(
+  if (nrow(mr)  > 0) as.character(mr$month)  else character(0),
+  if (nrow(smh) > 0) as.character(smh$month) else character(0)
+)))
+rand_labels <- if (length(rand_months) > 0)
+  format(as.Date(paste0(rand_months, "-01")), "%b %y") else character(0)
+
+# All sites: one bar per month.
+rand_all <- rep(0, length(rand_months))
+if (nrow(mr) > 0 && length(rand_months) > 0) {
+  hit <- match(rand_months, as.character(mr$month))
+  rand_all <- as.numeric(mr$n)[hit]
+  rand_all[is.na(rand_all)] <- 0
+}
+
+# By site: one stacked series per site, biggest recruiter first.
+rand_stack_names <- character(0)
+rand_stack_data  <- list()
+if (nrow(smh) > 0 && length(rand_months) > 0) {
+  s_name <- as.character(smh$site_name)
+  s_mon  <- as.character(smh$month)
+  s_act  <- suppressWarnings(as.numeric(smh$actual))
+  s_act[is.na(s_act)] <- 0
+  totals <- tapply(s_act, s_name, sum)
+  rand_stack_names <- names(sort(totals, decreasing = TRUE))
+  rand_stack_data <- lapply(rand_stack_names, function(s) {
+    keep <- s_name == s
+    v <- s_act[keep][match(rand_months, s_mon[keep])]
+    v[is.na(v)] <- 0
+    v
+  })
 }
 
 # Ethnicity bar segments (top groups only, others combined)
@@ -651,7 +704,6 @@ ph_header("")
   <div class="mi"><div class="mk">Project dates</div><div class="mv">`r esc(proj_start)` → `r esc(proj_end)` <small>(`r fmt_int(proj_months)` mo)</small></div></div>
 </div>
 
-<h1 class="title">Trial snapshot</h1>
 <p class="sub">
 `r fmt_int(n_rand)` participant`r if (!is.na(n_rand) && n_rand == 1) "" else "s"` randomised across `r fmt_int(n_open_sites)` active site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"` —
 pilot opened <b>`r esc(pilot_start)`</b>, `r if (rec_band == "green") "on protocol target" else if (rec_band == "amber") "near protocol target" else "behind protocol target"`.
@@ -814,12 +866,12 @@ cat(sprintf('<g><line x1="%d" y1="16" x2="%d" y2="162" stroke="#B4321E" stroke-w
 
 <div class="row2" style="margin-top:8px">
   <div class="card">
-    <div class="ct">Cumulative recruitment · actual vs. target</div>
-    <div class="chart-wrap"><canvas id="cumC"></canvas></div>
+    <div class="ct">Monthly randomisations · all sites</div>
+    <div class="chart-wrap"><canvas id="monAllC"></canvas></div>
   </div>
   <div class="card">
-    <div class="ct">Monthly randomisations</div>
-    <div class="chart-wrap"><canvas id="monC"></canvas></div>
+    <div class="ct">Monthly randomisations by site</div>
+    <div class="chart-wrap"><canvas id="monStackC"></canvas></div>
   </div>
 </div>
 
@@ -1262,44 +1314,20 @@ pf_footer(6)
   const target = `r j(chart_target)`;
   const actual = `r j(chart_actual)`;
 
-  // Page 2: cumulative recruitment
-  const cumEl = document.getElementById('cumC');
-  if (cumEl) {
-    new Chart(cumEl, {
-      type:'line',
-      data:{
-        labels: labels,
-        datasets:[
-          {label:'Target (protocol)', data: target, borderColor:'#bcd2dc', borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false, tension:.25},
-          {label:'Actual', data: actual, borderColor: navy, backgroundColor:'rgba(18,161,146,.18)', fill:true, borderWidth:2, pointBackgroundColor: navy, pointRadius:3, tension:.3, spanGaps:false}
-        ]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:true,labels:{boxWidth:10,boxHeight:10,padding:8,font:{size:9}}}},
-        scales:{
-          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{padding:4}}
-        }
-      }
-    });
-  }
+  const randLabels     = `r ja(rand_labels)`;
+  const randAll        = `r ja(rand_all)`;
+  const randStackNames = `r ja(rand_stack_names)`;
+  const randStack      = `r ja(rand_stack_data)`;
 
-  // Page 2: monthly randomisations
-  const monEl = document.getElementById('monC');
-  if (monEl) {
-    // Derive monthly counts from actual diffs
-    const monthly = actual.map((v, i) => {
-      if (v == null) return null;
-      const prev = i > 0 ? (actual[i-1] || 0) : 0;
-      return v - prev;
-    });
-    new Chart(monEl, {
+  // Page 2: monthly randomisations across all sites
+  const monAllEl = document.getElementById('monAllC');
+  if (monAllEl) {
+    new Chart(monAllEl, {
       type:'bar',
       data:{
-        labels: labels,
+        labels: randLabels,
         datasets:[{
-          data: monthly,
+          label:'Randomised', data: randAll,
           backgroundColor: ctx => (ctx.parsed && ctx.parsed.y) ? navy : '#edf2f5',
           borderRadius:4, maxBarThickness:24
         }]
@@ -1310,6 +1338,33 @@ pf_footer(6)
         scales:{
           x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
           y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{stepSize:1,padding:4}}
+        }
+      }
+    });
+  }
+
+  // Page 2: monthly randomisations stacked by site
+  const monStackEl = document.getElementById('monStackC');
+  if (monStackEl) {
+    const pal = ['#01344F','#12A192','#f3b860','#9bc3da','#B4321E',
+                 '#9bd07a','#A78BFA','#F97316','#e587a8','#5B8C9E'];
+    new Chart(monStackEl, {
+      type:'bar',
+      data:{
+        labels: randLabels,
+        datasets: randStackNames.map((nm, i) => ({
+          label: nm, data: randStack[i], stack:'total',
+          backgroundColor: pal[i % pal.length], borderRadius:2, maxBarThickness:34
+        }))
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:true,position:'bottom',
+                         labels:{boxWidth:9,boxHeight:9,padding:6,font:{size:8}}},
+                 tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y||0)}}},
+        scales:{
+          x:{stacked:true,grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
+          y:{stacked:true,beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{stepSize:1,padding:4}}
         }
       }
     });
