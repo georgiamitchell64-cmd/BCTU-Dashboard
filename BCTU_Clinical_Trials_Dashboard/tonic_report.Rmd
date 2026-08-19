@@ -64,6 +64,7 @@ n_sites_plan <- safe(rc$sites_planned, 25)
 proj_start   <- safe(rc$project_start, "Jun 2024")
 proj_end     <- safe(rc$project_end,   "Feb 2028")
 proj_months  <- safe(rc$project_months, 45)
+pilot_start  <- safe(rc$pilot_start,   "Apr 2026")
 pilot_target <- safe(rc$pilot_target,  60)
 pilot_end    <- safe(rc$pilot_end,     "Sep 2026")
 full_end     <- safe(rc$full_recruitment_end, "Jun 2028")
@@ -653,7 +654,7 @@ ph_header("")
 <h1 class="title">Trial snapshot</h1>
 <p class="sub">
 `r fmt_int(n_rand)` participant`r if (!is.na(n_rand) && n_rand == 1) "" else "s"` randomised across `r fmt_int(n_open_sites)` active site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"` —
-pilot opened <b>`r esc(proj_start)`</b>, `r if (rec_band == "green") "on protocol target" else if (rec_band == "amber") "near protocol target" else "behind protocol target"`.
+pilot opened <b>`r esc(pilot_start)`</b>, `r if (rec_band == "green") "on protocol target" else if (rec_band == "amber") "near protocol target" else "behind protocol target"`.
 </p>
 
 <div class="snap">
