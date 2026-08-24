@@ -326,21 +326,6 @@ status_for_card <- function(i, v) {
   switch(b %||% "pending", stop = "red", mod = "amber", go = "green", "pending")
 }
 
-# ── Outlook (phases) — text content ───────────────────────────────────────────
-outlook_phases <- rc$outlook_phases %||% list(
-  list(k = "Phase 1 · now", t = paste("Pilot ·", "Apr – Sep 2026"),
-       d = "Open 2 → <b>8 sites</b>, ramp-up of pilot centres. End-pilot target <b>76 participants</b> (incl. 60 from the formal 6-month pilot window).",
-       s = "~12 / month at pilot end", cls = "now"),
-  list(k = "Phase 2", t = "Ramp-up · Oct 2026 – May 2027",
-       d = "Add the 17 remaining sites in waves. <b>10 → 24 sites open</b>; cumulative target reaches <b>300</b> by end May 2027.",
-       s = "~44 / month by May 2027", cls = "p2"),
-  list(k = "Phase 3", t = "Steady state · Jun 2027 – Feb 2028",
-       d = "All <b>25 sites</b> running at <b>~50 / month</b>. Cumulative target moves from <b>398 → 748</b>.",
-       s = "Peak recruitment phase", cls = "p3"),
-  list(k = "Phase 4", t = "Final push · Mar – Jun 2028",
-       d = "Target met on <b>Jun 2028</b> with <b>898 randomised</b>. Recruitment closes, trial moves to follow-up.",
-       s = "Wind-down to close-out", cls = "p4")
-)
 
 # ── Outlook chart data: from schedule_full + actuals ──────────────────────────
 sched <- rd$schedule_full %||% data.frame()
@@ -412,7 +397,7 @@ body{padding:24px 0}
   /* Blocks never split mid-element: anything that will not fit in the space
      left on the current page starts on the next one instead. */
   .ph,.ph-info,.card,.row2,.row3,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
-  .ol-chart-wrap,.ol-phases,.ol-status,.milestones,.ml-grp,.chart-wrap,
+  .ol-chart-wrap,.ol-status,.milestones,.ml-grp,.chart-wrap,
   .demo,.note,.scale-key,.eth-bar,.eth-legend,svg{
     break-inside:avoid;page-break-inside:avoid}
   /* Headings and table captions stay with the content they introduce. */
@@ -598,24 +583,12 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .ol-chart{border:1px solid var(--line);border-radius:6px;background:#fff;padding:10px 12px}
 .ol-chart .h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;font-size:9pt;color:var(--muted)}
 .ol-chart .h b{color:var(--navy);font-weight:600}
-.ol-chart-wrap{position:relative;height:240px}
+.ol-chart-wrap{position:relative;height:300px}
 .ol-leg{display:flex;gap:18px;font-size:8.5pt;color:var(--muted);margin-top:6px;flex-wrap:wrap}
 .ol-leg .lg{display:inline-flex;align-items:center;gap:6px}
 .ol-leg .sw{width:14px;height:8px;border-radius:2px}
 .ol-leg .ln{width:14px;border-top:2px solid var(--navy);height:1px}
 
-.ol-phases{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
-.ol-ph{border:1px solid var(--line);border-radius:6px;padding:9px 11px;background:#fff;position:relative;overflow:hidden}
-.ol-ph::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
-.ol-ph.now::before{background:var(--teal)}
-.ol-ph.p2::before{background:var(--navy)}
-.ol-ph.p3::before{background:#f3b860}
-.ol-ph.p4::before{background:#9bd07a}
-.ol-ph .pk{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
-.ol-ph .pp{font-size:9.5pt;color:var(--navy);font-weight:700;margin-top:1px}
-.ol-ph .pd{font-size:8.5pt;color:var(--ink-2);margin-top:6px;line-height:1.45}
-.ol-ph .pd b{color:var(--navy)}
-.ol-ph .ps{font-size:7.5pt;color:var(--muted);margin-top:4px}
 </style>
 
 <link rel="preconnect" href="https://fonts.googleapis.com"> <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
@@ -867,14 +840,14 @@ ph_header("Page 2 — Timeline & recruitment")
 <span class="lg" style="margin-left:auto"><span style="width:10px;border-left:1.5px dashed var(--red);height:10px;display:inline-block"></span>&nbsp;Now (`r format(Sys.Date(), "%b %y")`)</span>
 </div>
 
-<svg viewBox="0 0 800 178" width="100%" style="display:block"> <g font-family="Calibri, Segoe UI, sans-serif" font-size="7.5" fill="#6a7d8a"> <text x="90"  y="10" text-anchor="middle">Jun 24</text> <text x="162" y="10" text-anchor="middle">Dec 24</text> <text x="234" y="10" text-anchor="middle">Jun 25</text> <text x="306" y="10" text-anchor="middle">Dec 25</text> <text x="378" y="10" text-anchor="middle">Jun 26</text> <text x="450" y="10" text-anchor="middle">Dec 26</text> <text x="522" y="10" text-anchor="middle">Jun 27</text> <text x="594" y="10" text-anchor="middle">Dec 27</text> <text x="666" y="10" text-anchor="middle">Jun 28</text> <text x="738" y="10" text-anchor="middle">Dec 28</text> </g> <line x1="90" y1="16" x2="774" y2="16" stroke="#dfe7ec" stroke-width="1"/> <g font-family="Calibri, Segoe UI, sans-serif" font-size="8" fill="#3d5363" font-weight="500"> <text x="0" y="34">Study set-up</text> <rect x="90"  y="24"  width="252" height="14" rx="3" fill="#9bc3da"/> <text x="0" y="54">6-mo pilot</text> <rect x="354" y="44"  width="72"  height="14" rx="3" fill="#01344F"/> <text x="0" y="74">Full recruitment</text> <rect x="426" y="64"  width="252" height="14" rx="3" fill="#12A192" opacity=".95"/> <text x="0" y="94">Treatment & follow-up</text> <rect x="354" y="84"  width="360" height="14" rx="3" fill="#f3b860"/> <text x="0" y="114">Data cleaning</text> <rect x="714" y="104" width="24"  height="14" rx="3" fill="#9bd07a"/> <text x="0" y="134">Analysis & writeup</text> <rect x="738" y="124" width="24"  height="14" rx="3" fill="#f29278"/> <text x="0" y="154">Close-out</text> <rect x="762" y="144" width="12"  height="14" rx="3" fill="#e587a8"/> </g>
+<svg viewBox="0 0 800 262" width="100%" style="display:block"> <g font-family="Calibri, Segoe UI, sans-serif" font-size="9" fill="#6a7d8a"> <text x="90"  y="20" text-anchor="middle">Jun 24</text> <text x="162" y="20" text-anchor="middle">Dec 24</text> <text x="234" y="20" text-anchor="middle">Jun 25</text> <text x="306" y="20" text-anchor="middle">Dec 25</text> <text x="378" y="20" text-anchor="middle">Jun 26</text> <text x="450" y="20" text-anchor="middle">Dec 26</text> <text x="522" y="20" text-anchor="middle">Jun 27</text> <text x="594" y="20" text-anchor="middle">Dec 27</text> <text x="666" y="20" text-anchor="middle">Jun 28</text> <text x="738" y="20" text-anchor="middle">Dec 28</text> </g> <line x1="90" y1="26" x2="774" y2="26" stroke="#dfe7ec" stroke-width="1"/> <g font-family="Calibri, Segoe UI, sans-serif" font-size="10.5" fill="#3d5363" font-weight="500"> <text x="0" y="50">Study set-up</text> <rect x="90"  y="36"  width="252" height="20" rx="3" fill="#9bc3da"/> <text x="0" y="80">6-mo pilot</text> <rect x="354" y="66"  width="72"  height="20" rx="3" fill="#01344F"/> <text x="0" y="110">Full recruitment</text> <rect x="426" y="96"  width="252" height="20" rx="3" fill="#12A192" opacity=".95"/> <text x="0" y="140">Treatment & follow-up</text> <rect x="354" y="126"  width="360" height="20" rx="3" fill="#f3b860"/> <text x="0" y="170">Data cleaning</text> <rect x="714" y="156" width="24"  height="20" rx="3" fill="#9bd07a"/> <text x="0" y="200">Analysis & writeup</text> <rect x="738" y="186" width="24"  height="20" rx="3" fill="#f29278"/> <text x="0" y="230">Close-out</text> <rect x="762" y="216" width="12"  height="20" rx="3" fill="#e587a8"/> </g>
 
 ```{r now-marker, results="asis"}
 # Compute x for "now" marker: months since Jun 2024 * 12, anchored at x=90
 mo_now <- as.integer(round(as.numeric(difftime(Sys.Date(), as.Date("2024-06-01"), units = "days")) / 30.44))
 mo_now <- max(0, min(57, mo_now))
 xn <- 90 + mo_now * 12
-cat(sprintf('<g><line x1="%d" y1="16" x2="%d" y2="162" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="172" font-family="Calibri, Segoe UI, sans-serif" font-size="7.5" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
+cat(sprintf('<g><line x1="%d" y1="26" x2="%d" y2="242" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="254" font-family="Calibri, Segoe UI, sans-serif" font-size="9" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
             xn, xn, xn, format(Sys.Date(), "%b %y")))
 ```
 
@@ -1406,14 +1379,6 @@ ph_header("Page 6 — Recruitment outlook")
 <div class="ol-leg"><span class="lg"><span class="ln"></span>Cumulative target (protocol)</span><span class="lg"><span class="sw" style="background:var(--teal)"></span>Actual randomised</span></div>
 </div>
 
-<div class="ol-phases">
-```{r outlook-phases}
-for (p in outlook_phases) {
-  cat(sprintf('<div class="ol-ph %s"><div class="pk">%s</div><div class="pp">%s</div><div class="pd">%s</div><div class="ps">%s</div></div>',
-              p$cls, esc(p$k), esc(p$t), p$d, esc(p$s)))
-}
-```
-</div>
 
 <p class="note" style="margin-top:8px">
 
