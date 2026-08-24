@@ -74,7 +74,9 @@ ensure_pandoc <- function() {
 # affecting other trials.
 # =============================================================================
 
-REPORT_TEMPLATE_KINDS <- c("tonic", "tsc")  # tonic_report.Rmd = TMG/iTMG, tsc_report.Rmd = TSC
+# tonic_report.Rmd = TMG/iTMG, tsc_report.Rmd = TSC (Word),
+# tsc_interim_report.Rmd = TSC Interim v0.1 (HTML, derived from the TMG layout)
+REPORT_TEMPLATE_KINDS <- c("tonic", "tsc", "tsc_interim")
 
 # Resolve the URL path (relative to Shiny's www/) for a trial's logo, if one
 # was copied to www/trial_logos/<code>.<ext> at startup. Returns NULL when
@@ -600,6 +602,64 @@ clean_df_names <- function(x) {
   x
 }
 
+# ── Site name: DAG fallback ──────────────────────────────────────────────────
+# A REDCap export carries the site in two places: the trial's own site field
+# (column F in the TONIC export, `site_name`) and REDCap's own data-access-group
+# column (column E, `redcap_data_access_group`). When a DAG is misconfigured the
+# site field can come back blank for every row of a record — St James's Hospital,
+# Leeds is the known case — which silently dropped the site from the report even
+# though column E still named it.
+#
+# `site_names_with_dag_fallback()` resolves one site name per row: the site field
+# wins wherever it holds a value, and only the blanks fall back to the DAG. The
+# field is entered once, on the baseline event, so blanks are first filled from
+# the participant's own other rows before the DAG is consulted.
+site_names_with_dag_fallback <- function(df,
+                                         site_col = "site_name",
+                                         dag_col  = "redcap_data_access_group",
+                                         id_col   = "record_id") {
+  n <- nrow(df)
+  if (n == 0) return(character(0))
+
+  pick <- function(col) {
+    if (is.null(col) || length(col) == 0 || is.na(col) || !nzchar(col) ||
+        !(col %in% names(df)))
+      return(rep(NA_character_, n))
+    v <- trimws(as.character(df[[col]]))
+    v[is.na(v) | !nzchar(v)] <- NA_character_
+    v
+  }
+
+  site <- pick(site_col)
+
+  # Carry a known site across the participant's remaining event rows.
+  if (!is.null(id_col) && length(id_col) > 0 && !is.na(id_col) &&
+      id_col %in% names(df) && anyNA(site)) {
+    ids   <- trimws(as.character(df[[id_col]]))
+    known <- tapply(site, ids, function(x) {
+      x <- x[!is.na(x)]
+      if (length(x)) x[1] else NA_character_
+    })
+    site[is.na(site)] <- unname(known[ids[is.na(site)]])
+  }
+
+  dag <- pick(dag_col)
+  site[is.na(site)] <- prettify_dag_name(dag[is.na(site)])
+  site
+}
+
+# REDCap exports a data-access-group as its unique group name, which is
+# lower-cased and underscored ("st_jamess_hospital_leeds"). Reshape only a value
+# that actually looks like one of those slugs; a real site name already contains
+# spaces and is returned untouched.
+prettify_dag_name <- function(x) {
+  out <- as.character(x)
+  if (length(out) == 0) return(out)
+  slug <- !is.na(out) & grepl("_", out) & !grepl(" ", out) & out == tolower(out)
+  if (any(slug)) out[slug] <- tools::toTitleCase(gsub("_", " ", out[slug]))
+  out
+}
+
 next_site_id <- function(sites_df) {
   prefix <- toupper(
     (current_trial_config()$short_name %||% current_trial_config()$code) %||% "SITE"
@@ -709,6 +769,13 @@ process_redcap <- function(raw_df, current_sites) {
     stop(sprintf("Could not find required columns. Found: %s",
                  paste(orig[1:min(8, length(orig))], collapse = ", ")))
   if (rec_col != "record_id") df <- df %>% rename(record_id = all_of(rec_col))
+
+  # Resolve the site per row before anything downstream reads it: the trial's
+  # own site column wins, and REDCap's data-access-group column fills the blanks
+  # a DAG misconfiguration leaves behind (see site_names_with_dag_fallback).
+  dag_fallback_col <- names(df)[names(df) == "redcap_data_access_group"][1]
+  df$site_dag <- site_names_with_dag_fallback(
+    df, site_col = dag_col, dag_col = dag_fallback_col, id_col = "record_id")
   
   # Build event_type from the active trial's redcap_events mapping.
   # For each logical role (baseline, discharge, day_30, day_90, ...) we accept
@@ -740,7 +807,6 @@ process_redcap <- function(raw_df, current_sites) {
     mutate(
       record_id  = trimws(as.character(record_id)),
       event_type = vapply(.data[[evt_col]], classify_event, character(1)),
-      site_dag   = if (!is.na(dag_col)) trimws(as.character(.data[[dag_col]])) else NA_character_,
       work_package = if (!is.na(wp_col)) suppressWarnings(as.integer(.data[[wp_col]])) else NA_integer_,
       .rand_dttm = if (!is.na(rand_col)) .data[[rand_col]] else NA_character_
     ) %>%

@@ -64,6 +64,25 @@ prepare_report_data <- function(df,
       df[[canon]] <- df[[src]]
   }
 
+  # Site name: the trial's own site field (column F of the TONIC export) is the
+  # primary source; where a DAG misconfiguration leaves it blank for a record,
+  # fall back to REDCap's data-access-group column (column E) so the site still
+  # appears in the report. See site_names_with_dag_fallback() in helpers.R.
+  if (exists("site_names_with_dag_fallback", mode = "function")) {
+    site_src <- if ("site_v" %in% names(df)) "site_v" else
+                fld("site_name", default = "site_name", cfg = cfg)
+    dag_src  <- if ("redcap_data_access_group" %in% names(df))
+                  "redcap_data_access_group" else
+                if ("site_dag" %in% names(df)) "site_dag" else NULL
+    id_src   <- if ("record_v" %in% names(df)) "record_v" else "record_id"
+    resolved_sites <- site_names_with_dag_fallback(
+      df, site_col = site_src, dag_col = dag_src, id_col = id_src)
+    # Only take the resolved vector when it actually names something, so a
+    # trial that maps no site field at all keeps its existing shape.
+    if ("site_v" %in% names(df) || any(!is.na(resolved_sites)))
+      df$site_v <- resolved_sites
+  }
+
   # PN timing reasons (TONIC: nut_o_pn_late_rsn / nut_o_pn_early_rsn) —
   # autodetect when the config doesn't map pn_late_reason / pn_early_reason.
   if (!"pn_late" %in% names(df)) {
@@ -774,6 +793,48 @@ prepare_report_data <- function(df,
     fu_90_elig = elig_90, fu_90_comp = comp_90,
     interv_rate = interv_rate, contam_rate = contam_rate, crossover_rate = crossover_rate)
 
+  # ── 27. Protocol deviations ───────────────────────────────────────────────
+  # Reuses the Data-tab extractor so the report and the drill-down never
+  # disagree. NULL when the trial maps no deviation form or none is recorded —
+  # the report then omits the section rather than printing an empty table.
+  deviation_log <- NULL
+  if (exists("deviation_events", mode = "function")) {
+    deviation_log <- tryCatch({
+      d <- deviation_events(df)
+      if (is.null(d) || nrow(d) == 0) NULL else d
+    }, error = function(e) NULL)
+  }
+  if (!is.null(deviation_log)) {
+    # Scope to the participants this report covers, and label the site from the
+    # resolved participant record rather than the raw DAG column.
+    deviation_log <- deviation_log[
+      as.character(deviation_log$record_id) %in% as.character(filtered$record_id), ,
+      drop = FALSE]
+    if (nrow(deviation_log) == 0) {
+      deviation_log <- NULL
+    } else if ("site_name" %in% names(filtered)) {
+      lk <- data.frame(record_id = as.character(filtered$record_id),
+                       .site     = as.character(filtered$site_name),
+                       stringsAsFactors = FALSE)
+      lk <- lk[!duplicated(lk$record_id), , drop = FALSE]
+      deviation_log$record_id <- as.character(deviation_log$record_id)
+      deviation_log <- merge(deviation_log, lk, by = "record_id", all.x = TRUE)
+      has_site <- !is.na(deviation_log$.site) & nzchar(deviation_log$.site)
+      deviation_log$site[has_site] <- deviation_log$.site[has_site]
+      deviation_log$.site <- NULL
+      deviation_log <- deviation_log[order(deviation_log$onset_date,
+                                           deviation_log$record_id,
+                                           na.last = TRUE), , drop = FALSE]
+    }
+  }
+  deviation_count <- if (is.null(deviation_log)) 0L else nrow(deviation_log)
+  # Distinguishes "no deviations reported" from "this export carries no
+  # deviation form", so the report can say which.
+  deviation_available <- {
+    dc <- fld("deviation_complete", default = "deviation_complete", cfg = cfg)
+    !is.null(dc) && dc %in% names(df)
+  }
+
   # ── Return ────────────────────────────────────────────────────────────────
   list(
     filtered_df = filtered,
@@ -788,6 +849,8 @@ prepare_report_data <- function(df,
                   fu_90_count = fu_90_kpi, fu_90_elig = elig_90),
     safety_summary = safety_summary, site_summary = site_summary,
     sae_log = sae_log,
+    deviation_log = deviation_log, deviation_count = deviation_count,
+    deviation_available = deviation_available,
     site_status = site_status_table, monthly_achievement = monthly_achievement,
     open_sites = open_sites_table, site_month_heatmap = site_month_heatmap,
     crf_data = crf_data, pipeline = pipeline_combined,

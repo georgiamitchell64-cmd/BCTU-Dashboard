@@ -475,7 +475,7 @@ trial_settings_tab_ui <- function() {
                   div(style = "flex:1;min-width:0;",
                       div(class = "s-card-title", "Report templates"),
                       div(class = "s-card-sub",
-                          "Edit the trial's TMG/iTMG and TSC Rmd templates.
+                          "Edit the trial's TMG/iTMG, TSC and TSC Interim Rmd templates.
                            Saved templates live in your trial's reports/
                            folder and are used for every report generated
                            for this trial."))),
@@ -492,7 +492,13 @@ trial_settings_tab_ui <- function() {
                                 onclick = "Shiny.setInputValue('rt_pick','tsc',{priority:'event'});
                                            $('.rt-pick-btn').removeClass('on');
                                            $(this).addClass('on');",
-                                "TSC")),
+                                "TSC"),
+                    tags$button(id = "rt_pick_tsc_interim", class = "rt-pick-btn action-button",
+                                type = "button",
+                                onclick = "Shiny.setInputValue('rt_pick','tsc_interim',{priority:'event'});
+                                           $('.rt-pick-btn').removeClass('on');
+                                           $(this).addClass('on');",
+                                "TSC Interim")),
 
                   # Override-path field: lets a user point the renderer at an
                   # Rmd they already maintain elsewhere (e.g. on a network drive).

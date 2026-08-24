@@ -1127,8 +1127,10 @@ reports_server <- function(input, output, session, state) {
       # TSC always emits docx (template is word-native)
       if (template_choice == "TSC") fmt <- "docx"
       ext <- switch(fmt, "docx" = "docx", "pdf" = "pdf", "html")
+      # Template keys can carry spaces ("TSC Interim"), so slug them too.
+      tslug <- gsub("[^A-Za-z0-9]+", "_", template_choice)
       sprintf("%s_%s_%s.%s",
-              slug, template_choice, format(Sys.Date(), "%Y-%m-%d"), ext)
+              slug, tslug, format(Sys.Date(), "%Y-%m-%d"), ext)
     },
     content = function(file) {
       cfg <- rv$trial_config
@@ -1322,8 +1324,11 @@ reports_server <- function(input, output, session, state) {
       }
 
       # Resolve which Rmd to use. TMG and iTMG share tonic_report.Rmd
-      # (the Rmd reads `report_type` to switch headers). TSC has its own.
-      rmd_kind <- if (template_choice == "TSC") "tsc" else "tonic"
+      # (the Rmd reads `report_type` to switch headers). TSC has its own
+      # word-native template; TSC Interim v0.1 is its own HTML template,
+      # derived from the TMG layout, so it renders down the HTML branch.
+      rmd_kind <- if (template_choice == "TSC") "tsc" else
+                  if (template_choice == "TSC Interim") "tsc_interim" else "tonic"
       if (template_choice == "TSC") fmt <- "docx"   # TSC is always docx
 
       rmd_src <- resolve_report_template(cfg, rmd_kind)
@@ -1432,7 +1437,10 @@ reports_server <- function(input, output, session, state) {
       # The tonic_report.Rmd is HTML-styled; PDF preserves formatting via
       # chromote (it's just printing the HTML). DOCX via pandoc loses most
       # styling — we surface a warning so the user knows.
-      report_type_param <- if (template_choice == "iTMG") "iTMG" else "TMG"
+      report_type_param <- switch(template_choice,
+                                  "iTMG"        = "iTMG",
+                                  "TSC Interim" = "TSC Interim",
+                                  "TMG")
       html_out <- file.path(tmp_dir, "tonic_rendered.html")
 
       ok <- tryCatch({
@@ -1558,7 +1566,10 @@ reports_server <- function(input, output, session, state) {
     div(class = "rb-seg",
         lapply(keys, function(k) {
           tags$button(
-            id = paste0("rb_pick_", k),
+            # Template keys can carry spaces ("TSC Interim") and an element id
+            # cannot, so slug it. The click handler goes through
+            # Shiny.setInputValue below, not the id.
+            id = paste0("rb_pick_", gsub("[^A-Za-z0-9]+", "_", k)),
             class = paste("action-button", if (identical(k, cur)) "on" else ""),
             type = "button",
             onclick = sprintf("Shiny.setInputValue('rb_pick_template','%s',{priority:'event'})", k),

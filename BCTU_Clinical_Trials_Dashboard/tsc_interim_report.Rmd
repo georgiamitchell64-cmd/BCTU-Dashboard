@@ -1,0 +1,1596 @@
+---
+title: "TONIC Progress Report"
+output:
+  html_document:
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+    md_extensions: "-markdown_in_html_blocks"
+params:
+  report_data: NULL
+  selected_sites: "All sites"
+  date_from: NULL
+  date_to: NULL
+  include_withdrawn: false
+  include_appendix: false
+  report_date: !r format(Sys.Date(), "%d %B %Y")
+  logo_path: NULL
+  crf_csv_path: NULL
+  screening_xlsx_path: NULL
+  report_type: "TSC Interim"
+  completeness_style: "heatmap"
+  report_content: NULL
+---
+
+<!--
+  TSC Interim v0.1 — derived from tonic_report.Rmd (the TMG/iTMG template).
+  Same layout, styling and section structure, with four differences:
+    * the header says "Progress Report", not "Trial Management Group";
+    * the site status and recruitment table lists recruiting sites only;
+    * three tables are added — monthly recruitment by site (06), protocol
+      deviations (09) and participant baseline characteristics (11);
+    * sections renumber accordingly and the report runs to nine pages.
+  Keep visual changes in step with tonic_report.Rmd so the two stay siblings.
+-->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, results="asis")
+library(dplyr)
+`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+safe <- function(x, fallback = NA) if (is.null(x) || length(x) == 0) fallback else x
+esc  <- function(s) htmltools::htmlEscape(as.character(s))
+fmt_pct <- function(x, dp = 0) if (is.null(x) || length(x) == 0 || is.na(x)) "—" else
+  paste0(formatC(x, format = "f", digits = dp), "%")
+fmt_int <- function(x) if (is.null(x) || length(x) == 0 || is.na(x)) "—" else
+  format(as.integer(x), big.mark = ",")
+fmt_date <- function(d, f = "%b %Y") {
+  d <- suppressWarnings(as.Date(d))
+  if (is.na(d)) "—" else format(d, f)
+}
+
+rd <- params$report_data %||% list()
+rc <- params$report_content %||% list()
+kpi <- rd$kpis %||% list()
+pilot <- rd$pilot %||% list()
+demo  <- rd$demographics %||% list()
+wd    <- rd$withdrawals %||% list(n = 0, rate = 0, log = NULL)
+wd_log <- wd$log
+n_wd   <- if (!is.null(wd_log) && nrow(wd_log) > 0) nrow(wd_log) else safe(wd$n, 0)
+wd_reason_col <- intersect(
+  c("reason", "wd_reason", "withdrawal_reason", "reason_text", "cos_label"),
+  names(wd_log)
+)[1]
+
+# ── Trial identity / project meta ─────────────────────────────────────────────
+trial_short  <- safe(rc$short_name,    "TONIC")
+trial_title  <- safe(rc$trial_title,   "Timing Of Nutrition In emergenCy laparotomy")
+chief_inv    <- safe(rc$ci,            "Mr Matthew Lee")
+sponsor      <- safe(rc$sponsor,       "University of Birmingham")
+funder       <- safe(rc$funder,        "NIHR HTA")
+funder_ref   <- safe(rc$funder_ref,    "NIHR155875")
+isrctn       <- safe(rc$isrctn,        "ISRCTN59200516")
+sample_size  <- safe(rc$sample_size,   safe(kpi$trial_target, 898))
+n_sites_plan <- safe(rc$sites_planned, 25)
+proj_start   <- safe(rc$project_start, "Jun 2024")
+proj_end     <- safe(rc$project_end,   "Feb 2028")
+proj_months  <- safe(rc$project_months, 45)
+pilot_target <- safe(rc$pilot_target,  60)
+pilot_end    <- safe(rc$pilot_end,     "Sep 2026")
+full_end     <- safe(rc$full_recruitment_end, "Jun 2028")
+
+report_date_str <- params$report_date %||% format(Sys.Date(), "%d %B %Y")
+rep_from <- safe(rc$reporting_period_start, "01 May 2025")
+rep_to   <- format(Sys.Date(), "%d %b %Y")
+
+# ── Logos (base64) ────────────────────────────────────────────────────────────
+encode_logo <- function(path) {
+  if (is.null(path) || !nzchar(path) || !file.exists(path) ||
+      !requireNamespace("base64enc", quietly = TRUE)) return("")
+  ext  <- tolower(tools::file_ext(path))
+  mime <- switch(ext, png = "image/png", jpg = "image/jpeg", jpeg = "image/jpeg",
+                 svg = "image/svg+xml", "image/png")
+  tryCatch(
+    paste0("data:", mime, ";base64,", base64enc::base64encode(path)),
+    error = function(e) "")
+}
+
+logo_b64      <- encode_logo(params$logo_path)
+# BCTU brand logo. The report knits in a temp intermediates_dir, so the plain
+# "www/..." path (relative to the app root) won't resolve here — reports_server
+# stages the file alongside the Rmd, so try that first, then fall back to the
+# in-place app paths for when the report is knitted directly.
+.bctu_candidates <- c(
+  "BlackText-landscape.png",                                                  # staged next to the Rmd
+  file.path("www", "BlackText-landscape.png"),                                # app root (in-place render)
+  file.path(dirname(knitr::current_input(dir = TRUE)), "BlackText-landscape.png")
+)
+.bctu_hit     <- .bctu_candidates[file.exists(.bctu_candidates)]
+bctu_logo_b64 <- if (length(.bctu_hit)) encode_logo(.bctu_hit[1]) else ""
+
+# ── Snapshot KPIs ─────────────────────────────────────────────────────────────
+n_rand    <- safe(kpi$total_randomised, 0)
+n_target  <- safe(kpi$trial_target, sample_size)
+n_sites_active <- safe(kpi$n_sites_active, 0)
+exp_to_date    <- safe(kpi$expected_to_date, 0)
+rec_pct        <- safe(kpi$recruitment_pct, NA)
+sae_count      <- safe(kpi$sae_count, 0)
+pilot_pct      <- if (!is.na(pilot_target) && pilot_target > 0)
+                    round(n_rand / pilot_target * 100, 1) else NA
+pct_of_target  <- if (!is.na(n_target) && n_target > 0)
+                    round(n_rand / n_target * 100, 1) else NA
+# Recruitment-rate pilot card: the percentage is derived from the exact
+# numbers shown inside the box (randomised ÷ expected to date), so the value
+# and its caption can never disagree.
+recruit_rate_box <- if (!is.na(exp_to_date) && exp_to_date > 0)
+                      round(n_rand / exp_to_date * 100, 1) else
+                      safe(pilot$recruit_rate, NA)
+
+# Site bucketing from pipeline / site_status
+pipeline <- rd$pipeline %||% data.frame()
+site_status <- rd$site_status %||% data.frame()
+is_open <- function(s) grepl("recruit", tolower(s)) | grepl("^open", tolower(s))
+is_setup <- function(s) grepl("set[- ]?up", tolower(s)) | grepl("capacity", tolower(s))
+is_ident <- function(s) grepl("identif", tolower(s)) | grepl("feasib", tolower(s))
+
+n_open_sites  <- if (nrow(pipeline) && "stage" %in% names(pipeline))
+                   sum(is_open(pipeline$stage), na.rm = TRUE) else n_sites_active
+n_setup_sites <- if (nrow(pipeline) && "stage" %in% names(pipeline))
+                   sum(is_setup(pipeline$stage), na.rm = TRUE) else 0
+n_ident_sites <- if (nrow(pipeline) && "stage" %in% names(pipeline))
+                   sum(is_ident(pipeline$stage), na.rm = TRUE) else 0
+n_sites_total <- n_open_sites + n_setup_sites + n_ident_sites
+if (n_sites_total == 0) n_sites_total <- safe(n_sites_plan, 0)
+
+# Recruitment colour band
+rec_band <- if (is.na(rec_pct)) "amber" else
+  if (rec_pct >= 95) "green" else if (rec_pct >= 70) "amber" else "red"
+
+# Pilot criterion colour helper (status → green/amber/red/none)
+crit_class <- function(status) switch(as.character(status),
+  green = "g", amber = "a", red = "r", "n")
+crit_label <- function(status) switch(as.character(status),
+  green = "GREEN", amber = "AMBER", red = "RED", "PENDING")
+
+# ── Milestones ────────────────────────────────────────────────────────────────
+# rc$key_milestones is a list of lists: list(name=, date=, status= "complete"|"upcoming"|"estimated", group=)
+ms <- rc$key_milestones %||% list(
+  list(name = "Grant activation", date = "Jun 2024", status = "complete", group = "Set-up & trial activation"),
+  list(name = "REC favourable opinion (E&W) — 25/0268, Essex", date = "14 Jan 2026", status = "complete", group = "Set-up & trial activation"),
+  list(name = "HRA / HCRW approval", date = "16 Jan 2026", status = "complete", group = "Set-up & trial activation"),
+  list(name = "Protocol v2 finalised", date = "14 Feb 2026", status = "complete", group = "Set-up & trial activation"),
+  list(name = "REC favourable opinion (Scotland) — 26/SS/0001, Scotland A", date = "06 Mar 2026", status = "complete", group = "Set-up & trial activation"),
+  list(name = "First site opened", date = "01 Apr 2026", status = "complete", group = "Set-up & trial activation"),
+  list(name = "First participant randomised", date = "01 Apr 2026", status = "complete", group = "Set-up & trial activation"),
+  list(name = "Pilot end (6-month)",   date = pilot_end,    status = "upcoming",  group = "Pilot · recruitment · close-out"),
+  list(name = "Full recruitment end",  date = full_end,     status = "estimated", group = "Pilot · recruitment · close-out"),
+  list(name = "Follow-up complete",    date = "Sep 2028",   status = "estimated", group = "Pilot · recruitment · close-out"),
+  list(name = "Database lock",         date = "Nov 2028",   status = "estimated", group = "Pilot · recruitment · close-out"),
+  list(name = "Analysis complete",     date = "Jan 2029",   status = "estimated", group = "Pilot · recruitment · close-out"),
+  list(name = "Trial close-out",       date = "Feb 2029",   status = "estimated", group = "Pilot · recruitment · close-out")
+)
+ms_complete <- Filter(function(m) identical(m$status, "complete"),  ms)
+ms_future   <- Filter(function(m) !identical(m$status, "complete"), ms)
+next_ms_lbl <- if (length(ms_future) > 0) {
+  sprintf("%d of %d complete · next: %s · %s",
+          length(ms_complete), length(ms), ms_future[[1]]$name, ms_future[[1]]$date)
+} else {
+  sprintf("%d of %d complete", length(ms_complete), length(ms))
+}
+
+# ── Pilot thresholds (criteria text + bands) ──────────────────────────────────
+thr <- rc$pilot_thresholds %||% list(
+  list(name = "Recruitment rate per open centre",
+       det  = "Average of 2 participants per month at each open site during the pilot.",
+       stop_lbl = "< 60% of sites at rate", mod_lbl = "60 – 99% of sites at rate",
+       go_lbl   = "100% of sites at rate"),
+  list(name = "Primary-outcome data completeness",
+       det  = "Discharge forms entered as a proportion of discharge forms due — same forms-due logic as the CRF return rates by timepoint & form.",
+       stop_lbl = "< 90% complete", mod_lbl = "90 – 99% complete",
+       go_lbl   = "100% complete"),
+  list(name = "90-day questionnaire return rate",
+       det  = "Proportion of due 90-day post-op questionnaires returned by participants.",
+       stop_lbl = "< 70% returned", mod_lbl = "70 – 99% returned",
+       go_lbl   = "100% returned"),
+  list(name = "Intervention delivery — intervention arm",
+       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants.",
+       stop_lbl = "< 70% within 48 h", mod_lbl = "75 – 99% within 48 h",
+       go_lbl   = "100% within 48 h"),
+  list(name = "Contamination — control arm",
+       det  = "Participants with an early- or late-PN reason recorded (nut_o_pn_early_rsn / nut_o_pn_late_rsn) — parenteral nutrition outside the allocated strategy. Reads 'not determinable' when these fields are absent from the export.",
+       stop_lbl = "≥ 30% contaminated", mod_lbl = "1 – 25% contaminated",
+       go_lbl   = "0% contaminated"),
+  list(name = "Cross-over between trial arms",
+       det  = "Participants randomised to one arm who instead received the other arm's intervention.",
+       stop_lbl = "> 10% crossed over", mod_lbl = "1 – 9% crossed over",
+       go_lbl   = "0% crossed over")
+)
+
+# Map current values onto each threshold band (stop|mod|go|NA)
+band_for <- function(idx) {
+  v <- switch(idx,
+    recruit_rate_box,   # 1 — same figure as shown in the card (n randomised ÷ expected)
+    NA,                  # 2 data completeness — we approximate below
+    pilot$fu_90_rate,    # 3
+    pilot$interv_rate,   # 4
+    pilot$contam_rate,   # 5
+    pilot$crossover_rate # 6
+  )
+  if (idx == 2) {
+    po <- rd$primary_outcome %||% list()
+    v  <- po$pct
+  }
+  if (is.null(v) || is.na(v)) return(list(band = NA_character_, val = NA))
+  band <- switch(idx,
+    if (v < 60)   "stop" else if (v < 100) "mod" else "go",     # 1
+    if (v < 90)   "stop" else if (v < 100) "mod" else "go",     # 2
+    if (v < 70)   "stop" else if (v < 100) "mod" else "go",     # 3
+    if (v < 75)   "stop" else if (v < 100) "mod" else "go",     # 4
+    if (v >= 30)  "stop" else if (v >= 1)  "mod" else "go",     # 5
+    if (v > 10)   "stop" else if (v >= 1)  "mod" else "go"      # 6
+  )
+  list(band = band, val = v)
+}
+
+# Pilot criteria — six cards on page 1
+pc_cards <- list(
+  list(title = "Recruitment rate",            val = recruit_rate_box,     sub = sprintf("%s / %s expected", fmt_int(n_rand), fmt_int(exp_to_date)), fmt = "pct"),
+  list(title = "Data completeness",           val = (rd$primary_outcome %||% list())$pct, sub = "primary outcome forms", fmt = "pct"),
+  list(title = "90-day questionnaire return", val = pilot$fu_90_rate,     sub = if (safe(pilot$fu_90_elig, 0) == 0) "not yet due" else sprintf("%s / %s eligible", fmt_int(pilot$fu_90_comp), fmt_int(pilot$fu_90_elig)), fmt = "pct"),
+  list(title = "Intervention delivery <48 h", val = pilot$interv_rate,    sub = "intervention arm", fmt = "pct"),
+  list(title = "Contamination",               val = pilot$contam_rate,    sub = if (is.na(safe(pilot$contam_rate, NA))) "not determinable from export" else "late/early PN reason recorded", fmt = "pct"),
+  list(title = "Crossover rate",              val = pilot$crossover_rate, sub = "target 0%", fmt = "pct")
+)
+
+# Map a value to GREEN/AMBER/RED status using the same rules as the bands
+status_for_card <- function(i, v) {
+  if (is.null(v) || is.na(v)) return("pending")
+  b <- band_for(i)$band
+  switch(b %||% "pending", stop = "red", mod = "amber", go = "green", "pending")
+}
+
+
+# ── Outlook chart data: from schedule_full + actuals ──────────────────────────
+sched <- rd$schedule_full %||% data.frame()
+chart_labels <- character(0); chart_target <- numeric(0); chart_actual <- list()
+if (nrow(sched) > 0) {
+  chart_labels <- format(sched$month_date, "%b %y")
+  chart_target <- sched$cumulative_target
+  ca <- sched$cumulative_actual %||% rep(NA_real_, nrow(sched))
+  # Show actuals only up to current month (rest as null)
+  cutoff_idx <- which(sched$month_date > as.Date(format(Sys.Date(), "%Y-%m-01")))
+  if (length(cutoff_idx)) ca[cutoff_idx] <- NA
+  chart_actual <- ca
+}
+
+# JSON helper
+j <- function(x) {
+  if (requireNamespace("jsonlite", quietly = TRUE)) {
+    jsonlite::toJSON(x, na = "null", null = "null", auto_unbox = TRUE)
+  } else {
+    paste0("[", paste(ifelse(is.na(x), "null", x), collapse = ","), "]")
+  }
+}
+
+# Always an array, even for a single element — Chart.js datasets need a list.
+ja <- function(x) {
+  if (requireNamespace("jsonlite", quietly = TRUE)) {
+    jsonlite::toJSON(x, na = "null", null = "null", auto_unbox = FALSE)
+  } else {
+    paste0("[", paste(ifelse(is.na(x), "null", paste0('"', x, '"')), collapse = ","), "]")
+  }
+}
+
+# Ethnicity bar segments (top groups only, others combined)
+eth_tbl <- (demo$ethnicity %||% list())$table
+if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
+  eth_tbl <- eth_tbl[order(-eth_tbl$n), ]
+  if (nrow(eth_tbl) > 5) {
+    other <- data.frame(ethnicity = "Other",
+                        n   = sum(eth_tbl$n[6:nrow(eth_tbl)]),
+                        pct = sum(eth_tbl$pct[6:nrow(eth_tbl)]),
+                        stringsAsFactors = FALSE)
+    eth_tbl <- rbind(eth_tbl[1:5, ], other)
+  }
+}
+# Shorten the REDCap ethnicity labels so they fit a chart legend, e.g.
+# "White - English, Welsh, Scottish, Northern Irish or British" -> "White — British".
+eth_short <- function(x) {
+  x <- as.character(x)
+  x <- sub("^Other ethnic group - Any other ethnic group$", "Other ethnic group", x)
+  x <- sub("^Asian or Asian British - ", "Asian \u2014 ", x)
+  x <- sub("^Black, Black British, Caribbean or African - ", "Black \u2014 ", x)
+  x <- sub("^Mixed or multiple ethnic groups - ", "Mixed \u2014 ", x)
+  x <- sub("^Other ethnic group - ", "Other \u2014 ", x)
+  x <- sub("^White - ", "White \u2014 ", x)
+  x <- sub("English, Welsh, Scottish, Northern Irish or British", "British", x)
+  x <- sub("Any other (Asian|Black|White|Mixed) background", "other background", x)
+  x <- sub("Any other ", "other ", x)
+  x
+}
+
+# Canvas cannot resolve CSS custom properties, so the donut needs literal hex.
+eth_hex <- c("#01344F", "#12A192", "#f3b860", "#9bd07a", "#9bc3da", "#e587a8")
+eth_labels_js <- character(0); eth_n_js <- numeric(0)
+if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
+  eth_labels_js <- eth_short(eth_tbl$ethnicity)
+  eth_n_js      <- as.numeric(eth_tbl$n)
+  eth_hex       <- eth_hex[((seq_len(nrow(eth_tbl)) - 1) %% length(eth_hex)) + 1]
+}
+# Headline for the middle of the donut: % from an ethnic-minority background.
+eth_min_pct <- local({
+  e <- demo$ethnicity
+  if (is.null(e) || safe(e$total, 0) == 0) NA else round(safe(e$minority, 0) / e$total * 100)
+})
+
+# Protocol deviations — one line for the section 09 heading, distinguishing
+# "none reported" from "this export has no deviation form".
+dev_count <- safe(rd$deviation_count, 0)
+dev_hint  <- if (!isTRUE(rd$deviation_available)) "Deviation form not present in this export"
+             else if (dev_count == 0) "None reported since trial start"
+             else sprintf("%d deviation%s reported", dev_count, if (dev_count == 1) "" else "s")
+
+# CRF return rates — derive a tidy stage summary if crf_data is present
+crf <- rd$crf_data
+crf_overall_pct <- NA_real_
+crf_stage_rows  <- NULL
+if (!is.null(crf) && nrow(crf) > 0) {
+  # Use whatever columns exist; common shape: Forms, Expected, Due, Entered, Pct
+  guess <- function(pat) {
+    m <- grep(pat, names(crf), ignore.case = TRUE, value = TRUE)
+    if (length(m)) crf[[m[1]]] else NULL
+  }
+  st <- list(
+    event    = guess("^(event|timepoint|time.?point|visit)"),
+    stage    = guess("^(stage|form|instrument)"),
+    forms    = guess("^forms$|^count"),
+    expected = guess("expected"),
+    due      = guess("^due"),
+    entered  = guess("entered|received"),
+    pct      = guess("pct|%|percent")
+  )
+  if (!is.null(st$stage)) {
+    n_rows <- length(st$stage)
+    crf_stage_rows <- data.frame(
+      event    = if (!is.null(st$event)) as.character(st$event) else rep(NA_character_, n_rows),
+      stage    = as.character(st$stage),
+      forms    = if (!is.null(st$forms))    as.integer(st$forms)    else rep(NA_integer_, n_rows),
+      expected = if (!is.null(st$expected)) as.integer(st$expected) else rep(NA_integer_, n_rows),
+      due      = if (!is.null(st$due))      as.integer(st$due)      else rep(NA_integer_, n_rows),
+      entered  = if (!is.null(st$entered))  as.integer(st$entered)  else rep(NA_integer_, n_rows),
+      stringsAsFactors = FALSE)
+
+    # Return rate is entered ÷ DUE, never ÷ expected. TONIC is longitudinal
+    # (Baseline, Discharge, Day 30, Day 90); "expected" counts participants who
+    # will eventually reach a timepoint, so windows that have not yet opened
+    # (e.g. Day 90, 0 due) would otherwise deflate the figure. Rows with 0 due
+    # are "not yet due" and contribute nothing to the denominator.
+    #
+    # Numerator is capped at due (min(entered, due)) so that early entries —
+    # forms submitted before the formal due window fires — cannot inflate the
+    # rate above 100%. e.g. Barthel Discharge: 12 entered, 10 due → 100%, not 120%.
+    crf_stage_rows$pct <- ifelse(crf_stage_rows$due > 0,
+                                 pmin(crf_stage_rows$entered, crf_stage_rows$due) /
+                                   crf_stage_rows$due * 100,
+                                 NA_real_)
+
+    # Order timepoints chronologically when an event column is present
+    if (!all(is.na(crf_stage_rows$event))) {
+      tp_levels <- c("Baseline", "Discharge", "Day 30", "Day 90")
+      crf_stage_rows$event <- factor(crf_stage_rows$event,
+                                     levels = union(tp_levels, unique(crf_stage_rows$event)))
+      crf_stage_rows <- crf_stage_rows[order(crf_stage_rows$event), , drop = FALSE]
+    }
+
+    # Overall rate: cap entered at due per row before summing so aggregate
+    # cannot exceed 100% either.
+    tot_due <- sum(crf_stage_rows$due, na.rm = TRUE)
+    tot_ent <- sum(pmin(crf_stage_rows$entered, crf_stage_rows$due), na.rm = TRUE)
+    crf_overall_pct <- if (tot_due > 0) round(tot_ent / tot_due * 100, 1) else NA
+  }
+}
+
+```
+
+<style>
+:root{
+  --navy:#01344F; --navy-2:#0a4f70; --navy-tint:#eaf1f5; --navy-tint-2:#f4f7f9;
+  --teal:#12A192; --teal-tint:#e3f6f3; --teal-tint-2:#f1faf8;
+  --ink:#1a2b36; --ink-2:#3d5363; --muted:#6a7d8a;
+  --line:#dfe7ec; --line-soft:#eef2f5;
+  --green:#0F8A5F; --green-tint:#dbf2e7;
+  --amber:#C77518; --amber-tint:#fcecd5;
+  --red:#B4321E; --red-tint:#fadcd6;
+  --grey:#7c8a93; --grey-tint:#eef1f3;
+  --pad-page:14mm; --gap-sec:14px; --fs-base:10pt;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;font-family:'Inter',-apple-system,system-ui,sans-serif;color:var(--ink);background:#e8eef2;font-size:var(--fs-base);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{padding:24px 0}
+.doc{max-width:210mm;margin:0 auto}
+.page{background:#fff;width:210mm;min-height:297mm;margin:0 auto 18px;padding:var(--pad-page);position:relative;box-shadow:0 1px 2px rgba(0,0,0,.08),0 8px 24px rgba(15,40,60,.08);border-radius:2px;display:flex;flex-direction:column}
+@page{size:A4;margin:11mm 12mm 12mm}
+@media print{
+  /* Tighter section rhythm on paper — screens keep the roomier preview. */
+  :root{--gap-sec:10px}
+  body{background:#fff;padding:0}
+  .doc{max-width:none}
+  /* Real @page margins frame every sheet — including table continuation
+     sheets — so the fixed 297mm canvas and its 14mm padding go. The flex
+     column with min-height keeps each footer at the base of a full page;
+     the printable area is ~274mm, and generous slack below it stops
+     sub-millimetre rounding from pushing just the footer onto the next
+     sheet (it sits a few mm above the bottom margin instead). */
+  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:266mm;padding:0;page-break-after:always}
+  .page:last-child{page-break-after:auto}
+  /* Blocks never split mid-element: anything that will not fit in the space
+     left on the current page starts on the next one instead. */
+  .card,.row2,.row3,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
+  .ol-chart-wrap,.ol-status,.milestones,.ml-grp,.chart-wrap,
+  .demo,.note,.scale-key,.eth-split,.eth-legend,svg{
+    break-inside:avoid;page-break-inside:avoid}
+  /* Headings and table captions stay with the content they introduce. */
+  h2.sec,p.lab{break-after:avoid-page;page-break-after:avoid;break-inside:avoid}
+  /* Long tables may span pages: rows never split, and the header row is
+     re-printed at the top of every continuation sheet. Timepoint group rows
+     stay attached to their first form row. */
+  table.rt{break-inside:auto;page-break-inside:auto}
+  table.rt thead{display:table-header-group}
+  table.rt tr{break-inside:avoid;page-break-inside:avoid}
+  table.rt tr.grp{break-after:avoid-page;page-break-after:avoid}
+  .pf{break-inside:avoid;page-break-inside:avoid}
+}
+.ph{display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:2px solid var(--navy);margin-bottom:12px;gap:16px}
+.ph .brand{display:flex;align-items:center;gap:12px;min-width:0}
+.ph .brand img,
+.ph .brand .ph-trial-logo{height:38px;width:auto;display:block}
+.ph .brand .tag{font-size:8.5pt;color:var(--muted);line-height:1.25;font-weight:500;letter-spacing:.02em}
+.ph .brand .tag b{color:var(--navy);font-weight:600;display:block;font-size:9pt}
+.ph .meta{display:flex;align-items:center;gap:14px;text-align:right;font-size:8.5pt;color:var(--muted);line-height:1.4}
+.ph .meta .meta-text{text-align:right}
+.ph .meta .ph-bctu-logo{height:30px;width:auto;display:block;flex-shrink:0}
+.ph .meta b{color:var(--navy);font-weight:600;display:block;font-size:10pt}
+
+.meta-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;background:var(--navy-tint-2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;margin:0 0 12px}
+.meta-strip .mi{padding:0 8px;border-right:1px solid var(--line)}
+.meta-strip .mi:last-child{border-right:0}
+.meta-strip .mk{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.meta-strip .mv{font-size:9.5pt;color:var(--navy);font-weight:600;line-height:1.2;margin-top:1px}
+.meta-strip .mv small{font-weight:500;color:var(--muted);font-size:8.5pt}
+
+.pf{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:6px;margin-top:auto;font-size:8pt;color:var(--muted)}
+.pf .pn{color:var(--navy);font-weight:600}
+
+h1.title{font-family:'Source Serif 4',serif;font-size:26pt;font-weight:700;color:var(--navy);margin:0 0 2px;letter-spacing:-.5px;line-height:1.05}
+.sub{font-size:11pt;color:var(--ink-2);margin:0 0 12px;font-weight:500}
+.sub b{color:var(--navy)}
+
+h2.sec{font-family:'Inter',sans-serif;font-size:11pt;font-weight:700;color:var(--navy);margin:var(--gap-sec) 0 6px;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding-bottom:4px;border-bottom:1px solid var(--line);white-space:nowrap}
+h2.sec .num{font-size:8.5pt;color:#fff;background:var(--teal);padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:0;flex-shrink:0}
+h2.sec .hint{margin-left:auto;font-size:8.5pt;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;white-space:normal}
+
+.lab{font-size:8pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin:8px 0 4px}
+
+.snap{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 4px}
+.snap .cell{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff;position:relative;overflow:hidden}
+.snap .cell::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--teal)}
+.snap .cell.amber::before{background:var(--amber)}
+.snap .cell.green::before{background:var(--green)}
+.snap .cell.red::before{background:var(--red)}
+.snap .cell.navy::before{background:var(--navy)}
+.snap .k{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.snap .v{font-size:22pt;line-height:1;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;letter-spacing:-.02em;margin-top:3px}
+.snap .v small{font-size:11pt;color:var(--muted);font-weight:500;font-family:'Inter',sans-serif;letter-spacing:0}
+.snap .s{font-size:8pt;color:var(--ink-2);margin-top:2px;line-height:1.25}
+
+.milestones .lane-head{display:grid;grid-template-columns:1fr 110px 110px;gap:8px;font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:4px 12px 4px 14px;margin-top:2px}
+.ml-grp{border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff;margin-top:4px}
+.ml-grp + .ml-grp{margin-top:6px}
+.ml-grp-h{display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--navy-tint-2);border-bottom:1px solid var(--line);font-size:8.5pt;font-weight:700;color:var(--navy);letter-spacing:.04em;text-transform:uppercase}
+.ml-grp-h .pill{font-size:7.5pt}
+.ml-grp-h .gpcnt{margin-left:auto;font-weight:500;color:var(--muted);letter-spacing:0;text-transform:none}
+.ml-row{display:grid;grid-template-columns:1fr 110px 110px;gap:8px;align-items:center;padding:6px 12px;border-top:1px solid var(--line-soft)}
+.ml-grp-h + .ml-row{border-top:0}
+.ml-row:nth-child(odd){background:#fcfdfe}
+.ml-name{font-size:9.5pt;color:var(--navy);font-weight:500;display:flex;align-items:center;gap:8px}
+.ml-name .seq{width:18px;height:18px;border-radius:4px;background:var(--navy-tint);color:var(--navy);font-size:7.5pt;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.ml-date{font-size:9pt;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.ml-date.est::before{content:"≈ ";color:var(--muted)}
+.ml-st{justify-self:end}
+
+.pilot-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:4px}
+.pc{border:1px solid var(--line);border-radius:6px;padding:8px 9px 9px;background:#fff}
+.pc .pcn{font-size:7.5pt;font-weight:700;color:var(--muted);letter-spacing:.06em}
+.pc .pct{font-size:9pt;font-weight:600;color:var(--navy);line-height:1.25;margin:2px 0 6px;min-height:30px}
+.pc .pcv{font-size:14pt;font-weight:700;line-height:1;font-family:'Source Serif 4',serif;letter-spacing:-.02em}
+.pc .pcb{font-size:7.5pt;color:var(--muted);margin-top:3px}
+.pc .pcs{display:inline-block;margin-top:6px;font-size:7.5pt;font-weight:700;padding:1px 6px;border-radius:3px;letter-spacing:.04em}
+.pc.g{background:var(--green-tint)} .pc.g .pcv,.pc.g .pcs{color:var(--green)} .pc.g .pcs{background:rgba(15,138,95,.16)}
+.pc.a{background:var(--amber-tint)} .pc.a .pcv,.pc.a .pcs{color:var(--amber)} .pc.a .pcs{background:rgba(199,117,24,.18)}
+.pc.r{background:var(--red-tint)} .pc.r .pcv,.pc.r .pcs{color:var(--red)} .pc.r .pcs{background:rgba(180,50,30,.16)}
+.pc.n{background:var(--grey-tint)} .pc.n .pcv,.pc.n .pcs{color:var(--grey)} .pc.n .pcs{background:rgba(124,138,147,.2)}
+
+.timeline-wrap{margin-top:6px;padding:12px 12px 8px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.legend{display:flex;gap:14px;font-size:8pt;color:var(--muted);margin-bottom:6px;flex-wrap:wrap}
+.legend .lg{display:inline-flex;align-items:center;gap:5px}
+.legend .sw{width:11px;height:7px;border-radius:2px}
+
+table.rt{width:100%;border-collapse:collapse;font-size:9pt;margin-top:4px}
+table.rt th{background:var(--navy);color:#fff;text-align:left;padding:6px 10px;font-weight:600;font-size:8.5pt;letter-spacing:.02em}
+table.rt th:not(:first-child){text-align:right}
+table.rt th.l{text-align:left}
+table.rt td{padding:6px 10px;border-bottom:1px solid var(--line-soft)}
+table.rt td:not(:first-child){text-align:right}
+table.rt td.l{text-align:left}
+table.rt tr:nth-child(even) td{background:var(--navy-tint-2)}
+table.rt tr:last-child td{border-bottom:0}
+table.rt td.sn{color:var(--navy);font-weight:500}
+table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy);border-top:2px solid var(--navy)}
+
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:8pt;padding:1px 8px;border-radius:11px;font-weight:600;letter-spacing:.02em}
+.pill .dot{width:6px;height:6px;border-radius:50%}
+.p-g{background:var(--green-tint);color:var(--green)} .p-g .dot{background:var(--green)}
+.p-a{background:var(--amber-tint);color:var(--amber)} .p-a .dot{background:var(--amber)}
+.p-r{background:var(--red-tint);color:var(--red)} .p-r .dot{background:var(--red)}
+.p-n{background:var(--grey-tint);color:var(--grey)} .p-n .dot{background:var(--grey)}
+.p-i{background:#dbeafa;color:#0c558a} .p-i .dot{background:#0c558a}
+
+.pb{display:flex;align-items:center;gap:8px}
+.pb .track{flex:1;height:6px;background:var(--line-soft);border-radius:20px;overflow:hidden}
+.pb .fill{height:100%;background:var(--teal);border-radius:20px}
+.pb .lbl{font-size:8pt;font-weight:600;color:var(--navy);min-width:38px;text-align:right}
+
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+
+.card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
+.card .ct{font-size:8.5pt;color:var(--navy);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.chart-wrap{position:relative;height:140px}
+.chart-wrap-lg{position:relative;height:360px}
+
+.demo{display:flex;gap:6px;margin-top:4px}
+.demo .chip{flex:1;text-align:center;padding:8px 6px;border-radius:6px;background:var(--navy-tint-2);border:1px solid var(--line)}
+.demo .chip b{display:block;font-size:18pt;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;letter-spacing:-.02em;line-height:1}
+.demo .chip span{display:block;font-size:8pt;color:var(--muted);margin-top:3px}
+
+.keyline{display:flex;gap:16px;align-items:baseline;font-size:9pt;background:var(--teal-tint-2);border-left:3px solid var(--teal);padding:6px 12px;border-radius:0 4px 4px 0;margin:6px 0 2px;flex-wrap:wrap}
+.keyline span b{color:var(--navy);font-weight:600}
+.keyline span{color:var(--muted)}
+
+.note{font-size:8pt;color:var(--muted);font-style:italic;margin-top:6px;line-height:1.4}
+.scale-key{display:flex;gap:10px;font-size:8pt;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+.scale-key b{font-weight:600}
+
+.sw-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:4px}
+.sw-cell{border:1px solid var(--line);border-radius:6px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:4px}
+.sw-cell .lab2{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.sw-cell .big{font-size:30pt;font-weight:700;font-family:'Source Serif 4',serif;line-height:1;letter-spacing:-.02em}
+.sw-cell.safe{background:var(--green-tint);border-color:#bce6cf}
+.sw-cell.safe .big{color:var(--green)}
+.sw-cell.wd{background:var(--amber-tint);border-color:#f0d6a4}
+.sw-cell.wd .big{color:var(--amber)}
+.sw-cell.wd .big small{font-size:14pt;color:var(--muted);font-family:'Inter',sans-serif;font-weight:500}
+.sw-cell .det{font-size:9pt;color:var(--ink-2);margin-top:4px;line-height:1.45}
+.sw-cell .det b{color:var(--navy);font-weight:600}
+
+.eth-split{display:grid;grid-template-columns:180px 1fr;gap:16px;align-items:center;margin-top:6px}
+.eth-donut{position:relative;height:170px}
+.eth-legend{display:flex;flex-direction:column;gap:4px;margin-top:0;font-size:8.5pt;color:var(--ink-2)}
+.eth-legend .row{display:flex;align-items:center;gap:8px}
+.eth-legend .sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.eth-legend .nm{flex:1;color:var(--navy);font-weight:500}
+.eth-legend .vl{color:var(--muted);font-variant-numeric:tabular-nums}
+.eth-legend .vl b{color:var(--navy);font-weight:600}
+
+.thr-row{display:grid;grid-template-columns:1fr 1.4fr;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.thr-row:last-child{border-bottom:0}
+.thr-name{font-size:10pt;color:var(--navy);font-weight:600;line-height:1.3}
+.thr-name .det{font-size:8.5pt;color:var(--muted);font-weight:400;margin-top:2px;line-height:1.4;display:block}
+.thr-bands{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.thr-band{padding:6px 8px;border-radius:4px;font-size:8.5pt;font-weight:600;text-align:center;line-height:1.25}
+.thr-band .lb{font-size:7pt;display:block;text-transform:uppercase;letter-spacing:.06em;opacity:.85;font-weight:700;margin-bottom:1px}
+.thr-band.stop{background:var(--red-tint);color:var(--red)}
+.thr-band.mod{background:var(--amber-tint);color:var(--amber)}
+.thr-band.go{background:var(--green-tint);color:var(--green)}
+.thr-band.now{outline:2px solid var(--navy);outline-offset:1px;font-weight:700}
+
+.ol-status{display:flex;align-items:center;gap:14px;border-radius:6px;padding:10px 14px;margin:6px 0 10px}
+.ol-status.green{background:var(--green-tint);border:1px solid #bce6cf;border-left:4px solid var(--green)}
+.ol-status.amber{background:var(--amber-tint);border:1px solid #f0d6a4;border-left:4px solid var(--amber)}
+.ol-status.red{background:var(--red-tint);border:1px solid #f0bcb1;border-left:4px solid var(--red)}
+.ol-status .icon{width:32px;height:32px;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700}
+.ol-status.green .icon{background:var(--green)}
+.ol-status.amber .icon{background:var(--amber)}
+.ol-status.red .icon{background:var(--red)}
+.ol-status .txt{flex:1}
+.ol-status .h{font-size:10.5pt;font-weight:700;letter-spacing:.02em}
+.ol-status.green .h{color:var(--green)} .ol-status.amber .h{color:var(--amber)} .ol-status.red .h{color:var(--red)}
+.ol-status .s{font-size:9pt;color:var(--ink-2);margin-top:1px}
+
+.ol-chart{border:1px solid var(--line);border-radius:6px;background:#fff;padding:10px 12px}
+.ol-chart .h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;font-size:9pt;color:var(--muted)}
+.ol-chart .h b{color:var(--navy);font-weight:600}
+.ol-chart-wrap{position:relative;height:300px}
+.ol-leg{display:flex;gap:18px;font-size:8.5pt;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+.ol-leg .lg{display:inline-flex;align-items:center;gap:6px}
+.ol-leg .sw{width:14px;height:8px;border-radius:2px}
+.ol-leg .ln{width:14px;border-top:2px solid var(--navy);height:1px}
+
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<div class="doc">
+
+```{r page-header-helper}
+ph_header <- function(page_label) {
+  trial_logo_html <- if (nchar(logo_b64) > 0)
+    sprintf('<img class="ph-trial-logo" src="%s" alt="%s logo">',
+            logo_b64, esc(trial_short)) else ""
+  bctu_logo_html <- if (nchar(bctu_logo_b64) > 0)
+    sprintf('<img class="ph-bctu-logo" src="%s" alt="Birmingham Clinical Trials Unit">',
+            bctu_logo_b64) else ""
+  cat(sprintf(
+'<header class="ph">
+  <div class="brand">%s
+    <div class="tag"><b>%s</b>Progress Report</div>
+  </div>
+  <div class="meta">
+    %s
+    <div class="meta-text"><b>%s</b>%s</div>
+  </div>
+</header>',
+    trial_logo_html,
+    esc(trial_title),
+    bctu_logo_html,
+    esc(report_date_str),
+    if (nzchar(page_label)) sprintf("<br>%s", esc(page_label)) else
+      sprintf("<br>Reporting period · %s → %s<br><span style=\"color:var(--teal);font-weight:600\">Confidential</span>",
+              esc(rep_from), esc(rep_to))
+  ))
+}
+pf_footer <- function(n_page, n_total = 9) {
+  cat(sprintf('<footer class="pf"><span>%s Progress Report</span><span class="pn">Page %d / %d</span><span>Birmingham Clinical Trials Unit (BCTU)</span></footer>',
+              esc(trial_short), n_page, n_total))
+}
+```
+
+<!-- ============================================================
+     PAGE 1 — KEY MILESTONES · PILOT PROGRESSION · TIMELINE
+============================================================== -->
+<section class="page">
+
+```{r page1-header}
+ph_header("")
+```
+
+<div class="meta-strip">
+  <div class="mi"><div class="mk">Chief Investigator</div><div class="mv">`r esc(chief_inv)`</div></div>
+  <div class="mi"><div class="mk">Sponsor · Funder</div><div class="mv">`r esc(sponsor)` <small>· `r esc(funder)`</small></div></div>
+  <div class="mi"><div class="mk">Funder ref · Registration</div><div class="mv">`r esc(funder_ref)` <small>· `r esc(isrctn)`</small></div></div>
+  <div class="mi"><div class="mk">Sample · Sites</div><div class="mv">`r fmt_int(sample_size)` <small>(`r fmt_int(round(as.numeric(sample_size)/2))`/arm)</small> · `r fmt_int(n_sites_plan)` UK</div></div>
+  <div class="mi"><div class="mk">Project dates</div><div class="mv">`r esc(proj_start)` → `r esc(proj_end)` <small>(`r fmt_int(proj_months)` mo)</small></div></div>
+</div>
+
+<h1 class="title">Trial snapshot</h1>
+<p class="sub">
+`r fmt_int(n_rand)` participant`r if (!is.na(n_rand) && n_rand == 1) "" else "s"` randomised across `r fmt_int(n_open_sites)` active site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"` —
+pilot opened <b>`r esc(proj_start)`</b>, `r if (rec_band == "green") "on protocol target" else if (rec_band == "amber") "near protocol target" else "behind protocol target"`.
+</p>
+
+<div class="snap">
+  <div class="cell navy">
+    <div class="k">Participants randomised</div>
+    <div class="v">`r fmt_int(n_rand)`<small> / `r fmt_int(n_target)`</small></div>
+    <div class="s">`r if (!is.na(pct_of_target)) sprintf("%.1f%% of trial target", pct_of_target) else "—"` · pilot `r if (!is.na(pilot_pct)) sprintf("%.0f%%", pilot_pct) else "—"`</div>
+  </div>
+  <div class="cell">
+    <div class="k">Sites open · recruiting</div>
+    <div class="v">`r fmt_int(n_open_sites)`<small> / `r fmt_int(n_sites_plan)`</small></div>
+    <div class="s">`r fmt_int(n_setup_sites + n_ident_sites)` in set-up / identified</div>
+  </div>
+  <div class="cell `r rec_band`">
+    <div class="k">Recruitment vs. protocol</div>
+    <div class="v">`r fmt_pct(rec_pct, 0)`</div>
+    <div class="s">`r fmt_int(n_rand)` actual vs `r fmt_int(exp_to_date)` expected (`r format(Sys.Date(), "%b %y")`)</div>
+  </div>
+  <div class="cell `r if (sae_count == 0) "green" else "amber"`">
+    <div class="k">SAEs to date</div>
+    <div class="v">`r fmt_int(sae_count)`</div>
+    <div class="s">`r if (sae_count == 0) "No safety signals reported" else "See section 08 for detail"`</div>
+  </div>
+</div>
+
+<h2 class="sec"><span class="num">01</span> Key milestones <span class="hint">`r esc(next_ms_lbl)`</span></h2>
+
+<div class="milestones">
+<div class="lane-head"><span>Milestone</span><span style="text-align:right">Planned / actual</span><span style="text-align:right">Status</span></div>
+
+```{r milestones}
+render_ms_group <- function(items, pill_class, pill_label, group_label, status_only_dates_estimated = FALSE) {
+  if (length(items) == 0) return(invisible())
+  cat(sprintf('<div class="ml-grp"><div class="ml-grp-h"><span class="pill %s"><span class="dot"></span>%s</span>%s<span class="gpcnt">%d milestones</span></div>',
+              pill_class, pill_label, esc(group_label), length(items)))
+  # Number sequentially within group, but keep an overall seq number across groups
+  for (i in seq_along(items)) {
+    m <- items[[i]]
+    seq_n <- m$seq
+    is_est <- identical(m$status, "estimated")
+    date_cls <- if (is_est) "ml-date est" else "ml-date"
+    status_pill <- switch(as.character(m$status),
+      complete  = '<span class="pill p-g"><span class="dot"></span>Complete</span>',
+      upcoming  = '<span class="pill p-a"><span class="dot"></span>Pending</span>',
+      estimated = '<span class="pill p-n"><span class="dot"></span>Estimated</span>',
+      '<span class="pill p-n"><span class="dot"></span>—</span>')
+    cat(sprintf('<div class="ml-row"><div class="ml-name"><span class="seq">%s</span>%s</div><div class="%s">%s</div><div class="ml-st">%s</div></div>',
+                seq_n, esc(m$name), date_cls, esc(m$date), status_pill))
+  }
+  cat('</div>')
+}
+
+# attach sequential numbers
+ms_seq <- ms
+for (i in seq_along(ms_seq)) ms_seq[[i]]$seq <- i
+ms_complete2 <- Filter(function(m) identical(m$status, "complete"),  ms_seq)
+ms_future2   <- Filter(function(m) !identical(m$status, "complete"), ms_seq)
+
+render_ms_group(ms_complete2, "p-g", "Complete", "Set-up & trial activation")
+render_ms_group(ms_future2,   "p-a", "Upcoming", "Pilot · recruitment · close-out")
+```
+
+</div>
+
+```{r page1-footer}
+pf_footer(1)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 2 — PILOT PROGRESSION · TIMELINE · RECRUITMENT VS TARGET
+============================================================== -->
+<section class="page">
+
+```{r page2-header}
+ph_header("Page 2 — Pilot, timeline & recruitment")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">02</span> Internal pilot progression <span class="hint">6-month pilot · review `r esc(pilot_end)`</span></h2>
+<div class="pilot-strip">
+```{r pilot-cards}
+for (i in seq_along(pc_cards)) {
+  card <- pc_cards[[i]]
+  v <- card$val
+  s <- status_for_card(i, v)
+  cls <- crit_class(s)
+  vstr <- if (is.null(v) || length(v) == 0 || is.na(v)) "—" else fmt_pct(v, 0)
+  cat(sprintf('<div class="pc %s"><div class="pcn">%02d</div><div class="pct">%s</div><div class="pcv">%s</div><div class="pcb">%s</div><div class="pcs">%s</div></div>',
+              cls, i, esc(card$title), vstr, esc(card$sub), crit_label(s)))
+}
+```
+</div>
+<div class="note">Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on pages 8–9.</div>
+
+<h2 class="sec"><span class="num">03</span> Project timeline <span class="hint">`r esc(proj_start)` → `r esc(safe(rc$timeline_end, "Feb 2029"))` · `r fmt_int(safe(rc$timeline_months, 57))` mo end-to-end</span></h2>
+<div class="timeline-wrap">
+  <div class="legend">
+    <span class="lg"><span class="sw" style="background:#9bc3da"></span>Study set-up</span>
+    <span class="lg"><span class="sw" style="background:var(--navy)"></span>6-mo pilot</span>
+    <span class="lg"><span class="sw" style="background:var(--teal)"></span>Full recruitment</span>
+    <span class="lg"><span class="sw" style="background:#f3b860"></span>Treatment &amp; follow-up</span>
+    <span class="lg"><span class="sw" style="background:#9bd07a"></span>Data cleaning</span>
+    <span class="lg"><span class="sw" style="background:#f29278"></span>Analysis &amp; writeup</span>
+    <span class="lg"><span class="sw" style="background:#e587a8"></span>Close-out</span>
+    <span class="lg" style="margin-left:auto"><span style="width:10px;border-left:1.5px dashed var(--red);height:10px;display:inline-block"></span>&nbsp;Now (`r format(Sys.Date(), "%b %y")`)</span>
+  </div>
+  <svg viewBox="0 0 816 258" width="100%" style="display:block">
+    <g fill="#f6f9fb">
+      <rect x="90" y="18" width="144" height="214"/>
+      <rect x="378" y="18" width="144" height="214"/>
+      <rect x="666" y="18" width="108" height="214"/>
+    </g>
+    <g font-family="Inter" font-size="9" fill="#6a7d8a">
+      <text x="90" y="12" text-anchor="middle">Jun 24</text>
+      <text x="162" y="12" text-anchor="middle">Dec 24</text>
+      <text x="234" y="12" text-anchor="middle">Jun 25</text>
+      <text x="306" y="12" text-anchor="middle">Dec 25</text>
+      <text x="378" y="12" text-anchor="middle">Jun 26</text>
+      <text x="450" y="12" text-anchor="middle">Dec 26</text>
+      <text x="522" y="12" text-anchor="middle">Jun 27</text>
+      <text x="594" y="12" text-anchor="middle">Dec 27</text>
+      <text x="666" y="12" text-anchor="middle">Jun 28</text>
+      <text x="738" y="12" text-anchor="middle">Dec 28</text>
+    </g>
+    <line x1="90" y1="18" x2="774" y2="18" stroke="#dfe7ec" stroke-width="1"/>
+    <g font-family="Inter" font-size="10.5" fill="#3d5363" font-weight="500">
+      <text x="0" y="42">Study set-up</text>
+      <rect x="90" y="28" width="252" height="20" rx="3" fill="#9bc3da"/>
+      <text x="216" y="42" text-anchor="middle" font-size="8.5" font-weight="600" fill="#01344F">21 mo</text>
+      <text x="347" y="42" font-size="7" font-weight="500" fill="#6a7d8a">Feb 26</text>
+      <text x="0" y="72">6-mo pilot</text>
+      <rect x="354" y="58" width="72" height="20" rx="3" fill="#01344F"/>
+      <text x="390" y="72" text-anchor="middle" font-size="8.5" font-weight="600" fill="#ffffff">6 mo</text>
+      <text x="431" y="72" font-size="7" font-weight="500" fill="#6a7d8a">Sep 26</text>
+      <text x="0" y="102">Full recruitment</text>
+      <rect x="426" y="88" width="252" height="20" rx="3" fill="#12A192" opacity=".95"/>
+      <text x="552" y="102" text-anchor="middle" font-size="8.5" font-weight="600" fill="#ffffff">21 mo</text>
+      <text x="683" y="102" font-size="7" font-weight="500" fill="#6a7d8a">Jun 28</text>
+      <text x="0" y="132">Treatment &amp; follow-up</text>
+      <rect x="354" y="118" width="360" height="20" rx="3" fill="#f3b860"/>
+      <text x="534" y="132" text-anchor="middle" font-size="8.5" font-weight="600" fill="#01344F">30 mo</text>
+      <text x="719" y="132" font-size="7" font-weight="500" fill="#6a7d8a">Sep 28</text>
+      <text x="0" y="162">Data cleaning</text>
+      <rect x="714" y="148" width="24" height="20" rx="3" fill="#9bd07a"/>
+      <text x="743" y="162" font-size="7" font-weight="500" fill="#6a7d8a">Nov 28</text>
+      <text x="0" y="192">Analysis &amp; writeup</text>
+      <rect x="738" y="178" width="24" height="20" rx="3" fill="#f29278"/>
+      <text x="767" y="192" font-size="7" font-weight="500" fill="#6a7d8a">Jan 29</text>
+      <text x="0" y="222">Close-out</text>
+      <rect x="762" y="208" width="12" height="20" rx="3" fill="#e587a8"/>
+      <text x="779" y="222" font-size="7" font-weight="500" fill="#6a7d8a">Feb 29</text>
+    </g>
+```{r now-marker, results="asis"}
+# Compute x for "now" marker: months since Jun 2024 * 12, anchored at x=90
+mo_now <- as.integer(round(as.numeric(difftime(Sys.Date(), as.Date("2024-06-01"), units = "days")) / 30.44))
+mo_now <- max(0, min(57, mo_now))
+xn <- 90 + mo_now * 12
+cat(sprintf('<g><line x1="%d" y1="18" x2="%d" y2="234" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="246" font-family="Inter" font-size="9" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
+            xn, xn, xn, format(Sys.Date(), "%b %y")))
+```
+  </svg>
+</div>
+
+<h2 class="sec"><span class="num">04</span> Recruitment vs. protocol target</h2>
+
+<div class="keyline">
+  <span>Total randomised: <b>`r fmt_int(n_rand)`</b></span>
+  <span>Cumulative target (`r format(Sys.Date(), "%b %y")`): <b>`r fmt_int(exp_to_date)`</b></span>
+  <span>Variance: <b style="color:var(--`r rec_band`)">`r fmt_pct(rec_pct, 0)`</b></span>
+  <span>Pilot target (`r esc(pilot_end)`): <b>`r fmt_int(pilot_target)`</b></span>
+  <span>Full target: <b>`r fmt_int(n_target)` by `r esc(full_end)`</b></span>
+</div>
+
+<div class="card" style="margin-top:8px">
+  <div class="ct">Monthly randomisations · `r if (length(chart_labels)) paste(chart_labels[1], "\u2192", chart_labels[length(chart_labels)]) else "no schedule"`</div>
+  <div class="chart-wrap-lg"><canvas id="monC"></canvas></div>
+  <div class="note">Solid bars are participants randomised in each month, labelled with the count. Pale bars behind them are the protocol's target for that month.</div>
+</div>
+
+```{r page2-footer}
+pf_footer(2)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 3 — SITE PERFORMANCE
+============================================================== -->
+<section class="page">
+
+```{r page3-header}
+ph_header("Page 3 — Site performance")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">05</span> Site performance <span class="hint">`r fmt_int(n_sites_total)` UK hospitals · `r fmt_int(n_open_sites)` recruiting · `r fmt_int(n_setup_sites)` in set-up · `r fmt_int(n_ident_sites)` identified</span></h2>
+
+<div class="row3" style="margin-top:2px">
+  <div class="card" style="text-align:center;background:var(--green-tint);border-color:#bce6cf">
+    <div class="ct" style="color:var(--green)">Open · recruiting</div>
+    <div style="font-size:22pt;font-weight:700;color:var(--green);font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_open_sites)`</div>
+    <div class="note" style="margin-top:2px">
+```{r open-sites-note}
+open_names <- if (nrow(pipeline) && "stage" %in% names(pipeline))
+  pipeline$site_name[is_open(pipeline$stage)] else character(0)
+cat(esc(if (length(open_names)) paste(open_names, collapse = " · ") else "—"))
+```
+    </div>
+  </div>
+  <div class="card" style="text-align:center;background:var(--amber-tint);border-color:#f0d6a4">
+    <div class="ct" style="color:var(--amber)">In set-up</div>
+    <div style="font-size:22pt;font-weight:700;color:var(--amber);font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_setup_sites)`</div>
+    <div class="note" style="margin-top:2px">Capacity &amp; capability in progress</div>
+  </div>
+  <div class="card" style="text-align:center;background:#e6effa;border-color:#bcd2ec">
+    <div class="ct" style="color:#0c558a">Identified — pending</div>
+    <div style="font-size:22pt;font-weight:700;color:#0c558a;font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_ident_sites)`</div>
+    <div class="note" style="margin-top:2px">Feasibility &amp; local info pack</div>
+  </div>
+</div>
+
+<p class="lab" style="margin-top:10px">Recruiting sites — status &amp; recruitment</p>
+<table class="rt">
+  <thead><tr>
+    <th class="l">Site</th><th class="l">Status</th>
+    <th>Opened</th><th>Rand.</th><th>Target</th>
+    <th class="l" style="width:24%">Progress</th>
+  </tr></thead>
+  <tbody>
+```{r site-table}
+ss <- site_status
+if (nrow(ss) == 0 && nrow(pipeline) > 0) ss <- pipeline
+if (nrow(ss) > 0) {
+  # normalise columns
+  if (!"randomisations" %in% names(ss)) ss$randomisations <- 0L
+  if (!"target"         %in% names(ss)) ss$target <- 42L
+  if (!"open_date"      %in% names(ss)) ss$open_date <- NA
+  if (!"stage"          %in% names(ss)) ss$stage <- "—"
+  # TSC Interim: recruiting sites only. Sites in set-up, identified, closed,
+  # suspended or withdrawn are left out of this table — the three cards above
+  # still carry the full site pipeline.
+  ss <- ss[is_open(as.character(ss$stage)) %in% TRUE, , drop = FALSE]
+  ss <- ss[order(-ss$randomisations, ss$site_name), ]
+}
+if (nrow(ss) > 0) {
+  for (i in seq_len(nrow(ss))) {
+    r <- ss[i, ]
+    pill_cls <- if (is_open(r$stage)) "p-g" else
+                if (is_setup(r$stage)) "p-a" else
+                if (is_ident(r$stage)) "p-i" else "p-n"
+    stage_lbl <- if (is_open(r$stage)) "Recruiting" else
+                 if (is_setup(r$stage)) "Set-up" else
+                 if (is_ident(r$stage)) "Identified" else as.character(r$stage)
+    opened <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date)))
+                fmt_date(r$open_date, "%b %Y") else "—"
+    rand <- as.integer(r$randomisations %||% 0)
+    tgt  <- as.integer(r$target %||% 42)
+    pct  <- if (tgt > 0) round(rand/tgt*100, 1) else 0
+    progress_html <- if (is_open(r$stage))
+      sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><span class="lbl">%d/%d</span></div>', pct, rand, tgt)
+      else sprintf('<span class="note" style="margin:0">%s</span>', esc(r$stage))
+    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%d</td><td class="l">%s</td></tr>',
+                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, tgt, progress_html))
+  }
+} else {
+  cat('<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:14px">No recruiting sites to report.</td></tr>')
+}
+```
+  </tbody>
+</table>
+
+```{r page3-footer}
+pf_footer(3)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 4 — MONTHLY RECRUITMENT BY SITE
+============================================================== -->
+<section class="page">
+
+```{r page4-header}
+ph_header("Page 4 — Monthly recruitment by site")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">06</span> Monthly recruitment by site <span class="hint">Participants randomised per calendar month · recruiting sites</span></h2>
+
+```{r monthly-by-site}
+hm <- rd$site_month_heatmap
+if (is.null(hm) || nrow(hm) == 0) {
+  cat('<p class="note">No monthly recruitment data available yet.</p>')
+} else {
+  months <- sort(unique(as.character(hm$month)))
+  # A portrait page carries about a year of month columns; when recruitment has
+  # run longer, show the most recent twelve and say so under the table. The
+  # Total column always covers every month, trimmed or not.
+  max_cols <- 12
+  trimmed  <- length(months) > max_cols
+  shown    <- if (trimmed) months[(length(months) - max_cols + 1):length(months)] else months
+  lab_of   <- function(m) format(as.Date(paste0(m, "-01")), "%b %y")
+
+  totals <- tapply(hm$actual, hm$site_name, function(x) sum(x, na.rm = TRUE))
+  sites  <- names(sort(totals, decreasing = TRUE))
+
+  cell <- function(site, m) {
+    v <- hm$actual[hm$site_name == site & as.character(hm$month) == m]
+    if (length(v) == 0) 0L else as.integer(v[1])
+  }
+  # A zero reads as clutter across a wide grid — show it greyed.
+  cell_html <- function(v) if (v == 0)
+    '<td style="color:var(--line)">·</td>' else sprintf('<td>%d</td>', v)
+
+  cat('<table class="rt"><thead><tr><th class="l">Site</th>')
+  for (m in shown) cat(sprintf('<th>%s</th>', esc(lab_of(m))))
+  cat('<th>Total</th></tr></thead><tbody>')
+
+  for (site in sites) {
+    cat(sprintf('<tr><td class="sn">%s</td>', esc(site)))
+    for (m in shown) cat(cell_html(cell(site, m)))
+    cat(sprintf('<td><b>%d</b></td></tr>', as.integer(totals[[site]])))
+  }
+
+  cat('<tr class="tot"><td class="l">All recruiting sites</td>')
+  for (m in shown) {
+    cat(sprintf('<td>%d</td>',
+                as.integer(sum(hm$actual[as.character(hm$month) == m], na.rm = TRUE))))
+  }
+  cat(sprintf('<td>%d</td></tr>', as.integer(sum(hm$actual, na.rm = TRUE))))
+  cat('</tbody></table>')
+
+  if (trimmed) {
+    cat(sprintf('<div class="note">Showing the most recent %d months of %d. The Total column covers the whole recruitment period.</div>',
+                max_cols, length(months)))
+  }
+  cat('<div class="note">A dot means no randomisations that month. Sites are ordered by total recruitment.</div>')
+}
+```
+
+```{r page4-footer}
+pf_footer(4)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 5 — DATA · SAFETY & WITHDRAWALS
+============================================================== -->
+<section class="page">
+
+```{r page5-header}
+ph_header("Page 5 — Data, safety & outcomes")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">07</span> CRF return rates <span class="hint">Forms entered ÷ forms due in each timepoint window · n = `r fmt_int(n_rand)` randomised</span></h2>
+
+<div class="row2">
+  <div class="card" style="background:var(--teal-tint-2);border-color:#bfe2dd">
+    <div class="ct" style="color:var(--teal)">Primary outcome completeness</div>
+    <div style="display:flex;gap:18px;align-items:baseline;margin-top:4px">
+      <div style="font-size:24pt;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;line-height:1">`r fmt_pct((rd$primary_outcome %||% list())$pct, 0)`</div>
+      <div class="note" style="margin:0">`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Due" else "Eligible"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$eligible, 0))`</b> · `r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Entered" else "Complete"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$complete, 0))`</b><br>`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Discharge form · entered ÷ due, as per return rates below" else "Discharge form, ≥7&nbsp;d post-op"`</div>
+    </div>
+  </div>
+  <div class="card" style="background:var(--navy-tint-2)">
+    <div class="ct">Overall — all events combined</div>
+    <div style="display:flex;gap:14px;align-items:baseline;margin-top:4px">
+      <div style="font-size:24pt;font-weight:700;color:`r if (!is.na(crf_overall_pct) && crf_overall_pct < 70) "var(--red)" else if (!is.na(crf_overall_pct) && crf_overall_pct < 90) "var(--amber)" else "var(--green)"`;font-family:'Source Serif 4',serif;line-height:1">`r fmt_pct(crf_overall_pct, 1)`</div>
+      <div class="note" style="margin:0">
+```{r crf-summary}
+if (!is.null(crf_stage_rows)) {
+  e <- sum(crf_stage_rows$expected, na.rm = TRUE)
+  d <- sum(crf_stage_rows$due,      na.rm = TRUE)
+  en <- sum(crf_stage_rows$entered, na.rm = TRUE)
+  cat(sprintf("Expected: <b>%d</b> · Due: <b>%d</b> · Entered: <b>%d</b>", e, d, en))
+} else cat("No CRF return-rate data available.")
+```
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="lab" style="margin-top:8px">Return rates by timepoint &amp; form</p>
+<table class="rt">
+  <thead><tr><th class="l">Timepoint / Form</th><th>Forms</th><th>Expected</th><th>Due</th><th>Entered</th><th>% Entered<small style="font-weight:400">&nbsp;(of due)</small></th></tr></thead>
+  <tbody>
+```{r crf-rows}
+# Render one row per form, grouped under a heading for each timepoint so it is
+# clear that a repeated form (e.g. EQ-5D) is a *separate* visit each time.
+# The % column is entered ÷ due; a window not yet open (0 due) reads "not due".
+pct_cell <- function(pct_v) {
+  col <- if (is.na(pct_v)) "var(--grey)" else if (pct_v >= 90) "var(--green)" else if (pct_v >= 70) "var(--amber)" else "var(--red)"
+  pct_s <- if (is.na(pct_v)) "—" else sprintf("%.1f%%", pct_v)
+  list(col = col, s = pct_s)
+}
+
+if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0) {
+  has_event <- !all(is.na(crf_stage_rows$event))
+  groups <- if (has_event) split(crf_stage_rows, crf_stage_rows$event, drop = TRUE) else
+                           list(`All forms` = crf_stage_rows)
+
+  for (gname in names(groups)) {
+    g <- groups[[gname]]
+
+    # Timepoint heading row — anchors the forms beneath it to a visit
+    if (has_event) {
+      g_due <- sum(g$due, na.rm = TRUE)
+      g_ent <- sum(g$entered, na.rm = TRUE)
+      # Same capped numerator as the overall rate: early entries can't push
+      # a timepoint above 100%.
+      g_pct <- if (g_due > 0)
+        sum(pmin(g$entered, g$due), na.rm = TRUE) / g_due * 100 else NA_real_
+      g_note <- if (g_due == 0) " <span style=\"font-weight:400;color:var(--muted)\">— window not yet due</span>" else ""
+      cat(sprintf('<tr class="grp"><td class="l" colspan="5" style="font-weight:700;color:var(--navy);background:var(--navy-tint)">%s%s</td><td style="font-weight:700;background:var(--navy-tint)">%s</td></tr>',
+                  esc(gname), g_note, if (is.na(g_pct)) "—" else sprintf("%.1f%%", g_pct)))
+    }
+
+    for (i in seq_len(nrow(g))) {
+      r <- g[i, ]
+      pc <- pct_cell(r$pct)
+      cat(sprintf('<tr><td class="sn"%s>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style="color:%s;font-weight:700">%s</td></tr>',
+                  if (has_event) ' style="padding-left:18px"' else "",
+                  esc(r$stage),
+                  if (is.na(r$forms)) "—" else r$forms,
+                  if (is.na(r$expected)) "—" else r$expected,
+                  if (is.na(r$due)) "—" else r$due,
+                  if (is.na(r$entered)) "—" else r$entered,
+                  pc$col, pc$s))
+    }
+  }
+
+  e  <- sum(crf_stage_rows$expected, na.rm = TRUE)
+  d  <- sum(crf_stage_rows$due,      na.rm = TRUE)
+  en <- sum(crf_stage_rows$entered,  na.rm = TRUE)
+  # Show raw entered count in the table (transparent) but rate uses capped numerator
+  cat(sprintf('<tr class="tot"><td>Total — all timepoints</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%s</td></tr>',
+              sum(crf_stage_rows$forms, na.rm = TRUE), e, d, en, fmt_pct(crf_overall_pct, 1)))
+} else {
+  cat('<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:14px">No return-rate CSV loaded.</td></tr>')
+}
+```
+  </tbody>
+</table>
+<div class="scale-key">
+  <span><b style="color:var(--green)">≥90%</b> on track</span>
+  <span><b style="color:var(--amber)">70–89%</b> attention</span>
+  <span><b style="color:var(--red)">&lt;70%</b> action required</span>
+  <span><b style="color:var(--grey)">—</b> not yet due</span>
+</div>
+
+<h2 class="sec"><span class="num">08</span> Safety &amp; withdrawals <span class="hint">`r if (sae_count == 0) "No safety signals since trial start" else sprintf("%d SAE(s) reported", sae_count)`</span></h2>
+<div class="sw-grid">
+  <div class="sw-cell wd">
+    <div class="lab2">Participant withdrawals</div>
+    <div class="big">`r fmt_int(n_wd)`<small> / `r fmt_int(n_rand)`</small></div>
+    <div class="det">
+```{r wd-detail}
+if (!is.null(wd_log) && nrow(wd_log) > 0) {
+  fmt_wd_date <- function(x) {
+    d <- suppressWarnings(as.Date(as.character(x)))
+    ifelse(is.na(d),
+           ifelse(is.na(x) | !nzchar(trimws(as.character(x))), "—",
+                  trimws(as.character(x))),
+           format(d, "%d %b %Y"))
+  }
+  dates   <- if ("cos_date" %in% names(wd_log)) fmt_wd_date(wd_log$cos_date)
+             else rep("—", nrow(wd_log))
+  types <- if (!is.na(wd_reason_col)) as.character(wd_log[[wd_reason_col]]) else rep("Withdrawal", nrow(wd_log))
+  types[is.na(types) | !nzchar(types)] <- "Type not recorded"
+  # Free-text withdrawal reason (REDCap cos_withdraw_rsn_oth via
+  # change_of_status_reason) — shown alongside the coded type.
+  reasons <- if ("cos_reason" %in% names(wd_log)) as.character(wd_log$cos_reason)
+             else rep(NA_character_, nrow(wd_log))
+  has_reason <- any(!is.na(reasons) & nzchar(trimws(reasons)))
+  reasons[is.na(reasons) | !nzchar(trimws(reasons))] <- "—"
+  sites <- if ("site_name" %in% names(wd_log)) as.character(wd_log$site_name) else rep("", nrow(wd_log))
+  has_site <- any(nzchar(sites) & !is.na(sites))
+  cat('<table class="rt" style="margin-top:2px"><thead><tr><th class="l">Date withdrawn</th><th class="l">Type</th>',
+      if (has_reason) '<th class="l">Reason</th>' else "",
+      if (has_site) '<th class="l">Site</th>' else "", '</tr></thead><tbody>', sep = "")
+  for (i in seq_len(nrow(wd_log))) {
+    cat(sprintf('<tr><td class="sn">%s</td><td class="l">%s</td>%s%s</tr>',
+                esc(dates[i]), esc(types[i]),
+                if (has_reason) sprintf('<td class="l">%s</td>', esc(reasons[i])) else "",
+                if (has_site) sprintf('<td class="l">%s</td>', esc(sites[i])) else ""))
+  }
+  cat("</tbody></table>")
+  cat('<div style="margin-top:6px"><b>Full consent retained for outcome data collection.</b></div>')
+} else cat("No withdrawals to date.")
+```
+    </div>
+  </div>
+</div>
+
+```{r sae-log}
+sl <- rd$sae_log
+if (!is.null(sl) && nrow(sl) > 0) {
+  cols <- c(record_id = "Participant", site_name = "Site",
+            reported = "Reported", diagnosis = "Diagnosis",
+            soc = "System organ class", category = "Category",
+            severity = "Severity", outcome = "Outcome",
+            related = "Causality", expected = "Expectedness",
+            death_yn = "Death", death = "Death date")
+  # Columns carrying at least one value render (keeps the table narrow);
+  # if no detail column has data yet, show them all with "—" placeholders.
+  present  <- names(cols)[names(cols) %in% names(sl)]
+  has_data <- present[vapply(present, function(cc)
+    any(!is.na(sl[[cc]]) & nzchar(trimws(as.character(sl[[cc]])))), logical(1))]
+  if (length(setdiff(has_data, c("record_id", "site_name"))) > 0)
+    present <- has_data
+  if (length(present) > 0) {
+    fmt_cell <- function(x) {
+      x <- trimws(as.character(x))
+      ifelse(is.na(x) | !nzchar(x), "—", x)
+    }
+    cat('<p class="lab" style="margin-top:8px">SAE log — TMG export</p>')
+    cat('<table class="rt"><thead><tr>',
+        paste(sprintf('<th class="l">%s</th>', cols[present]), collapse = ""),
+        '</tr></thead><tbody>', sep = "")
+    for (i in seq_len(nrow(sl))) {
+      vals <- vapply(present, function(cc) esc(fmt_cell(sl[[cc]][i])), character(1))
+      cat(sprintf('<tr>%s</tr>',
+                  paste(sprintf('<td class="l">%s</td>', vals), collapse = "")))
+    }
+    cat("</tbody></table>")
+  }
+}
+```
+
+```{r page5-footer}
+pf_footer(5)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 6 — PROTOCOL DEVIATIONS · DEMOGRAPHICS
+============================================================== -->
+<section class="page">
+
+```{r page6-header}
+ph_header("Page 6 — Deviations & demographics")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">09</span> Protocol deviations <span class="hint">`r dev_hint`</span></h2>
+
+```{r deviations}
+dl <- rd$deviation_log
+if (!isTRUE(rd$deviation_available)) {
+  cat('<p class="note">This export carries no protocol-deviation form, so deviations cannot be reported. Map the deviation fields in Trial Settings to include this table.</p>')
+} else if (is.null(dl) || nrow(dl) == 0) {
+  cat('<p class="note">No protocol deviations have been reported to date.</p>')
+} else {
+  fmt_dev_date <- function(x) {
+    d <- suppressWarnings(as.Date(x))
+    ifelse(is.na(d), "—", format(d, "%d %b %Y"))
+  }
+  # Only render a column that carries at least one value, so a trial that maps
+  # a subset of the deviation fields gets a narrow table rather than a wall of
+  # em-dashes.
+  has <- function(col) col %in% names(dl) &&
+    any(!is.na(dl[[col]]) & nzchar(trimws(as.character(dl[[col]]))))
+  cols <- list(
+    list(key = "record_id",  head = "Participant", align = "l",  fmt = as.character),
+    list(key = "site",       head = "Site",        align = "l",  fmt = as.character),
+    list(key = "term",       head = "Reference",   align = "l",  fmt = as.character),
+    list(key = "onset_date", head = "Date of deviation", align = "", fmt = fmt_dev_date),
+    list(key = "report_date",head = "Date team aware",   align = "", fmt = fmt_dev_date),
+    list(key = "severity",   head = "Severity",    align = "l",  fmt = as.character),
+    list(key = "status",     head = "Status",      align = "l",  fmt = as.character),
+    list(key = "narrative",  head = "Summary",     align = "l",  fmt = as.character)
+  )
+  cols <- Filter(function(x) has(x$key), cols)
+
+  cat('<table class="rt"><thead><tr>')
+  for (cc in cols)
+    cat(sprintf('<th class="%s">%s</th>', cc$align, esc(cc$head)))
+  cat('</tr></thead><tbody>')
+  for (i in seq_len(nrow(dl))) {
+    cat('<tr>')
+    for (j in seq_along(cols)) {
+      cc  <- cols[[j]]
+      val <- cc$fmt(dl[[cc$key]][i])
+      if (is.na(val) || !nzchar(trimws(as.character(val)))) val <- "—"
+      cls <- if (j == 1) "sn" else cc$align
+      cat(sprintf('<td class="%s">%s</td>', cls, esc(val)))
+    }
+    cat('</tr>')
+  }
+  cat('</tbody></table>')
+
+  by_site <- sort(table(dl$site[!is.na(dl$site) & nzchar(dl$site)]), decreasing = TRUE)
+  if (length(by_site) > 0) {
+    cat(sprintf('<div class="note">%s across %d site%s — %s.</div>',
+                if (nrow(dl) == 1) "1 deviation" else sprintf("%d deviations", nrow(dl)),
+                length(by_site), if (length(by_site) == 1) "" else "s",
+                paste(sprintf("%s (%d)", esc(names(by_site)), as.integer(by_site)),
+                      collapse = " · ")))
+  }
+}
+```
+
+<h2 class="sec"><span class="num">10</span> Demographics <span class="hint">n = `r fmt_int(n_rand)` participants randomised</span></h2>
+<div class="row2">
+  <div class="card">
+    <div class="ct">Age at operation</div>
+    <div class="demo">
+```{r age-chips}
+ad <- demo$age
+if (!is.null(ad)) {
+  u70 <- safe(ad$under_70, 0); o70 <- safe(ad$over_70, 0); tot <- u70 + o70
+  pu <- if (tot > 0) round(u70/tot*100) else 0
+  po <- if (tot > 0) round(o70/tot*100) else 0
+  cat(sprintf('<div class="chip" style="background:var(--teal-tint)"><b style="color:var(--teal)">%d</b><span>Under 70 (%d%%)</span></div>', u70, pu))
+  cat(sprintf('<div class="chip"><b>%d</b><span>70 and over (%d%%)</span></div>', o70, po))
+} else cat('<div class="chip"><b>—</b><span>No age data</span></div>')
+```
+    </div>
+    <div class="note" style="margin-top:8px">Median age at randomisation broadly mirrors NELA emergency-laparotomy population.</div>
+  </div>
+  <div class="card">
+    <div class="ct">NELA 30-day predicted mortality</div>
+    <div class="demo">
+```{r nela-chips}
+nd <- demo$nela
+if (!is.null(nd)) {
+  u5 <- safe(nd$under_5, 0); o5 <- safe(nd$over_5, 0); tot <- u5 + o5
+  pu <- if (tot > 0) round(u5/tot*100) else 0
+  po <- if (tot > 0) round(o5/tot*100) else 0
+  cat(sprintf('<div class="chip" style="background:var(--teal-tint)"><b style="color:var(--teal)">%d</b><span>Under 5%% (%d%%)</span></div>', u5, pu))
+  cat(sprintf('<div class="chip"><b>%d</b><span>5%% and over (%d%%)</span></div>', o5, po))
+} else cat('<div class="chip"><b>—</b><span>No NELA data</span></div>')
+```
+    </div>
+    <div class="note" style="margin-top:8px">Even split across the standard NELA risk stratum — monitoring for balance at randomisation.</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <div class="ct">Ethnicity</div>
+  <div class="eth-split">
+    <div class="eth-donut"><canvas id="ethC"></canvas></div>
+    <div class="eth-legend">
+```{r eth-legend}
+if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
+  for (i in seq_len(nrow(eth_tbl))) {
+    col <- eth_hex[((i-1) %% length(eth_hex)) + 1]
+    cat(sprintf('<div class="row"><span class="sw" style="background:%s"></span><span class="nm">%s</span><span class="vl"><b>%d</b> · %.0f%%</span></div>',
+                col, esc(eth_short(eth_tbl$ethnicity[i])), eth_tbl$n[i], eth_tbl$pct[i]))
+  }
+} else cat('<div class="note">No ethnicity data available.</div>')
+```
+    </div>
+  </div>
+```{r eth-note}
+eth <- demo$ethnicity
+if (!is.null(eth)) {
+  w <- safe(eth$white, 0); m <- safe(eth$minority, 0)
+  if (m > 0) {
+    g <- round(w/m, 1)
+    cat(sprintf('<div class="note" style="margin-top:8px">White : ethnic-minority ratio <b style="color:var(--navy);font-style:normal">%g : 1</b> · representative spread will be re-reviewed at pilot end.</div>', g))
+  }
+}
+```
+</div>
+
+```{r page6-footer}
+pf_footer(6)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 7 — PARTICIPANT BASELINE CHARACTERISTICS
+============================================================== -->
+<section class="page">
+
+```{r page7-header}
+ph_header("Page 7 — Baseline characteristics")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">11</span> Participant baseline characteristics <span class="hint">n = `r fmt_int(n_rand)` participants randomised</span></h2>
+
+```{r baseline-characteristics}
+# baseline_characteristics_df() is the shared builder the TSC Word report also
+# uses, so the two reports can never disagree on a number. Rendered here with
+# the report's own table styling rather than the helper's HTML, which carries
+# its own palette.
+bl <- if (exists("baseline_characteristics_df", mode = "function"))
+        tryCatch(baseline_characteristics_df(rd), error = function(e) NULL) else NULL
+
+if (is.null(bl) || nrow(bl) == 0) {
+  cat('<p class="note">No baseline characteristics available — the export carries none of the mapped baseline fields.</p>')
+} else {
+  total_n <- safe(bl$total_n[1], n_rand)
+  cat(sprintf('<table class="rt"><thead><tr><th class="l">Characteristic</th><th class="l">Category</th><th>n = %s</th></tr></thead><tbody>',
+              fmt_int(total_n)))
+  for (sec in unique(bl$section)) {
+    cat(sprintf('<tr class="grp"><td class="l" colspan="3" style="font-weight:700;color:var(--navy);background:var(--navy-tint)">%s</td></tr>',
+                esc(sec)))
+    rows <- bl[bl$section == sec, , drop = FALSE]
+    last_label <- ""
+    for (i in seq_len(nrow(rows))) {
+      # The characteristic name prints once per run of its categories.
+      lbl <- if (identical(rows$label[i], last_label)) "" else rows$label[i]
+      last_label <- rows$label[i]
+      cat(sprintf('<tr><td class="sn">%s</td><td class="l">%s</td><td>%s</td></tr>',
+                  esc(lbl), esc(rows$sublabel[i]), esc(rows$stat[i])))
+    }
+  }
+  cat('</tbody></table>')
+  cat('<div class="note">Percentages are of participants with the field recorded; a Missing row shows how many were not. Minimisation variables are the factors randomisation balances on.</div>')
+}
+```
+
+```{r page7-footer}
+pf_footer(7)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 8 — PILOT PROGRESSION THRESHOLDS
+============================================================== -->
+<section class="page">
+
+```{r page8-header}
+ph_header("Page 8 — Pilot thresholds")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">12</span> Pilot progression thresholds <span class="hint">Decisions reviewed at 6-month pilot end · `r esc(pilot_end)`</span></h2>
+<p class="note" style="font-style:normal;color:var(--ink-2);margin:2px 0 6px;font-size:9pt;line-height:1.5">
+Six pre-specified criteria. Performance against each lands in one of three bands — <b style="color:var(--red)">Stop</b>, <b style="color:var(--amber)">Modify</b>, or <b style="color:var(--green)">Proceed</b>. The TMG and oversight committee use this together to decide whether to continue, adapt, or stop the trial after the pilot phase.
+</p>
+
+<div class="card" style="padding:6px 14px">
+```{r thresholds}
+for (i in seq_along(thr)) {
+  t <- thr[[i]]
+  bv <- band_for(i)
+  current_band <- bv$band
+  val <- bv$val
+  val_note <- if (!is.na(val))
+    sprintf(' <span style="display:block;font-size:8pt;font-weight:500;margin-top:1px">(%s to date)</span>', fmt_pct(val, 0)) else ""
+  is_now <- function(b) identical(current_band, b)
+  band_html <- function(b, lbl, txt, extra = "") {
+    now_cls <- if (is_now(b)) " now" else ""
+    lb_txt  <- if (is_now(b)) sprintf("%s · current", lbl) else lbl
+    sprintf('<div class="thr-band %s%s"><span class="lb">%s</span>%s%s</div>',
+            b, now_cls, esc(lb_txt), txt, if (is_now(b)) extra else "")
+  }
+  cat(sprintf('<div class="thr-row"><div class="thr-name">%d · %s<span class="det">%s</span></div><div class="thr-bands">%s%s%s</div></div>',
+              i, esc(t$name), esc(t$det),
+              band_html("stop", "Stop",   esc(t$stop_lbl), val_note),
+              band_html("mod",  "Modify", esc(t$mod_lbl),  val_note),
+              band_html("go",   "Proceed",esc(t$go_lbl),   val_note)))
+}
+```
+</div>
+
+```{r page8-footer}
+pf_footer(8)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 9 — RECRUITMENT OUTLOOK
+============================================================== -->
+<section class="page">
+
+```{r page9-header}
+ph_header("Page 9 — Recruitment outlook")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">13</span> Recruitment outlook <span class="hint">Protocol projection · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)`</span></h2>
+
+<div class="ol-status `r rec_band`"><div class="icon">`r if (rec_band == "green") "✓" else if (rec_band == "amber") "!" else "×"`</div><div class="txt"><div class="h">`r if (rec_band == "green") sprintf("On track — %.0f%% of protocol target at this point", safe(rec_pct, 0)) else if (rec_band == "amber") sprintf("Near track — %.0f%% of protocol target", safe(rec_pct, 0)) else sprintf("Behind track — %.0f%% of protocol target", safe(rec_pct, 0))`</div><div class="s"><b style="color:var(--navy)">`r fmt_int(n_rand)` randomised</b> against <b style="color:var(--navy)">`r fmt_int(exp_to_date)` expected</b> by `r esc(format(Sys.Date(), "%d %b %Y"))` · `r fmt_int(n_open_sites)` site`r if (n_open_sites == 1) "" else "s"` open.</div></div></div>
+
+<div class="ol-chart"><div class="h"><span>Cumulative recruitment · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)` <b>(`r fmt_int(n_target)` target)</b></span><span>Source: protocol schedule</span></div><div class="ol-chart-wrap"><canvas id="outlookC"></canvas></div><div class="ol-leg"><span class="lg"><span class="ln"></span>Cumulative target (protocol)</span><span class="lg"><span class="sw" style="background:var(--teal)"></span>Actual randomised</span></div></div>
+
+
+<p class="note" style="margin-top:8px">
+Projections from the original application. Project month re-baselined to the current timeline; monthly targets unchanged at this stage. Follow-up runs to Sep 2028, database lock Nov 2028, analysis Jan 2029, close-out Feb 2029 — see milestones on page 1.
+</p>
+
+```{r page9-footer}
+pf_footer(9)
+```
+</section>
+
+</div>
+
+<script>
+(function(){
+  if (typeof Chart === 'undefined') return;
+  const navy = '#01344F', muted = '#6a7d8a', teal = '#12A192';
+  Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+  Chart.defaults.font.size = 10;
+  Chart.defaults.color = muted;
+
+  const labels = `r j(chart_labels)`;
+  const target = `r j(chart_target)`;
+  const actual = `r j(chart_actual)`;
+
+  // Value labels drawn above bars. chart.js ships no datalabels plugin and the
+  // report loads a single CDN bundle, so this is a local, per-chart plugin.
+  const valueLabels = (dsIndex) => ({
+    id: 'valueLabels',
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx, ds = chart.data.datasets[dsIndex];
+      const meta = chart.getDatasetMeta(dsIndex);
+      if (!ds || meta.hidden) return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined) return;
+        ctx.save();
+        ctx.font = '700 9.5px ' + Chart.defaults.font.family;
+        ctx.fillStyle = navy;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(v, el.x, el.y - 3);
+        ctx.restore();
+      });
+    }
+  });
+
+  // Headline figure in the middle of a doughnut.
+  const centreText = (big, small, colour) => ({
+    id: 'centreText',
+    afterDraw(chart) {
+      const ctx = chart.ctx, a = chart.chartArea;
+      const x = (a.left + a.right) / 2, y = (a.top + a.bottom) / 2;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = colour;
+      ctx.font = "700 22px 'Source Serif 4', Georgia, serif";
+      ctx.fillText(big, x, y - 4);
+      ctx.fillStyle = muted;
+      ctx.font = '600 8.5px ' + Chart.defaults.font.family;
+      ctx.fillText(small, x, y + 11);
+      ctx.restore();
+    }
+  });
+
+  // Page 2: monthly randomisations across the whole recruitment window.
+  // Cumulative recruitment is not repeated here — section 10 carries it.
+  const monEl = document.getElementById('monC');
+  if (monEl) {
+    const diffs = (xs) => xs.map((v, i) => {
+      if (v == null) return null;
+      const prev = i > 0 ? (xs[i-1] || 0) : 0;
+      return v - prev;
+    });
+    new Chart(monEl, {
+      type:'bar',
+      data:{
+        labels: labels,
+        datasets:[
+          {label:'Randomised', data: diffs(actual), backgroundColor: teal, borderRadius:3, maxBarThickness:22, order:1},
+          {label:'Monthly target (protocol)', data: diffs(target), backgroundColor:'#eef2f5', borderRadius:3, maxBarThickness:22, order:2}
+        ]
+      },
+      plugins:[valueLabels(0)],
+      options:{
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:18}},
+        plugins:{
+          legend:{display:true,labels:{boxWidth:12,boxHeight:12,padding:10,font:{size:9.5}}},
+          tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y||0)}}
+        },
+        scales:{
+          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:60,minRotation:60,autoSkip:false,font:{size:7.5}}},
+          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},title:{display:true,text:'Participants randomised',font:{size:9.5,weight:600}},ticks:{padding:4}}
+        }
+      }
+    });
+  }
+
+  // Page 4: ethnicity doughnut
+  const ethEl = document.getElementById('ethC');
+  if (ethEl) {
+    const ethLabels = `r ja(eth_labels_js)`;
+    const ethCounts = `r ja(eth_n_js)`;
+    const ethCols   = `r ja(eth_hex)`;
+    const ethMinPct = `r if (is.na(eth_min_pct)) "null" else eth_min_pct`;
+    if (ethCounts.length) {
+      new Chart(ethEl, {
+        type:'doughnut',
+        data:{labels: ethLabels, datasets:[{data: ethCounts, backgroundColor: ethCols, borderColor:'#fff', borderWidth:2}]},
+        plugins: ethMinPct === null ? [] : [centreText(ethMinPct + '%', 'ethnic minority', teal)],
+        options:{
+          responsive:true, maintainAspectRatio:false, cutout:'58%',
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.label+': '+c.parsed}}}
+        }
+      });
+    }
+  }
+
+  // Page 6: outlook chart
+  const outlookEl = document.getElementById('outlookC');
+  if (outlookEl) {
+    new Chart(outlookEl, {
+      data:{
+        labels: labels,
+        datasets:[
+          {type:'line', label:'Target', data: target, borderColor: navy, borderWidth:2, borderDash:[6,4], pointRadius:0, fill:false, tension:.2, order:2},
+          {type:'line', label:'Actual', data: actual, borderColor: teal, backgroundColor:'rgba(18,161,146,.18)', borderWidth:2.5, pointBackgroundColor: teal, pointBorderColor:'#fff', pointBorderWidth:1.5, pointRadius:4, fill:'origin', tension:.3, spanGaps:false, order:1}
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index', intersect:false},
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,font:{size:8.5}}},
+          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},title:{display:true,text:'Cumulative randomised',color: muted,font:{size:9,weight:600}},ticks:{padding:4,font:{size:9}}}
+        }
+      }
+    });
+  }
+})();
+</script>
