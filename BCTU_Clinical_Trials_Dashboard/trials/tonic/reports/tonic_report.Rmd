@@ -349,6 +349,15 @@ j <- function(x) {
   }
 }
 
+# Always an array, even for a single element — Chart.js datasets need a list.
+ja <- function(x) {
+  if (requireNamespace("jsonlite", quietly = TRUE)) {
+    jsonlite::toJSON(x, na = "null", null = "null", auto_unbox = FALSE)
+  } else {
+    paste0("[", paste(ifelse(is.na(x), "null", paste0('"', x, '"')), collapse = ","), "]")
+  }
+}
+
 # Ethnicity bar segments (top groups only, others combined)
 eth_tbl <- (demo$ethnicity %||% list())$table
 if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
@@ -361,7 +370,35 @@ if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
     eth_tbl <- rbind(eth_tbl[1:5, ], other)
   }
 }
-eth_colours <- c("var(--navy)","var(--teal)","#f3b860","#9bd07a","#9bc3da","#e587a8")
+# Shorten the REDCap ethnicity labels so they fit a chart legend, e.g.
+# "White - English, Welsh, Scottish, Northern Irish or British" -> "White — British".
+eth_short <- function(x) {
+  x <- as.character(x)
+  x <- sub("^Other ethnic group - Any other ethnic group$", "Other ethnic group", x)
+  x <- sub("^Asian or Asian British - ", "Asian \u2014 ", x)
+  x <- sub("^Black, Black British, Caribbean or African - ", "Black \u2014 ", x)
+  x <- sub("^Mixed or multiple ethnic groups - ", "Mixed \u2014 ", x)
+  x <- sub("^Other ethnic group - ", "Other \u2014 ", x)
+  x <- sub("^White - ", "White \u2014 ", x)
+  x <- sub("English, Welsh, Scottish, Northern Irish or British", "British", x)
+  x <- sub("Any other (Asian|Black|White|Mixed) background", "other background", x)
+  x <- sub("Any other ", "other ", x)
+  x
+}
+
+# Canvas cannot resolve CSS custom properties, so the donut needs literal hex.
+eth_hex <- c("#01344F", "#12A192", "#f3b860", "#9bd07a", "#9bc3da", "#e587a8")
+eth_labels_js <- character(0); eth_n_js <- numeric(0)
+if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
+  eth_labels_js <- eth_short(eth_tbl$ethnicity)
+  eth_n_js      <- as.numeric(eth_tbl$n)
+  eth_hex       <- eth_hex[((seq_len(nrow(eth_tbl)) - 1) %% length(eth_hex)) + 1]
+}
+# Headline for the middle of the donut: % from an ethnic-minority background.
+eth_min_pct <- local({
+  e <- demo$ethnicity
+  if (is.null(e) || safe(e$total, 0) == 0) NA else round(safe(e$minority, 0) / e$total * 100)
+})
 ```
 
 <style>
@@ -398,7 +435,7 @@ body{padding:24px 0}
      left on the current page starts on the next one instead. */
   .ph,.ph-info,.card,.row2,.row3,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
   .ol-chart-wrap,.ol-status,.milestones,.ml-grp,.chart-wrap,
-  .demo,.note,.scale-key,.eth-bar,.eth-legend,svg{
+  .demo,.note,.scale-key,.eth-split,.eth-legend,svg{
     break-inside:avoid;page-break-inside:avoid}
   /* Headings and table captions stay with the content they introduce. */
   h2.sec,p.lab{break-after:avoid-page;page-break-after:avoid;break-inside:avoid}
@@ -518,6 +555,7 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
 .card .ct{font-size:8.5pt;color:var(--navy);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .chart-wrap{position:relative;height:140px}
+.chart-wrap-lg{position:relative;height:360px}
 
 .demo{display:flex;gap:6px;margin-top:4px}
 .demo .chip{flex:1;text-align:center;padding:8px 6px;border-radius:6px;background:var(--navy-tint-2);border:1px solid var(--line)}
@@ -544,11 +582,9 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .sw-cell .det{font-size:9pt;color:var(--ink-2);margin-top:4px;line-height:1.45}
 .sw-cell .det b{color:var(--navy);font-weight:600}
 
-.eth-bar{display:flex;width:100%;height:34px;border-radius:6px;overflow:hidden;border:1px solid var(--line);margin-top:6px}
-.eth-seg{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;line-height:1;padding:0 6px;position:relative;min-width:32px}
-.eth-seg b{font-size:13pt;font-weight:700;font-family:'Source Serif 4',serif;letter-spacing:-.02em}
-.eth-seg span{font-size:7.5pt;font-weight:600;opacity:.9;margin-top:2px}
-.eth-legend{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:8.5pt;color:var(--ink-2)}
+.eth-split{display:grid;grid-template-columns:180px 1fr;gap:16px;align-items:center;margin-top:6px}
+.eth-donut{position:relative;height:170px}
+.eth-legend{display:flex;flex-direction:column;gap:4px;margin-top:0;font-size:8.5pt;color:var(--ink-2)}
 .eth-legend .row{display:flex;align-items:center;gap:8px}
 .eth-legend .sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
 .eth-legend .nm{flex:1;color:var(--navy);font-weight:500}
@@ -840,18 +876,61 @@ ph_header("Page 2 — Timeline & recruitment")
 <span class="lg" style="margin-left:auto"><span style="width:10px;border-left:1.5px dashed var(--red);height:10px;display:inline-block"></span>&nbsp;Now (`r format(Sys.Date(), "%b %y")`)</span>
 </div>
 
-<svg viewBox="0 0 800 262" width="100%" style="display:block"> <g font-family="Calibri, Segoe UI, sans-serif" font-size="9" fill="#6a7d8a"> <text x="90"  y="20" text-anchor="middle">Jun 24</text> <text x="162" y="20" text-anchor="middle">Dec 24</text> <text x="234" y="20" text-anchor="middle">Jun 25</text> <text x="306" y="20" text-anchor="middle">Dec 25</text> <text x="378" y="20" text-anchor="middle">Jun 26</text> <text x="450" y="20" text-anchor="middle">Dec 26</text> <text x="522" y="20" text-anchor="middle">Jun 27</text> <text x="594" y="20" text-anchor="middle">Dec 27</text> <text x="666" y="20" text-anchor="middle">Jun 28</text> <text x="738" y="20" text-anchor="middle">Dec 28</text> </g> <line x1="90" y1="26" x2="774" y2="26" stroke="#dfe7ec" stroke-width="1"/> <g font-family="Calibri, Segoe UI, sans-serif" font-size="10.5" fill="#3d5363" font-weight="500"> <text x="0" y="50">Study set-up</text> <rect x="90"  y="36"  width="252" height="20" rx="3" fill="#9bc3da"/> <text x="0" y="80">6-mo pilot</text> <rect x="354" y="66"  width="72"  height="20" rx="3" fill="#01344F"/> <text x="0" y="110">Full recruitment</text> <rect x="426" y="96"  width="252" height="20" rx="3" fill="#12A192" opacity=".95"/> <text x="0" y="140">Treatment & follow-up</text> <rect x="354" y="126"  width="360" height="20" rx="3" fill="#f3b860"/> <text x="0" y="170">Data cleaning</text> <rect x="714" y="156" width="24"  height="20" rx="3" fill="#9bd07a"/> <text x="0" y="200">Analysis & writeup</text> <rect x="738" y="186" width="24"  height="20" rx="3" fill="#f29278"/> <text x="0" y="230">Close-out</text> <rect x="762" y="216" width="12"  height="20" rx="3" fill="#e587a8"/> </g>
-
+  <svg viewBox="0 0 816 258" width="100%" style="display:block">
+    <g fill="#f6f9fb">
+      <rect x="90" y="18" width="144" height="214"/>
+      <rect x="378" y="18" width="144" height="214"/>
+      <rect x="666" y="18" width="108" height="214"/>
+    </g>
+    <g font-family="Calibri, Segoe UI, sans-serif" font-size="9" fill="#6a7d8a">
+      <text x="90" y="12" text-anchor="middle">Jun 24</text>
+      <text x="162" y="12" text-anchor="middle">Dec 24</text>
+      <text x="234" y="12" text-anchor="middle">Jun 25</text>
+      <text x="306" y="12" text-anchor="middle">Dec 25</text>
+      <text x="378" y="12" text-anchor="middle">Jun 26</text>
+      <text x="450" y="12" text-anchor="middle">Dec 26</text>
+      <text x="522" y="12" text-anchor="middle">Jun 27</text>
+      <text x="594" y="12" text-anchor="middle">Dec 27</text>
+      <text x="666" y="12" text-anchor="middle">Jun 28</text>
+      <text x="738" y="12" text-anchor="middle">Dec 28</text>
+    </g>
+    <line x1="90" y1="18" x2="774" y2="18" stroke="#dfe7ec" stroke-width="1"/>
+    <g font-family="Calibri, Segoe UI, sans-serif" font-size="10.5" fill="#3d5363" font-weight="500">
+      <text x="0" y="42">Study set-up</text>
+      <rect x="90" y="28" width="252" height="20" rx="3" fill="#9bc3da"/>
+      <text x="216" y="42" text-anchor="middle" font-size="8.5" font-weight="600" fill="#01344F">21 mo</text>
+      <text x="347" y="42" font-size="7" font-weight="500" fill="#6a7d8a">Feb 26</text>
+      <text x="0" y="72">6-mo pilot</text>
+      <rect x="354" y="58" width="72" height="20" rx="3" fill="#01344F"/>
+      <text x="390" y="72" text-anchor="middle" font-size="8.5" font-weight="600" fill="#ffffff">6 mo</text>
+      <text x="431" y="72" font-size="7" font-weight="500" fill="#6a7d8a">Sep 26</text>
+      <text x="0" y="102">Full recruitment</text>
+      <rect x="426" y="88" width="252" height="20" rx="3" fill="#12A192" opacity=".95"/>
+      <text x="552" y="102" text-anchor="middle" font-size="8.5" font-weight="600" fill="#ffffff">21 mo</text>
+      <text x="683" y="102" font-size="7" font-weight="500" fill="#6a7d8a">Jun 28</text>
+      <text x="0" y="132">Treatment &amp; follow-up</text>
+      <rect x="354" y="118" width="360" height="20" rx="3" fill="#f3b860"/>
+      <text x="534" y="132" text-anchor="middle" font-size="8.5" font-weight="600" fill="#01344F">30 mo</text>
+      <text x="719" y="132" font-size="7" font-weight="500" fill="#6a7d8a">Sep 28</text>
+      <text x="0" y="162">Data cleaning</text>
+      <rect x="714" y="148" width="24" height="20" rx="3" fill="#9bd07a"/>
+      <text x="743" y="162" font-size="7" font-weight="500" fill="#6a7d8a">Nov 28</text>
+      <text x="0" y="192">Analysis &amp; writeup</text>
+      <rect x="738" y="178" width="24" height="20" rx="3" fill="#f29278"/>
+      <text x="767" y="192" font-size="7" font-weight="500" fill="#6a7d8a">Jan 29</text>
+      <text x="0" y="222">Close-out</text>
+      <rect x="762" y="208" width="12" height="20" rx="3" fill="#e587a8"/>
+      <text x="779" y="222" font-size="7" font-weight="500" fill="#6a7d8a">Feb 29</text>
+    </g>
 ```{r now-marker, results="asis"}
 # Compute x for "now" marker: months since Jun 2024 * 12, anchored at x=90
 mo_now <- as.integer(round(as.numeric(difftime(Sys.Date(), as.Date("2024-06-01"), units = "days")) / 30.44))
 mo_now <- max(0, min(57, mo_now))
 xn <- 90 + mo_now * 12
-cat(sprintf('<g><line x1="%d" y1="26" x2="%d" y2="242" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="254" font-family="Calibri, Segoe UI, sans-serif" font-size="9" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
+cat(sprintf('<g><line x1="%d" y1="18" x2="%d" y2="234" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="246" font-family="Calibri, Segoe UI, sans-serif" font-size="9" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
             xn, xn, xn, format(Sys.Date(), "%b %y")))
 ```
-
-</svg>
+  </svg>
 </div>
 
 <h2 class="sec">
@@ -868,16 +947,10 @@ cat(sprintf('<g><line x1="%d" y1="26" x2="%d" y2="242" stroke="#B4321E" stroke-w
   <span>Full target: <b>`r fmt_int(n_target)` by `r esc(full_end)`</b></span>
 </div>
 
-<div class="row2" style="margin-top:8px">
-<div class="card">
-<div class="ct">Cumulative recruitment · actual vs. target</div>
-<div class="chart-wrap"><canvas id="cumC"></canvas></div>
-</div>
-
-<div class="card">
-<div class="ct">Monthly randomisations</div>
-<div class="chart-wrap"><canvas id="monC"></canvas></div>
-</div>
+<div class="card" style="margin-top:8px">
+  <div class="ct">Monthly randomisations · `r if (length(chart_labels)) paste(chart_labels[1], "\u2192", chart_labels[length(chart_labels)]) else "no schedule"`</div>
+  <div class="chart-wrap-lg"><canvas id="monC"></canvas></div>
+  <div class="note">Solid bars are participants randomised in each month, labelled with the count. Pale bars behind them are the protocol's target for that month.</div>
 </div>
 
 ```{r page2-footer}
@@ -1205,7 +1278,7 @@ if (!is.null(sl) && nrow(sl) > 0) {
 
 </h2>
 
-<div class="row3">
+<div class="row2">
 <div class="card">
 <div class="ct">Age at operation</div>
 <div class="demo">
@@ -1244,36 +1317,34 @@ if (!is.null(nd)) {
 <div class="note" style="margin-top:8px">Even split across the standard NELA risk stratum — monitoring for balance at randomisation.</div>
 </div>
 
-<div class="card">
-<div class="ct">Ethnicity</div>
+</div>
 
-```{r eth-bar}
+<div class="card" style="margin-top:14px">
+  <div class="ct">Ethnicity</div>
+  <div class="eth-split">
+    <div class="eth-donut"><canvas id="ethC"></canvas></div>
+    <div class="eth-legend">
+```{r eth-legend}
 if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
-  total <- sum(eth_tbl$n)
-  cat('<div class="eth-bar">')
   for (i in seq_len(nrow(eth_tbl))) {
-    col <- eth_colours[((i-1) %% length(eth_colours)) + 1]
-    cat(sprintf('<div class="eth-seg" style="flex:%d;background:%s"><b>%d</b><span>%.0f%%</span></div>',
-                eth_tbl$n[i], col, eth_tbl$n[i], eth_tbl$pct[i]))
-  }
-  cat('</div><div class="eth-legend">')
-  for (i in seq_len(nrow(eth_tbl))) {
-    col <- eth_colours[((i-1) %% length(eth_colours)) + 1]
+    col <- eth_hex[((i-1) %% length(eth_hex)) + 1]
     cat(sprintf('<div class="row"><span class="sw" style="background:%s"></span><span class="nm">%s</span><span class="vl"><b>%d</b> · %.0f%%</span></div>',
-                col, esc(eth_tbl$ethnicity[i]), eth_tbl$n[i], eth_tbl$pct[i]))
-  }
-  cat('</div>')
-  eth <- demo$ethnicity
-  if (!is.null(eth)) {
-    w <- safe(eth$white, 0); m <- safe(eth$minority, 0)
-    if (m > 0) {
-      g <- round(w/m, 1)
-      cat(sprintf('<div class="note" style="margin-top:8px">White : ethnic-minority ratio <b style="color:var(--navy);font-style:normal">%g : 1</b> · representative spread will be re-reviewed at pilot end.</div>', g))
-    }
+                col, esc(eth_short(eth_tbl$ethnicity[i])), eth_tbl$n[i], eth_tbl$pct[i]))
   }
 } else cat('<div class="note">No ethnicity data available.</div>')
 ```
-</div>
+    </div>
+  </div>
+```{r eth-note}
+eth <- demo$ethnicity
+if (!is.null(eth)) {
+  w <- safe(eth$white, 0); m <- safe(eth$minority, 0)
+  if (m > 0) {
+    g <- round(w/m, 1)
+    cat(sprintf('<div class="note" style="margin-top:8px">White : ethnic-minority ratio <b style="color:var(--navy);font-style:normal">%g : 1</b> · representative spread will be re-reviewed at pilot end.</div>', g))
+  }
+}
+```
 </div>
 
 ```{r page4-footer}
@@ -1405,60 +1476,101 @@ pf_footer(6)
   const target = `r j(chart_target)`;
   const actual = `r j(chart_actual)`;
 
-  // Page 2: cumulative recruitment
-  const cumEl = document.getElementById('cumC');
-  if (cumEl) {
-    new Chart(cumEl, {
-      type:'line',
-      data:{
-        labels: labels,
-        datasets:[
-          {label:'Target (protocol)', data: target, borderColor:'#bcd2dc', borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false, tension:.25},
-          {label:'Actual', data: actual, borderColor: navy, backgroundColor:'rgba(18,161,146,.18)', fill:true, borderWidth:2, pointBackgroundColor: navy, pointRadius:3, tension:.3, spanGaps:false}
-        ]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:true,labels:{boxWidth:10,boxHeight:10,padding:8,font:{size:9}}}},
-        scales:{
-          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{padding:4}}
-        }
-      }
-    });
-  }
+  // Value labels drawn above bars. chart.js ships no datalabels plugin and the
+  // report loads a single CDN bundle, so this is a local, per-chart plugin.
+  const valueLabels = (dsIndex) => ({
+    id: 'valueLabels',
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx, ds = chart.data.datasets[dsIndex];
+      const meta = chart.getDatasetMeta(dsIndex);
+      if (!ds || meta.hidden) return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined) return;
+        ctx.save();
+        ctx.font = '700 9.5px ' + Chart.defaults.font.family;
+        ctx.fillStyle = navy;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(v, el.x, el.y - 3);
+        ctx.restore();
+      });
+    }
+  });
 
-  // Page 2: monthly randomisations
+  // Headline figure in the middle of a doughnut.
+  const centreText = (big, small, colour) => ({
+    id: 'centreText',
+    afterDraw(chart) {
+      const ctx = chart.ctx, a = chart.chartArea;
+      const x = (a.left + a.right) / 2, y = (a.top + a.bottom) / 2;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = colour;
+      ctx.font = "700 22px 'Source Serif 4', Georgia, serif";
+      ctx.fillText(big, x, y - 4);
+      ctx.fillStyle = muted;
+      ctx.font = '600 8.5px ' + Chart.defaults.font.family;
+      ctx.fillText(small, x, y + 11);
+      ctx.restore();
+    }
+  });
+
+  // Page 2: monthly randomisations across the whole recruitment window.
+  // Cumulative recruitment is not repeated here — section 10 carries it.
   const monEl = document.getElementById('monC');
   if (monEl) {
-    // Derive monthly counts from actual diffs
-    const monthly = actual.map((v, i) => {
+    const diffs = (xs) => xs.map((v, i) => {
       if (v == null) return null;
-      const prev = i > 0 ? (actual[i-1] || 0) : 0;
+      const prev = i > 0 ? (xs[i-1] || 0) : 0;
       return v - prev;
     });
     new Chart(monEl, {
       type:'bar',
       data:{
         labels: labels,
-        datasets:[{
-          data: monthly,
-          backgroundColor: ctx => (ctx.parsed && ctx.parsed.y) ? navy : '#edf2f5',
-          borderRadius:4, maxBarThickness:24
-        }]
+        datasets:[
+          {label:'Randomised', data: diffs(actual), backgroundColor: teal, borderRadius:3, maxBarThickness:22, order:1},
+          {label:'Monthly target (protocol)', data: diffs(target), backgroundColor:'#eef2f5', borderRadius:3, maxBarThickness:22, order:2}
+        ]
       },
+      plugins:[valueLabels(0)],
       options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(c.parsed.y||0)+' randomised'}}},
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:18}},
+        plugins:{
+          legend:{display:true,labels:{boxWidth:12,boxHeight:12,padding:10,font:{size:9.5}}},
+          tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y||0)}}
+        },
         scales:{
-          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{stepSize:1,padding:4}}
+          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:60,minRotation:60,autoSkip:false,font:{size:7.5}}},
+          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},title:{display:true,text:'Participants randomised',font:{size:9.5,weight:600}},ticks:{padding:4}}
         }
       }
     });
   }
 
-  // Page 4: outlook chart
+  // Page 4: ethnicity doughnut
+  const ethEl = document.getElementById('ethC');
+  if (ethEl) {
+    const ethLabels = `r ja(eth_labels_js)`;
+    const ethCounts = `r ja(eth_n_js)`;
+    const ethCols   = `r ja(eth_hex)`;
+    const ethMinPct = `r if (is.na(eth_min_pct)) "null" else eth_min_pct`;
+    if (ethCounts.length) {
+      new Chart(ethEl, {
+        type:'doughnut',
+        data:{labels: ethLabels, datasets:[{data: ethCounts, backgroundColor: ethCols, borderColor:'#fff', borderWidth:2}]},
+        plugins: ethMinPct === null ? [] : [centreText(ethMinPct + '%', 'ethnic minority', teal)],
+        options:{
+          responsive:true, maintainAspectRatio:false, cutout:'58%',
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.label+': '+c.parsed}}}
+        }
+      });
+    }
+  }
+
+  // Page 6: outlook chart
   const outlookEl = document.getElementById('outlookC');
   if (outlookEl) {
     new Chart(outlookEl, {
