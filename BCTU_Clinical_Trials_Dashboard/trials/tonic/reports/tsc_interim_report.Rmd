@@ -326,9 +326,15 @@ eth_min_pct <- local({
 # Protocol deviations — one line for the section 09 heading, distinguishing
 # "none reported" from "this export has no deviation form".
 dev_count <- safe(rd$deviation_count, 0)
-dev_hint  <- if (!isTRUE(rd$deviation_available)) "Deviation form not present in this export"
-             else if (dev_count == 0) "None reported since trial start"
-             else sprintf("%d deviation%s reported", dev_count, if (dev_count == 1) "" else "s")
+# Braces, not a bare multi-line if/else: at top level R closes the expression at
+# the end of the first line and the dangling `else` is a parse error.
+dev_hint <- if (!isTRUE(rd$deviation_available)) {
+  "Deviation form not present in this export"
+} else if (dev_count == 0) {
+  "None reported since trial start"
+} else {
+  sprintf("%d deviation%s reported", dev_count, if (dev_count == 1) "" else "s")
+}
 
 # CRF return rates — derive a tidy stage summary if crf_data is present
 crf <- rd$crf_data
