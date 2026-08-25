@@ -1382,7 +1382,8 @@ reports_server <- function(input, output, session, state) {
                   "functions/baseline_table.R",
                   "functions/consort_flow.R",
                   "functions/tsc_charts.R",
-                  "www/BlackText-landscape.png")) {   # BCTU header logo
+                  "www/BlackText-landscape.png",                          # BCTU header logo
+                  "www/NIHR_Acknowledgement_Funded by_Logo_RGB.png")) {   # NIHR footer logo
         if (file.exists(h))
           file.copy(h, file.path(tmp_dir, basename(h)), overwrite = TRUE)
       }
@@ -1620,21 +1621,30 @@ reports_server <- function(input, output, session, state) {
     sprintf("· %d sections · A4 · classic", length(secs))
   })
 
-  # ── TMG / iTMG preview: render the Rmd live and embed in an iframe ──────
-  # The TMG/iTMG download path uses tonic_report.Rmd. We render the same Rmd
-  # for the on-screen preview so what the user sees matches what they
-  # download (byte-for-byte for HTML format).
+  # ── TMG / iTMG / TSC Interim preview: render the Rmd live and embed in an
+  # iframe ──────────────────────────────────────────────────────────────────
+  # These three templates are HTML-styled Rmds (tonic_report.Rmd for TMG/iTMG,
+  # tsc_interim_report.Rmd for TSC Interim). We render the same Rmd for the
+  # on-screen preview so what the user sees matches what they download
+  # (byte-for-byte for HTML format). Every other template in REPORT_TEMPLATES
+  # (TSC, NIHR, Portfolio) renders from the generic section registry instead —
+  # see output$rb_document_preview below — so it's essential every HTML-Rmd
+  # template gets added to this list, or its preview silently falls through to
+  # that generic stub instead of its own content.
   tmg_preview_state <- reactiveValues(html = NULL, error = NULL, rendering = FALSE)
+  HTML_RMD_TEMPLATES <- c("TMG", "iTMG", "TSC Interim")
 
   render_tmg_preview_html <- function() {
     cfg <- rv$trial_config
     if (is.null(cfg)) return(NULL)
     tmpl_choice <- rb_template_choice()
-    if (!tmpl_choice %in% c("TMG", "iTMG")) return(NULL)
+    if (!tmpl_choice %in% HTML_RMD_TEMPLATES) return(NULL)
 
-    rmd_src <- resolve_report_template(cfg, "tonic")
+    # TMG and iTMG share tonic_report.Rmd; TSC Interim has its own Rmd.
+    rmd_kind <- if (identical(tmpl_choice, "TSC Interim")) "tsc_interim" else "tonic"
+    rmd_src  <- resolve_report_template(cfg, rmd_kind)
     if (is.null(rmd_src)) {
-      tmg_preview_state$error <- "TMG report template not found."
+      tmg_preview_state$error <- sprintf("%s report template not found.", tmpl_choice)
       return(NULL)
     }
     if (!ensure_pandoc()) {
@@ -1673,7 +1683,8 @@ reports_server <- function(input, output, session, state) {
     for (h in c("functions/flat_completeness.R",
                 "functions/baseline_table.R",
                 "functions/consort_flow.R",
-                "www/BlackText-landscape.png")) {   # BCTU header logo
+                "www/BlackText-landscape.png",                          # BCTU header logo
+                "www/NIHR_Acknowledgement_Funded by_Logo_RGB.png")) {   # NIHR footer logo
       if (file.exists(h))
         file.copy(h, file.path(tmp_dir, basename(h)), overwrite = TRUE)
     }
@@ -1728,7 +1739,7 @@ reports_server <- function(input, output, session, state) {
   observeEvent(preview_trigger(), {
     tryCatch({
       tmpl <- rb_template_choice()
-      if (!tmpl %in% c("TMG", "iTMG")) return()
+      if (!tmpl %in% HTML_RMD_TEMPLATES) return()
       cfg <- rv$trial_config
       if (is.null(cfg)) return()
       tmg_preview_state$rendering <- TRUE
@@ -1755,9 +1766,9 @@ reports_server <- function(input, output, session, state) {
       return(div(style = "padding:60px;color:#94A3B8;font-style:italic;",
                  "Select a trial to preview the report."))
 
-    # TMG / iTMG → live Rmd render embedded as an iframe
+    # TMG / iTMG / TSC Interim → live Rmd render embedded as an iframe
     tmpl_choice <- rb_template_choice()
-    if (tmpl_choice %in% c("TMG", "iTMG")) {
+    if (tmpl_choice %in% HTML_RMD_TEMPLATES) {
       if (isTRUE(tmg_preview_state$rendering))
         return(div(style = "padding:60px;text-align:center;color:#64748B;",
                    div(style="font-size:13px;font-weight:500;","Rendering preview…"),
