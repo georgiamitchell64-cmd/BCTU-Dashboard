@@ -1,5 +1,5 @@
 ---
-title: "TONIC TMG Progress Report"
+pagetitle: "TONIC TMG Progress Report"
 output:
   html_document:
     theme: null
@@ -62,7 +62,11 @@ funder_ref   <- safe(rc$funder_ref,    "NIHR155875")
 isrctn       <- safe(rc$isrctn,        "ISRCTN59200516")
 sample_size  <- safe(rc$sample_size,   safe(kpi$trial_target, 898))
 n_sites_plan <- safe(rc$sites_planned, 25)
-proj_start   <- safe(rc$project_start, "Apr 2026")
+proj_start   <- safe(rc$project_start, "Jun 2024")
+# Distinct from proj_start: proj_start anchors the project timeline
+# (meta-strip, section 03), pilot_open is when recruitment into the
+# pilot actually began, shown only in the trial-snapshot sentence.
+pilot_open   <- safe(rc$pilot_open,    "Apr 2026")
 proj_end     <- safe(rc$project_end,   "Feb 2028")
 proj_months  <- safe(rc$project_months, 45)
 pilot_target <- safe(rc$pilot_target,  60)
@@ -470,7 +474,7 @@ body{padding:24px 0}
 .pf .pn{color:var(--navy);font-weight:600}
 .pf .pf-nihr{height:14px;width:auto;display:block}
 
-h1.title{font-family:'Source Serif 4',serif;font-size:26pt;font-weight:700;color:var(--navy);margin:0 0 6px;letter-spacing:-.5px;line-height:1.1;background:#E6F7F5;padding:4px 12px;border-radius:4px}
+h1.title{font-family:'Source Serif 4',serif;font-size:26pt;font-weight:700;color:var(--navy);margin:0 0 6px;letter-spacing:-.5px;line-height:1.1}
 .sub{font-size:11pt;color:var(--ink-2);margin:0 0 12px;font-weight:500}
 .sub b{color:var(--navy)}
 
@@ -570,7 +574,7 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .scale-key{display:flex;gap:10px;font-size:8pt;color:var(--muted);margin-top:6px;flex-wrap:wrap}
 .scale-key b{font-weight:600}
 
-.sw-grid{display:grid;grid-template-columns:1fr 2.1fr;gap:12px;margin-top:4px}
+.sw-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:4px}
 .sw-cell{border:1px solid var(--line);border-radius:6px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:4px}
 .sw-cell .lab2{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 .sw-cell .big{font-size:30pt;font-weight:700;font-family:'Source Serif 4',serif;line-height:1;letter-spacing:-.02em}
@@ -741,7 +745,7 @@ Trial Overview
 
 <p class="sub">
 
-`r fmt_int(n_rand)` participant`r if (!is.na(n_rand) && n_rand == 1) "" else "s"` randomised across `r fmt_int(n_open_sites)` active site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"` — pilot opened <b>`r esc(proj_start)`</b>, `r if (rec_band == "green") "on protocol target" else if (rec_band == "amber") "near protocol target" else "behind protocol target"`.
+`r fmt_int(n_rand)` participant`r if (!is.na(n_rand) && n_rand == 1) "" else "s"` randomised across `r fmt_int(n_open_sites)` active site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"` — pilot opened <b>`r esc(pilot_open)`</b>, `r if (rec_band == "green") "on protocol target" else if (rec_band == "amber") "near protocol target" else "behind protocol target"`.
 
 </p>
 
@@ -1200,16 +1204,6 @@ if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0) {
 </h2>
 
 <div class="sw-grid">
-<div class="sw-cell `r if (sae_count == 0) "safe" else ""`">
-
-<div class="lab2">
-Serious adverse events (SAE)
-</div>
-
-<div class="big">`r fmt_int(sae_count)`</div>
-<div class="det">`r if (sae_count == 0) sprintf("SAEs reported since trial start.<br><b>No SUSARs · no urgent safety measures.</b>") else "See SAE log for detail."`</div>
-</div>
-
 <div class="sw-cell wd">
 <div class="lab2">Participant withdrawals</div>
 <div class="big">`r fmt_int(n_wd)`<small> / `r fmt_int(n_rand)`</small></div>
