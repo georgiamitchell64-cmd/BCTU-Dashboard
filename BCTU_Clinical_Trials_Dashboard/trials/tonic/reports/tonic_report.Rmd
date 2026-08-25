@@ -1012,8 +1012,8 @@ All sites — status & recruitment
 <table class="rt">
   <thead><tr>
     <th class="l">Site</th><th class="l">Status</th>
-    <th>Opened</th><th>Rand.</th><th>Target</th>
-    <th class="l" style="width:24%">Progress</th>
+    <th>Opened</th><th>Rand.</th><th>Avg / mo</th><th>Target</th>
+    <th class="l" style="width:20%">Progress</th>
   </tr></thead>
   <tbody>
 ```{r site-table}
@@ -1043,15 +1043,26 @@ if (nrow(ss) > 0) {
                 fmt_date(r$open_date, "%b %Y") else "—"
     rand <- as.integer(r$randomisations %||% 0)
     tgt  <- as.integer(r$target %||% 42)
+    # Average randomisations per month since this site opened. The denominator
+    # is floored at one month so a site open a fortnight cannot report a rate
+    # extrapolated far above what it has actually achieved. Only meaningful for
+    # a recruiting site with a known open date; anything else reads "—".
+    mo_open <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date))) {
+      d <- suppressWarnings(as.Date(r$open_date))
+      if (is.na(d)) NA_real_ else
+        max(1, as.numeric(difftime(Sys.Date(), d, units = "days")) / 30.44)
+    } else NA_real_
+    avg_mo   <- if (!is.na(mo_open) && is_open(r$stage)) rand / mo_open else NA_real_
+    avg_cell <- if (is.na(avg_mo)) "\u2014" else sprintf("%.1f", avg_mo)
     pct  <- if (tgt > 0) round(rand/tgt*100, 1) else 0
     progress_html <- if (is_open(r$stage))
       sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><span class="lbl">%d/%d</span></div>', pct, rand, tgt)
       else sprintf('<span class="note" style="margin:0">%s</span>', esc(r$stage))
-    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%d</td><td class="l">%s</td></tr>',
-                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, tgt, progress_html))
+    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%s</td><td>%d</td><td class="l">%s</td></tr>',
+                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, avg_cell, tgt, progress_html))
   }
 } else {
-  cat('<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:14px">No site data available.</td></tr>')
+  cat('<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px">No site data available.</td></tr>')
 }
 ```
   </tbody>
@@ -1247,12 +1258,19 @@ if (!is.null(wd_log) && nrow(wd_log) > 0) {
 ```{r sae-log}
 sl <- rd$sae_log
 if (!is.null(sl) && nrow(sl) > 0) {
-  cols <- c(record_id = "Participant", site_name = "Site", onset = "Onset date",
-            event = "Event", severity = "Severity", outcome = "Outcome",
+  cols <- c(record_id = "Participant", site_name = "Site",
+            reported = "Reported", diagnosis = "Diagnosis",
+            soc = "System organ class", category = "Category",
+            severity = "Severity", outcome = "Outcome",
             related = "Causality", expected = "Expectedness",
-            death = "Death date")
-  # Every column present in the export renders; cells pending entry read "—".
-  present <- names(cols)[names(cols) %in% names(sl)]
+            death_yn = "Death", death = "Death date")
+  # Columns carrying at least one value render (keeps the table narrow);
+  # if no detail column has data yet, show them all with "—" placeholders.
+  present  <- names(cols)[names(cols) %in% names(sl)]
+  has_data <- present[vapply(present, function(cc)
+    any(!is.na(sl[[cc]]) & nzchar(trimws(as.character(sl[[cc]])))), logical(1))]
+  if (length(setdiff(has_data, c("record_id", "site_name"))) > 0)
+    present <- has_data
   if (length(present) > 0) {
     fmt_cell <- function(x) {
       x <- trimws(as.character(x))

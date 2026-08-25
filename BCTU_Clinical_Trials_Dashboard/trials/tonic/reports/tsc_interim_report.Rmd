@@ -16,6 +16,7 @@ params:
   include_appendix: false
   report_date: !r format(Sys.Date(), "%d %B %Y")
   logo_path: NULL
+  nihr_logo_path: NULL
   crf_csv_path: NULL
   screening_xlsx_path: NULL
   report_type: "TSC Interim"
@@ -72,7 +73,7 @@ funder_ref   <- safe(rc$funder_ref,    "NIHR155875")
 isrctn       <- safe(rc$isrctn,        "ISRCTN59200516")
 sample_size  <- safe(rc$sample_size,   safe(kpi$trial_target, 898))
 n_sites_plan <- safe(rc$sites_planned, 25)
-proj_start   <- safe(rc$project_start, "Jun 2024")
+proj_start   <- safe(rc$project_start, "Apr 2026")
 proj_end     <- safe(rc$project_end,   "Feb 2028")
 proj_months  <- safe(rc$project_months, 45)
 pilot_target <- safe(rc$pilot_target,  60)
@@ -107,6 +108,17 @@ logo_b64      <- encode_logo(params$logo_path)
 )
 .bctu_hit     <- .bctu_candidates[file.exists(.bctu_candidates)]
 bctu_logo_b64 <- if (length(.bctu_hit)) encode_logo(.bctu_hit[1]) else ""
+# NIHR "Funded by" logo — same staging logic as the BCTU mark, with an
+# optional explicit param override.
+.nihr_candidates <- c(
+  params$nihr_logo_path %||% "",
+  "NIHR_Acknowledgement_Funded by_Logo_RGB.png",
+  file.path("www", "NIHR_Acknowledgement_Funded by_Logo_RGB.png"),
+  file.path(dirname(knitr::current_input(dir = TRUE)), "NIHR_Acknowledgement_Funded by_Logo_RGB.png")
+)
+.nihr_candidates <- .nihr_candidates[nzchar(.nihr_candidates)]
+.nihr_hit     <- .nihr_candidates[file.exists(.nihr_candidates)]
+nihr_logo_b64 <- if (length(.nihr_hit)) encode_logo(.nihr_hit[1]) else ""
 
 # ── Snapshot KPIs ─────────────────────────────────────────────────────────────
 n_rand    <- safe(kpi$total_randomised, 0)
@@ -178,6 +190,77 @@ next_ms_lbl <- if (length(ms_future) > 0) {
   sprintf("%d of %d complete", length(ms_complete), length(ms))
 }
 
+# CRF return rates — derive a tidy stage summary if crf_data is present
+crf <- rd$crf_data
+crf_overall_pct <- NA_real_
+crf_stage_rows  <- NULL
+if (!is.null(crf) && nrow(crf) > 0) {
+  # Use whatever columns exist; common shape: Forms, Expected, Due, Entered, Pct
+  guess <- function(pat) {
+    m <- grep(pat, names(crf), ignore.case = TRUE, value = TRUE)
+    if (length(m)) crf[[m[1]]] else NULL
+  }
+  st <- list(
+    event    = guess("^(event|timepoint|time.?point|visit)"),
+    stage    = guess("^(stage|form|instrument)"),
+    forms    = guess("^forms$|^count"),
+    expected = guess("expected"),
+    due      = guess("^due"),
+    entered  = guess("entered|received"),
+    pct      = guess("pct|%|percent")
+  )
+  if (!is.null(st$stage)) {
+    n_rows <- length(st$stage)
+    crf_stage_rows <- data.frame(
+      event    = if (!is.null(st$event)) as.character(st$event) else rep(NA_character_, n_rows),
+      stage    = as.character(st$stage),
+      forms    = if (!is.null(st$forms))    as.integer(st$forms)    else rep(NA_integer_, n_rows),
+      expected = if (!is.null(st$expected)) as.integer(st$expected) else rep(NA_integer_, n_rows),
+      due      = if (!is.null(st$due))      as.integer(st$due)      else rep(NA_integer_, n_rows),
+      entered  = if (!is.null(st$entered))  as.integer(st$entered)  else rep(NA_integer_, n_rows),
+      stringsAsFactors = FALSE)
+
+    # Return rate is entered ÷ DUE, never ÷ expected. TONIC is longitudinal
+    # (Baseline, Discharge, Day 30, Day 90); "expected" counts participants who
+    # will eventually reach a timepoint, so windows that have not yet opened
+    # (e.g. Day 90, 0 due) would otherwise deflate the figure. Rows with 0 due
+    # are "not yet due" and contribute nothing to the denominator.
+    #
+    # Numerator is capped at due (min(entered, due)) so that early entries —
+    # forms submitted before the formal due window fires — cannot inflate the
+    # rate above 100%. e.g. Barthel Discharge: 12 entered, 10 due → 100%, not 120%.
+    crf_stage_rows$pct <- ifelse(crf_stage_rows$due > 0,
+                                 pmin(crf_stage_rows$entered, crf_stage_rows$due) /
+                                   crf_stage_rows$due * 100,
+                                 NA_real_)
+
+    # Order timepoints chronologically when an event column is present
+    if (!all(is.na(crf_stage_rows$event))) {
+      tp_levels <- c("Baseline", "Discharge", "Day 30", "Day 90")
+      crf_stage_rows$event <- factor(crf_stage_rows$event,
+                                     levels = union(tp_levels, unique(crf_stage_rows$event)))
+      crf_stage_rows <- crf_stage_rows[order(crf_stage_rows$event), , drop = FALSE]
+    }
+
+    # Overall rate: cap entered at due per row before summing so aggregate
+    # cannot exceed 100% either.
+    tot_due <- sum(crf_stage_rows$due, na.rm = TRUE)
+    tot_ent <- sum(pmin(crf_stage_rows$entered, crf_stage_rows$due), na.rm = TRUE)
+    crf_overall_pct <- if (tot_due > 0) round(tot_ent / tot_due * 100, 1) else NA
+  }
+}
+
+# 90-day questionnaire return — same source and logic as the return-rates
+# table: denominator = forms due in the Day 90 window, numerator = forms
+# entered (capped at due so early entries cannot push the rate above 100%).
+d90_rows <- if (!is.null(crf_stage_rows) && !all(is.na(crf_stage_rows$event)))
+  crf_stage_rows[grepl("90", as.character(crf_stage_rows$event)) &
+                 !grepl("30", as.character(crf_stage_rows$event)), , drop = FALSE] else NULL
+fu90_due     <- if (!is.null(d90_rows) && nrow(d90_rows) > 0) sum(d90_rows$due, na.rm = TRUE) else 0
+fu90_entered <- if (!is.null(d90_rows) && nrow(d90_rows) > 0)
+  sum(pmin(d90_rows$entered, d90_rows$due), na.rm = TRUE) else 0
+fu90_rate_csv <- if (fu90_due > 0) round(fu90_entered / fu90_due * 100, 1) else NA_real_
+
 # ── Pilot thresholds (criteria text + bands) ──────────────────────────────────
 thr <- rc$pilot_thresholds %||% list(
   list(name = "Recruitment rate per open centre",
@@ -197,7 +280,7 @@ thr <- rc$pilot_thresholds %||% list(
        stop_lbl = "< 70% within 48 h", mod_lbl = "75 – 99% within 48 h",
        go_lbl   = "100% within 48 h"),
   list(name = "Contamination — control arm",
-       det  = "Participants with an early- or late-PN reason recorded (nut_o_pn_early_rsn / nut_o_pn_late_rsn) — parenteral nutrition outside the allocated strategy. Reads 'not determinable' when these fields are absent from the export.",
+       det  = "Control-arm participants who actually received early parenteral nutrition within 48 hours.",
        stop_lbl = "≥ 30% contaminated", mod_lbl = "1 – 25% contaminated",
        go_lbl   = "0% contaminated"),
   list(name = "Cross-over between trial arms",
@@ -211,8 +294,8 @@ band_for <- function(idx) {
   v <- switch(idx,
     recruit_rate_box,   # 1 — same figure as shown in the card (n randomised ÷ expected)
     NA,                  # 2 data completeness — we approximate below
-    pilot$fu_90_rate,    # 3
-    pilot$interv_rate,   # 4
+    fu90_rate_csv,       # 3 — from the return-rates CSV (entered ÷ due)
+    NA_real_,            # 4 — not derivable: REDCap export lacks the data (see pc_cards)
     pilot$contam_rate,   # 5
     pilot$crossover_rate # 6
   )
@@ -236,9 +319,14 @@ band_for <- function(idx) {
 pc_cards <- list(
   list(title = "Recruitment rate",            val = recruit_rate_box,     sub = sprintf("%s / %s expected", fmt_int(n_rand), fmt_int(exp_to_date)), fmt = "pct"),
   list(title = "Data completeness",           val = (rd$primary_outcome %||% list())$pct, sub = "primary outcome forms", fmt = "pct"),
-  list(title = "90-day questionnaire return", val = pilot$fu_90_rate,     sub = if (safe(pilot$fu_90_elig, 0) == 0) "not yet due" else sprintf("%s / %s eligible", fmt_int(pilot$fu_90_comp), fmt_int(pilot$fu_90_elig)), fmt = "pct"),
-  list(title = "Intervention delivery <48 h", val = pilot$interv_rate,    sub = "intervention arm", fmt = "pct"),
-  list(title = "Contamination",               val = pilot$contam_rate,    sub = if (is.na(safe(pilot$contam_rate, NA))) "not determinable from export" else "late/early PN reason recorded", fmt = "pct"),
+  # Denominator and numerator come from the return-rates CSV (Day 90 rows),
+  # matching the CRF return-rates table: entered ÷ due.
+  list(title = "90-day questionnaire return", val = fu90_rate_csv,        sub = if (fu90_due == 0) "not yet due" else sprintf("%s / %s due", fmt_int(fu90_entered), fmt_int(fu90_due)), fmt = "pct"),
+  # The REDCap export does not carry the data needed to derive intervention
+  # delivery (no allocation field; PN timing incomplete), so this criterion is
+  # shown as pending with an explanatory caption rather than a misleading 0%.
+  list(title = "Intervention delivery <48 h", val = NA_real_,             sub = "cannot be calculated from the REDCap export", fmt = "pct"),
+  list(title = "Contamination",               val = pilot$contam_rate,    sub = "target 0% in control", fmt = "pct"),
   list(title = "Crossover rate",              val = pilot$crossover_rate, sub = "target 0%", fmt = "pct")
 )
 
@@ -336,65 +424,6 @@ dev_hint <- if (!isTRUE(rd$deviation_available)) {
   sprintf("%d deviation%s reported", dev_count, if (dev_count == 1) "" else "s")
 }
 
-# CRF return rates — derive a tidy stage summary if crf_data is present
-crf <- rd$crf_data
-crf_overall_pct <- NA_real_
-crf_stage_rows  <- NULL
-if (!is.null(crf) && nrow(crf) > 0) {
-  # Use whatever columns exist; common shape: Forms, Expected, Due, Entered, Pct
-  guess <- function(pat) {
-    m <- grep(pat, names(crf), ignore.case = TRUE, value = TRUE)
-    if (length(m)) crf[[m[1]]] else NULL
-  }
-  st <- list(
-    event    = guess("^(event|timepoint|time.?point|visit)"),
-    stage    = guess("^(stage|form|instrument)"),
-    forms    = guess("^forms$|^count"),
-    expected = guess("expected"),
-    due      = guess("^due"),
-    entered  = guess("entered|received"),
-    pct      = guess("pct|%|percent")
-  )
-  if (!is.null(st$stage)) {
-    n_rows <- length(st$stage)
-    crf_stage_rows <- data.frame(
-      event    = if (!is.null(st$event)) as.character(st$event) else rep(NA_character_, n_rows),
-      stage    = as.character(st$stage),
-      forms    = if (!is.null(st$forms))    as.integer(st$forms)    else rep(NA_integer_, n_rows),
-      expected = if (!is.null(st$expected)) as.integer(st$expected) else rep(NA_integer_, n_rows),
-      due      = if (!is.null(st$due))      as.integer(st$due)      else rep(NA_integer_, n_rows),
-      entered  = if (!is.null(st$entered))  as.integer(st$entered)  else rep(NA_integer_, n_rows),
-      stringsAsFactors = FALSE)
-
-    # Return rate is entered ÷ DUE, never ÷ expected. TONIC is longitudinal
-    # (Baseline, Discharge, Day 30, Day 90); "expected" counts participants who
-    # will eventually reach a timepoint, so windows that have not yet opened
-    # (e.g. Day 90, 0 due) would otherwise deflate the figure. Rows with 0 due
-    # are "not yet due" and contribute nothing to the denominator.
-    #
-    # Numerator is capped at due (min(entered, due)) so that early entries —
-    # forms submitted before the formal due window fires — cannot inflate the
-    # rate above 100%. e.g. Barthel Discharge: 12 entered, 10 due → 100%, not 120%.
-    crf_stage_rows$pct <- ifelse(crf_stage_rows$due > 0,
-                                 pmin(crf_stage_rows$entered, crf_stage_rows$due) /
-                                   crf_stage_rows$due * 100,
-                                 NA_real_)
-
-    # Order timepoints chronologically when an event column is present
-    if (!all(is.na(crf_stage_rows$event))) {
-      tp_levels <- c("Baseline", "Discharge", "Day 30", "Day 90")
-      crf_stage_rows$event <- factor(crf_stage_rows$event,
-                                     levels = union(tp_levels, unique(crf_stage_rows$event)))
-      crf_stage_rows <- crf_stage_rows[order(crf_stage_rows$event), , drop = FALSE]
-    }
-
-    # Overall rate: cap entered at due per row before summing so aggregate
-    # cannot exceed 100% either.
-    tot_due <- sum(crf_stage_rows$due, na.rm = TRUE)
-    tot_ent <- sum(pmin(crf_stage_rows$entered, crf_stage_rows$due), na.rm = TRUE)
-    crf_overall_pct <- if (tot_due > 0) round(tot_ent / tot_due * 100, 1) else NA
-  }
-}
 
 ```
 
@@ -465,6 +494,7 @@ body{padding:24px 0}
 .meta-strip .mv small{font-weight:500;color:var(--muted);font-size:8.5pt}
 
 .pf{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:6px;margin-top:auto;font-size:8pt;color:var(--muted)}
+.pf .pf-nihr{height:14px;width:auto;display:block}
 .pf .pn{color:var(--navy);font-weight:600}
 
 h1.title{font-family:'Source Serif 4',serif;font-size:26pt;font-weight:700;color:var(--navy);margin:0 0 2px;letter-spacing:-.5px;line-height:1.05}
@@ -659,8 +689,11 @@ ph_header <- function(page_label) {
   ))
 }
 pf_footer <- function(n_page, n_total = 9) {
-  cat(sprintf('<footer class="pf"><span>%s Progress Report</span><span class="pn">Page %d / %d</span><span>Birmingham Clinical Trials Unit (BCTU)</span></footer>',
-              esc(trial_short), n_page, n_total))
+  ver <- safe(rc$version, "0.1")
+  nihr_html <- if (nchar(nihr_logo_b64) > 0)
+    sprintf('<img class="pf-nihr" src="%s" alt="Funded by NIHR">', nihr_logo_b64) else "<span></span>"
+  cat(sprintf('<footer class="pf"><span>%s Progress Report v%s (%s)</span>%s<span class="pn">Page %d of %d</span></footer>',
+              esc(trial_short), esc(ver), format(Sys.Date(), "%d-%b-%Y"), nihr_html, n_page, n_total))
 }
 ```
 
@@ -908,7 +941,7 @@ cat(esc(if (length(open_names)) paste(open_names, collapse = " · ") else "—")
 <table class="rt">
   <thead><tr>
     <th class="l">Site</th><th class="l">Status</th>
-    <th>Opened</th><th>Rand.</th><th>Target</th>
+    <th>Opened</th><th>Rand.</th><th>Avg / mo</th><th>Target</th>
     <th class="l" style="width:24%">Progress</th>
   </tr></thead>
   <tbody>
@@ -940,15 +973,25 @@ if (nrow(ss) > 0) {
                 fmt_date(r$open_date, "%b %Y") else "—"
     rand <- as.integer(r$randomisations %||% 0)
     tgt  <- as.integer(r$target %||% 42)
+    # Average randomisations per month since this site opened; denominator
+    # floored at one month so a newly opened site cannot report a rate
+    # extrapolated far above what it has actually achieved.
+    mo_open <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date))) {
+      d <- suppressWarnings(as.Date(r$open_date))
+      if (is.na(d)) NA_real_ else
+        max(1, as.numeric(difftime(Sys.Date(), d, units = "days")) / 30.44)
+    } else NA_real_
+    avg_mo   <- if (!is.na(mo_open)) rand / mo_open else NA_real_
+    avg_cell <- if (is.na(avg_mo)) "\u2014" else sprintf("%.1f", avg_mo)
     pct  <- if (tgt > 0) round(rand/tgt*100, 1) else 0
     progress_html <- if (is_open(r$stage))
       sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><span class="lbl">%d/%d</span></div>', pct, rand, tgt)
       else sprintf('<span class="note" style="margin:0">%s</span>', esc(r$stage))
-    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%d</td><td class="l">%s</td></tr>',
-                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, tgt, progress_html))
+    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%s</td><td>%d</td><td class="l">%s</td></tr>',
+                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, avg_cell, tgt, progress_html))
   }
 } else {
-  cat('<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:14px">No recruiting sites to report.</td></tr>')
+  cat('<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px">No recruiting sites to report.</td></tr>')
 }
 ```
   </tbody>
