@@ -546,10 +546,22 @@ prepare_report_data <- function(df,
       pipeline_df$site_name <- pipeline_df$site_id
   }
 
-  recruiting_sites <- if ("site_name" %in% names(filtered) && nrow(filtered) > 0) {
-    sites <- unique(filtered$site_name)
+  # Site performance is a lifetime view: the Target column and the progress bar
+  # beside this count are all-time figures, so the count has to be all-time too.
+  # `filtered` is narrowed by the report's date range, which left Rand. frozen
+  # at whatever happened to fall inside the reporting window rather than
+  # tracking the site's real total — a period numerator over a lifetime
+  # denominator. Count from the unfiltered randomised set instead, still
+  # honouring an explicit site selection.
+  rand_src <- ptcp_randomised
+  if (!is.null(selected_sites) && length(selected_sites) > 0 &&
+      !("All sites" %in% selected_sites) && "site_name" %in% names(rand_src))
+    rand_src <- rand_src[rand_src$site_name %in% selected_sites, ]
+
+  recruiting_sites <- if ("site_name" %in% names(rand_src) && nrow(rand_src) > 0) {
+    sites <- unique(rand_src$site_name)
     data.frame(site_name = sites, stage = "Open — Recruiting",
-      randomisations = sapply(sites, function(s) sum(filtered$site_name == s)),
+      randomisations = sapply(sites, function(s) sum(rand_src$site_name == s)),
       source = "redcap", stringsAsFactors = FALSE)
   } else data.frame(site_name=character(0), stage=character(0),
                     randomisations=integer(0), source=character(0),
