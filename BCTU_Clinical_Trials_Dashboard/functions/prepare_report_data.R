@@ -533,52 +533,104 @@ prepare_report_data <- function(df,
       pipeline_df$site_name <- pipeline_df$site_id
   }
 
-  recruiting_sites <- if ("site_name" %in% names(filtered) && nrow(filtered) > 0) {
-    sites <- unique(filtered$site_name)
-    data.frame(site_name = sites, stage = "Open — Recruiting",
-      randomisations = sapply(sites, function(s) sum(filtered$site_name == s)),
-      source = "redcap", stringsAsFactors = FALSE)
-  } else data.frame(site_name=character(0), stage=character(0),
-                    randomisations=integer(0), source=character(0),
-                    stringsAsFactors=FALSE)
+  # The Sites tab (rv$sites) is the live register: it carries each site's
+  # status, open date, per-site targets, and a randomised count kept in step
+  # with the REDCap export by sync_sites_from_redcap(). The report used to
+  # rebuild its own site list from `filtered` and merge only open_date/target
+  # back in, which produced two visible faults:
+  #
+  #   * Rand. came from `filtered`, which is narrowed by the report's date
+  #     range and site selection, so it under-counted against an all-time
+  #     Target — a period numerator over a lifetime denominator.
+  #   * A site renamed on the Sites tab no longer matched its REDCap data
+  #     access group, so the name-keyed merge returned NA and the Opened
+  #     column went blank, while the same site appeared twice: once from
+  #     REDCap with the count and no date, once from the Sites tab with a
+  #     hardcoded zero.
+  #
+  # So drive the table from the Sites tab and take counts from the unfiltered
+  # randomised set, falling back to the register's own figure.
+  .sd <- site_defaults(cfg)
 
-  if (!is.null(pipeline_df) && "site_name" %in% names(pipeline_df)) {
-    lk_cols <- intersect(c("site_name","open_date","target"), names(pipeline_df))
-    if (length(lk_cols) > 1) {
-      lk <- pipeline_df[, lk_cols, drop = FALSE]
-      recruiting_sites <- merge(recruiting_sites, lk, by = "site_name", all.x = TRUE)
+  # All-time randomisations per site, before any report filter.
+  all_time_counts <- if ("site_name" %in% names(ptcp_randomised) &&
+                         nrow(ptcp_randomised) > 0) {
+    tb <- table(ptcp_randomised$site_name)
+    data.frame(site_name = names(tb), n_redcap = as.integer(tb),
+               stringsAsFactors = FALSE)
+  } else data.frame(site_name = character(0), n_redcap = integer(0),
+                    stringsAsFactors = FALSE)
+
+  reg <- if (!is.null(pipeline_df) && nrow(pipeline_df) > 0 &&
+             "site_name" %in% names(pipeline_df)) pipeline_df else NULL
+
+  if (!is.null(reg)) {
+    pick <- function(col, default) {
+      if (col %in% names(reg)) reg[[col]] else rep(default, nrow(reg))
     }
+    site_reg <- data.frame(
+      site_name      = as.character(reg$site_name),
+      stage          = as.character(pick("stage", NA_character_)),
+      target         = suppressWarnings(as.integer(pick("target",         NA))),
+      monthly_target = suppressWarnings(as.integer(pick("monthly_target", NA))),
+      open_date      = .iso_date_chr(pick("open_date", NA)),
+      n_register     = suppressWarnings(as.integer(pick("randomised",     NA))),
+      source         = "register",
+      stringsAsFactors = FALSE)
+
+    # Any REDCap site absent from the register (an export loaded before the
+    # sync ran) still deserves a row rather than silently vanishing.
+    extra <- all_time_counts[!all_time_counts$site_name %in% site_reg$site_name, ,
+                             drop = FALSE]
+    if (nrow(extra) > 0) {
+      site_reg <- rbind(site_reg, data.frame(
+        site_name      = extra$site_name,
+        stage          = NA_character_,
+        target         = NA_integer_,
+        monthly_target = NA_integer_,
+        open_date      = NA_character_,
+        n_register     = NA_integer_,
+        source         = "redcap",
+        stringsAsFactors = FALSE))
+    }
+  } else {
+    site_reg <- data.frame(
+      site_name      = all_time_counts$site_name,
+      stage          = NA_character_,
+      target         = NA_integer_,
+      monthly_target = NA_integer_,
+      open_date      = NA_character_,
+      n_register     = NA_integer_,
+      source         = "redcap",
+      stringsAsFactors = FALSE)
   }
-  if (!"target"          %in% names(recruiting_sites)) recruiting_sites$target          <- 42
-  if (!"monthly_target"  %in% names(recruiting_sites)) recruiting_sites$monthly_target  <- 2
-  if (!"open_date"       %in% names(recruiting_sites)) recruiting_sites$open_date       <- NA_character_
-  recruiting_sites$target[is.na(recruiting_sites$target)]                 <- 42
-  recruiting_sites$monthly_target[is.na(recruiting_sites$monthly_target)] <- 2
-  # Normalise open_date to ISO character before the rbind below. rv$sites
-  # supplies a Date while pre_recruit supplies character, and rbind coerces to
-  # whichever side comes first — a character-first bind would silently turn the
-  # Dates into their numeric representation ("20544").
-  recruiting_sites$open_date <- .iso_date_chr(recruiting_sites$open_date)
 
-  pre_recruit <- if (!is.null(pipeline_df) && nrow(pipeline_df) > 0 &&
-                     "site_name" %in% names(pipeline_df)) {
-    p <- pipeline_df[!pipeline_df$site_name %in% recruiting_sites$site_name, ]
-    if (nrow(p) > 0) data.frame(
-      site_name      = p$site_name,
-      stage          = if ("stage"          %in% names(p)) p$stage          else "In setup",
-      randomisations = 0L, source = "manual",
-      target         = if ("target"         %in% names(p)) p$target         else 42L,
-      monthly_target = if ("monthly_target" %in% names(p)) p$monthly_target else 2L,
-      open_date      = if ("open_date"      %in% names(p)) .iso_date_chr(p$open_date) else NA_character_,
-      stringsAsFactors = FALSE) else recruiting_sites[0, ]
-  } else recruiting_sites[0, ]
+  site_reg <- merge(site_reg, all_time_counts, by = "site_name", all.x = TRUE)
 
-  pipeline_combined <- rbind(recruiting_sites, pre_recruit)
+  # Prefer the live REDCap count; fall back to the register's own number for a
+  # site whose participants are not in this export (or entered by hand).
+  site_reg$randomisations <- ifelse(!is.na(site_reg$n_redcap), site_reg$n_redcap,
+                             ifelse(!is.na(site_reg$n_register), site_reg$n_register, 0L))
+  site_reg$randomisations <- as.integer(site_reg$randomisations)
+
+  # Status: the Sites tab wins, because Paused / Closed / Set-up are manual
+  # decisions the export cannot express. Only infer when none is recorded.
+  site_reg$stage <- ifelse(
+    !is.na(site_reg$stage) & nzchar(site_reg$stage), site_reg$stage,
+    ifelse(site_reg$randomisations > 0, "Open — Recruiting", "Identified"))
+
+  site_reg$target[is.na(site_reg$target)]                 <- .sd$target
+  site_reg$monthly_target[is.na(site_reg$monthly_target)] <- .sd$monthly_target
+
+  recruiting_sites  <- site_reg[site_reg$randomisations > 0, , drop = FALSE]
+  pipeline_combined <- site_reg
+
   site_status_table <- if (nrow(pipeline_combined) > 0) {
     st <- pipeline_combined[, c("site_name","stage","target","monthly_target",
                                 "randomisations","open_date"), drop=FALSE]
     st$randomisations[is.na(st$randomisations)] <- 0
-    st$progress_pct <- round(st$randomisations / st$target * 100, 1)
+    st$progress_pct <- ifelse(st$target > 0,
+                              round(st$randomisations / st$target * 100, 1), NA_real_)
     # Actual monthly average recruits per site — randomisations over the months
     # the site has been open. NA where no open date is recorded.
     st$actual_monthly <- .actual_monthly_per_site(st$randomisations, st$open_date,
@@ -603,7 +655,7 @@ prepare_report_data <- function(df,
     ma <- merge(ma, ac, by = "site_name", all.x = TRUE); ma$actual[is.na(ma$actual)] <- 0
     mt_df <- recruiting_sites[, c("site_name","monthly_target"), drop = FALSE]
     ma <- merge(ma, mt_df, by = "site_name", all.x = TRUE)
-    ma$monthly_target[is.na(ma$monthly_target)] <- 2
+    ma$monthly_target[is.na(ma$monthly_target)] <- .sd$monthly_target
     ma$month_label <- format(today, "%B %Y")
     ma[order(-ma$actual, ma$site_name), ]
   } else data.frame(site_name=character(0), actual=integer(0),
@@ -637,7 +689,7 @@ prepare_report_data <- function(df,
       hm$actual[is.na(hm$actual)] <- 0
       mt <- recruiting_sites[, c("site_name","monthly_target"), drop = FALSE]
       hm <- merge(hm, mt, by = "site_name", all.x = TRUE)
-      hm$monthly_target[is.na(hm$monthly_target)] <- 2
+      hm$monthly_target[is.na(hm$monthly_target)] <- .sd$monthly_target
       hm$month_label <- format(as.Date(paste0(hm$month, "-01")), "%b %Y")
       hm[order(hm$site_name, hm$month), ]
     } else NULL

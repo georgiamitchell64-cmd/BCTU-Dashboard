@@ -100,6 +100,8 @@ site_edit_modal <- function(row = NULL, is_new = FALSE) {
   }
   gd <- function(f) { v <- g(f); if (is.null(v)) NULL else tryCatch(as.Date(v), error = function(e) NULL) }
   src <- g("source", "manual")
+  # New-site target defaults come from the trial config, not literals.
+  .site_def <- site_defaults()
 
   modalDialog(
     title = div(class = "se-title",
@@ -165,9 +167,13 @@ site_edit_modal <- function(row = NULL, is_new = FALSE) {
       div(class = "se-group-label", "Recruitment"),
       div(class = "se-grid se-grid3",
         div(class = "se-field", tags$label("Monthly target"),
-            numericInput("se_mo_tgt", label = NULL, value = as.integer(g("monthly_target", 2)), min = 0, width = "100%")),
+            numericInput("se_mo_tgt", label = NULL,
+                         value = as.integer(g("monthly_target", .site_def$monthly_target)),
+                         min = 0, width = "100%")),
         div(class = "se-field", tags$label("Overall target"),
-            numericInput("se_tgt", label = NULL, value = as.integer(g("target", 42)), min = 0, width = "100%")),
+            numericInput("se_tgt", label = NULL,
+                         value = as.integer(g("target", .site_def$target)),
+                         min = 0, width = "100%")),
         div(class = "se-field", tags$label("Randomised"),
             numericInput("se_rand", label = NULL, value = as.integer(g("randomised", 0)), min = 0, width = "100%"))
       ),

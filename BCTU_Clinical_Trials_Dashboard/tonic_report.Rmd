@@ -946,8 +946,13 @@ actual_monthly_row <- function(row) {
 
 if (nrow(ss) > 0) {
   # normalise columns
+  # Every figure here comes from report_data, which prepare_report_data() builds
+  # from the Sites tab register (status, open date, per-site targets, randomised
+  # count) plus the unfiltered REDCap totals. Nothing is invented locally: a
+  # column the payload does not carry renders as "—" rather than a stand-in
+  # number that would look authoritative.
   if (!"randomisations" %in% names(ss)) ss$randomisations <- 0L
-  if (!"target"         %in% names(ss)) ss$target <- 42L
+  if (!"target"         %in% names(ss)) ss$target <- NA_integer_
   if (!"open_date"      %in% names(ss)) ss$open_date <- NA
   if (!"stage"          %in% names(ss)) ss$stage <- "—"
   # Sort: recruiting first, then set-up, then identified, then by name
@@ -966,9 +971,10 @@ if (nrow(ss) > 0) {
                  if (is_ident(r$stage)) "Identified" else as.character(r$stage)
     opened <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date)))
                 fmt_date(r$open_date, "%b %Y") else "—"
-    rand <- as.integer(r$randomisations %||% 0)
-    tgt  <- as.integer(r$target %||% 42)
-    pct  <- if (tgt > 0) round(rand/tgt*100, 1) else 0
+    rand <- as.integer(safe(r$randomisations, 0))
+    tgt  <- suppressWarnings(as.integer(safe(r$target, NA)))
+    has_tgt <- length(tgt) == 1 && !is.na(tgt) && tgt > 0
+    pct  <- if (has_tgt) round(rand/tgt*100, 1) else 0
     # Actual monthly average recruits this site has delivered: randomisations
     # over the months it has been open. prepare_report_data() computes it with
     # .actual_monthly_per_site(); recompute here only when rendering against
@@ -982,11 +988,12 @@ if (nrow(ss) > 0) {
               else if (!is.na(site_rate_target) && act_site >= site_rate_target * 0.5) "amber"
               else "red",
               fmt_rate(act_site))
-    progress_html <- if (is_open(r$stage))
+    progress_html <- if (is_open(r$stage) && has_tgt)
       sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><span class="lbl">%d/%d</span></div>', pct, rand, tgt)
       else sprintf('<span class="note" style="margin:0">%s</span>', esc(r$stage))
-    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%d</td><td>%s</td><td class="l">%s</td></tr>',
-                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, tgt, act_cell, progress_html))
+    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%s</td><td>%s</td><td class="l">%s</td></tr>',
+                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand,
+                if (has_tgt) as.character(tgt) else "—", act_cell, progress_html))
   }
 } else {
   cat('<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px">No site data available.</td></tr>')

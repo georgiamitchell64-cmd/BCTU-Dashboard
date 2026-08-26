@@ -767,6 +767,7 @@ process_redcap <- function(raw_df, current_sites) {
       else n_distinct(record_id[event_type == "Baseline"]),
       .groups = "drop")
   updated_sites <- current_sites
+  .site_def <- site_defaults()
   # Statuses we'll never overwrite from data — these are manual decisions
   # ("Paused" / "Closed" / "Set-up" / "Open"). The auto-derive only updates
   # sites that are still in the default "Identified" state (or have no
@@ -795,8 +796,10 @@ process_redcap <- function(raw_df, current_sites) {
         region        = NA_character_,
         status        = new_status,
         site_open_date = NA_Date_,
-        monthly_target = 2L,
-        target        = 42L,
+        # Per-site targets default from the trial config, not a literal —
+        # see site_defaults() in globals/trial_config.R.
+        monthly_target = .site_def$monthly_target,
+        target        = .site_def$target,
         randomised    = rand_n,
         lat           = ll$lat,
         lon           = ll$lon,
