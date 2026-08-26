@@ -64,25 +64,6 @@ prepare_report_data <- function(df,
       df[[canon]] <- df[[src]]
   }
 
-  # Site name: the trial's own site field (column F of the TONIC export) is the
-  # primary source; where a DAG misconfiguration leaves it blank for a record,
-  # fall back to REDCap's data-access-group column (column E) so the site still
-  # appears in the report. See site_names_with_dag_fallback() in helpers.R.
-  if (exists("site_names_with_dag_fallback", mode = "function")) {
-    site_src <- if ("site_v" %in% names(df)) "site_v" else
-                fld("site_name", default = "site_name", cfg = cfg)
-    dag_src  <- if ("redcap_data_access_group" %in% names(df))
-                  "redcap_data_access_group" else
-                if ("site_dag" %in% names(df)) "site_dag" else NULL
-    id_src   <- if ("record_v" %in% names(df)) "record_v" else "record_id"
-    resolved_sites <- site_names_with_dag_fallback(
-      df, site_col = site_src, dag_col = dag_src, id_col = id_src)
-    # Only take the resolved vector when it actually names something, so a
-    # trial that maps no site field at all keeps its existing shape.
-    if ("site_v" %in% names(df) || any(!is.na(resolved_sites)))
-      df$site_v <- resolved_sites
-  }
-
   # PN timing reasons (TONIC: nut_o_pn_late_rsn / nut_o_pn_early_rsn) —
   # autodetect when the config doesn't map pn_late_reason / pn_early_reason.
   if (!"pn_late" %in% names(df)) {
@@ -451,6 +432,17 @@ prepare_report_data <- function(df,
     filtered <- filtered[!is.na(filtered$rand_date) & filtered$rand_date <= as.Date(date_to), ]
   withdrawn_df <- ptcp_randomised[ptcp_randomised$is_withdrawn, ]
 
+  # Some sections of the report are lifetime views, not period views: the site
+  # performance table sets its counts beside all-time targets, and the
+  # demographics breakdown is captioned with the all-time randomised total. Both
+  # read this set — the same site selection as `filtered`, but without the date
+  # window — so their figures track the trial rather than freezing at whatever
+  # fell inside the reporting period.
+  unwindowed <- ptcp_randomised
+  if (!is.null(selected_sites) && length(selected_sites) > 0 &&
+      !("All sites" %in% selected_sites) && "site_name" %in% names(unwindowed))
+    unwindowed <- unwindowed[unwindowed$site_name %in% selected_sites, ]
+
   # ── 15. Monthly recruitment ────────────────────────────────────────────────
   monthly_recruit <- if ("rand_date" %in% names(filtered) && nrow(filtered) > 0 &&
                          any(!is.na(filtered$rand_date))) {
@@ -546,10 +538,13 @@ prepare_report_data <- function(df,
       pipeline_df$site_name <- pipeline_df$site_id
   }
 
-  recruiting_sites <- if ("site_name" %in% names(filtered) && nrow(filtered) > 0) {
-    sites <- unique(filtered$site_name)
+  # Lifetime counts: the Target column and progress bar beside them are all-time
+  # figures, so a date-windowed count would be a period numerator over a
+  # lifetime denominator (and read zero whenever the window caught nothing).
+  recruiting_sites <- if ("site_name" %in% names(unwindowed) && nrow(unwindowed) > 0) {
+    sites <- unique(unwindowed$site_name)
     data.frame(site_name = sites, stage = "Open — Recruiting",
-      randomisations = sapply(sites, function(s) sum(filtered$site_name == s)),
+      randomisations = sapply(sites, function(s) sum(unwindowed$site_name == s)),
       source = "redcap", stringsAsFactors = FALSE)
   } else data.frame(site_name=character(0), stage=character(0),
                     randomisations=integer(0), source=character(0),
@@ -718,7 +713,10 @@ prepare_report_data <- function(df,
   }
 
   # ── 24. Demographics ──────────────────────────────────────────────────────
-  dem_df   <- baseline[baseline$record_v %in% filtered$record_id, , drop = FALSE]
+  # Captioned "n = <all-time randomised>" in the report, so the breakdown has to
+  # cover the same participants; `filtered` would count only the reporting
+  # window and disagree with its own heading.
+  dem_df   <- baseline[baseline$record_v %in% unwindowed$record_id, , drop = FALSE]
   age_data <- if ("age_v" %in% names(dem_df)) list(
     under_70 = sum(dem_df$age_v < 70, na.rm = TRUE),
     over_70  = sum(dem_df$age_v >= 70, na.rm = TRUE)) else NULL
