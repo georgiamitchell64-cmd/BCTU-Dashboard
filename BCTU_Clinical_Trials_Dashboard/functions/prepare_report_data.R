@@ -432,6 +432,17 @@ prepare_report_data <- function(df,
     filtered <- filtered[!is.na(filtered$rand_date) & filtered$rand_date <= as.Date(date_to), ]
   withdrawn_df <- ptcp_randomised[ptcp_randomised$is_withdrawn, ]
 
+  # Some sections of the report are lifetime views, not period views: the site
+  # performance table sets its counts beside all-time targets, and the
+  # demographics breakdown is captioned with the all-time randomised total. Both
+  # read this set — the same site selection as `filtered`, but without the date
+  # window — so their figures track the trial rather than freezing at whatever
+  # fell inside the reporting period.
+  unwindowed <- ptcp_randomised
+  if (!is.null(selected_sites) && length(selected_sites) > 0 &&
+      !("All sites" %in% selected_sites) && "site_name" %in% names(unwindowed))
+    unwindowed <- unwindowed[unwindowed$site_name %in% selected_sites, ]
+
   # ── 15. Monthly recruitment ────────────────────────────────────────────────
   monthly_recruit <- if ("rand_date" %in% names(filtered) && nrow(filtered) > 0 &&
                          any(!is.na(filtered$rand_date))) {
@@ -527,22 +538,13 @@ prepare_report_data <- function(df,
       pipeline_df$site_name <- pipeline_df$site_id
   }
 
-  # Site performance is a lifetime view: the Target column and the progress bar
-  # beside this count are all-time figures, so the count has to be all-time too.
-  # `filtered` is narrowed by the report's date range, which left Rand. frozen
-  # at whatever happened to fall inside the reporting window rather than
-  # tracking the site's real total — a period numerator over a lifetime
-  # denominator. Count from the unfiltered randomised set instead, still
-  # honouring an explicit site selection.
-  rand_src <- ptcp_randomised
-  if (!is.null(selected_sites) && length(selected_sites) > 0 &&
-      !("All sites" %in% selected_sites) && "site_name" %in% names(rand_src))
-    rand_src <- rand_src[rand_src$site_name %in% selected_sites, ]
-
-  recruiting_sites <- if ("site_name" %in% names(rand_src) && nrow(rand_src) > 0) {
-    sites <- unique(rand_src$site_name)
+  # Lifetime counts: the Target column and progress bar beside them are all-time
+  # figures, so a date-windowed count would be a period numerator over a
+  # lifetime denominator (and read zero whenever the window caught nothing).
+  recruiting_sites <- if ("site_name" %in% names(unwindowed) && nrow(unwindowed) > 0) {
+    sites <- unique(unwindowed$site_name)
     data.frame(site_name = sites, stage = "Open — Recruiting",
-      randomisations = sapply(sites, function(s) sum(rand_src$site_name == s)),
+      randomisations = sapply(sites, function(s) sum(unwindowed$site_name == s)),
       source = "redcap", stringsAsFactors = FALSE)
   } else data.frame(site_name=character(0), stage=character(0),
                     randomisations=integer(0), source=character(0),
@@ -711,7 +713,10 @@ prepare_report_data <- function(df,
   }
 
   # ── 24. Demographics ──────────────────────────────────────────────────────
-  dem_df   <- baseline[baseline$record_v %in% filtered$record_id, , drop = FALSE]
+  # Captioned "n = <all-time randomised>" in the report, so the breakdown has to
+  # cover the same participants; `filtered` would count only the reporting
+  # window and disagree with its own heading.
+  dem_df   <- baseline[baseline$record_v %in% unwindowed$record_id, , drop = FALSE]
   age_data <- if ("age_v" %in% names(dem_df)) list(
     under_70 = sum(dem_df$age_v < 70, na.rm = TRUE),
     over_70  = sum(dem_df$age_v >= 70, na.rm = TRUE)) else NULL
