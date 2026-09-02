@@ -82,7 +82,16 @@ prepare_report_data <- function(df,
   filled <- function(x) !is.na(x) & nzchar(trimws(as.character(x)))
 
   # ── 3. Parse datetime / date columns ───────────────────────────────────────
-  parse_dt <- function(x) as.POSIXct(x, format = "%Y-%m-%d %H:%M", tz = "Europe/London")
+  # Registration-style trials (no randomisation) often map a plain date — e.g.
+  # PANORAMA's screen_created_date — to the recruitment datetime role, so fall
+  # back to a date-only parse when the datetime format yields nothing.
+  parse_dt <- function(x) {
+    out <- as.POSIXct(x, format = "%Y-%m-%d %H:%M", tz = "Europe/London")
+    if (all(is.na(out)) && any(!is.na(x) & nzchar(trimws(as.character(x)))))
+      out <- as.POSIXct(substr(as.character(x), 1, 10), format = "%Y-%m-%d",
+                        tz = "Europe/London")
+    out
+  }
   parse_d  <- function(x) as.Date(x, format = "%Y-%m-%d")
   for (c in c("op_dttm", "rand_dttm", "pn_start"))
     if (c %in% names(df)) df[[c]] <- parse_dt(df[[c]])
@@ -93,7 +102,12 @@ prepare_report_data <- function(df,
   evcol <- if ("event_v" %in% names(df)) "event_v" else "redcap_event_name"
   ev    <- function(name) {
     actual <- evt(name, default = NULL, cfg = cfg)
-    if (is.null(actual) || !(evcol %in% names(df))) return(df[0, ])
+    # A flat (non-longitudinal) export has no event column: everything is the
+    # baseline record, so return the whole frame for that role rather than
+    # nothing, which would leave the participant table empty.
+    if (!(evcol %in% names(df)))
+      return(if (identical(name, "baseline")) df else df[0, ])
+    if (is.null(actual)) return(df[0, ])
     df[df[[evcol]] %in% actual, ]
   }
   baseline  <- ev("baseline")
@@ -359,9 +373,13 @@ prepare_report_data <- function(df,
     ptcp$site_name <- ptcp$site_v
 
   # ── 12. Total randomised (unfiltered) ─────────────────────────────────────
-  ptcp_randomised <- ptcp[!is.na(ptcp$rand_dttm), ]
+  # Trials that register rather than randomise (observational cohorts such as
+  # PANORAMA WP4) have no randomisation datetime: every participant record
+  # counts. Only stop when there are no participants at all.
+  ptcp_randomised <- if ("rand_dttm" %in% names(ptcp) && any(!is.na(ptcp$rand_dttm)))
+    ptcp[!is.na(ptcp$rand_dttm), ] else ptcp
   if (is.null(ptcp_randomised) || nrow(ptcp_randomised) == 0)
-    stop("No randomised data available after preprocessing")
+    stop("No participant data available after preprocessing")
   total_randomised <- nrow(ptcp_randomised)
   n_sites_active   <- if ("site_name" %in% names(ptcp_randomised))
     length(unique(ptcp_randomised$site_name)) else NA
@@ -775,7 +793,11 @@ prepare_report_data <- function(df,
     interv_rate = interv_rate, contam_rate = contam_rate, crossover_rate = crossover_rate)
 
   # ── Return ────────────────────────────────────────────────────────────────
+  # raw_df is the cleaned, aliased export exactly as loaded. Templates whose
+  # metrics are not randomisation-based (screening funnels, PROM windows,
+  # form-status completeness) read it directly instead of the summaries below.
   list(
+    raw_df      = df,
     filtered_df = filtered,
     kpis = list(total_randomised = total_randomised, trial_target = trial_target,
       n_sites_active = n_sites_active, expected_to_date = expected_to_date,
