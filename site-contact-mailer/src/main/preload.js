@@ -38,6 +38,11 @@ contextBridge.exposeInMainWorld('api', {
   commitCompleteness: (payload) => invoke('completeness:commit', payload),
   clearCompleteness: (payload) => invoke('completeness:clear', payload),
 
+  chooseQueries: () => invoke('queries:choose'),
+  buildQueries: (payload) => invoke('queries:build', payload),
+  commitQueries: (payload) => invoke('queries:commit', payload),
+  clearQueries: (payload) => invoke('queries:clear', payload),
+
   chooseAttachments: () => invoke('attachments:choose'),
   loadHtmlBody: () => invoke('body:loadHtml'),
 

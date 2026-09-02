@@ -175,22 +175,66 @@ comes from. The first import has no movement to report and says nothing
 rather than inventing a change. *Remove imported data* keeps the snapshots, so
 re-importing later picks the history back up.
 
-**Data queries** come from the same file. If the export carries query columns
-— raised, open, resolved, overdue — they are read too and add
-`{{quality_scorecard}}` (completeness and queries in one table),
-`{{query_chart}}`, `{{query_breakdown_chart}}`, `{{queries_open}}`,
-`{{queries_overdue}}`, `{{query_position}}` and `{{query_headline}}`. Sites
-are ranked on the *share* of their queries closed rather than the number
-outstanding, so a large site is not permanently bottom for being large. If the
-export has no query columns, none of these fields is offered.
+Three more ready-made templates appear once the data is loaded: **Data
+completeness update**, **Completeness league table (trophy chase)** and
+**Monthly update: recruitment and completeness**.
+
+### Data queries
+
+**Query data…** imports the data query export — one row per query, as REDCap's
+Data Query Resolution report writes it:
+
+```
+ID (# of comments) · Site (DAG) · TNo · Event · Form/DQR · Instance ·
+Question · Data Category · Date opened · Opened by · First Comment ·
+Date of last comment · Last comment by · Last Comment · Query Status ·
+Assigned To · If OPEN, Duration · Responded & OPEN
+```
+
+Only the site and the status are needed; everything else sharpens the picture.
+A data access group (`freeman_hospital`) is matched to the contact list's
+"Freeman Hospital" automatically, so the two exports need not agree on
+spelling.
+
+**Statuses are read, not guessed.** `Open`, `Closed`, `Resolved`, `Awaiting
+response` and the rest of the usual set are recognised. Anything else is
+counted as **open** and listed in the import dialog as unrecognised — an
+outstanding query wrongly counted closed would drop out of the chase, which is
+the worse mistake. The dialog shows how many queries carried each status, so a
+value being read the wrong way is obvious before you send anything.
+
+A query's age comes from `If OPEN, Duration` where the export fills it in, and
+is otherwise counted from `Date opened`. Dates are read UK-first, so
+`07-04-2026` is April. **Overdue after** in the dialog sets the threshold,
+30 days by default.
+
+The most useful field is `{{query_list}}` — a table of the recipient's own
+outstanding queries, oldest first, with the participant, event, form, the
+question and how many days it has been open. That is what a chase email needs;
+the rest is context around it.
+
+Alongside it: `{{query_action}}` (a ready-made line saying what the site
+actually has to do, which changes when they have nothing outstanding, or have
+replied to everything and are waiting on you), `{{query_headline}}`,
+`{{queries_open}}`, `{{queries_awaiting_you}}`, `{{queries_overdue}}`,
+`{{queries_oldest_days}}`, `{{queries_median_days}}`, `{{query_top_form}}`,
+`{{query_position}}` and `{{query_movement}}`.
+
+The charts are `{{query_ageing_chart}}` (open queries by age band),
+`{{query_form_chart}}` and `{{query_category_chart}}` (where they cluster),
+`{{query_breakdown_chart}}` (resolved, replied to, awaiting the site, overdue),
+`{{query_chart}}` (all sites ranked) and `{{quality_scorecard}}`, which puts
+completeness and queries in one table — the only field that needs both imports.
+
+Sites are ranked on the **share** of their queries closed rather than the
+number outstanding, so a large site is not permanently bottom for being large.
+
+Two more templates come with it: **Outstanding data queries** and, once both
+data imports are loaded, **Data quality: completeness and queries**.
 
 **Naming other sites in charts** in Settings applies to the completeness and
 query charts: name every site (the default), name the leading three only — the
 race is public, the tail is not — or name only the recipient's own.
-
-Three more ready-made templates appear once the data is loaded: **Data
-completeness update**, **Completeness league table (trophy chase)** and
-**Monthly update: recruitment and completeness**.
 
 **Send** one of three ways:
 
@@ -234,8 +278,8 @@ import `sample/site-contacts-sample.xlsx`:
 npm run sample
 ```
 
-That also writes `sample/return-rates-sample.xlsx`, for the completeness and
-query fields.
+That also writes `sample/return-rates-sample.xlsx` and
+`sample/data-queries-sample.xlsx`, for the completeness and query fields.
 
 ### Building an installer
 
@@ -311,9 +355,12 @@ npm test
 
 Covers address parsing, column detection, role grouping and filtering, the
 To/Bcc rule, template rendering in both plain text and HTML, the paste
-sanitiser, the MIME structure of the generated drafts, and — for completeness
-— the due-not-expected denominator, the 100% cap, ranking and ties, movement
-between imports, and that every advertised merge field is actually produced. `npm run sample`
+sanitiser and the MIME structure of the generated drafts. For completeness:
+the due-not-expected denominator, the 100% cap, ranking and ties, and movement
+between imports. For queries: status classification and what happens to an
+unrecognised one, UK date order, ageing from either column, ranking on share
+closed, and data-access-group matching. Both check that every merge field the
+app advertises is actually produced. `npm run sample`
 must have been run for the workbook tests to do anything (they skip
 themselves otherwise).
 
@@ -375,7 +422,8 @@ src/
     emails.js      address parsing, validation, de-duplication
     importer.js    column detection, role grouping, rows into sites
     recruitment.js randomisation layouts, monthly totals, ranking
-    completeness.js return-rate layouts, per-site rates, league table, queries
+    completeness.js return-rate layouts, per-site rates, league table
+    queries.js     query exports, statuses, ageing, per-site outstanding
     charts.js      email-safe HTML charts (tables, no JS, no images)
     templates.js   the ready-made messages shipped with the app
     compose.js     template rendering, To/Bcc, role filtering, merges
@@ -385,8 +433,8 @@ src/
     main.js      window, menu, IPC handlers, attachments, delivery
     workbook.js  reading .xlsx/.csv via ExcelJS
     store.js     persisted list, templates, drafts, settings, encrypted
-                 credentials, and the completeness snapshots behind "up two
-                 places since last month"
+                 credentials, and the snapshots behind "up two places since
+                 last month"
     preload.js   the IPC bridge exposed to the page
   renderer/    The user interface (no Node access)
     editor.js    the rich-text editor and its paste handling

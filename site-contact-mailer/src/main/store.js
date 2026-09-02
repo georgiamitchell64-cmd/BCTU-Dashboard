@@ -10,6 +10,7 @@ const path = require('path');
 const {
   applyCompletenessHistory, snapshotCompleteness, HISTORY_LIMIT,
 } = require('../shared/completeness');
+const { applyQueryHistory, snapshotQueries } = require('../shared/queries');
 
 const DEFAULT_SETTINGS = {
   senderAddress: '',
@@ -54,6 +55,11 @@ const DEFAULT_STATE = {
   completeness: null,
   completenessImport: null,
   completenessHistory: [],
+  // Imported data queries, normalised by shared/queries.js, kept separately
+  // because they arrive as their own export.
+  queries: null,
+  queriesImport: null,
+  queriesHistory: [],
   settings: DEFAULT_SETTINGS,
   sites: [],
   templates: [],
@@ -184,6 +190,28 @@ class Store {
     this.state.completenessImport = meta;
     this.save();
     return this.state.completeness;
+  }
+
+  getQueries() {
+    return this.state.queries;
+  }
+
+  setQueries(dataset, meta = null) {
+    const history = this.state.queriesHistory || [];
+    const importedAt = (meta && meta.importedAt) || new Date().toISOString();
+    const annotated = applyQueryHistory(dataset, history);
+    this.state.queriesHistory = [...history, snapshotQueries(annotated, importedAt)].slice(-HISTORY_LIMIT);
+    this.state.queries = annotated;
+    this.state.queriesImport = meta;
+    this.save();
+    return this.state.queries;
+  }
+
+  clearQueries({ keepHistory = true } = {}) {
+    this.state.queries = null;
+    this.state.queriesImport = null;
+    if (!keepHistory) this.state.queriesHistory = [];
+    this.save();
   }
 
   clearCompleteness({ keepHistory = true } = {}) {

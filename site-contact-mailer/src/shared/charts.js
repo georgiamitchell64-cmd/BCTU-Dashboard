@@ -13,7 +13,8 @@
 
 const { escapeHtml } = require('./html');
 const { formatMonthShort } = require('./recruitment');
-const { THRESHOLD_GOOD, THRESHOLD_WARN, standing, queryStanding } = require('./completeness');
+const { THRESHOLD_GOOD, THRESHOLD_WARN, standing } = require('./completeness');
+const { queryStanding } = require('./queries');
 
 // Kept in one place so the whole set can be restyled to the design system
 // without touching the layout code.
@@ -505,22 +506,23 @@ function overallCompletenessChart(dataset, options = {}) {
   return chartFrame(title, note, body);
 }
 
-// ── Data quality (outstanding queries) ────────────────────────────────────
+// ── Data queries ──────────────────────────────────────────────────────────
 
-/** Sites ranked on the share of their data queries that have been closed. */
+/** Sites ranked on the share of their queries closed. */
 function queryResolutionChart(dataset, options = {}) {
   const {
     focusKey = null, naming = 'all', maxRows = 10, title = 'Data queries resolved by site',
   } = options;
-  if (!dataset || !dataset.sites || !dataset.hasQueries) return '';
+  if (!dataset || !dataset.sites) return '';
 
   const ordered = dataset.sites
-    .filter((s) => s.hasQueries && s.queryResolvedPercent !== null)
-    .sort((a, b) => b.queryResolvedPercent - a.queryResolvedPercent
-      || a.queriesOpen - b.queriesOpen || a.siteName.localeCompare(b.siteName));
+    .filter((s) => s.raised > 0)
+    .sort((a, b) => b.resolvedPercent - a.resolvedPercent
+      || a.open - b.open || a.siteName.localeCompare(b.siteName));
   if (ordered.length === 0) return '';
 
-  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH - 40;
+  const OPEN_WIDTH = 58;
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH - OPEN_WIDTH;
   const focusIndex = ordered.findIndex((s) => s.key === focusKey);
   const shown = ordered.slice(0, maxRows);
   if (focusIndex >= maxRows) shown.push(ordered[focusIndex]);
@@ -528,8 +530,8 @@ function queryResolutionChart(dataset, options = {}) {
   const rows = shown.map((site, position) => {
     const isFocus = site.key === focusKey;
     const trueIndex = ordered.indexOf(site);
-    const label = completenessLabel({ ...site, rank: site.queryRank }, trueIndex, { focusKey, naming });
-    const colour = isFocus ? THEME.focus : rateColour(site.queryResolvedPercent);
+    const label = completenessLabel(site, trueIndex, { focusKey, naming });
+    const colour = isFocus ? THEME.focus : rateColour(site.resolvedPercent);
 
     const gap = focusIndex >= maxRows && position === shown.length - 1 && trueIndex > maxRows
       ? `<tr><td colspan="4" style="font-family:${THEME.font};font-size:9pt;color:${THEME.muted};`
@@ -540,38 +542,40 @@ function queryResolutionChart(dataset, options = {}) {
       + cell(`${escapeHtml(label)}${isFocus ? ' <span style="color:' + THEME.focus + ';">(you)</span>' : ''}`,
         { width: LABEL_WIDTH, bold: isFocus, extra: 'padding:3px 8px 3px 0;' })
       + `<td width="${barSpace}" style="padding:3px 0;">`
-      + `${bar(site.queryResolvedPercent / 100 * barSpace, barSpace, colour)}</td>`
-      + cell(formatPercent(site.queryResolvedPercent), {
+      + `${bar(site.resolvedPercent / 100 * barSpace, barSpace, colour)}</td>`
+      + cell(formatPercent(site.resolvedPercent), {
         width: VALUE_WIDTH, align: 'right', bold: isFocus, extra: 'padding:3px 0 3px 8px;',
       })
-      + cell(`${site.queriesOpen} open`, {
-        width: 40, align: 'right', size: '9pt', color: THEME.muted, extra: 'padding:3px 0 3px 8px;',
+      + cell(`${site.open} open`, {
+        width: OPEN_WIDTH, align: 'right', size: '9pt',
+        color: site.open > 0 ? THEME.text : THEME.muted, extra: 'padding:3px 0 3px 8px;',
       })
       + '</tr>';
   }).join('');
 
-  const note = `${dataset.totals.queriesOpen} queries outstanding across the trial`
-    + (dataset.totals.queriesOverdue ? `, ${dataset.totals.queriesOverdue} of them overdue.` : '.');
+  const note = `${dataset.totals.open} queries outstanding across the trial`
+    + (dataset.totals.overdue ? `, ${dataset.totals.overdue} open longer than ${dataset.overdueDays} days.` : '.');
   return chartFrame(title, note, rows);
 }
 
-/** A site's own query position: raised, resolved, still open, overdue. */
+/** A site's own position: resolved, open, and how much is waiting on them. */
 function queryBreakdownChart(site, dataset, options = {}) {
-  const { title = 'Your outstanding data queries' } = options;
+  const { title = 'Your data queries' } = options;
   const view = queryStanding(site, dataset);
   if (!view || view.raised === 0) return '';
 
   const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
   const lines = [
-    { label: 'Resolved', value: view.resolved, colour: THEME.good },
-    { label: 'Still open', value: view.open, colour: THEME.warn },
-    { label: 'Overdue', value: view.overdue, colour: THEME.poor },
+    { label: 'Resolved', value: view.closed, colour: THEME.good },
+    { label: 'Open, you have replied', value: view.responded, colour: THEME.overall },
+    { label: 'Open, awaiting your reply', value: view.awaitingSite, colour: THEME.warn },
+    { label: `Open over ${view.overdueDays} days`, value: view.overdue, colour: THEME.poor },
   ].filter((line) => line.value > 0);
   if (lines.length === 0) return '';
 
   const max = Math.max(...lines.map((line) => line.value), 1);
   const body = lines.map((line) => '<tr>'
-    + cell(line.label, { width: LABEL_WIDTH, size: '9.5pt', extra: 'padding:3px 8px 3px 0;' })
+    + cell(escapeHtml(line.label), { width: LABEL_WIDTH, size: '9.5pt', extra: 'padding:3px 8px 3px 0;' })
     + `<td width="${barSpace}" style="padding:3px 0;">`
     + `${bar(line.value / max * barSpace, barSpace, line.colour, { height: 14 })}</td>`
     + cell(String(line.value), {
@@ -584,17 +588,122 @@ function queryBreakdownChart(site, dataset, options = {}) {
   return chartFrame(title, notes.join(' '), body);
 }
 
+/** How long the outstanding queries have been sitting there. */
+function queryAgeingChart(bands, options = {}) {
+  const { title = 'How long your queries have been open' } = options;
+  if (!bands || bands.length === 0) return '';
+  const total = bands.reduce((sum, band) => sum + band.count, 0);
+  if (total === 0) return '';
+
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+  const max = Math.max(...bands.map((b) => b.count), 1);
+  // Older is worse, so the palette darkens down the list.
+  const colours = [THEME.good, THEME.overall, THEME.warn, THEME.poor];
+
+  const body = bands.map((band, index) => '<tr>'
+    + cell(escapeHtml(band.name), {
+      width: LABEL_WIDTH, size: '9.5pt', extra: 'padding:3px 8px 3px 0;',
+    })
+    + `<td width="${barSpace}" style="padding:3px 0;">`
+    + `${bar(band.count / max * barSpace, barSpace, colours[index] || THEME.other, { height: 13 })}</td>`
+    + cell(String(band.count), {
+      width: VALUE_WIDTH, align: 'right', bold: band.count > 0, extra: 'padding:3px 0 3px 8px;',
+    })
+    + '</tr>').join('');
+
+  return chartFrame(title, `${total} open in total.`, body);
+}
+
+/** Where the outstanding queries are concentrated — by form, event or category. */
+function queryGroupChart(groups, options = {}) {
+  const { title = 'Where your open queries are', maxRows = 6 } = options;
+  if (!groups || groups.length === 0) return '';
+
+  const shown = groups.slice(0, maxRows);
+  const max = Math.max(...shown.map((g) => g.count), 1);
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+
+  const body = shown.map((group) => '<tr>'
+    + cell(escapeHtml(group.name || '(not recorded)'), {
+      width: LABEL_WIDTH, size: '9.5pt', extra: 'padding:3px 8px 3px 0;',
+    })
+    + `<td width="${barSpace}" style="padding:3px 0;">`
+    + `${bar(group.count / max * barSpace, barSpace, THEME.focus, { height: 12 })}</td>`
+    + cell(String(group.count), {
+      width: VALUE_WIDTH, align: 'right', size: '9.5pt', extra: 'padding:3px 0 3px 8px;',
+    })
+    + '</tr>').join('');
+
+  const hidden = groups.length - shown.length;
+  return chartFrame(title, hidden > 0 ? `${hidden} further group${hidden === 1 ? '' : 's'} not shown.` : '', body);
+}
+
 /**
- * One table covering both measures, for a message that reports on data
- * quality as a whole rather than on completeness alone.
+ * The actual outstanding queries, as a table — what a chase email is for.
+ *
+ * Oldest first, because those are the ones that need answering; the question
+ * text is truncated rather than wrapped, so the table stays readable in mail.
  */
-function qualityScorecard(dataset, options = {}) {
+function queryListTable(queries, options = {}) {
+  const { title = 'Your outstanding queries', maxRows = 15, overdueDays = 30 } = options;
+  if (!queries || queries.length === 0) return '';
+
+  const shown = queries.slice(0, maxRows);
+  const widths = { participant: 62, event: 84, form: 110, question: 170, age: 54 };
+  const head = (text, width, align = 'left') => cell(text, {
+    width, align, size: '9pt', color: THEME.muted,
+    extra: `padding:0 6px 4px 0;border-bottom:1px solid ${THEME.rule};`,
+  });
+
+  const header = '<tr>'
+    + head('ID', widths.participant)
+    + head('Event', widths.event)
+    + head('Form', widths.form)
+    + head('Query', widths.question)
+    + head('Days', widths.age, 'right')
+    + '</tr>';
+
+  const truncate = (text, limit) => {
+    const value = String(text || '');
+    return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
+  };
+
+  const rows = shown.map((query) => {
+    const late = query.days !== null && query.days > overdueDays;
+    const body = (text, width, align = 'left', extra = '') => cell(escapeHtml(text), {
+      width, align, size: '9pt', extra: `padding:3px 6px 3px 0;${extra}`,
+    });
+    return '<tr>'
+      + body(query.participant || query.id, widths.participant)
+      + body(truncate(query.event, 18), widths.event)
+      + body(truncate(query.form, 24), widths.form)
+      + body(truncate(query.question || query.category, 38), widths.question)
+      + cell(query.days === null ? '—' : String(query.days), {
+        width: widths.age, align: 'right', size: '9pt', bold: late,
+        color: late ? THEME.poor : THEME.text, extra: 'padding:3px 0 3px 6px;',
+      })
+      + '</tr>';
+  }).join('');
+
+  const hidden = queries.length - shown.length;
+  const notes = [`Oldest first. Days is how long the query has been open.`];
+  if (hidden > 0) notes.push(`${hidden} further quer${hidden === 1 ? 'y is' : 'ies are'} not listed.`);
+  return chartFrame(title, notes.join(' '), header + rows);
+}
+
+/**
+ * Completeness and queries in one table.
+ *
+ * The two datasets are imported separately, so a site may appear in one and
+ * not the other; a missing figure shows as a dash rather than a zero.
+ */
+function qualityScorecard(completeness, queries, options = {}) {
   const {
     focusKey = null, naming = 'all', top = 8, title = 'Data quality scorecard',
   } = options;
-  if (!dataset || !dataset.sites) return '';
+  if (!completeness || !completeness.sites) return '';
 
-  const ordered = dataset.sites
+  const ordered = completeness.sites
     .filter((s) => s.percent !== null)
     .sort((a, b) => b.percent - a.percent || a.siteName.localeCompare(b.siteName));
   if (ordered.length === 0) return '';
@@ -603,9 +712,9 @@ function qualityScorecard(dataset, options = {}) {
   const shown = ordered.slice(0, top);
   if (focusIndex >= top) shown.push(ordered[focusIndex]);
 
+  const showQueries = Boolean(queries && queries.sites && queries.sites.length);
   const RANK_WIDTH = 40;
   const NUM_WIDTH = 74;
-  const showQueries = Boolean(dataset.hasQueries);
   const nameWidth = CHART_WIDTH - RANK_WIDTH - NUM_WIDTH * (showQueries ? 3 : 1);
   const head = (text, width, align = 'left') => cell(text, {
     width, align, size: '9pt', color: THEME.muted,
@@ -623,7 +732,12 @@ function qualityScorecard(dataset, options = {}) {
     const isFocus = site.key === focusKey;
     const trueIndex = ordered.indexOf(site);
     const label = completenessLabel(site, trueIndex, { focusKey, naming });
+    const match = showQueries
+      ? queries.sites.find((q) => q.key === site.key)
+        || queries.sites.find((q) => q.siteName.trim().toLowerCase() === site.siteName.trim().toLowerCase())
+      : null;
     const background = isFocus ? ' bgcolor="#EEF8F6"' : '';
+
     return `<tr${background}>`
       + cell(site.rank === 1 ? '&#127942;' : String(site.rank), {
         width: RANK_WIDTH, bold: site.rank <= 3, color: site.rank <= 3 ? THEME.gold : THEME.text,
@@ -636,12 +750,13 @@ function qualityScorecard(dataset, options = {}) {
         extra: 'padding:4px 8px 4px 0;',
       })
       + (showQueries
-        ? cell(site.hasQueries ? String(site.queriesOpen) : '—', {
+        ? cell(match ? String(match.open) : '—', {
           width: NUM_WIDTH, align: 'right', size: '9.5pt', extra: 'padding:4px 8px 4px 0;',
         })
-        + cell(site.queryResolvedPercent === null ? '—' : formatPercent(site.queryResolvedPercent), {
+        + cell(match && match.resolvedPercent !== null ? formatPercent(match.resolvedPercent) : '—', {
           width: NUM_WIDTH, align: 'right', size: '9.5pt',
-          color: rateColour(site.queryResolvedPercent), extra: 'padding:4px 8px 4px 0;',
+          color: match ? rateColour(match.resolvedPercent) : THEME.muted,
+          extra: 'padding:4px 8px 4px 0;',
         })
         : '')
       + '</tr>';
@@ -671,5 +786,8 @@ module.exports = {
   overallCompletenessChart,
   queryResolutionChart,
   queryBreakdownChart,
+  queryAgeingChart,
+  queryGroupChart,
+  queryListTable,
   qualityScorecard,
 };

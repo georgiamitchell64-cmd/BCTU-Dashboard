@@ -12,7 +12,7 @@
 // windows that have not opened, which deflates the rate. Entries made before
 // a window opens are capped at due so a site cannot exceed 100%.
 
-const { normaliseHeader } = require('./importer');
+const { normaliseHeader, matchSiteIn } = require('./importer');
 
 const PATTERNS = {
   siteId: [/^siteid$/, /^siteno$/, /^sitenumber$/, /^sitecode$/, /^centreid$/, /^centreno$/,
@@ -29,14 +29,6 @@ const PATTERNS = {
   percent: [/^dueentered$/, /^pctdue$/, /^percentdue$/, /^percentcomplete$/, /^complete$/,
     /^completed$/, /^completeness$/, /^completion$/, /^returnrate$/, /^rate$/, /^percent$/, /^pct$/],
   percentExpected: [/^expectedentered$/, /^pctexpected$/, /^percentexpected$/],
-  queriesRaised: [/^queries$/, /^queriesraised$/, /^totalqueries$/, /^raised$/, /^nqueries$/,
-    /^discrepancies$/, /^datequeries$/, /^queriestotal$/],
-  queriesOpen: [/^openqueries$/, /^queriesopen$/, /^outstandingqueries$/, /^queriesoutstanding$/,
-    /^unresolvedqueries$/, /^open$/, /^outstanding$/, /^unresolved$/],
-  queriesResolved: [/^resolvedqueries$/, /^queriesresolved$/, /^closedqueries$/, /^queriesclosed$/,
-    /^resolved$/, /^closed$/],
-  queriesOverdue: [/^overduequeries$/, /^queriesoverdue$/, /^overdue$/, /^lateequeries$/,
-    /^queriesover30days$/, /^queriesover30$/],
 };
 
 const OVERALL_ROW = /^\.?\s*(overall|total|totals|grand\s*total|all\s*sites?|sum)\s*$/i;
@@ -96,17 +88,6 @@ function detectCompletenessMapping(headers) {
   const percentExpected = matchColumn(cols, PATTERNS.percentExpected, taken);
   if (percentExpected) taken.add(percentExpected);
   const percent = matchColumn(cols, PATTERNS.percent, taken);
-  if (percent) taken.add(percent);
-
-  // Optional: data-quality columns. Trial units often put queries in the same
-  // export as return rates, and they answer the same question about a site.
-  const queriesRaised = matchColumn(cols, PATTERNS.queriesRaised, taken);
-  if (queriesRaised) taken.add(queriesRaised);
-  const queriesOpen = matchColumn(cols, PATTERNS.queriesOpen, taken);
-  if (queriesOpen) taken.add(queriesOpen);
-  const queriesResolved = matchColumn(cols, PATTERNS.queriesResolved, taken);
-  if (queriesResolved) taken.add(queriesResolved);
-  const queriesOverdue = matchColumn(cols, PATTERNS.queriesOverdue, taken);
 
   const hasCounts = Boolean(entered && (due || expected));
   let layout;
@@ -125,17 +106,7 @@ function detectCompletenessMapping(headers) {
     due: due || null,
     entered: entered || null,
     percent: percent || null,
-    queriesRaised: queriesRaised || null,
-    queriesOpen: queriesOpen || null,
-    queriesResolved: queriesResolved || null,
-    queriesOverdue: queriesOverdue || null,
   };
-}
-
-function hasQueryColumns(mapping) {
-  return Boolean(mapping
-    && (mapping.queriesRaised || mapping.queriesOpen || mapping.queriesResolved
-      || mapping.queriesOverdue));
 }
 
 function rate(entered, denominator) {
@@ -190,7 +161,6 @@ function buildCompleteness(rows, mapping, options = {}) {
   const eventOrder = [];
   const formOrder = [];
   const basis = mapping.basis === 'expected' ? 'expected' : 'due';
-  const queries = hasQueryColumns(mapping);
   let overall = null;
 
   rows.forEach((row, index) => {
@@ -238,31 +208,12 @@ function buildCompleteness(rows, mapping, options = {}) {
         expected: 0,
         entered: 0,
         statedPercent: null,
-        queriesRaised: 0,
-        queriesOpen: 0,
-        queriesResolved: 0,
-        queriesOverdue: 0,
-        sawQueries: false,
         byEvent: new Map(),
         byForm: new Map(),
       };
       bySite.set(key, site);
     }
     if (!site.siteName && rawName) site.siteName = rawName;
-
-    if (queries) {
-      const raised = toNumber(row[mapping.queriesRaised]);
-      const open = toNumber(row[mapping.queriesOpen]);
-      const resolved = toNumber(row[mapping.queriesResolved]);
-      const overdue = toNumber(row[mapping.queriesOverdue]);
-      if (raised !== null || open !== null || resolved !== null || overdue !== null) {
-        site.sawQueries = true;
-        site.queriesRaised += raised || 0;
-        site.queriesOpen += open || 0;
-        site.queriesResolved += resolved || 0;
-        site.queriesOverdue += overdue || 0;
-      }
-    }
 
     if (mapping.layout === 'site-percent') {
       const stated = toNumber(row[mapping.percent]);
@@ -300,36 +251,9 @@ function buildCompleteness(rows, mapping, options = {}) {
       entered: site.entered,
       outstanding: Math.max(0, denominator - site.entered),
       percent,
-      // Queries raised is not always exported; when it is missing, open plus
-      // resolved is the same number, so the resolution rate still holds.
-      queriesRaised: site.queriesRaised || (site.queriesOpen + site.queriesResolved),
-      queriesOpen: site.queriesOpen,
-      queriesResolved: site.queriesResolved,
-      queriesOverdue: site.queriesOverdue,
-      hasQueries: site.sawQueries,
       byEvent: finishBuckets(site.byEvent, basis, eventOrder),
       byForm: finishBuckets(site.byForm, basis, formOrder),
     };
-  });
-
-  for (const site of sites) {
-    site.queryResolvedPercent = site.queriesRaised > 0
-      ? round1(Math.min(site.queriesResolved, site.queriesRaised) / site.queriesRaised * 100)
-      : null;
-  }
-
-  // Sites are ranked on the share of queries they have closed, not on the raw
-  // number outstanding: a large site would otherwise always look the worst.
-  const withQueries = sites.filter((s) => s.hasQueries && s.queryResolvedPercent !== null);
-  const queryOrdered = [...withQueries].sort((a, b) => b.queryResolvedPercent - a.queryResolvedPercent
-    || a.queriesOpen - b.queriesOpen || a.siteName.localeCompare(b.siteName));
-  let queryRank = 0;
-  let previousQuery = null;
-  queryOrdered.forEach((site, index) => {
-    if (previousQuery === null || site.queryResolvedPercent !== previousQuery) queryRank = index + 1;
-    previousQuery = site.queryResolvedPercent;
-    site.queryRank = queryRank;
-    site.queryOf = queryOrdered.length;
   });
 
   // Highest completeness first; sites with nothing due yet cannot be ranked
@@ -398,21 +322,7 @@ function buildCompleteness(rows, mapping, options = {}) {
     leader: ordered.length ? { key: ordered[0].key, siteName: ordered[0].siteName, percent: ordered[0].percent } : null,
     byEvent: finishBuckets(eventTotals, basis, eventOrder),
     byForm: finishBuckets(formTotals, basis, formOrder),
-    queriesRaised: sites.reduce((sum, s) => sum + s.queriesRaised, 0),
-    queriesOpen: sites.reduce((sum, s) => sum + s.queriesOpen, 0),
-    queriesResolved: sites.reduce((sum, s) => sum + s.queriesResolved, 0),
-    queriesOverdue: sites.reduce((sum, s) => sum + s.queriesOverdue, 0),
   };
-  totals.queryResolvedPercent = totals.queriesRaised > 0
-    ? round1(Math.min(totals.queriesResolved, totals.queriesRaised) / totals.queriesRaised * 100)
-    : null;
-  totals.queryLeader = queryOrdered.length
-    ? {
-      key: queryOrdered[0].key,
-      siteName: queryOrdered[0].siteName,
-      percent: queryOrdered[0].queryResolvedPercent,
-    }
-    : null;
   totals.outstanding = Math.max(0, (basis === 'expected' ? totals.expected : totals.due) - totals.entered);
 
   return {
@@ -422,7 +332,6 @@ function buildCompleteness(rows, mapping, options = {}) {
     totals,
     layout: mapping.layout,
     basis,
-    hasQueries: withQueries.length > 0,
     fromOverallRows: Boolean(overall),
     warnings,
   };
@@ -430,12 +339,8 @@ function buildCompleteness(rows, mapping, options = {}) {
 
 /** Match a contact-list site to a completeness row, by ID then by name. */
 function findCompletenessSite(dataset, site) {
-  if (!dataset || !dataset.sites || !site) return null;
-  const byId = dataset.sites.find((s) => s.key === String(site.siteId || '').toLowerCase());
-  if (byId) return byId;
-  const wanted = String(site.siteName || '').trim().toLowerCase();
-  if (!wanted) return null;
-  return dataset.sites.find((s) => s.siteName.trim().toLowerCase() === wanted) || null;
+  if (!dataset || !dataset.sites) return null;
+  return matchSiteIn(dataset.sites, site);
 }
 
 function completenessMatchReport(dataset, sites) {
@@ -526,31 +431,6 @@ function standing(site, dataset) {
   };
 }
 
-/** The same comparison, for outstanding data queries. */
-function queryStanding(site, dataset) {
-  if (!site || !site.hasQueries || !dataset || !dataset.totals) return null;
-  const ranked = dataset.sites
-    .filter((s) => s.hasQueries && s.queryResolvedPercent !== null)
-    .sort((a, b) => b.queryResolvedPercent - a.queryResolvedPercent);
-  const leader = ranked[0] || null;
-
-  return {
-    raised: site.queriesRaised,
-    open: site.queriesOpen,
-    resolved: site.queriesResolved,
-    overdue: site.queriesOverdue,
-    resolvedPercent: site.queryResolvedPercent,
-    rank: site.queryRank || null,
-    of: site.queryOf || ranked.length,
-    trialOpen: dataset.totals.queriesOpen,
-    trialResolvedPercent: dataset.totals.queryResolvedPercent,
-    leaderName: leader ? leader.siteName : null,
-    shareOfOpen: dataset.totals.queriesOpen > 0
-      ? round1(site.queriesOpen / dataset.totals.queriesOpen * 100)
-      : null,
-  };
-}
-
 module.exports = {
   PATTERNS,
   THRESHOLD_GOOD,
@@ -563,8 +443,6 @@ module.exports = {
   snapshotCompleteness,
   applyCompletenessHistory,
   standing,
-  queryStanding,
-  hasQueryColumns,
   isOverallRow,
   toNumber,
   round1,

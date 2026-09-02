@@ -21,6 +21,9 @@ const state = {
   completeness: null,
   completenessImport: null,
   completenessDraft: null,
+  queries: null,
+  queriesImport: null,
+  queriesDraft: null,
   encryptionAvailable: false,
   // 'one' | 'site' | 'person' drives the UI switch; `mode`/`perContact` are
   // the shape the backend (shared/compose.js) actually expects.
@@ -631,7 +634,9 @@ function refreshPlaceholderPicker() {
   }
   if (state.completeness && state.completeness.sites && state.completeness.sites.length) {
     addGroup('Data completeness', state.completenessFields);
-    if (state.completeness.hasQueries) addGroup('Data queries', state.qualityFields);
+  }
+  if (state.queries && state.queries.sites && state.queries.sites.length) {
+    addGroup('Data queries', state.qualityFields);
   }
   addGroup('From your spreadsheet', [...extra].sort().map((key) => ({ key, label: key })));
 }
@@ -1445,6 +1450,14 @@ function updateRecruitmentSummary() {
   }
 }
 
+/** Built-in templates appear and disappear with the data they need. */
+async function refreshBuiltInTemplates() {
+  const reloaded = await call(api.loadState(), { silent: true });
+  if (!reloaded) return;
+  state.builtInTemplates = reloaded.builtInTemplates || [];
+  renderTemplateList();
+}
+
 // ── Data completeness ─────────────────────────────────────────────────────
 
 function completenessSheet() {
@@ -1612,6 +1625,164 @@ function updateCompletenessSummary() {
   } else {
     button.textContent = 'Completeness data…';
     button.title = 'Import the return-rates export for the data completeness fields';
+  }
+}
+
+// ── Data queries ──────────────────────────────────────────────────────────
+
+function querySheet() {
+  const draft = state.queriesDraft;
+  return draft.workbook.sheets.find((s) => s.name === draft.sheetName);
+}
+
+function renderQueryMapping() {
+  const draft = state.queriesDraft;
+  const mapping = draft.mapping;
+  const headers = querySheet().headers;
+  $('qryOverdueDays').value = String(mapping.overdueDays || 30);
+
+  const select = (label, key) => {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const id = `qry_${key}`;
+    field.innerHTML = `<label for="${id}">${escapeHtml(label)}</label>`;
+    const picker = document.createElement('select');
+    picker.id = id;
+    picker.innerHTML = '<option value="">— none —</option>';
+    for (const header of headers) {
+      const option = document.createElement('option');
+      option.value = header;
+      option.textContent = header;
+      if (mapping[key] === header) option.selected = true;
+      picker.appendChild(option);
+    }
+    picker.addEventListener('change', () => {
+      mapping[key] = picker.value || null;
+      rebuildQueryPreview();
+    });
+    field.appendChild(picker);
+    return field;
+  };
+
+  const grid = $('qryMappingFields');
+  grid.innerHTML = '';
+  grid.append(select('Site', 'siteName'), select('Query status', 'status'),
+    select('Date opened', 'opened'), select('Days open', 'duration'),
+    select('Responded & open', 'responded'));
+
+  const heading = document.createElement('div');
+  heading.className = 'grid-heading';
+  heading.textContent = 'Listing a site’s own queries (optional)';
+  grid.appendChild(heading);
+  grid.append(select('Participant / TNo', 'participant'), select('Event', 'event'),
+    select('Form', 'form'), select('Question', 'question'),
+    select('Data category', 'category'));
+}
+
+async function rebuildQueryPreview() {
+  const draft = state.queriesDraft;
+  const result = await call(api.buildQueries({ sheetName: draft.sheetName, mapping: draft.mapping }));
+  if (!result) return;
+  draft.result = result;
+
+  $('qryStats').textContent = `${plural(result.sites.length, 'site')}, `
+    + `${plural(result.totals.raised, 'query', 'queries')}, `
+    + `${result.totals.open} open`;
+
+  // Showing how each status was read is the fastest way to spot one that has
+  // been counted the wrong way round.
+  const statuses = $('qryStatuses');
+  statuses.innerHTML = result.statuses.length
+    ? `Statuses found: ${result.statuses.map((s) => {
+      const unknown = result.unknownStatuses.includes(s.status);
+      return `<strong>${escapeHtml(s.status)}</strong> ×${s.count}${unknown ? ' (read as open)' : ''}`;
+    }).join(', ')}`
+    : '';
+
+  const ranked = [...result.sites].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th>#</th><th>Site</th><th>Raised</th><th>Open</th>'
+    + '<th>Awaiting site</th><th>Overdue</th><th>Resolved</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  for (const site of ranked.slice(0, 40)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${site.rank ?? '<span class="muted">—</span>'}</td>`
+      + `<td>${escapeHtml(site.siteName)}</td><td>${site.raised}</td><td>${site.open}</td>`
+      + `<td>${site.awaitingSite}</td><td>${site.overdue}</td>`
+      + `<td>${site.resolvedPercent === null ? '<span class="muted">—</span>' : `${site.resolvedPercent}%`}</td>`;
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  $('qryPreview').innerHTML = '';
+  $('qryPreview').appendChild(table);
+
+  const warn = $('qryWarnings');
+  if (result.warnings.length === 0) {
+    warn.classList.add('hidden');
+  } else {
+    warn.classList.remove('hidden');
+    warn.innerHTML = `<strong>${plural(result.warnings.length, 'thing needs', 'things need')} a look</strong>`
+      + `<ul>${result.warnings.slice(0, 10).map((w) => `<li>${w.row ? `Row ${w.row}: ` : ''}${escapeHtml(w.message)}</li>`).join('')}</ul>`;
+  }
+
+  const match = $('qryMatch');
+  const unmatched = (result.match && result.match.unmatched) || [];
+  const notes = [];
+  if (unmatched.length) {
+    notes.push(`${plural(unmatched.length, 'site')} in your contact list have no queries in this `
+      + `export and will get no figures: ${unmatched.slice(0, 6).join(', ')}${unmatched.length > 6 ? '…' : ''}`);
+  }
+  if (!result.sites.some((s) => s.outstanding.some((q) => q.participant || q.form))) {
+    notes.push('No participant or form columns are mapped, so the outstanding-query table '
+      + 'will have little in it.');
+  }
+  if (notes.length === 0) {
+    match.classList.add('hidden');
+  } else {
+    match.classList.remove('hidden');
+    match.innerHTML = `<ul>${notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>`;
+  }
+
+  $('btnConfirmQueries').disabled = result.sites.length === 0;
+}
+
+async function chooseQueryFile() {
+  const workbook = await call(api.chooseQueries());
+  if (!workbook) return;
+
+  state.queriesDraft = {
+    workbook,
+    sheetName: workbook.sheets[0].name,
+    mapping: JSON.parse(JSON.stringify(workbook.sheets[0].mapping)),
+  };
+
+  const picker = $('qrySheetPicker');
+  picker.innerHTML = '';
+  for (const sheet of workbook.sheets) {
+    const option = document.createElement('option');
+    option.value = sheet.name;
+    option.textContent = `${sheet.name} (${plural(sheet.rowCount, 'row')})`;
+    picker.appendChild(option);
+  }
+  picker.disabled = workbook.sheets.length === 1;
+  $('queriesIntro').textContent = `Reading ${workbook.fileName}.`;
+
+  renderQueryMapping();
+  await rebuildQueryPreview();
+}
+
+function updateQueriesSummary() {
+  const meta = state.queriesImport;
+  const button = $('btnImportQueries');
+  const data = state.queries;
+  if (data && data.sites && data.sites.length) {
+    button.textContent = `Queries: ${data.totals.open} open`;
+    button.title = meta && meta.fileName
+      ? `From ${meta.fileName}. Click to replace.`
+      : 'Click to replace the imported query data.';
+  } else {
+    button.textContent = 'Query data…';
+    button.title = 'Import the data query export for the outstanding-query fields';
   }
 }
 
@@ -1961,11 +2132,7 @@ function wireEvents() {
     closeModal('recruitmentModal');
     refreshPlaceholderPicker();
     updateRecruitmentSummary();
-    const reloaded = await call(api.loadState(), { silent: true });
-    if (reloaded) {
-      state.builtInTemplates = reloaded.builtInTemplates || [];
-      renderTemplateList();
-    }
+    await refreshBuiltInTemplates();
     toast(`Recruitment data loaded for ${plural(saved.recruitment.sites.length, 'site')}`, 'success');
   });
   $('btnClearRecruitment').addEventListener('click', async () => {
@@ -2016,11 +2183,7 @@ function wireEvents() {
     closeModal('completenessModal');
     refreshPlaceholderPicker();
     updateCompletenessSummary();
-    const reloaded = await call(api.loadState(), { silent: true });
-    if (reloaded) {
-      state.builtInTemplates = reloaded.builtInTemplates || [];
-      renderTemplateList();
-    }
+    await refreshBuiltInTemplates();
     toast(`Completeness data loaded for ${plural(saved.completeness.sites.length, 'site')}`, 'success');
   });
   $('btnClearCompleteness').addEventListener('click', async () => {
@@ -2032,12 +2195,56 @@ function wireEvents() {
     closeModal('completenessModal');
     refreshPlaceholderPicker();
     updateCompletenessSummary();
-    const reloaded = await call(api.loadState(), { silent: true });
-    if (reloaded) {
-      state.builtInTemplates = reloaded.builtInTemplates || [];
-      renderTemplateList();
-    }
+    await refreshBuiltInTemplates();
     toast('Completeness data removed');
+  });
+
+  $('btnImportQueries').addEventListener('click', async () => {
+    openModal('queriesModal');
+    if (!state.queriesDraft) await chooseQueryFile();
+  });
+  $('btnChooseQueries').addEventListener('click', chooseQueryFile);
+  $('qrySheetPicker').addEventListener('change', (event) => {
+    const draft = state.queriesDraft;
+    draft.sheetName = event.target.value;
+    draft.mapping = JSON.parse(JSON.stringify(querySheet().mapping));
+    renderQueryMapping();
+    rebuildQueryPreview();
+  });
+  $('qryOverdueDays').addEventListener('change', (event) => {
+    state.queriesDraft.mapping.overdueDays = Number(event.target.value);
+    rebuildQueryPreview();
+  });
+  $('btnConfirmQueries').addEventListener('click', async () => {
+    const draft = state.queriesDraft;
+    if (!draft || !draft.result) return;
+    const { match, ...dataset } = draft.result;
+    const importedAt = new Date().toISOString();
+    const saved = await call(api.commitQueries({
+      dataset,
+      meta: { fileName: draft.workbook.fileName, sheet: draft.sheetName, importedAt },
+    }));
+    if (!saved) return;
+    state.queries = saved.queries;
+    state.queriesImport = { fileName: draft.workbook.fileName, importedAt };
+    closeModal('queriesModal');
+    refreshPlaceholderPicker();
+    updateQueriesSummary();
+    await refreshBuiltInTemplates();
+    toast(`Query data loaded: ${saved.queries.totals.open} open across `
+      + `${plural(saved.queries.sites.length, 'site')}`, 'success');
+  });
+  $('btnClearQueries').addEventListener('click', async () => {
+    if (!window.confirm('Remove the imported query data? The query fields will stop working until you import again.')) return;
+    await call(api.clearQueries({ keepHistory: true }));
+    state.queries = null;
+    state.queriesImport = null;
+    state.queriesDraft = null;
+    closeModal('queriesModal');
+    refreshPlaceholderPicker();
+    updateQueriesSummary();
+    await refreshBuiltInTemplates();
+    toast('Query data removed');
   });
 
   api.onSendProgress(({ done, total, site }) => {
@@ -2078,6 +2285,8 @@ async function init() {
     state.qualityFields = loaded.qualityFields || [];
     state.completeness = loaded.completeness || null;
     state.completenessImport = loaded.completenessImport || null;
+    state.queries = loaded.queries || null;
+    state.queriesImport = loaded.queriesImport || null;
     state.encryptionAvailable = loaded.encryptionAvailable;
     state.sites = (loaded.sites || []).map((site) => ({ ...site, selected: false }));
     $('deliveryMethod').value = state.settings.deliveryMethod || 'eml';
@@ -2089,6 +2298,7 @@ async function init() {
   renderAttachments();
   updateRecruitmentSummary();
   updateCompletenessSummary();
+  updateQueriesSummary();
   renderDrafts();
 
   // Resume the most recently touched draft, the way Outlook reopens on

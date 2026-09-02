@@ -10,9 +10,9 @@ const {
 } = require('../src/shared/completeness');
 const {
   completenessBarChart, completenessLeaderboard, completenessGauge,
-  completenessBreakdownChart, qualityScorecard, queryResolutionChart, ordinal,
+  completenessBreakdownChart, ordinal,
 } = require('../src/shared/charts');
-const { buildContext, renderTemplate, COMPLETENESS_FIELDS, QUALITY_FIELDS } = require('../src/shared/compose');
+const { buildContext, renderTemplate, COMPLETENESS_FIELDS } = require('../src/shared/compose');
 const { htmlToText } = require('../src/shared/html');
 
 // The shape of the return-rates export the dashboard reads: one row per site
@@ -45,8 +45,8 @@ const ROWS = [
   row('.Overall', 'Baseline', 'Demographics', 28, 28, 24),
 ];
 
-// Six sites with events, forms and query columns — enough for every field.
-const FULL_HEADERS = [...HEADERS, 'Queries Raised', 'Open Queries', 'Resolved Queries', 'Overdue Queries'];
+// Six sites with events and forms — enough for every completeness field.
+const FULL_HEADERS = [...HEADERS];
 
 function fullRows() {
   const rows = [];
@@ -56,10 +56,6 @@ function fullRows() {
       ['Day 30', 'Bowel Function']].forEach(([event, form], position) => {
       rows.push({
         ...row(`Hospital ${letter}`, event, form, 24, 20, position === 2 ? entered - 3 : entered),
-        'Queries Raised': 10 + index,
-        'Open Queries': index,
-        'Resolved Queries': 10,
-        'Overdue Queries': index > 3 ? 1 : 0,
       });
     });
   });
@@ -248,56 +244,6 @@ test('contact-list sites are matched by id then by name', () => {
   assert.deepEqual(report.unmatched, ['Nowhere General']);
 });
 
-// ── Data queries ──────────────────────────────────────────────────────────
-
-const QUERY_HEADERS = ['Site', 'Due', 'Entered', 'Queries Raised', 'Open Queries', 'Resolved Queries', 'Overdue Queries'];
-const QUERY_ROWS = [
-  {
-    Site: 'Alpha', Due: 100, Entered: 95, 'Queries Raised': 40, 'Open Queries': 4, 'Resolved Queries': 36, 'Overdue Queries': 1,
-  },
-  {
-    Site: 'Beta', Due: 100, Entered: 70, 'Queries Raised': 20, 'Open Queries': 12, 'Resolved Queries': 8, 'Overdue Queries': 6,
-  },
-];
-
-test('query columns are picked up alongside the return rates', () => {
-  const mapping = detectCompletenessMapping(QUERY_HEADERS);
-  assert.equal(mapping.queriesRaised, 'Queries Raised');
-  assert.equal(mapping.queriesOpen, 'Open Queries');
-  assert.equal(mapping.queriesResolved, 'Resolved Queries');
-  assert.equal(mapping.queriesOverdue, 'Overdue Queries');
-
-  const dataset = buildCompleteness(QUERY_ROWS, mapping);
-  assert.ok(dataset.hasQueries);
-  assert.equal(dataset.totals.queriesOpen, 16);
-  assert.equal(dataset.totals.queryResolvedPercent, 73.3);
-});
-
-test('sites are ranked on the share of queries closed, not the raw count', () => {
-  const mapping = detectCompletenessMapping(QUERY_HEADERS);
-  const dataset = buildCompleteness(QUERY_ROWS, mapping);
-  const alpha = dataset.sites.find((s) => s.siteName === 'Alpha');
-  const beta = dataset.sites.find((s) => s.siteName === 'Beta');
-  assert.equal(alpha.queryResolvedPercent, 90);
-  assert.equal(alpha.queryRank, 1);
-  assert.equal(beta.queryRank, 2);
-
-  const view = queryStanding(beta, dataset);
-  assert.equal(view.open, 12);
-  assert.equal(view.overdue, 6);
-  assert.equal(view.shareOfOpen, 75);
-});
-
-test('an export with no query columns leaves the quality fields off', () => {
-  const { dataset } = build();
-  assert.equal(dataset.hasQueries, false);
-  const context = buildContext({ siteName: 'Musgrove Park Hospital', siteId: '', contacts: [] }, {
-    completeness: dataset,
-  });
-  assert.equal(context.query_headline, undefined);
-  assert.equal(context.quality_scorecard, undefined);
-});
-
 // ── Merge fields and charts ───────────────────────────────────────────────
 
 function contextFor(siteName, dataset, options = {}) {
@@ -336,12 +282,18 @@ test('a podium place is only a podium when there is a field behind it', () => {
 
 test('every advertised field is produced when the data supports it', () => {
   const context = contextFor('Hospital B', fullDataset());
-  const advertised = [...COMPLETENESS_FIELDS, ...QUALITY_FIELDS].map((f) => f.key);
-  const missing = advertised.filter((key) => !(key in context));
+  const missing = COMPLETENESS_FIELDS.map((f) => f.key).filter((key) => !(key in context));
   assert.deepEqual(missing, []);
   assert.ok(context.completeness_gap_to_next.includes('1st place'));
   assert.ok(context.completeness_movement.includes('place'));
-  assert.ok(context.query_headline.includes('outstanding'));
+});
+
+test('the return-rates import produces no query fields on its own', () => {
+  // Queries arrive as their own export; completeness alone must not imply them.
+  const context = contextFor('Hospital B', fullDataset());
+  assert.equal(context.queries_open, undefined);
+  assert.equal(context.query_headline, undefined);
+  assert.equal(context.quality_scorecard, undefined);
 });
 
 test('a site the export does not cover gets no figures rather than wrong ones', () => {
@@ -403,22 +355,10 @@ test('charts survive the plain-text alternative as a readable list', () => {
   assert.ok(/\d+(\.\d+)?%/.test(text));
 });
 
-test('the scorecard drops the query columns when there are none', () => {
-  const { dataset } = build();
-  assert.ok(!qualityScorecard(dataset, { naming: 'all' }).includes('Queries open'));
-
-  const mapping = detectCompletenessMapping(QUERY_HEADERS);
-  const withQueries = buildCompleteness(QUERY_ROWS, mapping);
-  const html = qualityScorecard(withQueries, { naming: 'all' });
-  assert.ok(html.includes('Queries open'));
-  assert.ok(queryResolutionChart(withQueries, { naming: 'all' }).includes('Alpha'));
-});
-
 test('a chart asked for without data returns nothing rather than an empty frame', () => {
   const empty = buildCompleteness([], detectCompletenessMapping(HEADERS));
   assert.equal(completenessBarChart(empty, {}), '');
   assert.equal(completenessLeaderboard(empty, {}), '');
-  assert.equal(queryResolutionChart(empty, {}), '');
 });
 
 test('a placeholder with no value falls back rather than leaving a hole', () => {

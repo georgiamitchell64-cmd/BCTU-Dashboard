@@ -125,16 +125,64 @@ const MONTHLY_UPDATE = {
   ].join(''),
 };
 
+const QUERY_CHASE = {
+  id: 'builtin_query_chase',
+  builtIn: true,
+  name: 'Outstanding data queries',
+  requires: 'queries',
+  subject: '{{site_name}} — outstanding data queries, {{today}}',
+  bodyHtml: [
+    `<p>${logoHtml()}</p>`,
+    '<p>Dear {{first_name|colleagues}},</p>',
+    '<p>{{query_action}}</p>',
+    '{{query_list}}',
+    '<p>Where they sit:</p>',
+    '{{query_ageing_chart}}',
+    '{{query_form_chart}}',
+    '<p>If any of these are unclear, or you need the data clarified before you',
+    ' can answer, reply to this email and we will help.</p>',
+    '<p>With thanks,<br>The TONIC trial team</p>',
+  ].join(''),
+};
+
+const DATA_QUALITY_SUMMARY = {
+  id: 'builtin_data_quality',
+  builtIn: true,
+  name: 'Data quality: completeness and queries',
+  requires: 'quality',
+  subject: '{{site_name}} — data quality summary, {{today}}',
+  bodyHtml: [
+    `<p>${logoHtml()}</p>`,
+    '<p>Dear {{first_name|colleagues}},</p>',
+    '<p>Here is where <strong>{{site_name}}</strong> stands on data this month.</p>',
+    '<h3 style="font-family:Calibri,Arial,sans-serif;">Completeness</h3>',
+    '<p>{{completeness_headline}}</p>',
+    '{{completeness_gauge}}',
+    '<h3 style="font-family:Calibri,Arial,sans-serif;">Outstanding queries</h3>',
+    '<p>{{query_action}}</p>',
+    '{{query_breakdown_chart}}',
+    '{{query_list}}',
+    '<h3 style="font-family:Calibri,Arial,sans-serif;">Across the trial</h3>',
+    '{{quality_scorecard}}',
+    '<p>With thanks,<br>The TONIC trial team</p>',
+  ].join(''),
+};
+
 const BUILT_IN_TEMPLATES = [
   MONTHLY_RECRUITMENT, DATA_COMPLETENESS, COMPLETENESS_LEAGUE, MONTHLY_UPDATE,
+  QUERY_CHASE, DATA_QUALITY_SUMMARY,
 ];
 
 /** Built-in templates that make sense given what has been imported. */
-function availableBuiltIns({ hasRecruitment = false, hasCompleteness = false } = {}) {
+function availableBuiltIns({
+  hasRecruitment = false, hasCompleteness = false, hasQueries = false,
+} = {}) {
   const has = {
     recruitment: hasRecruitment,
     completeness: hasCompleteness,
+    queries: hasQueries,
     both: hasRecruitment && hasCompleteness,
+    quality: hasCompleteness && hasQueries,
   };
   return BUILT_IN_TEMPLATES.filter((t) => !t.requires || has[t.requires]);
 }
@@ -145,5 +193,7 @@ module.exports = {
   DATA_COMPLETENESS,
   COMPLETENESS_LEAGUE,
   MONTHLY_UPDATE,
+  QUERY_CHASE,
+  DATA_QUALITY_SUMMARY,
   availableBuiltIns,
 };

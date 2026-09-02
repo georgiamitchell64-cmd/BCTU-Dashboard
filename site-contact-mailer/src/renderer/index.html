@@ -29,6 +29,8 @@
             title="Import randomisation data for the recruitment charts">Recruitment data…</button>
     <button id="btnImportCompleteness" class="btn btn-ghost"
             title="Import the return-rates export for the data completeness fields">Completeness data…</button>
+    <button id="btnImportQueries" class="btn btn-ghost"
+            title="Import the data query export for the outstanding-query fields">Query data…</button>
     <button id="btnExport" class="btn btn-ghost" title="Export the current list as CSV">Export</button>
     <button id="btnSettings" class="btn btn-ghost" title="Settings">Settings</button>
   </div>
@@ -431,6 +433,61 @@
         <button class="btn btn-ghost" data-close="completenessModal">Cancel</button>
         <button id="btnChooseCompleteness" class="btn btn-ghost">Choose file…</button>
         <button id="btnConfirmCompleteness" class="btn btn-primary" disabled>Use this data</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- ── Data queries ───────────────────────────────────────────────── -->
+<div id="queriesModal" class="modal hidden">
+  <div class="modal-card modal-wide">
+    <header class="modal-head">
+      <h2>Data queries</h2>
+      <button class="icon-btn" data-close="queriesModal" aria-label="Close">×</button>
+    </header>
+    <div class="modal-body">
+      <p class="hint" id="queriesIntro">
+        Import the data query export — one row per query, as it comes out of REDCap
+        with the site, form, status and dates. The app counts them per site and can
+        list a site's own outstanding queries in the email.
+      </p>
+
+      <div class="field-row spaced">
+        <div class="field">
+          <label for="qrySheetPicker">Sheet</label>
+          <select id="qrySheetPicker"></select>
+        </div>
+        <div class="field">
+          <label for="qryOverdueDays">Treat a query as overdue after</label>
+          <select id="qryOverdueDays">
+            <option value="14">14 days</option>
+            <option value="21">21 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="60">60 days</option>
+            <option value="90">90 days</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="qryMappingFields" class="mapping-grid"></div>
+
+      <div class="preview-block">
+        <div class="label-row">
+          <h3>Result</h3>
+          <span id="qryStats" class="muted"></span>
+        </div>
+        <div id="qryStatuses" class="hint"></div>
+        <div id="qryPreview" class="import-preview"></div>
+        <div id="qryWarnings" class="warnings hidden"></div>
+        <div id="qryMatch" class="warnings hidden"></div>
+      </div>
+    </div>
+    <footer class="modal-foot">
+      <button id="btnClearQueries" class="link-btn">Remove imported data</button>
+      <div class="footer-actions">
+        <button class="btn btn-ghost" data-close="queriesModal">Cancel</button>
+        <button id="btnChooseQueries" class="btn btn-ghost">Choose file…</button>
+        <button id="btnConfirmQueries" class="btn btn-primary" disabled>Use this data</button>
       </div>
     </footer>
   </div>
