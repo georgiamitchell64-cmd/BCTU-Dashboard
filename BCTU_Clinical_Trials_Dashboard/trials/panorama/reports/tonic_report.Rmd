@@ -1,0 +1,1222 @@
+---
+title: "PANORAMA WP4 TMG Progress Report"
+output:
+  html_document:
+    theme: null
+    highlight: null
+    mathjax: null
+    self_contained: true
+    md_extensions: "-markdown_in_html_blocks"
+params:
+  report_data: NULL
+  selected_sites: "All sites"
+  date_from: NULL
+  date_to: NULL
+  include_withdrawn: false
+  include_appendix: false
+  report_date: !r format(Sys.Date(), "%d %B %Y")
+  logo_path: NULL
+  nihr_logo_path: NULL
+  crf_csv_path: NULL
+  screening_xlsx_path: NULL
+  report_type: "TMG"
+  completeness_style: "heatmap"
+  report_content: NULL
+  column_labels: NULL
+  work_package: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, results = "asis")
+
+`%||%` <- function(a, b) if (is.null(a) || length(a) == 0) b else a
+safe  <- function(x, fallback = NA) if (is.null(x) || length(x) == 0) fallback else x
+esc   <- function(s) htmltools::htmlEscape(as.character(s))
+num   <- function(x) stats::setNames(
+  suppressWarnings(as.numeric(as.character(x))), names(x))
+blank <- function(x) is.na(x) | !nzchar(trimws(as.character(x)))
+# Formatters are vectorised and NA-safe: every one returns an em dash where a
+# value is missing, so a partially populated export never breaks a table.
+fmt_pct <- function(x, dp = 0) {
+  v <- suppressWarnings(as.numeric(x))
+  if (length(v) == 0) return("—")
+  ifelse(is.na(v), "—", paste0(formatC(v, format = "f", digits = dp), "%"))
+}
+fmt_int <- function(x) {
+  v <- suppressWarnings(as.numeric(x))
+  if (length(v) == 0) return("—")
+  ifelse(is.na(v), "—", formatC(round(v), format = "d", big.mark = ","))
+}
+fmt_num <- function(x, dp = 1) {
+  v <- suppressWarnings(as.numeric(x))
+  if (length(v) == 0) return("—")
+  ifelse(is.na(v), "—", formatC(v, format = "f", digits = dp))
+}
+fmt_date <- function(d, f = "%d %b %Y") {
+  d <- suppressWarnings(as.Date(d))
+  if (length(d) == 0) return("—")
+  ifelse(is.na(d), "—", format(d, f))
+}
+pctg <- function(n, d) if (is.null(d) || length(d) == 0 || is.na(d) || d <= 0)
+  NA_real_ else round(n / d * 100, 1)
+j <- function(x) {
+  if (requireNamespace("jsonlite", quietly = TRUE))
+    jsonlite::toJSON(x, na = "null", null = "null", auto_unbox = TRUE)
+  else paste0("[", paste(ifelse(is.na(x), "null", x), collapse = ","), "]")
+}
+
+rd  <- params$report_data    %||% list()
+rc  <- params$report_content %||% list()
+kpi <- rd$kpis %||% list()
+
+# ── Study identity ───────────────────────────────────────────────────────────
+# Work-package context: which WP this report covers, and its own target,
+# follow-up length and outcome measures. Supplied by the dashboard from the
+# active WP pill; falls back to WP4, the cohort study.
+wp <- params$work_package %||% list()
+trial_short  <- safe(rc$short_name, "PANORAMA")
+wp_code      <- safe(wp$code,  safe(rc$work_package_code, "WP4"))
+wp_name      <- safe(wp$label, safe(rc$work_package_name, "Cohort study"))
+wp_design    <- safe(wp$design, safe(rc$work_package_design,
+                                     "Prospective observational cohort"))
+wp_outcomes  <- wp$outcomes %||% (rc$work_package_outcomes %||% character(0))
+wp_interv    <- safe(wp$interventions, safe(rc$work_package_interventions, ""))
+wp_label     <- sprintf("%s · %s", wp_code, wp_name)
+wp_long      <- sprintf("Work package %s — %s",
+                        sub("^WP", "", wp_code), tolower(wp_name))
+trial_title  <- safe(rc$trial_title,
+  "oPtimising post-dischArge care pathways after acute paNcreatitis: evaluatiOn of health seRvice utilisAtion, outcoMes")
+trial_sub    <- safe(rc$trial_subtitle, sprintf("%s (%s)", wp_long, tolower(wp_design)))
+chief_inv    <- safe(rc$ci, "Mr Matthew Lee")
+study_mgr    <- safe(rc$study_manager, "Dr Michala Pettitt")
+sponsor      <- safe(rc$sponsor, "University of Birmingham")
+sponsor_ref  <- safe(rc$sponsor_ref, "RG_25-105")
+funder       <- safe(rc$funder, "NIHR HSDR")
+funder_ref   <- safe(rc$funder_ref, "NIHR165210")
+iras         <- safe(rc$iras, "349680")
+cpms         <- safe(rc$cpms, "64883")
+protocol_v   <- safe(rc$protocol_version, "v1.1 (11-May-2026)")
+fu_months    <- safe(wp$follow_up_months, safe(rc$follow_up_months, 6))
+sample_size  <- suppressWarnings(as.integer(
+  safe(wp$target, safe(rc$sample_size, safe(kpi$trial_target, 1017)))))
+if (is.na(sample_size)) sample_size <- 1017L
+sites_plan   <- suppressWarnings(as.integer(safe(rc$sites_planned, NA)))
+
+report_date_str <- params$report_date %||% format(Sys.Date(), "%d %B %Y")
+today <- Sys.Date()
+
+# ── Logos (base64) ───────────────────────────────────────────────────────────
+encode_logo <- function(path) {
+  if (is.null(path) || !nzchar(path) || !file.exists(path) ||
+      !requireNamespace("base64enc", quietly = TRUE)) return("")
+  ext  <- tolower(tools::file_ext(path))
+  mime <- switch(ext, png = "image/png", jpg = "image/jpeg", jpeg = "image/jpeg",
+                 svg = "image/svg+xml", "image/png")
+  tryCatch(paste0("data:", mime, ";base64,", base64enc::base64encode(path)),
+           error = function(e) "")
+}
+logo_b64 <- encode_logo(params$logo_path)
+
+.this_dir <- tryCatch(dirname(knitr::current_input(dir = TRUE)),
+                      error = function(e) ".")
+if (is.null(.this_dir) || !length(.this_dir) || is.na(.this_dir)) .this_dir <- "."
+
+.bctu_candidates <- c(
+  "BlackText-landscape.png",
+  file.path("www", "BlackText-landscape.png"),
+  file.path(.this_dir, "BlackText-landscape.png"))
+.bctu_hit     <- .bctu_candidates[file.exists(.bctu_candidates)]
+bctu_logo_b64 <- if (length(.bctu_hit)) encode_logo(.bctu_hit[1]) else ""
+
+.nihr_candidates <- c(
+  params$nihr_logo_path %||% "",
+  "NIHR_Acknowledgement_Funded by_Logo_RGB.png",
+  file.path("www", "NIHR_Acknowledgement_Funded by_Logo_RGB.png"),
+  file.path(.this_dir, "NIHR_Acknowledgement_Funded by_Logo_RGB.png"))
+.nihr_candidates <- .nihr_candidates[nzchar(.nihr_candidates)]
+.nihr_hit     <- .nihr_candidates[file.exists(.nihr_candidates)]
+nihr_logo_b64 <- if (length(.nihr_hit)) encode_logo(.nihr_hit[1]) else ""
+
+# ── Source data ──────────────────────────────────────────────────────────────
+# The WP4 metrics are screening- and PROM-based, so they are derived here from
+# the REDCap export itself (report_data$raw_df) rather than from the
+# randomisation-centric summaries the shared pipeline produces.
+raw <- rd$raw_df
+if (!is.data.frame(raw) || nrow(raw) == 0) raw <- rd$filtered_df
+if (is.null(raw) || !is.data.frame(raw)) raw <- data.frame()
+nm <- names(raw)
+
+# ── Field / event map ────────────────────────────────────────────────────────
+# Defaults are the WP4 REDCap variable names; override any of them from Trial
+# Settings → Report content by supplying rc$fields / rc$events.
+F <- utils::modifyList(list(
+  record      = "record_id",
+  event       = "redcap_event_name",
+  site        = c("rc_site_name", "redcap_data_access_group", "site_name"),
+  age         = c("cae_age", "age"),
+  sex         = "base_sex",
+  ethnicity   = "base_ethnic_gp",
+  aetiology   = "index_panc_aetio",
+  screen_calc = "screening_calc",
+  approached  = "approached_yn",
+  consent     = "valid_consent",
+  screen_date = "screen_created_date",
+  f_screening = "screening_complete",
+  f_consent   = "consent_complete",
+  f_demog     = "demographics_past_history_complete",
+  f_index     = "index_admission_complete",
+  dc_date     = "index_discharge_date",
+  prom_dc     = "day_of_discharge_proms_complete",
+  prom_d7     = "day7_proms_complete",
+  prom_month  = "month_proms_complete",
+  withdraw    = "withdraw_level"
+), rc$fields %||% list())
+
+E <- utils::modifyList(list(
+  d28 = "fu_30_day_arm_1",
+  m3  = "fu_3_month_arm_1",
+  m6  = "fu_6_month_arm_1"
+), rc$events %||% list())
+
+find_col <- function(...) {
+  wants <- unlist(c(...))
+  for (w in wants) {
+    if (is.null(w) || is.na(w) || !nzchar(w)) next
+    if (w %in% nm) return(w)
+    hit <- nm[tolower(nm) == tolower(w)]
+    if (length(hit)) return(hit[1])
+    hit <- grep(paste0("^", w), nm, ignore.case = TRUE, value = TRUE)
+    if (length(hit)) return(hit[1])
+  }
+  NULL
+}
+
+rec_col  <- find_col(F$record, "record_id", "study_id", "record_v")
+ev_col   <- find_col(F$event, "redcap_event_name", "event_v")
+site_col <- find_col(F$site, "rc_site_name", "redcap_data_access_group",
+                     "site_name", "site_v")
+
+if (nrow(raw) > 0 && is.null(rec_col)) {
+  raw$.rec <- seq_len(nrow(raw)); nm <- names(raw); rec_col <- ".rec"
+}
+recs <- if (!is.null(rec_col) && nrow(raw) > 0)
+  as.character(raw[[rec_col]]) else character(0)
+ids  <- unique(recs[!blank(recs)])
+n_ids <- length(ids)
+empty_vec <- function() stats::setNames(rep(NA_character_, n_ids), ids)
+
+# First non-blank value per record, optionally restricted to one REDCap event.
+gv <- function(field, event = NULL) {
+  out <- empty_vec()
+  col <- find_col(field)
+  if (is.null(col) || !n_ids) return(out)
+  d <- raw
+  if (!is.null(event) && nzchar(event)) {
+    if (!is.null(ev_col)) {
+      d <- d[grepl(paste0("^", event, "$"), as.character(d[[ev_col]]),
+                   ignore.case = TRUE), , drop = FALSE]
+    } else {
+      short <- sub("_arm_[0-9]+$", "", event)
+      cand  <- nm[grepl(field, nm, fixed = TRUE) &
+                  (grepl(event, nm, fixed = TRUE) | grepl(short, nm, fixed = TRUE))]
+      if (!length(cand)) return(out)
+      col <- cand[1]
+    }
+  }
+  if (!nrow(d)) return(out)
+  v <- as.character(d[[col]]); r <- as.character(d[[rec_col]])
+  keep <- !blank(v) & !blank(r)
+  v <- v[keep]; r <- r[keep]
+  if (!length(v)) return(out)
+  first <- !duplicated(r)
+  r <- r[first]; v <- v[first]
+  keep2 <- r %in% ids
+  out[r[keep2]] <- v[keep2]
+  out
+}
+as_date <- function(x) stats::setNames(
+  suppressWarnings(as.Date(substr(as.character(x), 1, 10))), names(x))
+
+vlabs    <- rc$value_labels %||% list()
+codebook <- params$column_labels %||% list()
+
+# Codebook first (Trial Settings → Demographics & codebook writes it per
+# column), then a report-content override, then the built-in default.
+lab_for <- function(key, field = NULL, fallback = NULL) {
+  col <- if (is.null(field)) NULL else find_col(field)
+  if (!is.null(col) && !is.null(codebook[[col]])) {
+    cb <- unlist(codebook[[col]])
+    cb <- cb[nzchar(as.character(cb))]
+    if (length(cb)) return(cb)
+  }
+  vlabs[[key]] %||% (rc[[paste0(key, "_labels")]] %||% fallback)
+}
+
+# ── Screening funnel ─────────────────────────────────────────────────────────
+v_screen <- gv(F$screen_calc)
+v_appr   <- gv(F$approached)
+v_cons   <- gv(F$consent)
+v_wd     <- gv(F$withdraw)
+v_age    <- gv(F$age)
+v_sex    <- gv(F$sex)
+v_eth    <- gv(F$ethnicity)
+v_aetio  <- gv(F$aetiology)
+d_screen <- as_date(gv(F$screen_date))
+d_disch  <- as_date(gv(F$dc_date))
+v_site   <- if (!is.null(site_col)) gv(site_col) else empty_vec()
+
+has_screen_col <- !all(is.na(v_screen))
+screened_ids <- if (has_screen_col) ids[!is.na(v_screen)] else ids
+elig_ids     <- ids[which(num(v_screen) == 4)]
+appr_ids     <- ids[which(num(v_appr) == 1)]
+cons_ids     <- ids[which(num(v_cons) == 1)]
+if (!length(cons_ids) && all(is.na(v_cons))) cons_ids <- ids   # consent field absent
+# Withdrawal only means anything for someone who consented.
+wd_ids       <- intersect(ids[!is.na(v_wd)], cons_ids)
+active_ids   <- setdiff(cons_ids, wd_ids)
+
+n_screened <- length(screened_ids)
+n_elig     <- length(elig_ids)
+n_inelig   <- max(0, n_screened - n_elig)
+n_appr     <- length(appr_ids)
+n_cons     <- length(cons_ids)
+n_wd       <- length(wd_ids)
+n_active   <- length(active_ids)
+
+pct_elig    <- pctg(n_elig, n_screened)
+pct_appr    <- pctg(n_appr, n_elig)
+pct_cons    <- pctg(n_cons, n_appr)
+pct_recruit <- pctg(n_cons, n_elig)
+pct_target  <- pctg(n_cons, sample_size)
+wd_rate     <- pctg(n_wd, n_cons)
+retention   <- if (is.na(wd_rate)) NA_real_ else round(100 - wd_rate, 1)
+
+wd_labels <- lab_for("withdraw", F$withdraw,
+                     c("1" = "No study-related follow-up",
+                       "2" = "No further data collection"))
+wd_tbl <- if (n_wd > 0) {
+  code <- as.character(v_wd[wd_ids])
+  lbl  <- ifelse(code %in% names(wd_labels), wd_labels[code],
+                 paste("Level", code))
+  tb <- as.data.frame(table(lbl), stringsAsFactors = FALSE)
+  names(tb) <- c("level", "n")
+  tb[order(-tb$n), , drop = FALSE]
+} else NULL
+
+# ── Sites ────────────────────────────────────────────────────────────────────
+site_of <- function(v) {
+  s <- as.character(v_site[v]); s[blank(s)] <- "Not recorded"; s
+}
+site_tbl <- NULL
+if (n_screened > 0 && !all(is.na(v_site))) {
+  all_sites <- sort(unique(site_of(screened_ids)))
+  site_tbl <- data.frame(
+    site      = all_sites,
+    screened  = vapply(all_sites, function(s) sum(site_of(screened_ids) == s), integer(1)),
+    eligible  = vapply(all_sites, function(s) sum(site_of(elig_ids)     == s), integer(1)),
+    approached= vapply(all_sites, function(s) sum(site_of(appr_ids)     == s), integer(1)),
+    consented = vapply(all_sites, function(s) sum(site_of(cons_ids)     == s), integer(1)),
+    stringsAsFactors = FALSE)
+  site_tbl$rate <- mapply(pctg, site_tbl$consented, site_tbl$eligible)
+  last_dt <- vapply(all_sites, function(s) {
+    d <- d_screen[cons_ids][site_of(cons_ids) == s]
+    d <- d[!is.na(d)]
+    if (!length(d)) NA_real_ else as.numeric(max(d))
+  }, numeric(1))
+  site_tbl$last <- as.Date(last_dt, origin = "1970-01-01")
+  site_tbl <- site_tbl[order(-site_tbl$consented, -site_tbl$screened), , drop = FALSE]
+}
+n_sites_open <- if (!is.null(site_tbl))
+  sum(site_tbl$site != "Not recorded") else safe(kpi$n_sites_active, NA)
+
+# ── Recruitment over time ────────────────────────────────────────────────────
+rec_dates <- d_screen[cons_ids]
+rec_dates <- rec_dates[!is.na(rec_dates)]
+first_rec <- if (length(rec_dates)) min(rec_dates) else NA
+last_rec  <- if (length(rec_dates)) max(rec_dates) else NA
+
+plan_start <- suppressWarnings(as.Date(safe(rc$recruitment_start, NA)))
+if (is.na(plan_start))
+  plan_start <- if (!is.na(first_rec)) as.Date(format(first_rec, "%Y-%m-01")) else
+    as.Date(format(today, "%Y-%m-01"))
+plan_months <- suppressWarnings(as.integer(safe(rc$recruitment_months, 18)))
+if (is.na(plan_months) || plan_months < 1) plan_months <- 18L
+
+months_seq <- seq(plan_start, by = "1 month", length.out = plan_months)
+cum_target <- round(seq_len(plan_months) / plan_months * sample_size)
+month_lab  <- format(months_seq, "%b %y")
+
+month_actual <- vapply(months_seq, function(m) {
+  nxt <- seq(m, by = "1 month", length.out = 2)[2]
+  sum(rec_dates >= m & rec_dates < nxt)
+}, integer(1))
+cum_actual <- cumsum(month_actual)
+cur_month  <- as.Date(format(today, "%Y-%m-01"))
+cum_actual_plot <- as.numeric(cum_actual)
+cum_actual_plot[months_seq > cur_month] <- NA
+month_actual_plot <- as.numeric(month_actual)
+month_actual_plot[months_seq > cur_month] <- NA
+
+# Expected to date: last complete month's target plus a pro-rata share of the
+# current month's increment.
+past <- which(months_seq <= cur_month)
+expected_to_date <- if (length(past)) {
+  i <- max(past)
+  prev <- if (i > 1) cum_target[i - 1] else 0
+  m_days <- as.numeric(seq(months_seq[i], by = "1 month", length.out = 2)[2] - months_seq[i])
+  frac <- min(1, max(0, (as.numeric(today - months_seq[i]) + 1) / m_days))
+  round(prev + frac * (cum_target[i] - prev))
+} else 0
+pct_vs_plan <- pctg(n_cons, expected_to_date)
+
+months_active <- length(past)
+rate_per_month <- if (months_active > 0) round(n_cons / months_active, 1) else NA
+rate_site_month <- if (!is.na(rate_per_month) && !is.na(n_sites_open) &&
+                       n_sites_open > 0) round(rate_per_month / n_sites_open, 2) else NA
+remaining <- max(0, sample_size - n_cons)
+months_to_target <- if (!is.na(rate_per_month) && rate_per_month > 0)
+  ceiling(remaining / rate_per_month) else NA
+# A projection more than ten years out says only that the current rate is far
+# below plan, so report that rather than printing an implausible date.
+if (!is.na(months_to_target) && months_to_target > 120) months_to_target <- NA
+proj_end <- if (!is.na(months_to_target))
+  seq(cur_month, by = "1 month", length.out = months_to_target + 1)[months_to_target + 1] else NA
+
+# ── Demographics ─────────────────────────────────────────────────────────────
+age_v <- num(v_age[cons_ids]); age_v <- age_v[!is.na(age_v)]
+age_stats <- if (length(age_v)) list(
+  n = length(age_v), mean = mean(age_v), median = stats::median(age_v),
+  q1 = unname(stats::quantile(age_v, .25)), q3 = unname(stats::quantile(age_v, .75)),
+  min = min(age_v), max = max(age_v)) else NULL
+age_bands <- if (length(age_v)) {
+  br <- c(-Inf, 39, 54, 69, 79, Inf)
+  lb <- c("16–39", "40–54", "55–69", "70–79", "80+")
+  tb <- table(cut(age_v, breaks = br, labels = lb))
+  data.frame(band = names(tb), n = as.integer(tb), stringsAsFactors = FALSE)
+} else NULL
+
+# Categorical summaries. Codes are mapped through the trial's codebook
+# (rc$value_labels / the *_labels lists); anything unmapped is shown as its
+# raw code so a gap in the codebook is visible rather than silently dropped.
+cat_tbl <- function(v, labels, who) {
+  x <- as.character(v[who]); x <- x[!blank(x)]
+  if (!length(x)) return(NULL)
+  lbl <- if (!is.null(labels) && length(labels))
+    ifelse(x %in% names(labels), labels[x], paste("Code", x)) else x
+  tb <- as.data.frame(table(lbl), stringsAsFactors = FALSE)
+  names(tb) <- c("label", "n")
+  tb$pct <- round(tb$n / length(x) * 100, 1)
+  tb[order(-tb$n), , drop = FALSE]
+}
+
+aetio_labels <- lab_for("aetiology", F$aetiology, c(
+  "1" = "Gallstones", "2" = "Alcohol", "3" = "Post-ERCP",
+  "4" = "Hypertriglyceridaemia", "5" = "Drug-induced",
+  "6" = "Idiopathic", "7" = "Other"))
+sex_labels <- lab_for("sex", F$sex, c("1" = "Male", "2" = "Female",
+                                      "3" = "Other", "4" = "Prefer not to say"))
+eth_labels <- lab_for("ethnicity", F$ethnicity, NULL)
+
+aetio_tbl <- cat_tbl(v_aetio, aetio_labels, cons_ids)
+sex_tbl   <- cat_tbl(v_sex,   sex_labels,   cons_ids)
+eth_tbl   <- cat_tbl(v_eth,   eth_labels,   cons_ids)
+unmapped_n <- function(tb) if (is.null(tb)) 0 else sum(grepl("^Code ", tb$label))
+n_aetio_unmapped <- unmapped_n(aetio_tbl)
+n_codebook_gaps  <- n_aetio_unmapped + unmapped_n(sex_tbl) + unmapped_n(eth_tbl) +
+  (if (!is.null(eth_tbl) && (is.null(eth_labels) || !length(eth_labels)))
+     nrow(eth_tbl) else 0)
+
+# ── Form completion (consented participants) ─────────────────────────────────
+form_defs <- list(
+  list(label = "Screening",                field = F$f_screening),
+  list(label = "Consent",                  field = F$f_consent),
+  list(label = "Demographics & past history", field = F$f_demog),
+  list(label = "Index admission",          field = F$f_index))
+form_rows <- do.call(rbind, lapply(form_defs, function(f) {
+  v <- num(gv(f$field)[cons_ids])
+  data.frame(form = f$label, due = n_cons,
+             complete   = sum(v == 2, na.rm = TRUE),
+             unverified = sum(v == 1, na.rm = TRUE),
+             incomplete = sum(v == 0, na.rm = TRUE),
+             missing    = sum(is.na(v)),
+             stringsAsFactors = FALSE)
+}))
+if (!is.null(form_rows)) form_rows$pct <- mapply(pctg, form_rows$complete, form_rows$due)
+form_overall <- if (!is.null(form_rows))
+  pctg(sum(form_rows$complete), sum(form_rows$due)) else NA
+
+# ── PROM completion / retention ──────────────────────────────────────────────
+# A timepoint counts as due once the visit window has closed for that
+# participant (days since index discharge). Withdrawn participants are removed
+# from the denominator from the point of withdrawal onwards.
+tp_defs <- list(
+  list(label = "Day of discharge", field = F$prom_dc,    event = NULL,  offset = 0,   window = 0),
+  list(label = "Day 7",            field = F$prom_d7,    event = NULL,  offset = 7,   window = 3),
+  list(label = "Day 28",           field = F$prom_month, event = E$d28, offset = 28,  window = 3),
+  list(label = "3 months",         field = F$prom_month, event = E$m3,  offset = 91,  window = 7),
+  list(label = "6 months",         field = F$prom_month, event = E$m6,  offset = 182, window = 7))
+
+prom_rows <- do.call(rbind, lapply(tp_defs, function(t) {
+  v   <- num(gv(t$field, t$event))
+  dcd <- d_disch[active_ids]
+  due_ids2 <- active_ids[!is.na(dcd) &
+                         today >= (dcd + t$offset + t$window)]
+  due <- length(due_ids2)
+  comp <- sum(v[due_ids2] == 2, na.rm = TRUE)
+  part <- sum(v[due_ids2] == 1, na.rm = TRUE)
+  data.frame(timepoint = t$label, due = due, complete = comp, partial = part,
+             outstanding = max(0, due - comp - part),
+             pct = pctg(comp, due), stringsAsFactors = FALSE)
+}))
+prom_overall <- if (!is.null(prom_rows))
+  pctg(sum(prom_rows$complete), sum(prom_rows$due)) else NA
+prom_m6 <- if (!is.null(prom_rows)) prom_rows$pct[prom_rows$timepoint == "6 months"] else NA
+if (length(prom_m6) == 0) prom_m6 <- NA_real_
+
+n_no_dc_date <- sum(is.na(d_disch[cons_ids]))
+
+# ── RAG bands ────────────────────────────────────────────────────────────────
+band <- function(v, green, amber, higher_better = TRUE) {
+  if (is.null(v) || length(v) == 0 || is.na(v)) return("n")
+  if (higher_better) { if (v >= green) "g" else if (v >= amber) "a" else "r" }
+  else { if (v <= green) "g" else if (v <= amber) "a" else "r" }
+}
+band_word <- function(b) switch(b, g = "ON TRACK", a = "MONITOR", r = "ACTION", "PENDING")
+
+health_cards <- list(
+  list(title = "Recruitment vs plan", val = pct_vs_plan,
+       sub = sprintf("%s of %s expected", fmt_int(n_cons), fmt_int(expected_to_date)),
+       b = band(pct_vs_plan, 90, 70)),
+  list(title = "Eligible approached", val = pct_appr,
+       sub = sprintf("%s of %s eligible", fmt_int(n_appr), fmt_int(n_elig)),
+       b = band(pct_appr, 80, 60)),
+  list(title = "Approached consented", val = pct_cons,
+       sub = sprintf("%s of %s approached", fmt_int(n_cons), fmt_int(n_appr)),
+       b = band(pct_cons, 60, 40)),
+  list(title = "Form completion", val = form_overall,
+       sub = "baseline CRFs, consented participants",
+       b = band(form_overall, 95, 85)),
+  list(title = "PROM return", val = prom_overall,
+       sub = "all timepoints due to date",
+       b = band(prom_overall, 80, 60)),
+  list(title = "Retention", val = retention,
+       sub = sprintf("%s withdrawal%s recorded", fmt_int(n_wd),
+                     if (identical(n_wd, 1L)) "" else "s"),
+       b = band(retention, 85, 75)))
+
+# ── Milestones ───────────────────────────────────────────────────────────────
+ms <- rc$key_milestones %||% list(
+  list(name = "Funding award (NIHR165210)",        date = "2025",          status = "complete",  group = "Set-up"),
+  list(name = "Protocol v1.1 finalised",           date = "11 May 2026",   status = "complete",  group = "Set-up"),
+  list(name = "REC / HRA approval",                date = "TBC",           status = "upcoming",  group = "Set-up"),
+  list(name = "REDCap database live",              date = "TBC",           status = "upcoming",  group = "Set-up"),
+  list(name = "First site opened",                 date = "TBC",           status = "upcoming",  group = "Set-up"),
+  list(name = "First participant registered",
+       date = if (!is.na(first_rec)) format(first_rec, "%d %b %Y") else "TBC",
+       status = if (!is.na(first_rec)) "complete" else "upcoming", group = "Recruitment & follow-up"),
+  list(name = sprintf("Recruitment complete (n=%s)", format(sample_size, big.mark = ",")),
+       date = if (!is.na(proj_end)) format(proj_end, "%b %Y") else
+         format(months_seq[plan_months], "%b %Y"),
+       status = "estimated", group = "Recruitment & follow-up"),
+  list(name = sprintf("Last participant %s-month follow-up", fu_months),
+       date = if (!is.na(proj_end))
+         format(seq(proj_end, by = "6 months", length.out = 2)[2], "%b %Y") else "TBC",
+       status = "estimated", group = "Recruitment & follow-up"),
+  list(name = "Database lock",                     date = "TBC",           status = "estimated", group = "Analysis & close-out"),
+  list(name = "Analysis complete",                 date = "TBC",           status = "estimated", group = "Analysis & close-out"))
+ms_complete <- Filter(function(m) identical(m$status, "complete"), ms)
+
+# ── Chart payloads ───────────────────────────────────────────────────────────
+funnel_labels <- c("Screened", "Eligible", "Approached", "Consented")
+funnel_values <- c(n_screened, n_elig, n_appr, n_cons)
+prom_labels <- if (!is.null(prom_rows)) prom_rows$timepoint else character(0)
+prom_pcts   <- if (!is.null(prom_rows)) prom_rows$pct else numeric(0)
+aetio_labels_v <- if (!is.null(aetio_tbl)) aetio_tbl$label else character(0)
+aetio_values_v <- if (!is.null(aetio_tbl)) aetio_tbl$n else numeric(0)
+age_labels_v <- if (!is.null(age_bands)) age_bands$band else character(0)
+age_values_v <- if (!is.null(age_bands)) age_bands$n else numeric(0)
+```
+
+<style>
+:root{
+  --lilac:#4C3A82; --lilac-2:#6B57A8; --lilac-tint:#EDE7F8; --lilac-tint-2:#F7F4FC;
+  --mauve:#9B7FD4; --mauve-tint:#F0E9FB; --mauve-tint-2:#F8F4FE;
+  --ink:#241F33; --ink-2:#4A4363; --muted:#7A7391;
+  --line:#E3DCF1; --line-soft:#F0ECF9;
+  --green:#2F7F63; --green-tint:#DCEFE7;
+  --amber:#B5801F; --amber-tint:#FAECD3;
+  --red:#AE3F44; --red-tint:#F8DEE0;
+  --grey:#8A85A0; --grey-tint:#EEECF4;
+  --pad-page:14mm; --gap-sec:14px; --fs-base:10pt;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;font-family:Calibri,'Segoe UI',-apple-system,system-ui,sans-serif;color:var(--ink);background:#EDEAF4;font-size:var(--fs-base);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{padding:24px 0}
+.doc{max-width:210mm;margin:0 auto}
+.page{background:#fff;width:210mm;min-height:297mm;margin:0 auto 18px;padding:var(--pad-page);position:relative;box-shadow:0 1px 2px rgba(40,25,80,.08),0 8px 24px rgba(40,25,80,.10);border-radius:2px;display:flex;flex-direction:column}
+@page{size:A4;margin:11mm 12mm 12mm}
+@media print{
+  :root{--gap-sec:10px}
+  body{background:#fff;padding:0}
+  .doc{max-width:none}
+  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:273mm;padding:0;page-break-after:always}
+  .page:last-child{page-break-after:auto}
+  .ph,.card,.row2,.row3,.pc,.meta-strip,.health-strip,.funnel,.ml-grp,.chart-wrap,
+  .demo,.note,.keyline,.sw-cell,svg{break-inside:avoid;page-break-inside:avoid}
+  h2.sec,p.lab{break-after:avoid-page;page-break-after:avoid;break-inside:avoid}
+  table.rt{break-inside:auto;page-break-inside:auto}
+  table.rt thead{display:table-header-group}
+  table.rt tr{break-inside:avoid;page-break-inside:avoid}
+  .pf{break-inside:avoid;page-break-inside:avoid}
+}
+
+/* Header / footer */
+.ph{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:10px;border-bottom:2px solid var(--lilac);margin-bottom:12px}
+.ph .brand{display:flex;align-items:center;gap:14px;min-width:0}
+.ph .ph-trial-logo{height:50px;width:auto;display:block}
+.ph .ph-trial-name{font-family:'Source Serif 4',Charter,Georgia,serif;font-size:20pt;font-weight:700;color:var(--lilac);letter-spacing:-.5px;line-height:1}
+.ph .brand .tag{font-size:8.5pt;color:var(--muted);line-height:1.35;font-weight:500;border-left:1px solid var(--line);padding-left:14px;max-width:78mm}
+.ph .brand .tag b{color:var(--lilac);font-weight:600;display:block;font-size:9.5pt}
+.ph .meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;font-size:8.5pt;color:var(--muted);line-height:1.4;flex-shrink:0}
+.ph .ph-bctu-logo{height:30px;width:auto;display:block}
+.ph .meta b{color:var(--lilac);font-weight:600}
+.pf{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:6px;margin-top:auto;font-size:8pt;color:var(--muted)}
+.pf .pn{color:var(--lilac);font-weight:600}
+.pf .pf-nihr{height:14px;width:auto;display:block}
+
+.wp-chip{display:inline-block;background:var(--mauve);color:#fff;font-size:7.5pt;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:3px;vertical-align:middle}
+
+.meta-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;background:var(--lilac-tint-2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;margin:0 0 12px}
+.meta-strip .mi{padding:0 8px;border-right:1px solid var(--line)}
+.meta-strip .mi:last-child{border-right:0}
+.meta-strip .mk{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.meta-strip .mv{font-size:9.5pt;color:var(--lilac);font-weight:600;line-height:1.2;margin-top:1px}
+.meta-strip .mv small{font-weight:500;color:var(--muted);font-size:8.5pt}
+
+h1.title{font-family:'Source Serif 4',Charter,Georgia,serif;font-size:24pt;font-weight:700;color:var(--lilac);margin:0 0 6px;letter-spacing:-.5px;line-height:1.1;background:var(--mauve-tint);padding:5px 12px;border-radius:4px}
+.sub{font-size:10.5pt;color:var(--ink-2);margin:0 0 12px;font-weight:500}
+.sub b{color:var(--lilac)}
+h2.sec{font-size:11pt;font-weight:700;color:var(--lilac);margin:var(--gap-sec) 0 6px;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding-bottom:4px;border-bottom:1px solid var(--line)}
+h2.sec .num{font-size:8.5pt;color:#fff;background:var(--mauve);padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:0;flex-shrink:0}
+h2.sec .hint{margin-left:auto;font-size:8.5pt;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0}
+p.lab{font-size:8pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin:8px 0 4px}
+
+.snap{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 4px}
+.snap .cell{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff;position:relative;overflow:hidden}
+.snap .cell::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--mauve)}
+.snap .cell.lilac::before{background:var(--lilac)}
+.snap .cell.green::before{background:var(--green)}
+.snap .cell.amber::before{background:var(--amber)}
+.snap .cell.red::before{background:var(--red)}
+.snap .k{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.snap .v{font-size:22pt;line-height:1;font-weight:700;color:var(--lilac);font-family:'Source Serif 4',Charter,Georgia,serif;letter-spacing:-.02em;margin-top:3px}
+.snap .v small{font-size:11pt;color:var(--muted);font-weight:500;font-family:Calibri,'Segoe UI',sans-serif;letter-spacing:0}
+.snap .s{font-size:8pt;color:var(--ink-2);margin-top:2px;line-height:1.25}
+
+.health-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:4px}
+.pc{border:1px solid var(--line);border-radius:6px;padding:8px 9px 9px;background:#fff}
+.pc .pct{font-size:8.5pt;font-weight:600;color:var(--lilac);line-height:1.25;margin:0 0 6px;min-height:24px}
+.pc .pcv{font-size:15pt;font-weight:700;line-height:1;font-family:'Source Serif 4',Charter,Georgia,serif;letter-spacing:-.02em}
+.pc .pcb{font-size:7.5pt;color:var(--muted);margin-top:3px;line-height:1.3;min-height:20px}
+.pc .pcs{display:inline-block;margin-top:6px;font-size:7pt;font-weight:700;padding:1px 6px;border-radius:3px;letter-spacing:.06em}
+.pc.g{background:var(--green-tint)} .pc.g .pcv,.pc.g .pcs{color:var(--green)} .pc.g .pcs{background:rgba(47,127,99,.16)}
+.pc.a{background:var(--amber-tint)} .pc.a .pcv,.pc.a .pcs{color:var(--amber)} .pc.a .pcs{background:rgba(181,128,31,.18)}
+.pc.r{background:var(--red-tint)} .pc.r .pcv,.pc.r .pcs{color:var(--red)} .pc.r .pcs{background:rgba(174,63,68,.16)}
+.pc.n{background:var(--grey-tint)} .pc.n .pcv,.pc.n .pcs{color:var(--grey)} .pc.n .pcs{background:rgba(138,133,160,.2)}
+
+.funnel{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:6px;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.fn-step{padding:10px 12px;background:#fff;position:relative;border-right:1px solid var(--line)}
+.fn-step:last-child{border-right:0}
+.fn-step .fk{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.fn-step .fv{font-size:20pt;font-weight:700;color:var(--lilac);font-family:'Source Serif 4',Charter,Georgia,serif;line-height:1;margin-top:2px}
+.fn-step .fs{font-size:8pt;color:var(--ink-2);margin-top:3px}
+.fn-step .fbar{height:5px;border-radius:20px;background:var(--line-soft);margin-top:7px;overflow:hidden}
+.fn-step .fbar span{display:block;height:100%;background:var(--mauve);border-radius:20px}
+.fn-step:nth-child(1) .fbar span{background:var(--lilac)}
+.fn-step:nth-child(2) .fbar span{background:var(--lilac-2)}
+.fn-step:nth-child(4) .fbar span{background:var(--green)}
+
+table.rt{width:100%;border-collapse:collapse;font-size:9pt;margin-top:4px}
+table.rt th{background:var(--lilac);color:#fff;text-align:left;padding:6px 10px;font-weight:600;font-size:8.5pt;letter-spacing:.02em}
+table.rt th:not(:first-child){text-align:right}
+table.rt th.l{text-align:left}
+table.rt td{padding:6px 10px;border-bottom:1px solid var(--line-soft)}
+table.rt td:not(:first-child){text-align:right}
+table.rt td.l{text-align:left}
+table.rt tr:nth-child(even) td{background:var(--lilac-tint-2)}
+table.rt tr:last-child td{border-bottom:0}
+table.rt td.sn{color:var(--lilac);font-weight:500}
+table.rt tr.tot td{background:var(--lilac-tint);font-weight:700;color:var(--lilac);border-top:2px solid var(--lilac)}
+
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:8pt;padding:1px 8px;border-radius:11px;font-weight:600}
+.pill .dot{width:6px;height:6px;border-radius:50%}
+.p-g{background:var(--green-tint);color:var(--green)} .p-g .dot{background:var(--green)}
+.p-a{background:var(--amber-tint);color:var(--amber)} .p-a .dot{background:var(--amber)}
+.p-r{background:var(--red-tint);color:var(--red)} .p-r .dot{background:var(--red)}
+.p-n{background:var(--grey-tint);color:var(--grey)} .p-n .dot{background:var(--grey)}
+.p-i{background:var(--mauve-tint);color:var(--lilac)} .p-i .dot{background:var(--mauve)}
+
+.pb{display:flex;align-items:center;gap:8px}
+.pb .track{flex:1;height:6px;background:var(--line-soft);border-radius:20px;overflow:hidden}
+.pb .fill{height:100%;background:var(--mauve);border-radius:20px}
+.pb .lbl{font-size:8pt;font-weight:600;color:var(--lilac);min-width:38px;text-align:right}
+
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
+.card .ct{font-size:8.5pt;color:var(--lilac);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.chart-wrap{position:relative;height:150px}
+.chart-wrap.tall{height:210px}
+
+.demo{display:flex;gap:6px;margin-top:4px}
+.demo .chip{flex:1;text-align:center;padding:8px 6px;border-radius:6px;background:var(--lilac-tint-2);border:1px solid var(--line)}
+.demo .chip b{display:block;font-size:17pt;font-weight:700;color:var(--lilac);font-family:'Source Serif 4',Charter,Georgia,serif;letter-spacing:-.02em;line-height:1}
+.demo .chip span{display:block;font-size:8pt;color:var(--muted);margin-top:3px}
+
+.keyline{display:flex;gap:16px;align-items:baseline;font-size:9pt;background:var(--mauve-tint-2);border-left:3px solid var(--mauve);padding:6px 12px;border-radius:0 4px 4px 0;margin:6px 0 2px;flex-wrap:wrap}
+.keyline span{color:var(--muted)}
+.keyline span b{color:var(--lilac);font-weight:600}
+.note{font-size:8pt;color:var(--muted);font-style:italic;margin-top:6px;line-height:1.4}
+
+.sw-grid{display:grid;grid-template-columns:1fr 2.1fr;gap:12px;margin-top:4px}
+.sw-cell{border:1px solid var(--line);border-radius:6px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:4px}
+.sw-cell .lab2{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.sw-cell .big{font-size:28pt;font-weight:700;font-family:'Source Serif 4',Charter,Georgia,serif;line-height:1;letter-spacing:-.02em;color:var(--lilac)}
+.sw-cell .big small{font-size:13pt;color:var(--muted);font-family:Calibri,'Segoe UI',sans-serif;font-weight:500}
+.sw-cell.ok{background:var(--green-tint);border-color:#bfe0d1} .sw-cell.ok .big{color:var(--green)}
+.sw-cell.wd{background:var(--amber-tint);border-color:#eed7a8} .sw-cell.wd .big{color:var(--amber)}
+.sw-cell .det{font-size:9pt;color:var(--ink-2);margin-top:4px;line-height:1.45}
+.sw-cell .det b{color:var(--lilac);font-weight:600}
+
+.ml-grp{border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff;margin-top:4px}
+.ml-grp + .ml-grp{margin-top:6px}
+.ml-grp-h{display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--lilac-tint-2);border-bottom:1px solid var(--line);font-size:8.5pt;font-weight:700;color:var(--lilac);letter-spacing:.04em;text-transform:uppercase}
+.ml-grp-h .gpcnt{margin-left:auto;font-weight:500;color:var(--muted);letter-spacing:0;text-transform:none}
+.ml-row{display:grid;grid-template-columns:1fr 120px 110px;gap:8px;align-items:center;padding:6px 12px;border-top:1px solid var(--line-soft)}
+.ml-grp-h + .ml-row{border-top:0}
+.ml-row:nth-child(odd){background:#FCFBFE}
+.ml-name{font-size:9.5pt;color:var(--lilac);font-weight:500;display:flex;align-items:center;gap:8px}
+.ml-name .seq{width:18px;height:18px;border-radius:4px;background:var(--lilac-tint);color:var(--lilac);font-size:7.5pt;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.ml-date{font-size:9pt;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.ml-date.est::before{content:"≈ ";color:var(--muted)}
+.ml-st{justify-self:end}
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com"> <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<div class="doc">
+
+```{r page-helpers}
+ph_header <- function(page_label) {
+  trial_logo_html <- if (nchar(logo_b64) > 0)
+    sprintf('<img class="ph-trial-logo" src="%s" alt="%s logo">', logo_b64, esc(trial_short))
+  else
+    sprintf('<span class="ph-trial-name">%s</span>', esc(trial_short))
+  bctu_logo_html <- if (nchar(bctu_logo_b64) > 0)
+    sprintf('<img class="ph-bctu-logo" src="%s" alt="Birmingham Clinical Trials Unit">',
+            bctu_logo_b64) else ""
+  meta_line <- if (nzchar(page_label))
+    sprintf('<b>%s</b> · %s', esc(report_date_str), esc(page_label))
+  else
+    sprintf('<b>%s</b> · <span style="color:var(--mauve);font-weight:600">Confidential</span>',
+            esc(report_date_str))
+  cat(sprintf(
+'<header class="ph">
+  <div class="brand">%s
+    <div class="tag"><b>%s Study</b><span class="wp-chip">%s</span> Trial Management Group · Progress Report</div>
+  </div>
+  <div class="meta">%s<div>%s</div></div>
+</header>',
+    trial_logo_html, esc(trial_short), esc(wp_label), bctu_logo_html, meta_line))
+}
+
+pf_footer <- function(n_page, n_total = 5) {
+  rt  <- safe(params$report_type, "TMG")
+  ver <- safe(rc$version, "1.0")
+  nihr_html <- if (nchar(nihr_logo_b64) > 0)
+    sprintf('<img class="pf-nihr" src="%s" alt="Funded by NIHR">', nihr_logo_b64) else "<span></span>"
+  cat(sprintf('<footer class="pf"><span>%s %s %s Progress Report v%s (%s)</span>%s<span class="pn">Page %d of %d</span></footer>',
+              esc(trial_short), esc(wp_code), esc(rt), esc(ver),
+              format(Sys.Date(), "%d-%b-%Y"), nihr_html, n_page, n_total))
+}
+
+meta_strip <- function() {
+  cells <- list(
+    c("Chief Investigator", esc(chief_inv)),
+    c("Sponsor · ref", sprintf('%s <small>· %s</small>', esc(sponsor), esc(sponsor_ref))),
+    c("Funder · ref", sprintf('%s <small>· %s</small>', esc(funder), esc(funder_ref))),
+    c("IRAS · CPMS", sprintf('%s <small>· %s</small>', esc(iras), esc(cpms))),
+    c("Target · follow-up", sprintf('%s <small>· %s months</small>',
+                                    fmt_int(sample_size), esc(fu_months))))
+  cat('<div class="meta-strip">')
+  for (c1 in cells)
+    cat(sprintf('<div class="mi"><div class="mk">%s</div><div class="mv">%s</div></div>',
+                c1[1], c1[2]))
+  cat('</div>')
+}
+
+snap_cell <- function(k, v, s, cls = "") {
+  cat(sprintf('<div class="cell %s"><div class="k">%s</div><div class="v">%s</div><div class="s">%s</div></div>',
+              cls, esc(k), v, s))
+}
+
+sec <- function(num, title, hint = "") {
+  cat(sprintf('<h2 class="sec"><span class="num">%s</span> %s%s</h2>', num, esc(title),
+              if (nzchar(hint)) sprintf('<span class="hint">%s</span>', esc(hint)) else ""))
+}
+
+rt_table <- function(headers, rows, align_left = 1, total_row = NULL) {
+  cat('<table class="rt"><thead><tr>')
+  for (i in seq_along(headers))
+    cat(sprintf('<th class="%s">%s</th>', if (i %in% align_left) "l" else "", headers[i]))
+  cat('</tr></thead><tbody>')
+  for (r in rows) {
+    cat('<tr>')
+    for (i in seq_along(r))
+      cat(sprintf('<td class="%s">%s</td>', if (i %in% align_left) "l sn" else "", r[[i]]))
+    cat('</tr>')
+  }
+  if (!is.null(total_row)) {
+    cat('<tr class="tot">')
+    for (i in seq_along(total_row))
+      cat(sprintf('<td class="%s">%s</td>', if (i %in% align_left) "l" else "", total_row[[i]]))
+    cat('</tr>')
+  }
+  cat('</tbody></table>')
+}
+```
+
+<!-- ==========================  PAGE 1 — SUMMARY  ========================== -->
+
+<section class="page">
+
+```{r page1}
+ph_header("")
+meta_strip()
+
+cat(sprintf('<h1 class="title">%s</h1>', esc(sprintf("%s %s — %s progress report",
+  trial_short, wp_code, safe(params$report_type, "TMG")))))
+cat(sprintf('<p class="sub">%s<br><b>%s:</b> %s &nbsp;·&nbsp; <b>Reporting date:</b> %s &nbsp;·&nbsp; <b>Protocol:</b> %s &nbsp;·&nbsp; <b>Sites reported:</b> %s</p>',
+            esc(trial_title), esc(wp_long), esc(wp_design), esc(report_date_str),
+            esc(protocol_v), esc(safe(params$selected_sites, "All sites"))))
+
+sec("01", "Recruitment snapshot")
+cat('<div class="snap">')
+snap_cell("Consented", fmt_int(n_cons),
+          sprintf("of %s target · %s", fmt_int(sample_size), fmt_pct(pct_target, 1)), "lilac")
+snap_cell("Screened", fmt_int(n_screened),
+          sprintf("%s eligible (%s)", fmt_int(n_elig), fmt_pct(pct_elig)), "")
+snap_cell("Open sites", fmt_int(n_sites_open),
+          sprintf("%s per site per month", fmt_num(rate_site_month, 2)), "")
+snap_cell("In follow-up", fmt_int(n_active),
+          sprintf("%s withdrawn (%s)", fmt_int(n_wd), fmt_pct(wd_rate, 1)),
+          band(retention, 85, 75))
+cat('</div>')
+
+sec("02", "Study health", "RAG thresholds are set in Trial Settings → Report content")
+cat('<div class="health-strip">')
+for (h in health_cards) {
+  cat(sprintf('<div class="pc %s"><div class="pct">%s</div><div class="pcv">%s</div><div class="pcb">%s</div><div class="pcs">%s</div></div>',
+              h$b, esc(h$title), fmt_pct(h$val, 1), esc(h$sub), band_word(h$b)))
+}
+cat('</div>')
+
+sec("03", "Screening funnel", "screening_calc = 4 defines eligibility")
+cat('<div class="funnel">')
+fn_max <- max(c(funnel_values, 1))
+fn_subs <- c(
+  sprintf("%s records with screening data", fmt_int(n_screened)),
+  sprintf("%s of screened · %s ineligible", fmt_pct(pct_elig), fmt_int(n_inelig)),
+  sprintf("%s of eligible", fmt_pct(pct_appr)),
+  sprintf("%s of approached · %s of eligible", fmt_pct(pct_cons), fmt_pct(pct_recruit)))
+for (i in seq_along(funnel_labels)) {
+  cat(sprintf('<div class="fn-step"><div class="fk">%s</div><div class="fv">%s</div><div class="fs">%s</div><div class="fbar"><span style="width:%.1f%%"></span></div></div>',
+              esc(funnel_labels[i]), fmt_int(funnel_values[i]), fn_subs[i],
+              100 * funnel_values[i] / fn_max))
+}
+cat('</div>')
+cat(sprintf('<p class="note">Consent is the point of entry to WP4 — there is no randomisation. Registration date is taken from <code>%s</code>; participants with no screening record are excluded from the funnel denominators.</p>',
+            esc(F$screen_date)))
+
+sec("04", "Key milestones",
+    sprintf("%d of %d complete", length(ms_complete), length(ms)))
+groups <- unique(vapply(ms, function(m) safe(m$group, "Milestones"), character(1)))
+seq_n <- 0
+for (g in groups) {
+  items <- Filter(function(m) identical(safe(m$group, "Milestones"), g), ms)
+  done  <- sum(vapply(items, function(m) identical(m$status, "complete"), logical(1)))
+  cat(sprintf('<div class="ml-grp"><div class="ml-grp-h">%s<span class="gpcnt">%d of %d complete</span></div>',
+              esc(g), done, length(items)))
+  for (m in items) {
+    seq_n <- seq_n + 1
+    st <- safe(m$status, "upcoming")
+    pill <- switch(st, complete = '<span class="pill p-g"><span class="dot"></span>Complete</span>',
+                       upcoming = '<span class="pill p-i"><span class="dot"></span>Upcoming</span>',
+                       '<span class="pill p-n"><span class="dot"></span>Estimated</span>')
+    cat(sprintf('<div class="ml-row"><div class="ml-name"><span class="seq">%d</span>%s</div><div class="ml-date %s">%s</div><div class="ml-st">%s</div></div>',
+                seq_n, esc(safe(m$name, "")),
+                if (identical(st, "estimated")) "est" else "",
+                esc(safe(m$date, "TBC")), pill))
+  }
+  cat('</div>')
+}
+
+pf_footer(1)
+```
+
+</section>
+
+<!-- =======================  PAGE 2 — RECRUITMENT  ========================= -->
+
+<section class="page">
+
+```{r page2}
+ph_header("Recruitment")
+sec("05", "Recruitment against plan")
+
+cat(sprintf('<div class="keyline"><span>Consented: <b>%s</b></span><span>Expected by %s: <b>%s</b></span><span>Against plan: <b>%s</b></span><span>Rate: <b>%s per month</b> (%s per site)</span><span>First registration: <b>%s</b></span><span>Most recent: <b>%s</b></span></div>',
+            fmt_int(n_cons), format(today, "%b %y"), fmt_int(expected_to_date),
+            fmt_pct(pct_vs_plan, 1), fmt_num(rate_per_month, 1),
+            fmt_num(rate_site_month, 2), fmt_date(first_rec), fmt_date(last_rec)))
+
+cat('<div class="row2" style="margin-top:8px">')
+cat('<div class="card"><div class="ct">Cumulative recruitment · actual vs plan</div><div class="chart-wrap tall"><canvas id="cumC"></canvas></div></div>')
+cat('<div class="card"><div class="ct">Monthly registrations</div><div class="chart-wrap tall"><canvas id="monC"></canvas></div></div>')
+cat('</div>')
+
+cat(sprintf('<p class="note">The plan line is a linear ramp to %s over %d months from %s. Set <code>recruitment_start</code>, <code>recruitment_months</code> and <code>sample_size</code> in Trial Settings → Report content to match the agreed recruitment schedule.</p>',
+            fmt_int(sample_size), plan_months, format(plan_start, "%b %Y")))
+
+sec("06", "Projection")
+proj_txt <- if (!is.na(months_to_target)) {
+  sprintf("At the current rate of %s per month, the remaining %s participants would be recruited by <b>%s</b>.",
+          fmt_num(rate_per_month, 1), fmt_int(remaining), format(proj_end, "%b %Y"))
+} else {
+  paste("At the current rate the target would not be reached within ten years,",
+        "so no completion date is projected.")
+}
+cat('<div class="sw-grid">')
+cat(sprintf('<div class="sw-cell"><div class="lab2">Recruited to date</div><div class="big">%s<small> / %s</small></div><div class="det">%s of the WP4 target.</div></div>',
+            fmt_int(n_cons), fmt_int(sample_size), fmt_pct(pct_target, 1)))
+cat(sprintf('<div class="sw-cell"><div class="lab2">Projection</div><div class="det">%s</div><div class="det">Months recruiting: <b>%s</b> · Remaining to target: <b>%s</b> · Sites open: <b>%s</b></div></div>',
+            proj_txt, fmt_int(months_active), fmt_int(remaining), fmt_int(n_sites_open)))
+cat('</div>')
+
+sec("07", "Recruitment by month")
+mt_rows <- list()
+show_idx <- which(months_seq <= cur_month)
+if (length(show_idx) > 12) show_idx <- tail(show_idx, 12)
+for (i in show_idx) {
+  mt_rows[[length(mt_rows) + 1]] <- list(
+    month_lab[i], fmt_int(month_actual[i]), fmt_int(cum_actual[i]),
+    fmt_int(cum_target[i]), fmt_pct(pctg(cum_actual[i], cum_target[i]), 0))
+}
+if (length(mt_rows)) {
+  rt_table(c("Month", "Registered", "Cumulative", "Plan", "% of plan"), mt_rows,
+           align_left = 1,
+           total_row = list("Total", fmt_int(sum(month_actual)), fmt_int(n_cons),
+                            fmt_int(expected_to_date), fmt_pct(pct_vs_plan, 0)))
+} else {
+  cat('<p class="note">No registrations recorded yet.</p>')
+}
+
+pf_footer(2)
+```
+
+</section>
+
+<!-- ==================  PAGE 3 — SITES & PARTICIPANTS  ===================== -->
+
+<section class="page">
+
+```{r page3}
+ph_header("Sites & participants")
+sec("08", "Screening and recruitment by site")
+
+if (!is.null(site_tbl) && nrow(site_tbl) > 0) {
+  rows <- lapply(seq_len(nrow(site_tbl)), function(i) list(
+    esc(site_tbl$site[i]), fmt_int(site_tbl$screened[i]), fmt_int(site_tbl$eligible[i]),
+    fmt_int(site_tbl$approached[i]), fmt_int(site_tbl$consented[i]),
+    fmt_pct(site_tbl$rate[i], 0), fmt_date(site_tbl$last[i], "%d %b %y")))
+  rt_table(c("Site", "Screened", "Eligible", "Approached", "Consented",
+             "Eligible → consented", "Last registration"), rows, align_left = 1,
+           total_row = list("All sites", fmt_int(sum(site_tbl$screened)),
+                            fmt_int(sum(site_tbl$eligible)),
+                            fmt_int(sum(site_tbl$approached)),
+                            fmt_int(sum(site_tbl$consented)),
+                            fmt_pct(pct_recruit, 0), fmt_date(last_rec, "%d %b %y")))
+} else {
+  cat('<p class="note">No site identifier in the export — map a site field in Trial Settings → Field mapping to break recruitment down by site.</p>')
+}
+
+sec("09", "Participant characteristics", "consented participants")
+cat('<div class="demo">')
+if (!is.null(age_stats)) {
+  cat(sprintf('<div class="chip"><b>%s</b><span>Median age (IQR %s–%s)</span></div>',
+              fmt_num(age_stats$median, 0), fmt_num(age_stats$q1, 0), fmt_num(age_stats$q3, 0)))
+  cat(sprintf('<div class="chip"><b>%s</b><span>Mean age (range %s–%s)</span></div>',
+              fmt_num(age_stats$mean, 1), fmt_num(age_stats$min, 0), fmt_num(age_stats$max, 0)))
+} else {
+  cat('<div class="chip"><b>—</b><span>Age not available</span></div>')
+}
+if (!is.null(sex_tbl)) {
+  top <- sex_tbl[1, ]
+  cat(sprintf('<div class="chip"><b>%s</b><span>%s</span></div>',
+              fmt_pct(top$pct, 0), esc(top$label)))
+}
+cat(sprintf('<div class="chip"><b>%s</b><span>With discharge date recorded</span></div>',
+            fmt_int(n_cons - n_no_dc_date)))
+cat('</div>')
+
+cat('<div class="row2" style="margin-top:10px">')
+cat('<div class="card"><div class="ct">Age distribution</div><div class="chart-wrap"><canvas id="ageC"></canvas></div></div>')
+cat('<div class="card"><div class="ct">Aetiology of acute pancreatitis</div><div class="chart-wrap"><canvas id="aetC"></canvas></div></div>')
+cat('</div>')
+
+if (!is.null(aetio_tbl)) {
+  cat('<p class="lab">Aetiology detail</p>')
+  rows <- lapply(seq_len(nrow(aetio_tbl)), function(i) list(
+    esc(aetio_tbl$label[i]), fmt_int(aetio_tbl$n[i]), fmt_pct(aetio_tbl$pct[i], 1)))
+  rt_table(c("Cause", "n", "% of consented"), rows, align_left = 1)
+  if (n_codebook_gaps > 0)
+    cat(sprintf('<p class="note">%d coded value(s) on this page have no codebook entry and are shown as raw codes. Add them in Trial Settings → Codebook so they read as labels here.</p>',
+                n_codebook_gaps))
+}
+
+if (!is.null(eth_tbl)) {
+  cat('<p class="lab">Ethnic group</p>')
+  rows <- lapply(seq_len(nrow(eth_tbl)), function(i) list(
+    esc(eth_tbl$label[i]), fmt_int(eth_tbl$n[i]), fmt_pct(eth_tbl$pct[i], 1)))
+  rt_table(c("Ethnic group", "n", "% of consented"), rows, align_left = 1)
+}
+
+pf_footer(3)
+```
+
+</section>
+
+<!-- ==================  PAGE 4 — DATA COMPLETENESS  ======================== -->
+
+<section class="page">
+
+```{r page4}
+ph_header("Data completeness")
+sec("10", "CRF completion", "REDCap form status: 2 = complete, 1 = unverified, 0 = incomplete")
+
+cat(sprintf('<div class="keyline"><span>Overall completion: <b>%s</b></span><span>Consented participants: <b>%s</b></span><span>Forms assessed: <b>%s</b></span></div>',
+            fmt_pct(form_overall, 1), fmt_int(n_cons),
+            if (is.null(form_rows)) "0" else fmt_int(nrow(form_rows))))
+
+if (!is.null(form_rows) && nrow(form_rows) > 0) {
+  rows <- lapply(seq_len(nrow(form_rows)), function(i) {
+    p <- form_rows$pct[i]
+    bar <- sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><div class="lbl">%s</div></div>',
+                   if (is.na(p)) 0 else p, fmt_pct(p, 0))
+    list(esc(form_rows$form[i]), fmt_int(form_rows$due[i]),
+         fmt_int(form_rows$complete[i]), fmt_int(form_rows$unverified[i]),
+         fmt_int(form_rows$incomplete[i]), fmt_int(form_rows$missing[i]), bar)
+  })
+  rt_table(c("Form", "Expected", "Complete", "Unverified", "Incomplete",
+             "Not started", "% complete"), rows, align_left = 1,
+           total_row = list("All forms", fmt_int(sum(form_rows$due)),
+                            fmt_int(sum(form_rows$complete)),
+                            fmt_int(sum(form_rows$unverified)),
+                            fmt_int(sum(form_rows$incomplete)),
+                            fmt_int(sum(form_rows$missing)),
+                            fmt_pct(form_overall, 0)))
+} else {
+  cat('<p class="note">No form status fields found in the export.</p>')
+}
+
+sec("11", "Withdrawals")
+cat('<div class="sw-grid">')
+cat(sprintf('<div class="sw-cell %s"><div class="lab2">Retention</div><div class="big">%s</div><div class="det">%s of %s consented participants remain in follow-up.</div></div>',
+            if (identical(band(retention, 85, 75), "g")) "ok" else "wd",
+            fmt_pct(retention, 1), fmt_int(n_active), fmt_int(n_cons)))
+wd_detail <- if (!is.null(wd_tbl)) paste(
+  sprintf("<b>%s</b> — %s", vapply(wd_tbl$level, esc, character(1)), fmt_int(wd_tbl$n)),
+  collapse = " &nbsp;·&nbsp; ") else "No withdrawals recorded."
+cat(sprintf('<div class="sw-cell"><div class="lab2">Withdrawals by level</div><div class="det">%s</div><div class="det">Withdrawal is any non-blank value in <code>%s</code>. Withdrawn participants are removed from PROM denominators from the point of withdrawal.</div></div>',
+            wd_detail, esc(F$withdraw)))
+cat('</div>')
+
+sec("12", "Data queries and actions")
+actions <- list()
+if (!is.na(form_overall) && form_overall < 95)
+  actions[[length(actions) + 1]] <- sprintf(
+    "CRF completion is %s — chase the %s outstanding baseline forms with sites.",
+    fmt_pct(form_overall, 1),
+    fmt_int(sum(form_rows$due) - sum(form_rows$complete)))
+if (n_no_dc_date > 0)
+  actions[[length(actions) + 1]] <- sprintf(
+    "%s consented participant(s) have no index discharge date, so their follow-up windows cannot be calculated.",
+    fmt_int(n_no_dc_date))
+if (!is.na(prom_overall) && prom_overall < 80)
+  actions[[length(actions) + 1]] <- sprintf(
+    "PROM return is %s across all timepoints due — review reminder scheduling (SMS, email, postal).",
+    fmt_pct(prom_overall, 1))
+if (!is.na(pct_vs_plan) && pct_vs_plan < 90)
+  actions[[length(actions) + 1]] <- sprintf(
+    "Recruitment is %s of plan — %s behind the expected %s.",
+    fmt_pct(pct_vs_plan, 1), fmt_int(max(0, expected_to_date - n_cons)),
+    fmt_int(expected_to_date))
+if (n_codebook_gaps > 0)
+  actions[[length(actions) + 1]] <- sprintf(
+    "%d coded value(s) have no codebook entry — add them in Trial Settings → Codebook so reports read as labels.",
+    n_codebook_gaps)
+if (!length(actions))
+  actions[[1]] <- "No actions outstanding: recruitment, data completeness and PROM return are all within threshold."
+rows <- lapply(seq_along(actions), function(i) list(sprintf("%d", i), actions[[i]]))
+cat('<table class="rt"><thead><tr><th class="l" style="width:28px">#</th><th class="l">Action</th></tr></thead><tbody>')
+for (r in rows)
+  cat(sprintf('<tr><td class="l sn">%s</td><td class="l">%s</td></tr>', r[[1]], r[[2]]))
+cat('</tbody></table>')
+
+pf_footer(4)
+```
+
+</section>
+
+<!-- =============  PAGE 5 — FOLLOW-UP, PROMs AND RETENTION  ================ -->
+
+<section class="page">
+
+```{r page5}
+ph_header("Follow-up & PROMs")
+sec("13", "PROM completion by timepoint",
+    "denominator = participants whose window has closed")
+
+cat(sprintf('<div class="keyline"><span>Overall PROM return: <b>%s</b></span><span>6-month return: <b>%s</b></span><span>In follow-up: <b>%s</b></span><span>Follow-up ends at <b>%s months</b> post discharge</span></div>',
+            fmt_pct(prom_overall, 1), fmt_pct(prom_m6, 1), fmt_int(n_active),
+            esc(fu_months)))
+
+if (!is.null(prom_rows) && nrow(prom_rows) > 0) {
+  rows <- lapply(seq_len(nrow(prom_rows)), function(i) {
+    p <- prom_rows$pct[i]
+    bar <- sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><div class="lbl">%s</div></div>',
+                   if (is.na(p)) 0 else p, fmt_pct(p, 0))
+    list(esc(prom_rows$timepoint[i]),
+         if (prom_rows$due[i] == 0) "not yet due" else fmt_int(prom_rows$due[i]),
+         fmt_int(prom_rows$complete[i]), fmt_int(prom_rows$partial[i]),
+         fmt_int(prom_rows$outstanding[i]), bar)
+  })
+  rt_table(c("Timepoint", "Due", "Complete", "Partial", "Outstanding", "% returned"),
+           rows, align_left = 1,
+           total_row = list("All timepoints", fmt_int(sum(prom_rows$due)),
+                            fmt_int(sum(prom_rows$complete)),
+                            fmt_int(sum(prom_rows$partial)),
+                            fmt_int(sum(prom_rows$outstanding)),
+                            fmt_pct(prom_overall, 0)))
+}
+
+cat('<div class="card" style="margin-top:10px"><div class="ct">PROM return by timepoint</div><div class="chart-wrap tall"><canvas id="promC"></canvas></div></div>')
+
+if (length(wp_outcomes)) {
+  sec("14", sprintf("Outcome measures — %s", wp_name),
+      if (nzchar(wp_interv)) sprintf("Intervention: %s", wp_interv) else "")
+  cat('<table class="rt"><thead><tr><th class="l" style="width:28px">#</th><th class="l">Outcome measure</th></tr></thead><tbody>')
+  for (i in seq_along(wp_outcomes))
+    cat(sprintf('<tr><td class="l sn">%d</td><td class="l">%s</td></tr>',
+                i, esc(wp_outcomes[[i]])))
+  cat('</tbody></table>')
+}
+
+sec(if (length(wp_outcomes)) "15" else "14", "How these figures are derived")
+cat('<table class="rt"><thead><tr><th class="l">Metric</th><th class="l">Definition</th></tr></thead><tbody>')
+defs <- list(
+  c("Screened", sprintf("Records with a value in <code>%s</code>.", esc(F$screen_calc))),
+  c("Eligible", sprintf("<code>%s</code> = 4.", esc(F$screen_calc))),
+  c("Approached", sprintf("<code>%s</code> = 1.", esc(F$approached))),
+  c("Consented", sprintf("<code>%s</code> = 1 — the point of entry to the cohort.", esc(F$consent))),
+  c("Registration date", sprintf("<code>%s</code>, the date the REDCap record was created.", esc(F$screen_date))),
+  c("Withdrawn", sprintf("Any non-blank value in <code>%s</code>.", esc(F$withdraw))),
+  c("Form complete", "REDCap form status = 2 (complete); 1 counts as unverified, 0 as incomplete, blank as not started."),
+  c("PROM due", sprintf("Index discharge date (<code>%s</code>) + timepoint offset + window: day 7 &plusmn;3, day 28 &plusmn;3, 3 and 6 months &plusmn;7 days.", esc(F$dc_date))),
+  c("PROM complete", sprintf("Completion flag = 2 in the timepoint's event (<code>%s</code>, <code>%s</code>, <code>%s</code>).",
+                             esc(E$d28), esc(E$m3), esc(E$m6))))
+for (d in defs)
+  cat(sprintf('<tr><td class="l sn">%s</td><td class="l">%s</td></tr>', d[1], d[2]))
+cat('</tbody></table>')
+
+cat(sprintf('<p class="note">Prepared by the %s study office (%s) for the Trial Management Group. Figures are drawn from the REDCap export loaded into the dashboard on %s and cover %s. Participants who withdrew are excluded from follow-up denominators; all other percentages use the denominators stated above.</p>',
+            esc(trial_short), esc(study_mgr), esc(report_date_str),
+            esc(safe(params$selected_sites, "all sites"))))
+
+pf_footer(5)
+```
+
+</section>
+
+</div>
+
+<script>
+(function(){
+  if (typeof Chart === 'undefined') return;
+  const lilac = '#4C3A82', mauve = '#9B7FD4', muted = '#7A7391', grid = '#F0ECF9';
+  Chart.defaults.font.family = 'Calibri, Segoe UI, system-ui, sans-serif';
+  Chart.defaults.font.size = 10;
+  Chart.defaults.color = muted;
+
+  const labels = `r j(month_lab)`;
+  const target = `r j(cum_target)`;
+  const actual = `r j(cum_actual_plot)`;
+  const monthly = `r j(month_actual_plot)`;
+
+  const cumEl = document.getElementById('cumC');
+  if (cumEl) new Chart(cumEl, {
+    type:'line',
+    data:{labels: labels, datasets:[
+      {label:'Plan', data: target, borderColor:'#CFC4E8', borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false, tension:.2},
+      {label:'Actual', data: actual, borderColor: lilac, backgroundColor:'rgba(155,127,212,.20)', fill:true, borderWidth:2, pointBackgroundColor: lilac, pointRadius:2.5, tension:.3, spanGaps:false}
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{boxWidth:10,boxHeight:10,padding:8,font:{size:9}}}},
+      scales:{x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
+              y:{beginAtZero:true,grid:{color:grid},border:{display:false},ticks:{padding:4}}}}
+  });
+
+  const monEl = document.getElementById('monC');
+  if (monEl) new Chart(monEl, {
+    type:'bar',
+    data:{labels: labels, datasets:[{data: monthly, backgroundColor: ctx => (ctx.parsed && ctx.parsed.y) ? mauve : '#EFEAF8', borderRadius:4, maxBarThickness:22}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(c.parsed.y||0)+' registered'}}},
+      scales:{x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
+              y:{beginAtZero:true,grid:{color:grid},border:{display:false},ticks:{stepSize:1,padding:4}}}}
+  });
+
+  const ageEl = document.getElementById('ageC');
+  if (ageEl) new Chart(ageEl, {
+    type:'bar',
+    data:{labels: `r j(age_labels_v)`, datasets:[{data: `r j(age_values_v)`, backgroundColor: lilac, borderRadius:4, maxBarThickness:34}]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false},border:{display:false}},
+              y:{beginAtZero:true,grid:{color:grid},border:{display:false},ticks:{stepSize:1,precision:0}}}}
+  });
+
+  const aetEl = document.getElementById('aetC');
+  if (aetEl) new Chart(aetEl, {
+    type:'bar',
+    data:{labels: `r j(aetio_labels_v)`, datasets:[{data: `r j(aetio_values_v)`, backgroundColor: mauve, borderRadius:4, maxBarThickness:22}]},
+    options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{x:{beginAtZero:true,grid:{color:grid},border:{display:false},ticks:{precision:0}},
+              y:{grid:{display:false},border:{display:false}}}}
+  });
+
+  const promEl = document.getElementById('promC');
+  if (promEl) new Chart(promEl, {
+    type:'bar',
+    data:{labels: `r j(prom_labels)`, datasets:[{data: `r j(prom_pcts)`, backgroundColor: ctx => {
+      const v = ctx.parsed ? ctx.parsed.y : null;
+      if (v == null) return '#EFEAF8';
+      return v >= 80 ? '#2F7F63' : (v >= 60 ? '#B5801F' : '#AE3F44');
+    }, borderRadius:4, maxBarThickness:44}]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(c.parsed.y==null?'not due':c.parsed.y+'% returned')}}},
+      scales:{x:{grid:{display:false},border:{display:false}},
+              y:{beginAtZero:true,max:100,grid:{color:grid},border:{display:false},ticks:{callback:v=>v+'%'}}}}
+  });
+})();
+</script>

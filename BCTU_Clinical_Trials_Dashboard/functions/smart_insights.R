@@ -21,12 +21,7 @@
 .baseline_rows <- function(raw, cfg) {
   if (is.null(raw)) return(data.frame())
   if (!nrow(raw))   return(raw[0, , drop = FALSE])
-  baseline_evt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-  if ("redcap_event_name" %in% names(raw)) {
-    raw[raw$redcap_event_name == baseline_evt, , drop = FALSE]
-  } else {
-    raw
-  }
+  baseline_rows(raw, cfg)
 }
 
 # Vector of randomisation dates, NA-stripped.

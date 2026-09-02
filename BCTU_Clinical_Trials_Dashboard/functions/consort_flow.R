@@ -329,7 +329,7 @@ consort_counts_live <- function(raw, cfg = current_trial_config()) {
     keep <- !is.na(v) & nzchar(v) & v != "NA"
     out$randomised <- length(unique(ids[keep]))
   } else if ("redcap_event_name" %in% names(raw)) {
-    out$randomised <- length(unique(ids[raw$redcap_event_name == bevt]))
+    out$randomised <- length(unique(baseline_rows(raw, cfg)[[id_col]]))
   } else {
     out$randomised <- length(unique(ids))
   }

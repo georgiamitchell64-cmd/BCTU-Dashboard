@@ -65,6 +65,42 @@ ensure_pandoc <- function() {
 }
 
 # =============================================================================
+# Baseline rows
+# =============================================================================
+# Most participant-level views (demographic breakdowns, the codebook, CONSORT
+# counts, insights) want one row per participant, which in a longitudinal
+# REDCap export means the baseline/registration event's rows.
+#
+# Two things this handles that a plain `raw$redcap_event_name == bevt` did not:
+#   * a config may map several candidate event names (PANORAMA registers
+#     participants under a screening event), so matching is %in%, not ==;
+#   * when the mapped event matches nothing — a renamed event, or a trial
+#     configured before its first export — falling back to an empty frame
+#     silently blanks every demographic view. We fall back to the first row
+#     per participant instead, so views populate and counts stay per-person.
+baseline_rows <- function(raw, cfg = NULL, event_col = "redcap_event_name",
+                          id_col = NULL) {
+  if (is.null(raw) || !is.data.frame(raw) || !nrow(raw)) return(raw)
+  if (!(event_col %in% names(raw))) return(raw)   # flat export: every row is baseline
+
+  bevt <- (cfg$redcap_events$baseline %||% "baseline_arm_1")
+  out  <- raw[as.character(raw[[event_col]]) %in% as.character(unlist(bevt)), ,
+              drop = FALSE]
+  if (nrow(out)) return(out)
+
+  id <- id_col
+  if (is.null(id)) {
+    cand <- c(fld("record_id", default = NULL, cfg = cfg),
+              "record_id", "participant_id", "study_id", "record_v")
+    cand <- cand[!vapply(cand, is.null, logical(1))]
+    id <- intersect(unlist(cand), names(raw))[1]
+  }
+  if (!is.null(id) && !is.na(id) && id %in% names(raw))
+    raw[!duplicated(as.character(raw[[id]])), , drop = FALSE]
+  else raw
+}
+
+# =============================================================================
 # Report templates (per-trial)
 # =============================================================================
 # Each trial keeps its own copy of the report Rmd files in trials/<code>/reports/.
