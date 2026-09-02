@@ -50,11 +50,27 @@ jobs:
         shell: pwsh
         run: Get-ChildItem dist -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
 
+      # Uploaded separately rather than as one bundle: together they are close
+      # to 300MB, and nobody wants to download the installer to get the zip.
       - uses: actions/upload-artifact@v4
         with:
-          name: Site-Contact-Mailer-Windows
+          name: Site-Contact-Mailer-zip-no-install
+          path: site-contact-mailer/dist/*-win.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Site-Contact-Mailer-installer
+          path: site-contact-mailer/dist/*Setup*.exe
+          retention-days: 30
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Site-Contact-Mailer-portable
           path: |
             site-contact-mailer/dist/*.exe
-            site-contact-mailer/dist/*.zip
+            !site-contact-mailer/dist/*Setup*.exe
           retention-days: 30
           if-no-files-found: error
