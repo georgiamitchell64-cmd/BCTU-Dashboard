@@ -37,7 +37,8 @@
     "win": {
       "target": [
         "nsis",
-        "portable"
+        "portable",
+        "zip"
       ],
       "icon": "build/icon.ico",
       "signAndEditExecutable": false

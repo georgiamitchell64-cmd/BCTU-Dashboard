@@ -239,9 +239,22 @@ query fields.
 npm run dist
 ```
 
-Written to `dist/`: an NSIS installer and a portable `.exe`. Windows is the
-only target configured, and the build must run on Windows — cross-building from
-Linux needs wine and gains nothing here.
+Written to `dist/`:
+
+| File | What it is |
+| --- | --- |
+| `Site Contact Mailer Setup <version>.exe` | The installer. Installs per-user, so no admin rights are needed. |
+| `site-contact-mailer-<version>-win.zip` | The same app with no installer. Unzip it anywhere and run `Site Contact Mailer.exe` — the option to reach for on a managed machine that blocks installers. |
+| `Site Contact Mailer <version>.exe` | A single portable executable. |
+
+Windows is the only target configured, and the build must run on Windows —
+cross-building from Linux needs wine and gains nothing here.
+
+**Or let GitHub build it.** The *Mailer build (Windows)* workflow runs on every
+push that touches the app, and can be started by hand from the Actions tab. It
+runs the tests, builds all three, and attaches them to the run as an artifact
+called `Site-Contact-Mailer-Windows` — which downloads as a zip. That saves
+needing a Windows machine with Node on it.
 
 **On a managed Windows machine**, the build config sets
 `win.signAndEditExecutable: false`. Without it, electron-builder downloads its
