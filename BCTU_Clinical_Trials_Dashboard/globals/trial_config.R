@@ -85,6 +85,65 @@ wp_effective_target <- function(cfg, active_wp = NULL) {
 }
 
 
+#' Does this trial randomise?
+#' Observational cohorts, registries and single-arm studies register or consent
+#' participants instead — PANORAMA WP4 is one — so the dashboard should not
+#' call them "randomised". Decided by `recruitment_model` if the config sets
+#' one, else `trial_type`, else by whether a randomisation field is mapped.
+is_randomised_trial <- function(cfg = .TRIAL_CFG) {
+  if (is.null(cfg)) return(TRUE)
+  model <- tolower(as.character(cfg$recruitment_model %||% ""))
+  if (nzchar(model)) return(model %in% c("randomised", "randomized", "random"))
+  tt <- tolower(as.character(cfg$trial_type %||% ""))
+  if (nzchar(tt)) return(grepl("random|blind|platform", tt))
+  rnd <- cfg$redcap_fields$randomisation_datetime
+  !is.null(rnd) && nzchar(as.character(rnd))
+}
+
+#' Recruitment vocabulary for the active trial.
+#' @param key "past" (randomised / registered), "noun" (randomisations /
+#'   registrations), "total_label" (Total randomised / Total registered) or
+#'   "event" (randomisation / registration).
+recruit_term <- function(key = "past", cfg = .TRIAL_CFG) {
+  rand <- is_randomised_trial(cfg)
+  switch(key,
+    past        = if (rand) "randomised"       else "registered",
+    noun        = if (rand) "randomisations"   else "registrations",
+    event       = if (rand) "randomisation"    else "registration",
+    total_label = if (rand) "Total randomised" else "Total registered",
+    if (rand) "randomised" else "registered")
+}
+
+#' Work-package context for reports and headers.
+#' Returns the active work package's index, label, target and — where the
+#' config defines `work_package_meta` — its design, outcome measures and
+#' interventions, which differ per WP in multi-WP studies. With no WP selected
+#' the whole-study values come back with a NULL index.
+wp_report_context <- function(cfg, active_wp = NULL) {
+  if (is.null(cfg)) return(NULL)
+  wps <- cfg$work_packages
+  idx <- suppressWarnings(as.integer(active_wp %||% NA))
+  if (length(idx) != 1 || is.na(idx) || idx < 1 || idx > length(wps %||% list()))
+    idx <- NA_integer_
+
+  label <- if (!is.na(idx))
+    sub("^WKP[0-9]+:\\s*", "", as.character(wps[[idx]])) else NULL
+  meta <- cfg$work_package_meta
+  m <- if (!is.na(idx) && !is.null(meta) && length(meta) >= idx)
+    meta[[idx]] else list()
+
+  list(
+    index            = if (is.na(idx)) NULL else idx,
+    code             = if (is.na(idx)) NULL else sprintf("WP%d", idx),
+    label            = m$label %||% label,
+    design           = m$design,
+    target           = wp_effective_target(cfg, if (is.na(idx)) NULL else idx),
+    outcomes         = m$outcomes,
+    interventions    = m$interventions,
+    follow_up_months = m$follow_up_months)
+}
+
+
 # Process-wide cache for discover_trials(), keyed by trials_dir. Invalidated
 # automatically when any config.R / overrides.json is added, removed or changed
 # (the fingerprint includes file paths + mtimes). This avoids re-sourcing every

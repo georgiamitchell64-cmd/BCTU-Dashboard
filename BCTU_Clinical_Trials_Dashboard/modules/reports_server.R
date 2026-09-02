@@ -572,6 +572,8 @@ reports_server <- function(input, output, session, state) {
               custom_sections = collect_custom_sections(),
               completeness_style = input$completeness_style %||% "heatmap",
               report_content  = rv$trial_config$report_content,
+              column_labels   = rv$trial_config$column_labels,
+              work_package    = wp_report_context(rv$trial_config, rv$active_wp),
               logo_path       = resolve_logo_path(rv$trial_config)
             ), rmd_dest),
             envir             = new.env(parent = globalenv()),
@@ -614,7 +616,9 @@ reports_server <- function(input, output, session, state) {
               screening_xlsx_path = "screening/TONIC_screening.xlsx",
               report_type       = rt,   # "TMG" or "iTMG"
               completeness_style = input$completeness_style %||% "heatmap",
-              report_content    = rv$trial_config$report_content
+              report_content    = rv$trial_config$report_content,
+              column_labels     = rv$trial_config$column_labels,
+              work_package      = wp_report_context(rv$trial_config, rv$active_wp)
             ), rmd_dest),
             envir             = new.env(parent = globalenv()),
             intermediates_dir = tmp_dir,
@@ -1414,6 +1418,8 @@ reports_server <- function(input, output, session, state) {
               reviewed_by         = input$reviewed_by,
               completeness_style  = input$completeness_style %||% "heatmap",
               report_content      = cfg$report_content,
+              column_labels       = cfg$column_labels,
+              work_package        = wp_report_context(cfg, rv$active_wp),
               logo_path           = resolve_logo_path(cfg)
             ), rmd_dest),
             envir             = new.env(parent = globalenv()),
@@ -1452,7 +1458,9 @@ reports_server <- function(input, output, session, state) {
             crf_csv_path        = latest_crf_path,
             report_type         = report_type_param,
             completeness_style  = input$completeness_style %||% "heatmap",
-            report_content      = cfg$report_content
+            report_content      = cfg$report_content,
+            column_labels       = cfg$column_labels,
+            work_package        = wp_report_context(cfg, rv$active_wp)
           ), rmd_dest),
           envir             = new.env(parent = globalenv()),
           intermediates_dir = tmp_dir,
@@ -1688,7 +1696,9 @@ reports_server <- function(input, output, session, state) {
           crf_csv_path      = latest_crf_path,
           report_type       = tmpl_choice,
           completeness_style = input$completeness_style %||% "heatmap",
-          report_content    = cfg$report_content
+          report_content    = cfg$report_content,
+          column_labels     = cfg$column_labels,
+          work_package      = wp_report_context(cfg, rv$active_wp)
         ), rmd_dest),
         envir = new.env(parent = globalenv()),
         intermediates_dir = tmp_dir, clean = TRUE, quiet = TRUE)

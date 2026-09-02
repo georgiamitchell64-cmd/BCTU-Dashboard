@@ -24,12 +24,7 @@ trial_selector_server <- function(input, output, session, state) {
     if (is.null(raw) || !"record_id" %in% names(raw)) return(0L)
     id_col <- cfg$redcap_fields$record_id %||% "record_id"
     if (!id_col %in% names(raw)) id_col <- "record_id"
-    baseline <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    if ("redcap_event_name" %in% names(raw)) {
-      length(unique(raw[[id_col]][raw$redcap_event_name == baseline]))
-    } else {
-      length(unique(raw[[id_col]]))
-    }
+    length(unique(baseline_rows(raw, cfg)[[id_col]]))
   }
 
   .status_pill <- function(pct) {

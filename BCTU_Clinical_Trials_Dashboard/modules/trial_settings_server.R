@@ -300,6 +300,29 @@ trial_settings_server <- function(input, output, session, state) {
           }))
     }) else list(div(class = "sch-hint", "No coded columns need labels."))
     
+    # Codebook: every other coded column in the export. The demographic cards
+    # above already cover the columns shown as breakdowns, so those are
+    # excluded here — two text inputs with the same id would collide.
+    coded <- tryCatch(detect_coded_columns(raw, cfg), error = function(e) list())
+    shown <- vapply(editable, function(ci) ci$col, character(1))
+    coded <- Filter(function(ci) !(ci$col %in% shown), coded)
+    codebook_cards <- if (length(coded)) lapply(coded, function(ci) {
+      div(class = "dg-col",
+          div(class = "dg-col-head",
+              span(class = "dg-col-title", ci$label),
+              span(class = "dg-col-var", paste0("(", ci$col, ")")),
+              if (isTRUE(ci$labelled))
+                span(class = "mu-pill mu-pill-ok", style = "margin-left:auto;", "Labelled")),
+          lapply(ci$values, function(v) {
+            div(class = "dg-row",
+                span(class = "dg-code", paste0(v, " =")),
+                textInput(paste0("setlbl_", ci$col, "___", v), label = NULL,
+                          value = ci$suggested[[v]] %||% "",
+                          placeholder = paste0("Meaning of code ", v), width = "100%"))
+          }))
+    }) else list(div(class = "sch-hint",
+                     "No other coded fields found in the current export."))
+
     tagList(
       div(class = "dg-section-label", "Show these breakdowns"),
       checkboxGroupInput("set_bd_choice", label = NULL,
@@ -309,7 +332,12 @@ trial_settings_server <- function(input, output, session, state) {
           div(class = "dg-section-label", "Group names"),
           div(class = "sch-hint", style = "margin-bottom:10px;",
               "Rename the groups shown for each coded value. Existing names are pre-filled."),
-          label_cards)
+          label_cards),
+      div(class = "sch-subforms",
+          div(class = "dg-section-label", "Codebook — other coded fields"),
+          div(class = "sch-hint", style = "margin-bottom:10px;",
+              "What each number means in the rest of the export (aetiology, severity, withdrawal level, yes/no fields). Saved names are used by the participant views and the TMG report."),
+          codebook_cards)
     )
   })
   outputOptions(output, "settings_demographics_ui", suspendWhenHidden = FALSE)

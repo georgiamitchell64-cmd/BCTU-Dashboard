@@ -45,8 +45,18 @@ overview_server <- function(input, output, session, state) {
       div(class = "pov-card-head",
           tags$h3("CONSORT flow"),
           span(class = "pov-card-tool-note",
-               "Participant flow — randomisation, follow-up and withdrawals by type")),
+               sprintf("Participant flow — %s, follow-up and withdrawals by type",
+                       recruit_term("event", rv$trial_config)))),
       HTML(consort_html(counts, cfg)))
+  })
+
+  # Recruitment vocabulary follows the trial's model: a cohort study registers
+  # participants, it does not randomise them.
+  output$kpi_rand_label <- renderText({
+    recruit_term("total_label", rv$trial_config)
+  })
+  output$sites_bubble_note <- renderText({
+    paste("Bubble size =", recruit_term("noun", rv$trial_config))
   })
 
   # ── Per-work-package roll-up ──────────────────────────────────────────────
@@ -105,7 +115,8 @@ overview_server <- function(input, output, session, state) {
       bar_lbl <- if (has_tgt) sprintf("%d%% of %d target", pct, x$target)
                  else sprintf("%d%% of trial total", pct)
       last_lbl <- if (inherits(x$last, "Date") && !is.na(x$last))
-                    paste("Last:", format(x$last, "%d %b %Y")) else "No randomisations yet"
+                    paste("Last:", format(x$last, "%d %b %Y")) else
+                    paste("No", recruit_term("noun", rv$trial_config), "yet")
       nm <- pretty(x$label); if (!nzchar(nm)) nm <- paste0("Work package ", x$i)
 
       tags$button(

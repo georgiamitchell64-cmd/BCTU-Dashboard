@@ -21,7 +21,51 @@ trial_config <- list(
   name         = "PANORAMA — post-discharge care pathways after acute pancreatitis",
   short_name   = "PANORAMA",
   work_package = "WP4",
-  trial_target = 1017L,
+  trial_type   = "observational",
+  # No randomisation: participants are screened, consented and then followed
+  # up. The dashboard reads this to label recruitment "registered", not
+  # "randomised".
+  recruitment_model = "registration",
+  trial_target = 1017L,          # WP4 — the work package this dashboard tracks
+
+  # ── Work packages ─────────────────────────────────────────────────────────
+  # Each WP has its own design, target and outcome measures; the WP picker and
+  # the TMG report read them from here (see wp_report_context()).
+  work_packages = c("WKP1: Conceptual framework",
+                    "WKP2: Patient experience interviews",
+                    "WKP3: Clinician interviews",
+                    "WKP4: Cohort study",
+                    "WKP5: Implementation workshop"),
+  work_package_targets = c(80L, 30L, 30L, 1017L, 30L),
+  work_package_meta = list(
+    list(label = "Conceptual framework",
+         design = "Consensus development",
+         interventions = "None — consensus exercise",
+         outcomes = c("Conceptual framework for a gold-standard post-discharge pathway")),
+    list(label = "Patient experience interviews",
+         design = "Qualitative interview study",
+         interventions = "None — interviews",
+         outcomes = c("Patient experience of post-discharge care",
+                      "Groups at highest risk of health service use (with WP4)")),
+    list(label = "Clinician interviews",
+         design = "Qualitative interview study",
+         interventions = "None — interviews",
+         outcomes = c("Clinician approaches to post-discharge care")),
+    list(label = "Cohort study",
+         design = "Prospective observational cohort",
+         interventions = "None — standard care; no clinical intervention",
+         follow_up_months = 6,
+         outcomes = c(
+           "Health resource utilisation in the 6 months after discharge",
+           "Onset of anxiety or depression (GAD-7, PHQ-9)",
+           "Healthcare costs related to acute pancreatitis",
+           "Quality of life (EQ-5D-5L)",
+           "Pancreatic exocrine insufficiency (PEI-Q)",
+           "Return to work and normal activities")),
+    list(label = "Implementation workshop",
+         design = "Co-production workshop",
+         interventions = "None — workshop",
+         outcomes = c("Co-produced interventions for post-discharge care pathways"))),
 
   logo_file = file.path(.panorama_dir, "www", "logo.png"),
   colors = list(

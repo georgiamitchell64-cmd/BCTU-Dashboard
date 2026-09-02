@@ -22,6 +22,8 @@ params:
   report_type: "TMG"
   completeness_style: "heatmap"
   report_content: NULL
+  column_labels: NULL
+  work_package: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -68,11 +70,23 @@ rc  <- params$report_content %||% list()
 kpi <- rd$kpis %||% list()
 
 # ── Study identity ───────────────────────────────────────────────────────────
+# Work-package context: which WP this report covers, and its own target,
+# follow-up length and outcome measures. Supplied by the dashboard from the
+# active WP pill; falls back to WP4, the cohort study.
+wp <- params$work_package %||% list()
 trial_short  <- safe(rc$short_name, "PANORAMA")
-wp_label     <- safe(rc$work_package, "Work Package 4")
+wp_code      <- safe(wp$code,  safe(rc$work_package_code, "WP4"))
+wp_name      <- safe(wp$label, safe(rc$work_package_name, "Cohort study"))
+wp_design    <- safe(wp$design, safe(rc$work_package_design,
+                                     "Prospective observational cohort"))
+wp_outcomes  <- wp$outcomes %||% (rc$work_package_outcomes %||% character(0))
+wp_interv    <- safe(wp$interventions, safe(rc$work_package_interventions, ""))
+wp_label     <- sprintf("%s · %s", wp_code, wp_name)
+wp_long      <- sprintf("Work package %s — %s",
+                        sub("^WP", "", wp_code), tolower(wp_name))
 trial_title  <- safe(rc$trial_title,
   "oPtimising post-dischArge care pathways after acute paNcreatitis: evaluatiOn of health seRvice utilisAtion, outcoMes")
-trial_sub    <- safe(rc$trial_subtitle, "Work Package 4 — prospective cohort study")
+trial_sub    <- safe(rc$trial_subtitle, sprintf("%s (%s)", wp_long, tolower(wp_design)))
 chief_inv    <- safe(rc$ci, "Mr Matthew Lee")
 study_mgr    <- safe(rc$study_manager, "Dr Michala Pettitt")
 sponsor      <- safe(rc$sponsor, "University of Birmingham")
@@ -82,9 +96,9 @@ funder_ref   <- safe(rc$funder_ref, "NIHR165210")
 iras         <- safe(rc$iras, "349680")
 cpms         <- safe(rc$cpms, "64883")
 protocol_v   <- safe(rc$protocol_version, "v1.1 (11-May-2026)")
-fu_months    <- safe(rc$follow_up_months, 6)
-sample_size  <- suppressWarnings(as.integer(safe(rc$sample_size,
-                                                 safe(kpi$trial_target, 1017))))
+fu_months    <- safe(wp$follow_up_months, safe(rc$follow_up_months, 6))
+sample_size  <- suppressWarnings(as.integer(
+  safe(wp$target, safe(rc$sample_size, safe(kpi$trial_target, 1017)))))
 if (is.na(sample_size)) sample_size <- 1017L
 sites_plan   <- suppressWarnings(as.integer(safe(rc$sites_planned, NA)))
 
@@ -223,6 +237,21 @@ gv <- function(field, event = NULL) {
 as_date <- function(x) stats::setNames(
   suppressWarnings(as.Date(substr(as.character(x), 1, 10))), names(x))
 
+vlabs    <- rc$value_labels %||% list()
+codebook <- params$column_labels %||% list()
+
+# Codebook first (Trial Settings → Demographics & codebook writes it per
+# column), then a report-content override, then the built-in default.
+lab_for <- function(key, field = NULL, fallback = NULL) {
+  col <- if (is.null(field)) NULL else find_col(field)
+  if (!is.null(col) && !is.null(codebook[[col]])) {
+    cb <- unlist(codebook[[col]])
+    cb <- cb[nzchar(as.character(cb))]
+    if (length(cb)) return(cb)
+  }
+  vlabs[[key]] %||% (rc[[paste0(key, "_labels")]] %||% fallback)
+}
+
 # ── Screening funnel ─────────────────────────────────────────────────────────
 v_screen <- gv(F$screen_calc)
 v_appr   <- gv(F$approached)
@@ -262,8 +291,9 @@ pct_target  <- pctg(n_cons, sample_size)
 wd_rate     <- pctg(n_wd, n_cons)
 retention   <- if (is.na(wd_rate)) NA_real_ else round(100 - wd_rate, 1)
 
-wd_labels <- rc$withdraw_labels %||% c("1" = "No study-related follow-up",
-                                       "2" = "No further data collection")
+wd_labels <- lab_for("withdraw", F$withdraw,
+                     c("1" = "No study-related follow-up",
+                       "2" = "No further data collection"))
 wd_tbl <- if (n_wd > 0) {
   code <- as.character(v_wd[wd_ids])
   lbl  <- ifelse(code %in% names(wd_labels), wd_labels[code],
@@ -368,10 +398,6 @@ age_bands <- if (length(age_v)) {
 # Categorical summaries. Codes are mapped through the trial's codebook
 # (rc$value_labels / the *_labels lists); anything unmapped is shown as its
 # raw code so a gap in the codebook is visible rather than silently dropped.
-vlabs <- rc$value_labels %||% list()
-lab_for <- function(key, fallback = NULL)
-  vlabs[[key]] %||% (rc[[paste0(key, "_labels")]] %||% fallback)
-
 cat_tbl <- function(v, labels, who) {
   x <- as.character(v[who]); x <- x[!blank(x)]
   if (!length(x)) return(NULL)
@@ -383,13 +409,13 @@ cat_tbl <- function(v, labels, who) {
   tb[order(-tb$n), , drop = FALSE]
 }
 
-aetio_labels <- lab_for("aetiology", c(
+aetio_labels <- lab_for("aetiology", F$aetiology, c(
   "1" = "Gallstones", "2" = "Alcohol", "3" = "Post-ERCP",
   "4" = "Hypertriglyceridaemia", "5" = "Drug-induced",
   "6" = "Idiopathic", "7" = "Other"))
-sex_labels <- lab_for("sex", c("1" = "Male", "2" = "Female",
-                               "3" = "Other", "4" = "Prefer not to say"))
-eth_labels <- lab_for("ethnicity", NULL)
+sex_labels <- lab_for("sex", F$sex, c("1" = "Male", "2" = "Female",
+                                      "3" = "Other", "4" = "Prefer not to say"))
+eth_labels <- lab_for("ethnicity", F$ethnicity, NULL)
 
 aetio_tbl <- cat_tbl(v_aetio, aetio_labels, cons_ids)
 sex_tbl   <- cat_tbl(v_sex,   sex_labels,   cons_ids)
@@ -712,7 +738,7 @@ pf_footer <- function(n_page, n_total = 5) {
   nihr_html <- if (nchar(nihr_logo_b64) > 0)
     sprintf('<img class="pf-nihr" src="%s" alt="Funded by NIHR">', nihr_logo_b64) else "<span></span>"
   cat(sprintf('<footer class="pf"><span>%s %s %s Progress Report v%s (%s)</span>%s<span class="pn">Page %d of %d</span></footer>',
-              esc(trial_short), esc(wp_label), esc(rt), esc(ver),
+              esc(trial_short), esc(wp_code), esc(rt), esc(ver),
               format(Sys.Date(), "%d-%b-%Y"), nihr_html, n_page, n_total))
 }
 
@@ -770,11 +796,11 @@ rt_table <- function(headers, rows, align_left = 1, total_row = NULL) {
 ph_header("")
 meta_strip()
 
-cat(sprintf('<h1 class="title">%s</h1>', esc(paste0(trial_short, " ", wp_label,
-  " — ", safe(params$report_type, "TMG"), " progress report"))))
-cat(sprintf('<p class="sub">%s<br><b>Reporting date:</b> %s &nbsp;·&nbsp; <b>Protocol:</b> %s &nbsp;·&nbsp; <b>Sites reported:</b> %s</p>',
-            esc(trial_title), esc(report_date_str), esc(protocol_v),
-            esc(safe(params$selected_sites, "All sites"))))
+cat(sprintf('<h1 class="title">%s</h1>', esc(sprintf("%s %s — %s progress report",
+  trial_short, wp_code, safe(params$report_type, "TMG")))))
+cat(sprintf('<p class="sub">%s<br><b>%s:</b> %s &nbsp;·&nbsp; <b>Reporting date:</b> %s &nbsp;·&nbsp; <b>Protocol:</b> %s &nbsp;·&nbsp; <b>Sites reported:</b> %s</p>',
+            esc(trial_title), esc(wp_long), esc(wp_design), esc(report_date_str),
+            esc(protocol_v), esc(safe(params$selected_sites, "All sites"))))
 
 sec("01", "Recruitment snapshot")
 cat('<div class="snap">')
@@ -1087,7 +1113,17 @@ if (!is.null(prom_rows) && nrow(prom_rows) > 0) {
 
 cat('<div class="card" style="margin-top:10px"><div class="ct">PROM return by timepoint</div><div class="chart-wrap tall"><canvas id="promC"></canvas></div></div>')
 
-sec("14", "How these figures are derived")
+if (length(wp_outcomes)) {
+  sec("14", sprintf("Outcome measures — %s", wp_name),
+      if (nzchar(wp_interv)) sprintf("Intervention: %s", wp_interv) else "")
+  cat('<table class="rt"><thead><tr><th class="l" style="width:28px">#</th><th class="l">Outcome measure</th></tr></thead><tbody>')
+  for (i in seq_along(wp_outcomes))
+    cat(sprintf('<tr><td class="l sn">%d</td><td class="l">%s</td></tr>',
+                i, esc(wp_outcomes[[i]])))
+  cat('</tbody></table>')
+}
+
+sec(if (length(wp_outcomes)) "15" else "14", "How these figures are derived")
 cat('<table class="rt"><thead><tr><th class="l">Metric</th><th class="l">Definition</th></tr></thead><tbody>')
 defs <- list(
   c("Screened", sprintf("Records with a value in <code>%s</code>.", esc(F$screen_calc))),
