@@ -218,6 +218,10 @@ Use **Preview** to page through exactly what will be sent before sending it.
 
 ## Running it
 
+Node 22.12 or newer is needed: `npm test` hands a glob to node's own test
+runner, which node only expands itself from 22 onwards, and `rcedit` — which
+stamps the icon into the built `.exe` — requires it too.
+
 ```sh
 npm install
 npm start

@@ -29,9 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 22, not 20: `npm test` passes a glob to node's test runner, which node
+      # only expands itself from 22 onwards, and rcedit requires >= 22.12.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: site-contact-mailer/package-lock.json
 
