@@ -319,6 +319,32 @@ themselves otherwise).
 
 ## Notes for the trial office
 
+**"Windows protected your PC".** The app is not code-signed, so SmartScreen
+warns the first time it runs. What actually triggers it is the *mark of the
+web*: Windows tags anything downloaded from the internet, and extracting a
+zip copies that tag onto every file inside it.
+
+So clear the tag on the zip **before** extracting:
+
+1. Right-click the downloaded `.zip` → *Properties*.
+2. Tick **Unblock**, at the bottom of the General tab → *OK*.
+3. Extract it, then run `Site Contact Mailer.exe`.
+
+Already extracted? Clear it afterwards instead:
+
+```powershell
+Get-ChildItem -Path "C:\path\to\the\folder" -Recurse | Unblock-File
+```
+
+If the warning still appears, its **More info** link — above the buttons, and
+easy to miss — reveals a **Run anyway** button beside *Don't run*.
+
+If there is no *More info* link at all, SmartScreen is set to "warn and
+prevent bypass" by group policy and nothing you do on the machine will get
+past it. That needs IT to allow the app, or the app to be signed with a
+certificate. Signing is the real fix and would remove the warning for
+everyone; until then this is the workaround.
+
 **Old `.xls` files.** ExcelJS cannot read the pre-2007 binary format. Open the
 file in Excel and use *File → Save As → Excel Workbook (.xlsx)*. The app tells
 you this rather than failing with a parse error.
