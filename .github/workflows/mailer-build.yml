@@ -1,0 +1,76 @@
+# Builds the Site Contact Mailer for Windows.
+#
+# Runs on every push that touches the app, and can be started by hand from the
+# Actions tab. Download the result from the run's Artifacts section.
+#
+# It needs a Windows machine: electron-builder targets Windows here, and
+# cross-building from Linux needs wine and gains nothing. Roughly 5 minutes.
+
+name: Mailer build (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'site-contact-mailer/**'
+      - '.github/workflows/mailer-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: site-contact-mailer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 22, not 20: `npm test` passes a glob to node's test runner, which node
+      # only expands itself from 22 onwards, and rcedit requires >= 22.12.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site-contact-mailer/package-lock.json
+
+      - run: npm ci
+
+      # The sample workbook is what the workbook tests read; without it they
+      # skip themselves and the import path goes untested.
+      - run: npm run sample
+      - run: npm test
+
+      - run: npm run dist
+
+      - name: List output
+        shell: pwsh
+        run: Get-ChildItem dist -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      # Uploaded separately rather than as one bundle: together they are close
+      # to 300MB, and nobody wants to download the installer to get the zip.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Site-Contact-Mailer-zip-no-install
+          path: site-contact-mailer/dist/*-win.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Site-Contact-Mailer-installer
+          path: site-contact-mailer/dist/*Setup*.exe
+          retention-days: 30
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Site-Contact-Mailer-portable
+          path: |
+            site-contact-mailer/dist/*.exe
+            !site-contact-mailer/dist/*Setup*.exe
+          retention-days: 30
+          if-no-files-found: error

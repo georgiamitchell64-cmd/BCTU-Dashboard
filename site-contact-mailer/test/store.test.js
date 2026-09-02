@@ -32,7 +32,47 @@ test('a version 1 store is migrated off plain text', () => {
   assert.strictEqual(store.getSettings().bodyFormat, 'html');
   // Other settings must survive the migration untouched.
   assert.strictEqual(store.getSettings().senderAddress, 'me@bham.ac.uk');
-  assert.strictEqual(store.state.version, 2);
+  assert.strictEqual(store.state.version, 3);
+});
+
+test('a version 2 store is migrated to named sites in the charts', () => {
+  // Anonymising was the old default and was never exposed in the UI, so a
+  // stored `true` is the old default rather than a choice to preserve.
+  const { store } = tempStore({
+    version: 2,
+    settings: { ...DEFAULT_SETTINGS, anonymiseOtherSites: true },
+    sites: [],
+    templates: [],
+  });
+  assert.strictEqual(store.getSettings().anonymiseOtherSites, false);
+  assert.strictEqual(store.state.version, 3);
+});
+
+test('completeness movement is measured against the previous import', () => {
+  const { store } = tempStore();
+  const dataset = (percent) => ({
+    sites: [{ key: 'a', siteName: 'A', percent, rank: 1 }],
+    totals: { percent },
+  });
+
+  store.setCompleteness(dataset(70), { importedAt: '2026-06-01T00:00:00.000Z' });
+  assert.strictEqual(store.getCompleteness().sites[0].percentChange, null);
+
+  const second = store.setCompleteness(dataset(85), { importedAt: '2026-07-01T00:00:00.000Z' });
+  assert.strictEqual(second.sites[0].previousPercent, 70);
+  assert.strictEqual(second.sites[0].percentChange, 15);
+  assert.strictEqual(store.state.completenessHistory.length, 2);
+});
+
+test('removing completeness data keeps the history, so movement survives a re-import', () => {
+  const { store } = tempStore();
+  store.setCompleteness({ sites: [{ key: 'a', percent: 70, rank: 1 }], totals: { percent: 70 } });
+  store.clearCompleteness();
+  assert.strictEqual(store.getCompleteness(), null);
+  assert.strictEqual(store.state.completenessHistory.length, 1);
+
+  store.clearCompleteness({ keepHistory: false });
+  assert.strictEqual(store.state.completenessHistory.length, 0);
 });
 
 test('a version 2 store keeps a deliberate plain-text choice', () => {

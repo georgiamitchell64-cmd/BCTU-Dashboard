@@ -12,8 +12,15 @@ const { parseAddressCell } = require('../shared/emails');
 const { sanitizeHtml, cleanPastedHtml } = require('../shared/html');
 const {
   buildCombinedMessage, buildMergeQueue, BUILT_IN_FIELDS, RECRUITMENT_FIELDS,
+  COMPLETENESS_FIELDS, QUALITY_FIELDS,
 } = require('../shared/compose');
 const { detectRecruitmentMapping, buildRecruitment, matchReport } = require('../shared/recruitment');
+const {
+  detectCompletenessMapping, buildCompleteness, completenessMatchReport,
+} = require('../shared/completeness');
+const {
+  detectQueryMapping, buildQueries, queryMatchReport,
+} = require('../shared/queries');
 const { availableBuiltIns } = require('../shared/templates');
 const { buildEml, buildMailto, draftFileName, toNodemailer } = require('../shared/mailer');
 
@@ -201,6 +208,100 @@ handle('recruitment:clear', async () => {
   return true;
 });
 
+// ── Data completeness ─────────────────────────────────────────────────────
+
+let loadedCompletenessWorkbook = null;
+
+handle('completeness:choose', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose a return-rates export',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Spreadsheets', extensions: ['xlsx', 'xlsm', 'csv', 'tsv'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  loadedCompletenessWorkbook = await readWorkbook(result.filePaths[0]);
+  return {
+    filePath: loadedCompletenessWorkbook.filePath,
+    fileName: loadedCompletenessWorkbook.fileName,
+    sheets: loadedCompletenessWorkbook.sheets.map((sheet) => ({
+      name: sheet.name,
+      headers: sheet.headers,
+      rowCount: sheet.rowCount,
+      mapping: detectCompletenessMapping(sheet.headers),
+      preview: sheet.rows.slice(0, 8),
+    })),
+  };
+});
+
+handle('completeness:build', async ({ sheetName, mapping }) => {
+  if (!loadedCompletenessWorkbook) throw new Error('No return-rates file is open.');
+  const sheet = loadedCompletenessWorkbook.sheets.find((s) => s.name === sheetName);
+  if (!sheet) throw new Error(`Sheet "${sheetName}" not found.`);
+  const dataset = buildCompleteness(sheet.rows, mapping, { firstDataRow: sheet.firstDataRow });
+  return { ...dataset, match: completenessMatchReport(dataset, store.getSites()) };
+});
+
+handle('completeness:commit', async ({ dataset, meta }) => {
+  const stored = store.setCompleteness(dataset, meta);
+  return { completeness: stored, match: completenessMatchReport(stored, store.getSites()) };
+});
+
+handle('completeness:clear', async (options) => {
+  store.clearCompleteness(options || {});
+  return true;
+});
+
+// ── Data queries ──────────────────────────────────────────────────────────
+
+let loadedQueryWorkbook = null;
+
+handle('queries:choose', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose a data query export',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Spreadsheets', extensions: ['xlsx', 'xlsm', 'csv', 'tsv'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+
+  loadedQueryWorkbook = await readWorkbook(result.filePaths[0]);
+  return {
+    filePath: loadedQueryWorkbook.filePath,
+    fileName: loadedQueryWorkbook.fileName,
+    sheets: loadedQueryWorkbook.sheets.map((sheet) => ({
+      name: sheet.name,
+      headers: sheet.headers,
+      rowCount: sheet.rowCount,
+      mapping: detectQueryMapping(sheet.headers),
+      preview: sheet.rows.slice(0, 8),
+    })),
+  };
+});
+
+handle('queries:build', async ({ sheetName, mapping }) => {
+  if (!loadedQueryWorkbook) throw new Error('No query export is open.');
+  const sheet = loadedQueryWorkbook.sheets.find((s) => s.name === sheetName);
+  if (!sheet) throw new Error(`Sheet "${sheetName}" not found.`);
+  const dataset = buildQueries(sheet.rows, mapping, { firstDataRow: sheet.firstDataRow });
+  return { ...dataset, match: queryMatchReport(dataset, store.getSites()) };
+});
+
+handle('queries:commit', async ({ dataset, meta }) => {
+  const stored = store.setQueries(dataset, meta);
+  return { queries: stored, match: queryMatchReport(stored, store.getSites()) };
+});
+
+handle('queries:clear', async (options) => {
+  store.clearQueries(options || {});
+  return true;
+});
+
 // ── Stored state ──────────────────────────────────────────────────────────
 
 handle('state:load', async () => ({
@@ -211,10 +312,18 @@ handle('state:load', async () => ({
   lastImport: store.state.lastImport,
   recruitment: store.getRecruitment(),
   recruitmentImport: store.state.recruitmentImport,
+  completeness: store.getCompleteness(),
+  completenessImport: store.state.completenessImport,
+  queries: store.getQueries(),
+  queriesImport: store.state.queriesImport,
   builtInFields: BUILT_IN_FIELDS,
   recruitmentFields: RECRUITMENT_FIELDS,
+  completenessFields: COMPLETENESS_FIELDS,
+  qualityFields: QUALITY_FIELDS,
   builtInTemplates: availableBuiltIns({
     hasRecruitment: Boolean(store.getRecruitment() && store.getRecruitment().sites.length),
+    hasCompleteness: Boolean(store.getCompleteness() && store.getCompleteness().sites.length),
+    hasQueries: Boolean(store.getQueries() && store.getQueries().sites.length),
   }),
   encryptionAvailable: Boolean(safeStorage && safeStorage.isEncryptionAvailable()),
   platform: process.platform,
@@ -244,6 +353,9 @@ function planMessages({ sites, template, mode, options }) {
     // Charts and recruitment figures come from whatever was last imported.
     recruitment: store.getRecruitment(),
     anonymiseOtherSites: settings.anonymiseOtherSites !== false,
+    completeness: store.getCompleteness(),
+    completenessNaming: settings.completenessNaming || 'all',
+    queries: store.getQueries(),
     ...options,
   };
   // "Plain text only" in Settings discards the formatting rather than

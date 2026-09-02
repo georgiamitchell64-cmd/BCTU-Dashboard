@@ -810,6 +810,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .modal-foot .checkline { padding: 0; }
 
 .field-row { display: flex; gap: 0; }
+.field-row.spaced { gap: 10px; }
 .field-row .field { flex: 1 1 0; }
 .field-row .field.grow { flex: 2 1 0; }
 .field-row .field.narrow { flex: 0 0 110px; }
@@ -821,6 +822,17 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
   padding: 4px 16px 10px;
 }
 .mapping-grid .field { padding: 0; }
+.mapping-grid .grid-heading {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--ink-2);
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 2px;
+}
 
 .email-columns { padding: 0 16px 10px; }
 .email-columns h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-2); margin-bottom: 6px; }

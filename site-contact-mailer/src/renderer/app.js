@@ -16,6 +16,14 @@ const state = {
   recruitment: null,
   recruitmentImport: null,
   recruitmentDraft: null,
+  completenessFields: [],
+  qualityFields: [],
+  completeness: null,
+  completenessImport: null,
+  completenessDraft: null,
+  queries: null,
+  queriesImport: null,
+  queriesDraft: null,
   encryptionAvailable: false,
   // 'one' | 'site' | 'person' drives the UI switch; `mode`/`perContact` are
   // the shape the backend (shared/compose.js) actually expects.
@@ -623,6 +631,12 @@ function refreshPlaceholderPicker() {
   // a chart that would come out blank.
   if (state.recruitment && state.recruitment.sites && state.recruitment.sites.length) {
     addGroup('Recruitment', state.recruitmentFields);
+  }
+  if (state.completeness && state.completeness.sites && state.completeness.sites.length) {
+    addGroup('Data completeness', state.completenessFields);
+  }
+  if (state.queries && state.queries.sites && state.queries.sites.length) {
+    addGroup('Data queries', state.qualityFields);
   }
   addGroup('From your spreadsheet', [...extra].sort().map((key) => ({ key, label: key })));
 }
@@ -1436,6 +1450,342 @@ function updateRecruitmentSummary() {
   }
 }
 
+/** Built-in templates appear and disappear with the data they need. */
+async function refreshBuiltInTemplates() {
+  const reloaded = await call(api.loadState(), { silent: true });
+  if (!reloaded) return;
+  state.builtInTemplates = reloaded.builtInTemplates || [];
+  renderTemplateList();
+}
+
+// ── Data completeness ─────────────────────────────────────────────────────
+
+function completenessSheet() {
+  const draft = state.completenessDraft;
+  return draft.workbook.sheets.find((s) => s.name === draft.sheetName);
+}
+
+function renderCompletenessMapping() {
+  const draft = state.completenessDraft;
+  const mapping = draft.mapping;
+  const headers = completenessSheet().headers;
+  $('cmpLayoutPicker').value = mapping.layout;
+  $('cmpBasisPicker').value = mapping.basis || 'due';
+
+  const select = (label, key) => {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const id = `cmp_${key}`;
+    field.innerHTML = `<label for="${id}">${escapeHtml(label)}</label>`;
+    const picker = document.createElement('select');
+    picker.id = id;
+    picker.innerHTML = '<option value="">— none —</option>';
+    for (const header of headers) {
+      const option = document.createElement('option');
+      option.value = header;
+      option.textContent = header;
+      if (mapping[key] === header) option.selected = true;
+      picker.appendChild(option);
+    }
+    picker.addEventListener('change', () => {
+      mapping[key] = picker.value || null;
+      rebuildCompletenessPreview();
+    });
+    field.appendChild(picker);
+    return field;
+  };
+
+  const grid = $('cmpMappingFields');
+  grid.innerHTML = '';
+  grid.append(select('Site name', 'siteName'), select('Site ID (optional)', 'siteId'));
+
+  if (mapping.layout === 'site-percent') {
+    grid.append(select('Completeness %', 'percent'));
+  } else {
+    grid.append(
+      select('Forms due', 'due'),
+      select('Forms entered', 'entered'),
+      select('Forms expected (optional)', 'expected'),
+    );
+    if (mapping.layout === 'long') {
+      grid.append(select('Event / timepoint', 'event'), select('Form', 'form'));
+    }
+  }
+
+  const heading = document.createElement('div');
+  heading.className = 'grid-heading';
+  heading.textContent = 'Data queries (optional)';
+  grid.appendChild(heading);
+  grid.append(
+    select('Queries raised', 'queriesRaised'),
+    select('Queries open', 'queriesOpen'),
+    select('Queries resolved', 'queriesResolved'),
+    select('Queries overdue', 'queriesOverdue'),
+  );
+}
+
+async function rebuildCompletenessPreview() {
+  const draft = state.completenessDraft;
+  const result = await call(api.buildCompleteness({
+    sheetName: draft.sheetName, mapping: draft.mapping,
+  }));
+  if (!result) return;
+  draft.result = result;
+
+  const parts = [plural(result.sites.length, 'site')];
+  if (result.totals.percent !== null) parts.push(`${result.totals.percent}% complete overall`);
+  if (result.hasQueries) parts.push(`${result.totals.queriesOpen} queries open`);
+  $('cmpStats').textContent = parts.join(', ');
+
+  const ranked = [...result.sites].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th>#</th><th>Site</th><th>Complete</th><th>Entered</th>'
+    + '<th>Due</th>' + (result.hasQueries ? '<th>Queries open</th>' : '') + '</tr></thead>';
+  const tbody = document.createElement('tbody');
+  for (const site of ranked.slice(0, 40)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${site.rank ?? '<span class="muted">—</span>'}</td>`
+      + `<td>${escapeHtml(site.siteName)}</td>`
+      + `<td>${site.percent === null ? '<span class="muted">—</span>' : `${site.percent}%`}</td>`
+      + `<td>${site.entered}</td><td>${site.due}</td>`
+      + (result.hasQueries ? `<td>${site.hasQueries ? site.queriesOpen : '<span class="muted">—</span>'}</td>` : '');
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  $('cmpPreview').innerHTML = '';
+  $('cmpPreview').appendChild(table);
+
+  const warn = $('cmpWarnings');
+  if (result.warnings.length === 0) {
+    warn.classList.add('hidden');
+  } else {
+    warn.classList.remove('hidden');
+    const shown = result.warnings.slice(0, 10);
+    warn.innerHTML = `<strong>${plural(result.warnings.length, 'row needs', 'rows need')} a look</strong>`
+      + `<ul>${shown.map((w) => `<li>${w.row ? `Row ${w.row}: ` : ''}${escapeHtml(w.message)}</li>`).join('')}</ul>`;
+  }
+
+  const match = $('cmpMatch');
+  const unmatched = (result.match && result.match.unmatched) || [];
+  const notes = [];
+  if (unmatched.length) {
+    notes.push(`${plural(unmatched.length, 'site')} in your contact list have no completeness row and `
+      + `will get no figures: ${unmatched.slice(0, 6).join(', ')}${unmatched.length > 6 ? '…' : ''}`);
+  }
+  if (!result.hasQueries) {
+    notes.push('No query columns found, so the data-quality fields will be unavailable. '
+      + 'Map them above if your export carries them.');
+  }
+  if (notes.length === 0) {
+    match.classList.add('hidden');
+  } else {
+    match.classList.remove('hidden');
+    match.innerHTML = `<ul>${notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>`;
+  }
+
+  $('btnConfirmCompleteness').disabled = result.sites.length === 0;
+}
+
+async function chooseCompletenessFile() {
+  const workbook = await call(api.chooseCompleteness());
+  if (!workbook) return;
+
+  state.completenessDraft = {
+    workbook,
+    sheetName: workbook.sheets[0].name,
+    mapping: JSON.parse(JSON.stringify(workbook.sheets[0].mapping)),
+  };
+
+  const picker = $('cmpSheetPicker');
+  picker.innerHTML = '';
+  for (const sheet of workbook.sheets) {
+    const option = document.createElement('option');
+    option.value = sheet.name;
+    option.textContent = `${sheet.name} (${plural(sheet.rowCount, 'row')})`;
+    picker.appendChild(option);
+  }
+  picker.disabled = workbook.sheets.length === 1;
+  $('completenessIntro').textContent = `Reading ${workbook.fileName}.`;
+
+  renderCompletenessMapping();
+  await rebuildCompletenessPreview();
+}
+
+function updateCompletenessSummary() {
+  const meta = state.completenessImport;
+  const button = $('btnImportCompleteness');
+  const data = state.completeness;
+  if (data && data.sites && data.sites.length) {
+    button.textContent = data.totals.percent === null
+      ? `Completeness: ${data.sites.length} sites`
+      : `Completeness: ${data.totals.percent}%`;
+    button.title = meta && meta.fileName
+      ? `From ${meta.fileName}. Click to replace.`
+      : 'Click to replace the imported completeness data.';
+  } else {
+    button.textContent = 'Completeness data…';
+    button.title = 'Import the return-rates export for the data completeness fields';
+  }
+}
+
+// ── Data queries ──────────────────────────────────────────────────────────
+
+function querySheet() {
+  const draft = state.queriesDraft;
+  return draft.workbook.sheets.find((s) => s.name === draft.sheetName);
+}
+
+function renderQueryMapping() {
+  const draft = state.queriesDraft;
+  const mapping = draft.mapping;
+  const headers = querySheet().headers;
+  $('qryOverdueDays').value = String(mapping.overdueDays || 30);
+
+  const select = (label, key) => {
+    const field = document.createElement('div');
+    field.className = 'field';
+    const id = `qry_${key}`;
+    field.innerHTML = `<label for="${id}">${escapeHtml(label)}</label>`;
+    const picker = document.createElement('select');
+    picker.id = id;
+    picker.innerHTML = '<option value="">— none —</option>';
+    for (const header of headers) {
+      const option = document.createElement('option');
+      option.value = header;
+      option.textContent = header;
+      if (mapping[key] === header) option.selected = true;
+      picker.appendChild(option);
+    }
+    picker.addEventListener('change', () => {
+      mapping[key] = picker.value || null;
+      rebuildQueryPreview();
+    });
+    field.appendChild(picker);
+    return field;
+  };
+
+  const grid = $('qryMappingFields');
+  grid.innerHTML = '';
+  grid.append(select('Site', 'siteName'), select('Query status', 'status'),
+    select('Date opened', 'opened'), select('Days open', 'duration'),
+    select('Responded & open', 'responded'));
+
+  const heading = document.createElement('div');
+  heading.className = 'grid-heading';
+  heading.textContent = 'Listing a site’s own queries (optional)';
+  grid.appendChild(heading);
+  grid.append(select('Participant / TNo', 'participant'), select('Event', 'event'),
+    select('Form', 'form'), select('Question', 'question'),
+    select('Data category', 'category'));
+}
+
+async function rebuildQueryPreview() {
+  const draft = state.queriesDraft;
+  const result = await call(api.buildQueries({ sheetName: draft.sheetName, mapping: draft.mapping }));
+  if (!result) return;
+  draft.result = result;
+
+  $('qryStats').textContent = `${plural(result.sites.length, 'site')}, `
+    + `${plural(result.totals.raised, 'query', 'queries')}, `
+    + `${result.totals.open} open`;
+
+  // Showing how each status was read is the fastest way to spot one that has
+  // been counted the wrong way round.
+  const statuses = $('qryStatuses');
+  statuses.innerHTML = result.statuses.length
+    ? `Statuses found: ${result.statuses.map((s) => {
+      const unknown = result.unknownStatuses.includes(s.status);
+      return `<strong>${escapeHtml(s.status)}</strong> ×${s.count}${unknown ? ' (read as open)' : ''}`;
+    }).join(', ')}`
+    : '';
+
+  const ranked = [...result.sites].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th>#</th><th>Site</th><th>Raised</th><th>Open</th>'
+    + '<th>Awaiting site</th><th>Overdue</th><th>Resolved</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  for (const site of ranked.slice(0, 40)) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${site.rank ?? '<span class="muted">—</span>'}</td>`
+      + `<td>${escapeHtml(site.siteName)}</td><td>${site.raised}</td><td>${site.open}</td>`
+      + `<td>${site.awaitingSite}</td><td>${site.overdue}</td>`
+      + `<td>${site.resolvedPercent === null ? '<span class="muted">—</span>' : `${site.resolvedPercent}%`}</td>`;
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  $('qryPreview').innerHTML = '';
+  $('qryPreview').appendChild(table);
+
+  const warn = $('qryWarnings');
+  if (result.warnings.length === 0) {
+    warn.classList.add('hidden');
+  } else {
+    warn.classList.remove('hidden');
+    warn.innerHTML = `<strong>${plural(result.warnings.length, 'thing needs', 'things need')} a look</strong>`
+      + `<ul>${result.warnings.slice(0, 10).map((w) => `<li>${w.row ? `Row ${w.row}: ` : ''}${escapeHtml(w.message)}</li>`).join('')}</ul>`;
+  }
+
+  const match = $('qryMatch');
+  const unmatched = (result.match && result.match.unmatched) || [];
+  const notes = [];
+  if (unmatched.length) {
+    notes.push(`${plural(unmatched.length, 'site')} in your contact list have no queries in this `
+      + `export and will get no figures: ${unmatched.slice(0, 6).join(', ')}${unmatched.length > 6 ? '…' : ''}`);
+  }
+  if (!result.sites.some((s) => s.outstanding.some((q) => q.participant || q.form))) {
+    notes.push('No participant or form columns are mapped, so the outstanding-query table '
+      + 'will have little in it.');
+  }
+  if (notes.length === 0) {
+    match.classList.add('hidden');
+  } else {
+    match.classList.remove('hidden');
+    match.innerHTML = `<ul>${notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>`;
+  }
+
+  $('btnConfirmQueries').disabled = result.sites.length === 0;
+}
+
+async function chooseQueryFile() {
+  const workbook = await call(api.chooseQueries());
+  if (!workbook) return;
+
+  state.queriesDraft = {
+    workbook,
+    sheetName: workbook.sheets[0].name,
+    mapping: JSON.parse(JSON.stringify(workbook.sheets[0].mapping)),
+  };
+
+  const picker = $('qrySheetPicker');
+  picker.innerHTML = '';
+  for (const sheet of workbook.sheets) {
+    const option = document.createElement('option');
+    option.value = sheet.name;
+    option.textContent = `${sheet.name} (${plural(sheet.rowCount, 'row')})`;
+    picker.appendChild(option);
+  }
+  picker.disabled = workbook.sheets.length === 1;
+  $('queriesIntro').textContent = `Reading ${workbook.fileName}.`;
+
+  renderQueryMapping();
+  await rebuildQueryPreview();
+}
+
+function updateQueriesSummary() {
+  const meta = state.queriesImport;
+  const button = $('btnImportQueries');
+  const data = state.queries;
+  if (data && data.sites && data.sites.length) {
+    button.textContent = `Queries: ${data.totals.open} open`;
+    button.title = meta && meta.fileName
+      ? `From ${meta.fileName}. Click to replace.`
+      : 'Click to replace the imported query data.';
+  } else {
+    button.textContent = 'Query data…';
+    button.title = 'Import the data query export for the outstanding-query fields';
+  }
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────
 
 function fillSettingsForm() {
@@ -1444,6 +1794,8 @@ function fillSettingsForm() {
   $('forceBcc').checked = Boolean(s.forceBcc);
   $('putSelfInTo').checked = s.putSelfInTo !== false;
   $('bodyFormat').value = s.bodyFormat || 'plain';
+  $('chartNaming').value = s.completenessNaming || 'all';
+  $('anonymiseOtherSites').checked = Boolean(s.anonymiseOtherSites);
   $('smtpHost').value = (s.smtp && s.smtp.host) || '';
   $('smtpPort').value = (s.smtp && s.smtp.port) || 587;
   $('smtpSecure').checked = Boolean(s.smtp && s.smtp.secure);
@@ -1462,6 +1814,8 @@ async function saveSettings() {
     forceBcc: $('forceBcc').checked,
     putSelfInTo: $('putSelfInTo').checked,
     bodyFormat: $('bodyFormat').value,
+    completenessNaming: $('chartNaming').value,
+    anonymiseOtherSites: $('anonymiseOtherSites').checked,
     deliveryMethod: $('deliveryMethod').value,
     smtp: {
       host: $('smtpHost').value.trim(),
@@ -1778,6 +2132,7 @@ function wireEvents() {
     closeModal('recruitmentModal');
     refreshPlaceholderPicker();
     updateRecruitmentSummary();
+    await refreshBuiltInTemplates();
     toast(`Recruitment data loaded for ${plural(saved.recruitment.sites.length, 'site')}`, 'success');
   });
   $('btnClearRecruitment').addEventListener('click', async () => {
@@ -1790,6 +2145,106 @@ function wireEvents() {
     refreshPlaceholderPicker();
     updateRecruitmentSummary();
     toast('Recruitment data removed');
+  });
+
+  $('btnImportCompleteness').addEventListener('click', async () => {
+    openModal('completenessModal');
+    if (!state.completenessDraft) await chooseCompletenessFile();
+  });
+  $('btnChooseCompleteness').addEventListener('click', chooseCompletenessFile);
+  $('cmpSheetPicker').addEventListener('change', (event) => {
+    const draft = state.completenessDraft;
+    draft.sheetName = event.target.value;
+    draft.mapping = JSON.parse(JSON.stringify(completenessSheet().mapping));
+    renderCompletenessMapping();
+    rebuildCompletenessPreview();
+  });
+  $('cmpLayoutPicker').addEventListener('change', (event) => {
+    state.completenessDraft.mapping.layout = event.target.value;
+    renderCompletenessMapping();
+    rebuildCompletenessPreview();
+  });
+  $('cmpBasisPicker').addEventListener('change', (event) => {
+    state.completenessDraft.mapping.basis = event.target.value;
+    rebuildCompletenessPreview();
+  });
+  $('btnConfirmCompleteness').addEventListener('click', async () => {
+    const draft = state.completenessDraft;
+    if (!draft || !draft.result) return;
+    const { match, ...dataset } = draft.result;
+    const importedAt = new Date().toISOString();
+    const saved = await call(api.commitCompleteness({
+      dataset,
+      meta: { fileName: draft.workbook.fileName, sheet: draft.sheetName, importedAt },
+    }));
+    if (!saved) return;
+    state.completeness = saved.completeness;
+    state.completenessImport = { fileName: draft.workbook.fileName, importedAt };
+    closeModal('completenessModal');
+    refreshPlaceholderPicker();
+    updateCompletenessSummary();
+    await refreshBuiltInTemplates();
+    toast(`Completeness data loaded for ${plural(saved.completeness.sites.length, 'site')}`, 'success');
+  });
+  $('btnClearCompleteness').addEventListener('click', async () => {
+    if (!window.confirm('Remove the imported completeness data? The completeness fields will stop working until you import again.')) return;
+    await call(api.clearCompleteness({ keepHistory: true }));
+    state.completeness = null;
+    state.completenessImport = null;
+    state.completenessDraft = null;
+    closeModal('completenessModal');
+    refreshPlaceholderPicker();
+    updateCompletenessSummary();
+    await refreshBuiltInTemplates();
+    toast('Completeness data removed');
+  });
+
+  $('btnImportQueries').addEventListener('click', async () => {
+    openModal('queriesModal');
+    if (!state.queriesDraft) await chooseQueryFile();
+  });
+  $('btnChooseQueries').addEventListener('click', chooseQueryFile);
+  $('qrySheetPicker').addEventListener('change', (event) => {
+    const draft = state.queriesDraft;
+    draft.sheetName = event.target.value;
+    draft.mapping = JSON.parse(JSON.stringify(querySheet().mapping));
+    renderQueryMapping();
+    rebuildQueryPreview();
+  });
+  $('qryOverdueDays').addEventListener('change', (event) => {
+    state.queriesDraft.mapping.overdueDays = Number(event.target.value);
+    rebuildQueryPreview();
+  });
+  $('btnConfirmQueries').addEventListener('click', async () => {
+    const draft = state.queriesDraft;
+    if (!draft || !draft.result) return;
+    const { match, ...dataset } = draft.result;
+    const importedAt = new Date().toISOString();
+    const saved = await call(api.commitQueries({
+      dataset,
+      meta: { fileName: draft.workbook.fileName, sheet: draft.sheetName, importedAt },
+    }));
+    if (!saved) return;
+    state.queries = saved.queries;
+    state.queriesImport = { fileName: draft.workbook.fileName, importedAt };
+    closeModal('queriesModal');
+    refreshPlaceholderPicker();
+    updateQueriesSummary();
+    await refreshBuiltInTemplates();
+    toast(`Query data loaded: ${saved.queries.totals.open} open across `
+      + `${plural(saved.queries.sites.length, 'site')}`, 'success');
+  });
+  $('btnClearQueries').addEventListener('click', async () => {
+    if (!window.confirm('Remove the imported query data? The query fields will stop working until you import again.')) return;
+    await call(api.clearQueries({ keepHistory: true }));
+    state.queries = null;
+    state.queriesImport = null;
+    state.queriesDraft = null;
+    closeModal('queriesModal');
+    refreshPlaceholderPicker();
+    updateQueriesSummary();
+    await refreshBuiltInTemplates();
+    toast('Query data removed');
   });
 
   api.onSendProgress(({ done, total, site }) => {
@@ -1826,6 +2281,12 @@ async function init() {
     state.builtInTemplates = loaded.builtInTemplates || [];
     state.recruitment = loaded.recruitment || null;
     state.recruitmentImport = loaded.recruitmentImport || null;
+    state.completenessFields = loaded.completenessFields || [];
+    state.qualityFields = loaded.qualityFields || [];
+    state.completeness = loaded.completeness || null;
+    state.completenessImport = loaded.completenessImport || null;
+    state.queries = loaded.queries || null;
+    state.queriesImport = loaded.queriesImport || null;
     state.encryptionAvailable = loaded.encryptionAvailable;
     state.sites = (loaded.sites || []).map((site) => ({ ...site, selected: false }));
     $('deliveryMethod').value = state.settings.deliveryMethod || 'eml';
@@ -1836,6 +2297,8 @@ async function init() {
   refreshPlaceholderPicker();
   renderAttachments();
   updateRecruitmentSummary();
+  updateCompletenessSummary();
+  updateQueriesSummary();
   renderDrafts();
 
   // Resume the most recently touched draft, the way Outlook reopens on

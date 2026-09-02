@@ -13,6 +13,8 @@
 
 const { escapeHtml } = require('./html');
 const { formatMonthShort } = require('./recruitment');
+const { THRESHOLD_GOOD, THRESHOLD_WARN, standing } = require('./completeness');
+const { queryStanding } = require('./queries');
 
 // Kept in one place so the whole set can be restyled to the design system
 // without touching the layout code.
@@ -21,6 +23,10 @@ const THEME = {
   other: '#9FB3BC',        // everyone else, muted so the focus bar dominates
   overall: '#00344C',      // trial-wide totals — TONIC's navy
   behind: '#F59E0B',       // under target
+  good: '#2EC4A5',         // at or above 90% — the dashboard's thresholds
+  warn: '#F0A500',         // 70-89%
+  poor: '#E05C3A',         // below 70%
+  gold: '#B8860B',         // league-table medals
   track: '#EDF3F5',        // the unfilled part of a bar
   text: '#06283A',
   muted: '#7B8E99',
@@ -221,6 +227,544 @@ function siteTrendChart(site, options = {}) {
   return chartFrame(title, '', rows);
 }
 
+// ── Data completeness ─────────────────────────────────────────────────────
+
+function rateColour(percent) {
+  if (percent === null || percent === undefined) return THEME.other;
+  if (percent >= THRESHOLD_GOOD) return THEME.good;
+  if (percent >= THRESHOLD_WARN) return THEME.warn;
+  return THEME.poor;
+}
+
+function formatPercent(percent) {
+  return percent === null || percent === undefined ? '—' : `${percent}%`;
+}
+
+/** "up 2", "down 1", "no change" — movement since the previous import. */
+function formatRankChange(change) {
+  if (change === null || change === undefined || change === 0) return '';
+  return change > 0 ? `▲ ${change}` : `▼ ${Math.abs(change)}`;
+}
+
+function ordinal(n) {
+  const suffix = (n % 100 >= 11 && n % 100 <= 13) ? 'th'
+    : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+  return `${n}${suffix}`;
+}
+
+/**
+ * How other sites are labelled. `all` names everyone, `none` anonymises
+ * everyone but the recipient, and `top3` — the default — names the leading
+ * three so the trophy race is public while nobody is named as the laggard.
+ */
+function completenessLabel(site, position, { focusKey, naming }) {
+  if (site.key === focusKey) return site.siteName;
+  if (naming === 'all') return site.siteName;
+  if (naming === 'top3' && site.rank && site.rank <= 3) return site.siteName;
+  return anonymousLabel(position);
+}
+
+function namingNote(naming) {
+  if (naming === 'all') return '';
+  if (naming === 'top3') return 'The leading three sites are named; the rest are shown anonymously.';
+  return 'Other sites are shown anonymously.';
+}
+
+/** Ranked completeness across every site, the recipient's own highlighted. */
+function completenessBarChart(dataset, options = {}) {
+  const {
+    focusKey = null, naming = 'top3', maxRows = 10, title = 'Data completeness by site',
+  } = options;
+  if (!dataset || !dataset.sites || dataset.sites.length === 0) return '';
+
+  const ordered = dataset.sites
+    .filter((s) => s.percent !== null)
+    .sort((a, b) => b.percent - a.percent || a.siteName.localeCompare(b.siteName));
+  if (ordered.length === 0) return '';
+
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+  const focusIndex = ordered.findIndex((s) => s.key === focusKey);
+  const shown = ordered.slice(0, maxRows);
+  const focusOutside = focusIndex >= maxRows;
+  if (focusOutside) shown.push(ordered[focusIndex]);
+
+  const rows = shown.map((site, position) => {
+    const isFocus = site.key === focusKey;
+    const trueIndex = ordered.indexOf(site);
+    const label = completenessLabel(site, trueIndex, { focusKey, naming });
+    const colour = isFocus ? THEME.focus : rateColour(site.percent);
+    const trophy = site.rank === 1 ? '&#127942; ' : '';
+
+    const gap = focusOutside && position === shown.length - 1 && trueIndex > maxRows
+      ? `<tr><td colspan="3" style="font-family:${THEME.font};font-size:9pt;color:${THEME.muted};`
+        + `padding:2px 0;">&#8942;</td></tr>`
+      : '';
+
+    return gap + '<tr>'
+      + cell(
+        `${trophy}${escapeHtml(label)}${isFocus ? ' <span style="color:' + THEME.focus + ';">(you)</span>' : ''}`,
+        { width: LABEL_WIDTH, bold: isFocus, extra: 'padding:3px 8px 3px 0;' },
+      )
+      + `<td width="${barSpace}" style="padding:3px 0;">`
+      + `${bar(site.percent / 100 * barSpace, barSpace, colour)}</td>`
+      + cell(formatPercent(site.percent), {
+        width: VALUE_WIDTH, align: 'right', bold: isFocus, extra: 'padding:3px 0 3px 8px;',
+      })
+      + '</tr>';
+  }).join('');
+
+  const hidden = ordered.length - shown.length;
+  const parts = [namingNote(naming)];
+  if (hidden > 0) parts.push(`${hidden} further site${hidden === 1 ? '' : 's'} not shown.`);
+  return chartFrame(title, parts.filter(Boolean).join(' '), rows);
+}
+
+/**
+ * The trophy table: the top few sites with their position, plus the
+ * recipient's own row when it falls outside them.
+ */
+function completenessLeaderboard(dataset, options = {}) {
+  const {
+    focusKey = null, naming = 'top3', top = 5, title = 'Completeness league table',
+  } = options;
+  if (!dataset || !dataset.sites) return '';
+
+  const ordered = dataset.sites
+    .filter((s) => s.percent !== null)
+    .sort((a, b) => b.percent - a.percent || a.siteName.localeCompare(b.siteName));
+  if (ordered.length === 0) return '';
+
+  const focusIndex = ordered.findIndex((s) => s.key === focusKey);
+  const shown = ordered.slice(0, top);
+  if (focusIndex >= top) shown.push(ordered[focusIndex]);
+
+  const RANK_WIDTH = 46;
+  const MOVE_WIDTH = 52;
+  const nameWidth = CHART_WIDTH - RANK_WIDTH - VALUE_WIDTH - MOVE_WIDTH;
+
+  const header = '<tr>'
+    + cell('#', { width: RANK_WIDTH, size: '9pt', color: THEME.muted, extra: `padding:0 0 4px 0;border-bottom:1px solid ${THEME.rule};` })
+    + cell('Site', { width: nameWidth, size: '9pt', color: THEME.muted, extra: `padding:0 8px 4px 0;border-bottom:1px solid ${THEME.rule};` })
+    + cell('Complete', { width: VALUE_WIDTH, align: 'right', size: '9pt', color: THEME.muted, extra: `padding:0 0 4px 0;border-bottom:1px solid ${THEME.rule};` })
+    + cell('Move', { width: MOVE_WIDTH, align: 'right', size: '9pt', color: THEME.muted, extra: `padding:0 0 4px 8px;border-bottom:1px solid ${THEME.rule};` })
+    + '</tr>';
+
+  const rows = shown.map((site, position) => {
+    const isFocus = site.key === focusKey;
+    const trueIndex = ordered.indexOf(site);
+    const label = completenessLabel(site, trueIndex, { focusKey, naming });
+    const move = formatRankChange(site.rankChange);
+    const moveColour = (site.rankChange || 0) > 0 ? THEME.good : THEME.poor;
+    const background = isFocus ? ' bgcolor="#EEF8F6"' : '';
+
+    const gap = focusIndex >= top && position === shown.length - 1 && trueIndex > top
+      ? `<tr><td colspan="4" style="font-family:${THEME.font};font-size:9pt;color:${THEME.muted};`
+        + `padding:2px 0;">&#8942;</td></tr>`
+      : '';
+
+    return gap + `<tr${background}>`
+      + cell(site.rank === 1 ? '&#127942;' : String(site.rank), {
+        width: RANK_WIDTH, bold: site.rank <= 3, color: site.rank <= 3 ? THEME.gold : THEME.text,
+        extra: 'padding:4px 0;',
+      })
+      + cell(`${escapeHtml(label)}${isFocus ? ' <span style="color:' + THEME.focus + ';">(you)</span>' : ''}`,
+        { width: nameWidth, bold: isFocus, extra: 'padding:4px 8px 4px 0;' })
+      + cell(formatPercent(site.percent), {
+        width: VALUE_WIDTH, align: 'right', bold: isFocus, color: rateColour(site.percent),
+        extra: 'padding:4px 0;',
+      })
+      + cell(move, {
+        width: MOVE_WIDTH, align: 'right', size: '9pt', color: move ? moveColour : THEME.muted,
+        extra: 'padding:4px 0 4px 8px;',
+      })
+      + '</tr>';
+  }).join('');
+
+  const note = [namingNote(naming), 'Move shows places gained or lost since the last update.']
+    .filter(Boolean).join(' ');
+  return chartFrame(title, note, header + rows);
+}
+
+/** Completeness split by timepoint or by form, worst first when asked. */
+function completenessBreakdownChart(rows, options = {}) {
+  const { title = 'Your completeness by form', maxRows = 10, worstFirst = false } = options;
+  if (!rows || rows.length === 0) return '';
+
+  const usable = rows.filter((row) => row.percent !== null);
+  if (usable.length === 0) return '';
+  const ordered = worstFirst ? [...usable].sort((a, b) => a.percent - b.percent) : usable;
+  const shown = ordered.slice(0, maxRows);
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+
+  const body = shown.map((row) => '<tr>'
+    + cell(escapeHtml(row.name), {
+      width: LABEL_WIDTH, size: '9.5pt', extra: 'padding:3px 8px 3px 0;',
+    })
+    + `<td width="${barSpace}" style="padding:3px 0;">`
+    + `${bar(row.percent / 100 * barSpace, barSpace, rateColour(row.percent), { height: 12 })}</td>`
+    + cell(`${formatPercent(row.percent)}`, {
+      width: VALUE_WIDTH, align: 'right', size: '9.5pt', extra: 'padding:3px 0 3px 8px;',
+    })
+    + '</tr>').join('');
+
+  const outstanding = shown.reduce((sum, row) => sum + (row.outstanding || 0), 0);
+  const hidden = ordered.length - shown.length;
+  const parts = [];
+  if (outstanding > 0) parts.push(`${outstanding} form${outstanding === 1 ? '' : 's'} outstanding in the rows shown.`);
+  if (hidden > 0) parts.push(`${hidden} further row${hidden === 1 ? '' : 's'} not shown.`);
+  return chartFrame(title, parts.join(' '), body);
+}
+
+/** The recipient's completeness set against the trial average and the leader. */
+function completenessGauge(site, dataset, options = {}) {
+  const { title = 'Where your site stands', naming = 'top3' } = options;
+  const view = standing(site, dataset);
+  if (!view) return '';
+
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+  const leaderLabel = naming === 'none' ? 'Leading site' : `Leading site (${view.leaderName})`;
+  const lines = [
+    { label: 'Your site', percent: view.percent, colour: THEME.focus, bold: true },
+    { label: 'Trial average', percent: view.meanPercent, colour: THEME.overall, bold: false },
+    { label: view.isLeader ? 'You are leading' : leaderLabel, percent: view.leaderPercent, colour: THEME.gold, bold: false },
+  ].filter((line) => line.percent !== null);
+
+  const body = lines.map((line) => '<tr>'
+    + cell(escapeHtml(line.label), {
+      width: LABEL_WIDTH, bold: line.bold, size: '9.5pt', extra: 'padding:3px 8px 3px 0;',
+    })
+    + `<td width="${barSpace}" style="padding:3px 0;">`
+    + `${bar(line.percent / 100 * barSpace, barSpace, line.colour, { height: 14 })}</td>`
+    + cell(formatPercent(line.percent), {
+      width: VALUE_WIDTH, align: 'right', bold: line.bold, extra: 'padding:3px 0 3px 8px;',
+    })
+    + '</tr>').join('');
+
+  const notes = [`You are ${ordinal(view.rank)} of ${view.of} sites.`];
+  if (view.gapToTop !== null && view.gapToTop > 0) {
+    notes.push(`${view.gapToTop} points behind the leader.`);
+  }
+  if (view.rankChange) {
+    notes.push(view.rankChange > 0
+      ? `Up ${view.rankChange} place${view.rankChange === 1 ? '' : 's'} since the last update.`
+      : `Down ${Math.abs(view.rankChange)} place${Math.abs(view.rankChange) === 1 ? '' : 's'} since the last update.`);
+  }
+  return chartFrame(title, notes.join(' '), body);
+}
+
+/** A site's completeness across the last few imports. */
+function completenessTrendChart(site, options = {}) {
+  const { title = 'Your completeness over time', points = 8 } = options;
+  if (!site || !site.history || site.history.length < 2) return '';
+
+  const series = site.history.slice(-points);
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+  const label = (iso) => {
+    const date = new Date(iso);
+    return Number.isNaN(date.getTime()) ? String(iso) : formatMonthShort(
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+    );
+  };
+
+  const body = series.map((point) => '<tr>'
+    + cell(label(point.importedAt), {
+      width: LABEL_WIDTH, color: THEME.muted, size: '9.5pt', extra: 'padding:2px 8px 2px 0;',
+    })
+    + `<td width="${barSpace}" style="padding:2px 0;">`
+    + `${bar(point.percent / 100 * barSpace, barSpace, rateColour(point.percent), { height: 12 })}</td>`
+    + cell(formatPercent(point.percent), {
+      width: VALUE_WIDTH, align: 'right', size: '9.5pt', extra: 'padding:2px 0 2px 8px;',
+    })
+    + '</tr>').join('');
+
+  return chartFrame(title, '', body);
+}
+
+/** Trial-wide completeness, with the split by timepoint underneath. */
+function overallCompletenessChart(dataset, options = {}) {
+  const { title = 'Data completeness across the whole trial' } = options;
+  if (!dataset || !dataset.totals || dataset.totals.percent === null) return '';
+
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+  const rows = [{ name: 'All timepoints', percent: dataset.totals.percent }]
+    .concat((dataset.totals.byEvent || []).filter((row) => row.percent !== null));
+
+  const body = rows.map((row, index) => '<tr>'
+    + cell(escapeHtml(row.name), {
+      width: LABEL_WIDTH, bold: index === 0, size: '9.5pt', extra: 'padding:3px 8px 3px 0;',
+    })
+    + `<td width="${barSpace}" style="padding:3px 0;">`
+    + `${bar(row.percent / 100 * barSpace, barSpace, index === 0 ? THEME.overall : rateColour(row.percent), { height: index === 0 ? 16 : 12 })}</td>`
+    + cell(formatPercent(row.percent), {
+      width: VALUE_WIDTH, align: 'right', bold: index === 0, extra: 'padding:3px 0 3px 8px;',
+    })
+    + '</tr>').join('');
+
+  const { entered, outstanding, siteCount } = dataset.totals;
+  const note = `${entered} forms entered across ${siteCount} sites`
+    + (outstanding ? `, ${outstanding} still outstanding.` : '.');
+  return chartFrame(title, note, body);
+}
+
+// ── Data queries ──────────────────────────────────────────────────────────
+
+/** Sites ranked on the share of their queries closed. */
+function queryResolutionChart(dataset, options = {}) {
+  const {
+    focusKey = null, naming = 'all', maxRows = 10, title = 'Data queries resolved by site',
+  } = options;
+  if (!dataset || !dataset.sites) return '';
+
+  const ordered = dataset.sites
+    .filter((s) => s.raised > 0)
+    .sort((a, b) => b.resolvedPercent - a.resolvedPercent
+      || a.open - b.open || a.siteName.localeCompare(b.siteName));
+  if (ordered.length === 0) return '';
+
+  const OPEN_WIDTH = 58;
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH - OPEN_WIDTH;
+  const focusIndex = ordered.findIndex((s) => s.key === focusKey);
+  const shown = ordered.slice(0, maxRows);
+  if (focusIndex >= maxRows) shown.push(ordered[focusIndex]);
+
+  const rows = shown.map((site, position) => {
+    const isFocus = site.key === focusKey;
+    const trueIndex = ordered.indexOf(site);
+    const label = completenessLabel(site, trueIndex, { focusKey, naming });
+    const colour = isFocus ? THEME.focus : rateColour(site.resolvedPercent);
+
+    const gap = focusIndex >= maxRows && position === shown.length - 1 && trueIndex > maxRows
+      ? `<tr><td colspan="4" style="font-family:${THEME.font};font-size:9pt;color:${THEME.muted};`
+        + `padding:2px 0;">&#8942;</td></tr>`
+      : '';
+
+    return gap + '<tr>'
+      + cell(`${escapeHtml(label)}${isFocus ? ' <span style="color:' + THEME.focus + ';">(you)</span>' : ''}`,
+        { width: LABEL_WIDTH, bold: isFocus, extra: 'padding:3px 8px 3px 0;' })
+      + `<td width="${barSpace}" style="padding:3px 0;">`
+      + `${bar(site.resolvedPercent / 100 * barSpace, barSpace, colour)}</td>`
+      + cell(formatPercent(site.resolvedPercent), {
+        width: VALUE_WIDTH, align: 'right', bold: isFocus, extra: 'padding:3px 0 3px 8px;',
+      })
+      + cell(`${site.open} open`, {
+        width: OPEN_WIDTH, align: 'right', size: '9pt',
+        color: site.open > 0 ? THEME.text : THEME.muted, extra: 'padding:3px 0 3px 8px;',
+      })
+      + '</tr>';
+  }).join('');
+
+  const note = `${dataset.totals.open} queries outstanding across the trial`
+    + (dataset.totals.overdue ? `, ${dataset.totals.overdue} open longer than ${dataset.overdueDays} days.` : '.');
+  return chartFrame(title, note, rows);
+}
+
+/** A site's own position: resolved, open, and how much is waiting on them. */
+function queryBreakdownChart(site, dataset, options = {}) {
+  const { title = 'Your data queries' } = options;
+  const view = queryStanding(site, dataset);
+  if (!view || view.raised === 0) return '';
+
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+  const lines = [
+    { label: 'Resolved', value: view.closed, colour: THEME.good },
+    { label: 'Open, you have replied', value: view.responded, colour: THEME.overall },
+    { label: 'Open, awaiting your reply', value: view.awaitingSite, colour: THEME.warn },
+    { label: `Open over ${view.overdueDays} days`, value: view.overdue, colour: THEME.poor },
+  ].filter((line) => line.value > 0);
+  if (lines.length === 0) return '';
+
+  const max = Math.max(...lines.map((line) => line.value), 1);
+  const body = lines.map((line) => '<tr>'
+    + cell(escapeHtml(line.label), { width: LABEL_WIDTH, size: '9.5pt', extra: 'padding:3px 8px 3px 0;' })
+    + `<td width="${barSpace}" style="padding:3px 0;">`
+    + `${bar(line.value / max * barSpace, barSpace, line.colour, { height: 14 })}</td>`
+    + cell(String(line.value), {
+      width: VALUE_WIDTH, align: 'right', bold: true, extra: 'padding:3px 0 3px 8px;',
+    })
+    + '</tr>').join('');
+
+  const notes = [`${view.resolvedPercent}% of the ${view.raised} queries raised at your site are closed.`];
+  if (view.rank) notes.push(`That is ${ordinal(view.rank)} of ${view.of} sites.`);
+  return chartFrame(title, notes.join(' '), body);
+}
+
+/** How long the outstanding queries have been sitting there. */
+function queryAgeingChart(bands, options = {}) {
+  const { title = 'How long your queries have been open' } = options;
+  if (!bands || bands.length === 0) return '';
+  const total = bands.reduce((sum, band) => sum + band.count, 0);
+  if (total === 0) return '';
+
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+  const max = Math.max(...bands.map((b) => b.count), 1);
+  // Older is worse, so the palette darkens down the list.
+  const colours = [THEME.good, THEME.overall, THEME.warn, THEME.poor];
+
+  const body = bands.map((band, index) => '<tr>'
+    + cell(escapeHtml(band.name), {
+      width: LABEL_WIDTH, size: '9.5pt', extra: 'padding:3px 8px 3px 0;',
+    })
+    + `<td width="${barSpace}" style="padding:3px 0;">`
+    + `${bar(band.count / max * barSpace, barSpace, colours[index] || THEME.other, { height: 13 })}</td>`
+    + cell(String(band.count), {
+      width: VALUE_WIDTH, align: 'right', bold: band.count > 0, extra: 'padding:3px 0 3px 8px;',
+    })
+    + '</tr>').join('');
+
+  return chartFrame(title, `${total} open in total.`, body);
+}
+
+/** Where the outstanding queries are concentrated — by form, event or category. */
+function queryGroupChart(groups, options = {}) {
+  const { title = 'Where your open queries are', maxRows = 6 } = options;
+  if (!groups || groups.length === 0) return '';
+
+  const shown = groups.slice(0, maxRows);
+  const max = Math.max(...shown.map((g) => g.count), 1);
+  const barSpace = CHART_WIDTH - LABEL_WIDTH - VALUE_WIDTH;
+
+  const body = shown.map((group) => '<tr>'
+    + cell(escapeHtml(group.name || '(not recorded)'), {
+      width: LABEL_WIDTH, size: '9.5pt', extra: 'padding:3px 8px 3px 0;',
+    })
+    + `<td width="${barSpace}" style="padding:3px 0;">`
+    + `${bar(group.count / max * barSpace, barSpace, THEME.focus, { height: 12 })}</td>`
+    + cell(String(group.count), {
+      width: VALUE_WIDTH, align: 'right', size: '9.5pt', extra: 'padding:3px 0 3px 8px;',
+    })
+    + '</tr>').join('');
+
+  const hidden = groups.length - shown.length;
+  return chartFrame(title, hidden > 0 ? `${hidden} further group${hidden === 1 ? '' : 's'} not shown.` : '', body);
+}
+
+/**
+ * The actual outstanding queries, as a table — what a chase email is for.
+ *
+ * Oldest first, because those are the ones that need answering; the question
+ * text is truncated rather than wrapped, so the table stays readable in mail.
+ */
+function queryListTable(queries, options = {}) {
+  const { title = 'Your outstanding queries', maxRows = 15, overdueDays = 30 } = options;
+  if (!queries || queries.length === 0) return '';
+
+  const shown = queries.slice(0, maxRows);
+  const widths = { participant: 62, event: 84, form: 110, question: 170, age: 54 };
+  const head = (text, width, align = 'left') => cell(text, {
+    width, align, size: '9pt', color: THEME.muted,
+    extra: `padding:0 6px 4px 0;border-bottom:1px solid ${THEME.rule};`,
+  });
+
+  const header = '<tr>'
+    + head('ID', widths.participant)
+    + head('Event', widths.event)
+    + head('Form', widths.form)
+    + head('Query', widths.question)
+    + head('Days', widths.age, 'right')
+    + '</tr>';
+
+  const truncate = (text, limit) => {
+    const value = String(text || '');
+    return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
+  };
+
+  const rows = shown.map((query) => {
+    const late = query.days !== null && query.days > overdueDays;
+    const body = (text, width, align = 'left', extra = '') => cell(escapeHtml(text), {
+      width, align, size: '9pt', extra: `padding:3px 6px 3px 0;${extra}`,
+    });
+    return '<tr>'
+      + body(query.participant || query.id, widths.participant)
+      + body(truncate(query.event, 18), widths.event)
+      + body(truncate(query.form, 24), widths.form)
+      + body(truncate(query.question || query.category, 38), widths.question)
+      + cell(query.days === null ? '—' : String(query.days), {
+        width: widths.age, align: 'right', size: '9pt', bold: late,
+        color: late ? THEME.poor : THEME.text, extra: 'padding:3px 0 3px 6px;',
+      })
+      + '</tr>';
+  }).join('');
+
+  const hidden = queries.length - shown.length;
+  const notes = [`Oldest first. Days is how long the query has been open.`];
+  if (hidden > 0) notes.push(`${hidden} further quer${hidden === 1 ? 'y is' : 'ies are'} not listed.`);
+  return chartFrame(title, notes.join(' '), header + rows);
+}
+
+/**
+ * Completeness and queries in one table.
+ *
+ * The two datasets are imported separately, so a site may appear in one and
+ * not the other; a missing figure shows as a dash rather than a zero.
+ */
+function qualityScorecard(completeness, queries, options = {}) {
+  const {
+    focusKey = null, naming = 'all', top = 8, title = 'Data quality scorecard',
+  } = options;
+  if (!completeness || !completeness.sites) return '';
+
+  const ordered = completeness.sites
+    .filter((s) => s.percent !== null)
+    .sort((a, b) => b.percent - a.percent || a.siteName.localeCompare(b.siteName));
+  if (ordered.length === 0) return '';
+
+  const focusIndex = ordered.findIndex((s) => s.key === focusKey);
+  const shown = ordered.slice(0, top);
+  if (focusIndex >= top) shown.push(ordered[focusIndex]);
+
+  const showQueries = Boolean(queries && queries.sites && queries.sites.length);
+  const RANK_WIDTH = 40;
+  const NUM_WIDTH = 74;
+  const nameWidth = CHART_WIDTH - RANK_WIDTH - NUM_WIDTH * (showQueries ? 3 : 1);
+  const head = (text, width, align = 'left') => cell(text, {
+    width, align, size: '9pt', color: THEME.muted,
+    extra: `padding:0 8px 4px 0;border-bottom:1px solid ${THEME.rule};`,
+  });
+
+  const header = '<tr>'
+    + head('#', RANK_WIDTH)
+    + head('Site', nameWidth)
+    + head('Complete', NUM_WIDTH, 'right')
+    + (showQueries ? head('Queries open', NUM_WIDTH, 'right') + head('Resolved', NUM_WIDTH, 'right') : '')
+    + '</tr>';
+
+  const rows = shown.map((site) => {
+    const isFocus = site.key === focusKey;
+    const trueIndex = ordered.indexOf(site);
+    const label = completenessLabel(site, trueIndex, { focusKey, naming });
+    const match = showQueries
+      ? queries.sites.find((q) => q.key === site.key)
+        || queries.sites.find((q) => q.siteName.trim().toLowerCase() === site.siteName.trim().toLowerCase())
+      : null;
+    const background = isFocus ? ' bgcolor="#EEF8F6"' : '';
+
+    return `<tr${background}>`
+      + cell(site.rank === 1 ? '&#127942;' : String(site.rank), {
+        width: RANK_WIDTH, bold: site.rank <= 3, color: site.rank <= 3 ? THEME.gold : THEME.text,
+        extra: 'padding:4px 8px 4px 0;',
+      })
+      + cell(`${escapeHtml(label)}${isFocus ? ' <span style="color:' + THEME.focus + ';">(you)</span>' : ''}`,
+        { width: nameWidth, bold: isFocus, size: '9.5pt', extra: 'padding:4px 8px 4px 0;' })
+      + cell(formatPercent(site.percent), {
+        width: NUM_WIDTH, align: 'right', color: rateColour(site.percent), bold: isFocus,
+        extra: 'padding:4px 8px 4px 0;',
+      })
+      + (showQueries
+        ? cell(match ? String(match.open) : '—', {
+          width: NUM_WIDTH, align: 'right', size: '9.5pt', extra: 'padding:4px 8px 4px 0;',
+        })
+        + cell(match && match.resolvedPercent !== null ? formatPercent(match.resolvedPercent) : '—', {
+          width: NUM_WIDTH, align: 'right', size: '9.5pt',
+          color: match ? rateColour(match.resolvedPercent) : THEME.muted,
+          extra: 'padding:4px 8px 4px 0;',
+        })
+        : '')
+      + '</tr>';
+  }).join('');
+
+  return chartFrame(title, namingNote(naming), header + rows);
+}
+
 module.exports = {
   THEME,
   CHART_WIDTH,
@@ -230,4 +774,20 @@ module.exports = {
   progressChart,
   overallChart,
   siteTrendChart,
+  rateColour,
+  ordinal,
+  formatPercent,
+  completenessLabel,
+  completenessBarChart,
+  completenessLeaderboard,
+  completenessBreakdownChart,
+  completenessGauge,
+  completenessTrendChart,
+  overallCompletenessChart,
+  queryResolutionChart,
+  queryBreakdownChart,
+  queryAgeingChart,
+  queryGroupChart,
+  queryListTable,
+  qualityScorecard,
 };

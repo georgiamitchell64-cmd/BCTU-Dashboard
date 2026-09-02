@@ -7,10 +7,13 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/*.test.js",
+    "test": "node --test \"test/*.test.js\"",
     "sample": "node sample/make-sample.js",
     "icon": "node tools/make-icon.js",
     "dist": "electron-builder --win"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -37,7 +40,8 @@
     "win": {
       "target": [
         "nsis",
-        "portable"
+        "portable",
+        "zip"
       ],
       "icon": "build/icon.ico",
       "signAndEditExecutable": false

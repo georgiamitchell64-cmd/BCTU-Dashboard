@@ -111,11 +111,11 @@ highlighted), `{{progress_chart}}` (their progress against target),
 (the whole trial). Alongside them are plain figures — `{{site_randomised}}`,
 `{{site_rank_of}}`, `{{site_percent}}`, `{{trial_randomised}}` and others.
 
-**Other sites are anonymised by default.** The recipient sees their own site
-named and everyone else as "Site A", "Site B", so they can see exactly where
-they stand without any site being identified to its peers as the worst
-recruiter. Turn that off in Settings if your trial publishes a named league
-table.
+**Sites are named.** The recipient sees their own site highlighted and the
+rest named alongside it, which is what makes a league table worth reading.
+Settings turns that off: *Anonymise other sites in the recruitment chart*
+shows everyone but the recipient as "Site A", "Site B", so nobody is
+identified to their peers as the site furthest behind.
 
 Charts are built from HTML tables with `bgcolor` and pixel widths, not images
 or JavaScript, because Outlook renders mail through Word and blocks both. They
@@ -127,6 +127,114 @@ targets there without editing the trial's export.
 
 The **Monthly recruitment update** template under *Templates → Ready-made*
 puts all of this together, and only appears once recruitment data is loaded.
+
+### Data completeness and queries
+
+**Completeness data…** in the toolbar imports the return-rates export — the
+same file the TONIC dashboard reads — and unlocks a second set of fields and
+charts, for the trophy for the most complete data. Three layouts are read:
+
+| Layout | Looks like |
+| --- | --- |
+| One row per site, event and form | `Site · Event · Form · Expected · Due · Entered · % Due Entered` |
+| One row per site | `Site · Forms Due · Forms Entered` |
+| One row per site, percentage only | `Site · % Complete` |
+
+`.Overall` rows are taken as the trial figure rather than counted as a site,
+and a site with nothing due yet is left out of the league table rather than
+being ranked last on a rate it had no chance to earn.
+
+**Rates are calculated against forms due, not forms expected.** "Expected"
+counts every form a participant will eventually reach, including windows that
+have not opened — Day 90 for someone randomised last week — which would
+deflate the rate. Forms entered before their window opens are capped at due,
+so a site cannot come out above 100%. Both choices match the dashboard, so the
+figure in an email agrees with the figure on screen. *Rate calculated against*
+in the import dialog switches to expected if your trial reports it that way.
+
+The charts are `{{completeness_chart}}` (all sites ranked, the recipient's own
+highlighted), `{{completeness_leaderboard}}` (the league table, with places
+gained or lost since the last import), `{{completeness_gauge}}` (the recipient
+against the trial average and the leader), `{{completeness_event_chart}}`
+(their completeness by timepoint), `{{completeness_form_chart}}` (the forms
+they are furthest behind on), `{{completeness_trend_chart}}` (their own
+history) and `{{overall_completeness_chart}}` (the whole trial).
+
+Alongside them are the competitive figures — `{{completeness}}`,
+`{{completeness_position}}`, `{{completeness_gap_to_top}}`,
+`{{completeness_gap_to_next}}`, `{{completeness_vs_average_words}}`,
+`{{completeness_movement}}` and `{{completeness_trophy}}` — plus
+`{{completeness_headline}}`, which assembles the lot into one sentence:
+
+> 71% of your due forms are entered, which puts Freeman Hospital 5th of 6
+> sites, 15.7 points below the trial average.
+
+**Movement needs two imports.** Each import is snapshotted, and the next one
+compares against it, which is where "up two places since the last update"
+comes from. The first import has no movement to report and says nothing
+rather than inventing a change. *Remove imported data* keeps the snapshots, so
+re-importing later picks the history back up.
+
+Three more ready-made templates appear once the data is loaded: **Data
+completeness update**, **Completeness league table (trophy chase)** and
+**Monthly update: recruitment and completeness**.
+
+### Data queries
+
+**Query data…** imports the data query export — one row per query, as REDCap's
+Data Query Resolution report writes it:
+
+```
+ID (# of comments) · Site (DAG) · TNo · Event · Form/DQR · Instance ·
+Question · Data Category · Date opened · Opened by · First Comment ·
+Date of last comment · Last comment by · Last Comment · Query Status ·
+Assigned To · If OPEN, Duration · Responded & OPEN
+```
+
+Only the site and the status are needed; everything else sharpens the picture.
+A data access group (`freeman_hospital`) is matched to the contact list's
+"Freeman Hospital" automatically, so the two exports need not agree on
+spelling.
+
+**Statuses are read, not guessed.** `Open`, `Closed`, `Resolved`, `Awaiting
+response` and the rest of the usual set are recognised. Anything else is
+counted as **open** and listed in the import dialog as unrecognised — an
+outstanding query wrongly counted closed would drop out of the chase, which is
+the worse mistake. The dialog shows how many queries carried each status, so a
+value being read the wrong way is obvious before you send anything.
+
+A query's age comes from `If OPEN, Duration` where the export fills it in, and
+is otherwise counted from `Date opened`. Dates are read UK-first, so
+`07-04-2026` is April. **Overdue after** in the dialog sets the threshold,
+30 days by default.
+
+The most useful field is `{{query_list}}` — a table of the recipient's own
+outstanding queries, oldest first, with the participant, event, form, the
+question and how many days it has been open. That is what a chase email needs;
+the rest is context around it.
+
+Alongside it: `{{query_action}}` (a ready-made line saying what the site
+actually has to do, which changes when they have nothing outstanding, or have
+replied to everything and are waiting on you), `{{query_headline}}`,
+`{{queries_open}}`, `{{queries_awaiting_you}}`, `{{queries_overdue}}`,
+`{{queries_oldest_days}}`, `{{queries_median_days}}`, `{{query_top_form}}`,
+`{{query_position}}` and `{{query_movement}}`.
+
+The charts are `{{query_ageing_chart}}` (open queries by age band),
+`{{query_form_chart}}` and `{{query_category_chart}}` (where they cluster),
+`{{query_breakdown_chart}}` (resolved, replied to, awaiting the site, overdue),
+`{{query_chart}}` (all sites ranked) and `{{quality_scorecard}}`, which puts
+completeness and queries in one table — the only field that needs both imports.
+
+Sites are ranked on the **share** of their queries closed rather than the
+number outstanding, so a large site is not permanently bottom for being large.
+
+Two more templates come with it: **Outstanding data queries** and, once both
+data imports are loaded, **Data quality: completeness and queries**.
+
+**Naming other sites in charts** in Settings applies to the completeness and
+query charts: name every site (the default), name the leading three only — the
+race is public, the tail is not — or name only the recipient's own.
 
 **Send** one of three ways:
 
@@ -154,6 +262,10 @@ Use **Preview** to page through exactly what will be sent before sending it.
 
 ## Running it
 
+Node 22.12 or newer is needed: `npm test` hands a glob to node's own test
+runner, which node only expands itself from 22 onwards, and `rcedit` — which
+stamps the icon into the built `.exe` — requires it too.
+
 ```sh
 npm install
 npm start
@@ -166,15 +278,32 @@ import `sample/site-contacts-sample.xlsx`:
 npm run sample
 ```
 
+That also writes `sample/return-rates-sample.xlsx` and
+`sample/data-queries-sample.xlsx`, for the completeness and query fields.
+
 ### Building an installer
 
 ```sh
 npm run dist
 ```
 
-Written to `dist/`: an NSIS installer and a portable `.exe`. Windows is the
-only target configured, and the build must run on Windows — cross-building from
-Linux needs wine and gains nothing here.
+Written to `dist/`:
+
+| File | What it is |
+| --- | --- |
+| `Site Contact Mailer Setup <version>.exe` | The installer. Installs per-user, so no admin rights are needed. |
+| `site-contact-mailer-<version>-win.zip` | The same app with no installer. Unzip it anywhere and run `Site Contact Mailer.exe` — the option to reach for on a managed machine that blocks installers. |
+| `Site Contact Mailer <version>.exe` | A single portable executable. |
+
+Windows is the only target configured, and the build must run on Windows —
+cross-building from Linux needs wine and gains nothing here.
+
+**Or let GitHub build it.** The *Mailer build (Windows)* workflow runs on every
+push that touches the app, and can be started by hand from the Actions tab. It
+runs the tests, builds all three, and attaches each to the run as its own
+artifact — `Site-Contact-Mailer-zip-no-install`, `-installer` and `-portable`
+— so you download only the one you want rather than close to 300MB of all
+three. That saves needing a Windows machine with Node on it.
 
 **On a managed Windows machine**, the build config sets
 `win.signAndEditExecutable: false`. Without it, electron-builder downloads its
@@ -226,11 +355,42 @@ npm test
 
 Covers address parsing, column detection, role grouping and filtering, the
 To/Bcc rule, template rendering in both plain text and HTML, the paste
-sanitiser, and the MIME structure of the generated drafts. `npm run sample`
+sanitiser and the MIME structure of the generated drafts. For completeness:
+the due-not-expected denominator, the 100% cap, ranking and ties, and movement
+between imports. For queries: status classification and what happens to an
+unrecognised one, UK date order, ageing from either column, ranking on share
+closed, and data-access-group matching. Both check that every merge field the
+app advertises is actually produced. `npm run sample`
 must have been run for the workbook tests to do anything (they skip
 themselves otherwise).
 
 ## Notes for the trial office
+
+**"Windows protected your PC".** The app is not code-signed, so SmartScreen
+warns the first time it runs. What actually triggers it is the *mark of the
+web*: Windows tags anything downloaded from the internet, and extracting a
+zip copies that tag onto every file inside it.
+
+So clear the tag on the zip **before** extracting:
+
+1. Right-click the downloaded `.zip` → *Properties*.
+2. Tick **Unblock**, at the bottom of the General tab → *OK*.
+3. Extract it, then run `Site Contact Mailer.exe`.
+
+Already extracted? Clear it afterwards instead:
+
+```powershell
+Get-ChildItem -Path "C:\path\to\the\folder" -Recurse | Unblock-File
+```
+
+If the warning still appears, its **More info** link — above the buttons, and
+easy to miss — reveals a **Run anyway** button beside *Don't run*.
+
+If there is no *More info* link at all, SmartScreen is set to "warn and
+prevent bypass" by group policy and nothing you do on the machine will get
+past it. That needs IT to allow the app, or the app to be signed with a
+certificate. Signing is the real fix and would remove the warning for
+everyone; until then this is the workaround.
 
 **Old `.xls` files.** ExcelJS cannot read the pre-2007 binary format. Open the
 file in Excel and use *File → Save As → Excel Workbook (.xlsx)*. The app tells
@@ -262,6 +422,8 @@ src/
     emails.js      address parsing, validation, de-duplication
     importer.js    column detection, role grouping, rows into sites
     recruitment.js randomisation layouts, monthly totals, ranking
+    completeness.js return-rate layouts, per-site rates, league table
+    queries.js     query exports, statuses, ageing, per-site outstanding
     charts.js      email-safe HTML charts (tables, no JS, no images)
     templates.js   the ready-made messages shipped with the app
     compose.js     template rendering, To/Bcc, role filtering, merges
@@ -270,7 +432,9 @@ src/
   main/        Electron main process — the only code with disk/network access
     main.js      window, menu, IPC handlers, attachments, delivery
     workbook.js  reading .xlsx/.csv via ExcelJS
-    store.js     persisted list, templates, drafts, settings, encrypted credentials
+    store.js     persisted list, templates, drafts, settings, encrypted
+                 credentials, and the snapshots behind "up two places since
+                 last month"
     preload.js   the IPC bridge exposed to the page
   renderer/    The user interface (no Node access)
     editor.js    the rich-text editor and its paste handling

@@ -15,6 +15,58 @@ function normaliseHeader(header) {
   return String(header || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * A site label reduced to something two spellings of it can be compared on.
+ *
+ * REDCap writes a data access group as `queen_elizabeth_hospital` where the
+ * contact list says "Queen Elizabeth Hospital (Birmingham)", and a return-rate
+ * export may say "Queen Elizabeth". Dropping punctuation, case and the words
+ * that carry no identity lets all three meet.
+ */
+const SITE_NOISE = /\b(hospital|hospitals|nhs|foundation|trust|university|hospitals?nhs|the|royal|infirmary|centre|center|general)\b/g;
+
+function normaliseSiteKey(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(SITE_NOISE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Find the entry in `candidates` that refers to the same site as `site`.
+ *
+ * Exact identifiers first, then names, then the loosened comparison — which
+ * only decides it when exactly one candidate matches, because "Royal
+ * Infirmary" reduced far enough matches several real hospitals.
+ */
+function matchSiteIn(candidates, site, { keyOf = (c) => c.key, nameOf = (c) => c.siteName } = {}) {
+  if (!candidates || !candidates.length || !site) return null;
+
+  const wantedId = String(site.siteId || '').trim().toLowerCase();
+  if (wantedId) {
+    const byId = candidates.find((c) => keyOf(c) === wantedId);
+    if (byId) return byId;
+  }
+
+  const wantedName = String(site.siteName || '').trim().toLowerCase();
+  if (wantedName) {
+    const byName = candidates.find((c) => String(nameOf(c) || '').trim().toLowerCase() === wantedName);
+    if (byName) return byName;
+  }
+
+  const loose = normaliseSiteKey(site.siteName || site.siteId);
+  if (!loose) return null;
+  const near = candidates.filter((c) => {
+    const candidate = normaliseSiteKey(nameOf(c) || keyOf(c));
+    return candidate !== '' && candidate === loose;
+  });
+  return near.length === 1 ? near[0] : null;
+}
+
 /** Column key used for merge placeholders, e.g. "Site Name" -> "site_name". */
 function toFieldKey(header) {
   return String(header || '')
@@ -321,6 +373,8 @@ module.exports = {
   ROLE_GROUPS,
   canonicalRole,
   normaliseHeader,
+  normaliseSiteKey,
+  matchSiteIn,
   toFieldKey,
   detectMapping,
   findEmailColumns,

@@ -33,6 +33,16 @@ contextBridge.exposeInMainWorld('api', {
   commitRecruitment: (payload) => invoke('recruitment:commit', payload),
   clearRecruitment: () => invoke('recruitment:clear'),
 
+  chooseCompleteness: () => invoke('completeness:choose'),
+  buildCompleteness: (payload) => invoke('completeness:build', payload),
+  commitCompleteness: (payload) => invoke('completeness:commit', payload),
+  clearCompleteness: (payload) => invoke('completeness:clear', payload),
+
+  chooseQueries: () => invoke('queries:choose'),
+  buildQueries: (payload) => invoke('queries:build', payload),
+  commitQueries: (payload) => invoke('queries:commit', payload),
+  clearQueries: (payload) => invoke('queries:clear', payload),
+
   chooseAttachments: () => invoke('attachments:choose'),
   loadHtmlBody: () => invoke('body:loadHtml'),
 
