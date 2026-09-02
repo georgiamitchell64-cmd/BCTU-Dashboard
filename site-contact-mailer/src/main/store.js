@@ -7,6 +7,10 @@
 const fs = require('fs');
 const path = require('path');
 
+const {
+  applyCompletenessHistory, snapshotCompleteness, HISTORY_LIMIT,
+} = require('../shared/completeness');
+
 const DEFAULT_SETTINGS = {
   senderAddress: '',
   // Combined sends put everyone in Bcc once more than one site is selected;
@@ -17,9 +21,12 @@ const DEFAULT_SETTINGS = {
   putSelfInTo: true,
   bodyFormat: 'html',
   deliveryMethod: 'eml',
-  // In the ranked chart, name only the recipient's own site and show the rest
-  // anonymously, so nobody is identified to their peers as the worst recruiter.
-  anonymiseOtherSites: true,
+  // Sites are named in the ranked charts. Turn this on to show everyone but
+  // the recipient as "Site A", "Site B" — for a trial that does not publish a
+  // named league table.
+  anonymiseOtherSites: false,
+  // 'all' | 'top3' (name the leading three only) | 'none'.
+  completenessNaming: 'all',
   draftFolder: '',
   smtp: {
     host: '',
@@ -33,13 +40,20 @@ const DEFAULT_SETTINGS = {
 
 // 2: rich-text messages. Stores written by version 1 default bodyFormat to
 // 'plain', which would now silently strip the formatting the user just typed.
-const CURRENT_VERSION = 2;
+// 3: named sites in the ranked charts. Version 2 stored the old default of
+// true, which was never exposed in the UI and so was never a choice.
+const CURRENT_VERSION = 3;
 
 const DEFAULT_STATE = {
   version: CURRENT_VERSION,
   // Imported randomisation data, normalised by shared/recruitment.js.
   recruitment: null,
   recruitmentImport: null,
+  // Imported return-rate data, normalised by shared/completeness.js, plus the
+  // snapshots that make "up two places since last month" possible.
+  completeness: null,
+  completenessImport: null,
+  completenessHistory: [],
   settings: DEFAULT_SETTINGS,
   sites: [],
   templates: [],
@@ -79,8 +93,11 @@ class Store {
         // The old default was plain text, chosen when there was no formatting
         // to lose. Carrying it forward would throw away every rich message.
         state.settings.bodyFormat = 'html';
-        state.version = CURRENT_VERSION;
       }
+      if (!parsed.version || parsed.version < 3) {
+        state.settings.anonymiseOtherSites = false;
+      }
+      state.version = CURRENT_VERSION;
       return state;
     } catch (error) {
       if (error.code !== 'ENOENT') {
@@ -146,6 +163,33 @@ class Store {
   clearRecruitment() {
     this.state.recruitment = null;
     this.state.recruitmentImport = null;
+    this.save();
+  }
+
+  getCompleteness() {
+    return this.state.completeness;
+  }
+
+  /**
+   * Store a completeness dataset, appending it to the history first so the
+   * movement fields compare against the *previous* import, not this one.
+   */
+  setCompleteness(dataset, meta = null) {
+    const history = this.state.completenessHistory || [];
+    const importedAt = (meta && meta.importedAt) || new Date().toISOString();
+    const annotated = applyCompletenessHistory(dataset, history);
+    const snapshot = snapshotCompleteness(annotated, importedAt);
+    this.state.completenessHistory = [...history, snapshot].slice(-HISTORY_LIMIT);
+    this.state.completeness = annotated;
+    this.state.completenessImport = meta;
+    this.save();
+    return this.state.completeness;
+  }
+
+  clearCompleteness({ keepHistory = true } = {}) {
+    this.state.completeness = null;
+    this.state.completenessImport = null;
+    if (!keepHistory) this.state.completenessHistory = [];
     this.save();
   }
 

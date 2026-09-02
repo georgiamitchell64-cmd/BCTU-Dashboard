@@ -5,11 +5,21 @@
 const { dedupeContacts, firstNameOf, formatAddress } = require('./emails');
 const { renderPlaceholdersInHtml, htmlToText, isEmptyHtml } = require('./html');
 const { findRecruitmentSite } = require('./recruitment');
-const { rankedBarChart, progressChart, overallChart, siteTrendChart } = require('./charts');
+const { findCompletenessSite, standing, queryStanding } = require('./completeness');
+const {
+  rankedBarChart, progressChart, overallChart, siteTrendChart,
+  completenessBarChart, completenessLeaderboard, completenessBreakdownChart,
+  completenessGauge, completenessTrendChart, overallCompletenessChart, ordinal,
+  queryResolutionChart, queryBreakdownChart, qualityScorecard,
+} = require('./charts');
 
 // Fields whose value is generated HTML and must not be escaped on the way in.
 const RAW_FIELDS = new Set([
   'recruitment_chart', 'progress_chart', 'overall_chart', 'trend_chart',
+  'completeness_chart', 'completeness_leaderboard', 'completeness_gauge',
+  'completeness_event_chart', 'completeness_form_chart', 'completeness_trend_chart',
+  'overall_completeness_chart', 'query_chart', 'query_breakdown_chart',
+  'quality_scorecard',
 ]);
 
 const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*(?:\|([^}]*))?\}\}/g;
@@ -42,6 +52,60 @@ const RECRUITMENT_FIELDS = [
   { key: 'trial_randomised', label: 'Whole trial: randomised to date' },
   { key: 'trial_target', label: 'Whole trial: target' },
   { key: 'trial_sites', label: 'Whole trial: number of sites' },
+];
+
+// Only offered once a return-rates export has been imported.
+const COMPLETENESS_FIELDS = [
+  { key: 'completeness_chart', label: 'Chart: completeness, all sites ranked' },
+  { key: 'completeness_leaderboard', label: 'Chart: league table with movement' },
+  { key: 'completeness_gauge', label: 'Chart: you vs the average and the leader' },
+  { key: 'completeness_event_chart', label: 'Chart: your completeness by timepoint' },
+  { key: 'completeness_form_chart', label: 'Chart: your weakest forms' },
+  { key: 'completeness_trend_chart', label: 'Chart: your completeness over time' },
+  { key: 'overall_completeness_chart', label: 'Chart: whole-trial completeness' },
+  { key: 'completeness', label: 'Your site: overall completeness (e.g. 87.4%)' },
+  { key: 'completeness_entered', label: 'Your site: forms entered' },
+  { key: 'completeness_due', label: 'Your site: forms due' },
+  { key: 'completeness_outstanding', label: 'Your site: forms outstanding' },
+  { key: 'completeness_rank', label: 'Your site: rank (e.g. 4)' },
+  { key: 'completeness_rank_of', label: 'Your site: rank out of (e.g. 4 of 23)' },
+  { key: 'completeness_position', label: 'Your site: position in words (e.g. 4th of 23)' },
+  { key: 'completeness_quartile', label: 'Your site: quartile (1 = top)' },
+  { key: 'completeness_status', label: 'Your site: on target / needs attention / below target' },
+  { key: 'completeness_vs_average', label: 'Your site: points above or below the trial average' },
+  { key: 'completeness_vs_average_words', label: 'Your site: "6.2 points above the trial average"' },
+  { key: 'completeness_gap_to_top', label: 'Your site: points behind the leading site' },
+  { key: 'completeness_gap_to_next', label: 'Your site: points from the next place up' },
+  { key: 'completeness_change', label: 'Your site: change since the last update' },
+  { key: 'completeness_movement', label: 'Your site: "up 2 places since last month"' },
+  { key: 'completeness_headline', label: 'Your site: a ready-made one-line summary' },
+  { key: 'completeness_trophy', label: 'Your site: trophy line when in the top three' },
+  { key: 'completeness_worst_form', label: 'Your site: the form furthest behind' },
+  { key: 'completeness_worst_event', label: 'Your site: the timepoint furthest behind' },
+  { key: 'trial_completeness', label: 'Whole trial: overall completeness' },
+  { key: 'trial_completeness_entered', label: 'Whole trial: forms entered' },
+  { key: 'trial_completeness_due', label: 'Whole trial: forms due' },
+  { key: 'trial_completeness_outstanding', label: 'Whole trial: forms outstanding' },
+  { key: 'trial_completeness_average', label: 'Whole trial: average site completeness' },
+  { key: 'trial_completeness_leader', label: 'Whole trial: the leading site' },
+  { key: 'completeness_sites', label: 'Whole trial: number of sites ranked' },
+];
+
+// Only offered when the export carries query columns as well.
+const QUALITY_FIELDS = [
+  { key: 'quality_scorecard', label: 'Chart: completeness and queries side by side' },
+  { key: 'query_chart', label: 'Chart: queries resolved, all sites ranked' },
+  { key: 'query_breakdown_chart', label: 'Chart: your queries resolved, open and overdue' },
+  { key: 'queries_open', label: 'Your site: queries still open' },
+  { key: 'queries_raised', label: 'Your site: queries raised' },
+  { key: 'queries_resolved', label: 'Your site: queries resolved' },
+  { key: 'queries_overdue', label: 'Your site: queries overdue' },
+  { key: 'queries_resolved_percent', label: 'Your site: percent of queries closed' },
+  { key: 'query_rank_of', label: 'Your site: query rank out of (e.g. 4 of 23)' },
+  { key: 'query_position', label: 'Your site: query position in words (e.g. 4th of 23)' },
+  { key: 'query_headline', label: 'Your site: a ready-made one-line summary' },
+  { key: 'trial_queries_open', label: 'Whole trial: queries still open' },
+  { key: 'trial_queries_resolved_percent', label: 'Whole trial: percent of queries closed' },
 ];
 
 function formatToday(date = new Date()) {
@@ -125,6 +189,156 @@ function buildContext(site, options = {}) {
     if (dataset.totals.target) context.trial_target = String(dataset.totals.target);
     context.trial_sites = String(dataset.totals.siteCount);
   }
+
+  addCompletenessFields(context, site, options);
+
+  return context;
+}
+
+function signed(points) {
+  return `${points > 0 ? '+' : ''}${points}`;
+}
+
+/**
+ * Completeness figures and charts, from the return-rates export.
+ *
+ * Everything comparative goes through `standing()`, so the wording in the
+ * merge fields and the wording on the charts cannot drift apart.
+ */
+function addCompletenessFields(context, site, options) {
+  const dataset = options.completeness;
+  if (!dataset || !dataset.sites || !dataset.sites.length) return context;
+
+  const naming = options.completenessNaming || 'top3';
+  const match = site ? findCompletenessSite(dataset, site) : null;
+
+  context.trial_completeness = dataset.totals.percent === null ? '' : `${dataset.totals.percent}%`;
+  context.trial_completeness_entered = String(dataset.totals.entered);
+  context.trial_completeness_due = String(dataset.totals.due);
+  context.trial_completeness_outstanding = String(dataset.totals.outstanding);
+  if (dataset.totals.meanPercent !== null) {
+    context.trial_completeness_average = `${dataset.totals.meanPercent}%`;
+  }
+  if (dataset.totals.leader && naming !== 'none') {
+    context.trial_completeness_leader = `${dataset.totals.leader.siteName} (${dataset.totals.leader.percent}%)`;
+  }
+  context.completeness_sites = String(dataset.totals.rankedCount);
+  context.overall_completeness_chart = overallCompletenessChart(dataset);
+  context.completeness_chart = completenessBarChart(dataset, {
+    focusKey: match ? match.key : null,
+    naming,
+  });
+  context.completeness_leaderboard = completenessLeaderboard(dataset, {
+    focusKey: match ? match.key : null,
+    naming,
+  });
+
+  if (!match) return context;
+
+  const view = standing(match, dataset);
+  context.completeness_entered = String(match.entered);
+  context.completeness_due = String(match.due);
+  context.completeness_outstanding = String(match.outstanding);
+  context.completeness_event_chart = completenessBreakdownChart(match.byEvent, {
+    title: 'Your completeness by timepoint',
+  });
+  context.completeness_form_chart = completenessBreakdownChart(match.byForm, {
+    title: 'The forms furthest behind at your site',
+    worstFirst: true,
+    maxRows: 6,
+  });
+  context.completeness_trend_chart = completenessTrendChart(match);
+
+  const worstForm = [...(match.byForm || [])].filter((r) => r.percent !== null)
+    .sort((a, b) => a.percent - b.percent)[0];
+  if (worstForm) context.completeness_worst_form = `${worstForm.name} (${worstForm.percent}%)`;
+  const worstEvent = [...(match.byEvent || [])].filter((r) => r.percent !== null)
+    .sort((a, b) => a.percent - b.percent)[0];
+  if (worstEvent) context.completeness_worst_event = `${worstEvent.name} (${worstEvent.percent}%)`;
+
+  if (!view) return context;
+
+  context.completeness = `${view.percent}%`;
+  context.completeness_rank = String(view.rank);
+  context.completeness_rank_of = `${view.rank} of ${view.of}`;
+  context.completeness_position = `${ordinal(view.rank)} of ${view.of}`;
+  context.completeness_quartile = String(view.quartile);
+  context.completeness_status = view.status;
+  context.completeness_gauge = completenessGauge(match, dataset, { naming });
+
+  if (view.vsAverage !== null) {
+    context.completeness_vs_average = `${signed(view.vsAverage)} points`;
+    context.completeness_vs_average_words = view.vsAverage === 0
+      ? 'exactly on the trial average'
+      : `${Math.abs(view.vsAverage)} points ${view.vsAverage > 0 ? 'above' : 'below'} the trial average`;
+  }
+  if (view.gapToTop !== null) context.completeness_gap_to_top = `${view.gapToTop} points`;
+  if (view.gapToNext !== null && view.nextRank) {
+    context.completeness_gap_to_next = `${view.gapToNext} points from ${ordinal(view.nextRank)} place`;
+  }
+  if (view.percentChange !== null) context.completeness_change = `${signed(view.percentChange)} points`;
+  if (view.rankChange) {
+    const places = Math.abs(view.rankChange);
+    context.completeness_movement = `${view.rankChange > 0 ? 'up' : 'down'} ${places} `
+      + `place${places === 1 ? '' : 's'} since the last update`;
+  }
+
+  // A line the trial office can drop straight into a message without having
+  // to assemble the figures themselves.
+  const headline = [`${view.percent}% of your due forms are entered`,
+    `which puts ${site.siteName} ${ordinal(view.rank)} of ${view.of} sites`];
+  if (view.vsAverage !== null && view.vsAverage !== 0) {
+    headline.push(`${Math.abs(view.vsAverage)} points ${view.vsAverage > 0 ? 'above' : 'below'} the trial average`);
+  }
+  context.completeness_headline = `${headline.join(', ')}.`;
+
+  if (view.isLeader) {
+    context.completeness_trophy = `${site.siteName} currently holds the top spot for data completeness.`;
+  } else if (view.inTopThree) {
+    context.completeness_trophy = `${site.siteName} is ${ordinal(view.rank)} for data completeness`
+      + `${view.gapToTop ? `, ${view.gapToTop} points off the lead` : ''}.`;
+  }
+
+  addQualityFields(context, site, match, dataset, naming);
+
+  return context;
+}
+
+/** Outstanding data queries, when the export carries them. */
+function addQualityFields(context, site, match, dataset, naming) {
+  if (!dataset.hasQueries) return context;
+
+  context.trial_queries_open = String(dataset.totals.queriesOpen);
+  if (dataset.totals.queryResolvedPercent !== null) {
+    context.trial_queries_resolved_percent = `${dataset.totals.queryResolvedPercent}%`;
+  }
+  context.quality_scorecard = qualityScorecard(dataset, {
+    focusKey: match ? match.key : null,
+    naming,
+  });
+  context.query_chart = queryResolutionChart(dataset, {
+    focusKey: match ? match.key : null,
+    naming,
+  });
+
+  const view = match ? queryStanding(match, dataset) : null;
+  if (!view) return context;
+
+  context.queries_open = String(view.open);
+  context.queries_raised = String(view.raised);
+  context.queries_resolved = String(view.resolved);
+  context.queries_overdue = String(view.overdue);
+  if (view.resolvedPercent !== null) context.queries_resolved_percent = `${view.resolvedPercent}%`;
+  if (view.rank) {
+    context.query_rank_of = `${view.rank} of ${view.of}`;
+    context.query_position = `${ordinal(view.rank)} of ${view.of}`;
+  }
+  context.query_breakdown_chart = queryBreakdownChart(match, dataset);
+
+  const parts = [`${site.siteName} has ${view.open} data quer${view.open === 1 ? 'y' : 'ies'} outstanding`];
+  if (view.overdue) parts.push(`${view.overdue} of them overdue`);
+  if (view.resolvedPercent !== null) parts.push(`${view.resolvedPercent}% of those raised are closed`);
+  context.query_headline = `${parts.join(', ')}.`;
 
   return context;
 }
@@ -273,6 +487,8 @@ function buildMergeQueue(sites, template, options = {}) {
         today,
         recruitment: options.recruitment,
         anonymiseOtherSites: options.anonymiseOtherSites,
+        completeness: options.completeness,
+        completenessNaming: options.completenessNaming,
       });
       const rendered = renderBody(template, context);
       messages.push({
@@ -300,6 +516,8 @@ function buildCombinedMessage(sites, template, options = {}) {
     today: options.today || new Date(),
     recruitment: options.recruitment,
     anonymiseOtherSites: options.anonymiseOtherSites,
+    completeness: options.completeness,
+    completenessNaming: options.completenessNaming,
   });
   if (sites.length !== 1) {
     context.site_name = sites.map((s) => s.siteName).join(', ');
@@ -324,6 +542,8 @@ function addressLine(contacts) {
 module.exports = {
   BUILT_IN_FIELDS,
   RECRUITMENT_FIELDS,
+  COMPLETENESS_FIELDS,
+  QUALITY_FIELDS,
   RAW_FIELDS,
   buildContext,
   renderTemplate,

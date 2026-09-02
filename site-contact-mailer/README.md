@@ -111,11 +111,11 @@ highlighted), `{{progress_chart}}` (their progress against target),
 (the whole trial). Alongside them are plain figures — `{{site_randomised}}`,
 `{{site_rank_of}}`, `{{site_percent}}`, `{{trial_randomised}}` and others.
 
-**Other sites are anonymised by default.** The recipient sees their own site
-named and everyone else as "Site A", "Site B", so they can see exactly where
-they stand without any site being identified to its peers as the worst
-recruiter. Turn that off in Settings if your trial publishes a named league
-table.
+**Sites are named.** The recipient sees their own site highlighted and the
+rest named alongside it, which is what makes a league table worth reading.
+Settings turns that off: *Anonymise other sites in the recruitment chart*
+shows everyone but the recipient as "Site A", "Site B", so nobody is
+identified to their peers as the site furthest behind.
 
 Charts are built from HTML tables with `bgcolor` and pixel widths, not images
 or JavaScript, because Outlook renders mail through Word and blocks both. They
@@ -127,6 +127,70 @@ targets there without editing the trial's export.
 
 The **Monthly recruitment update** template under *Templates → Ready-made*
 puts all of this together, and only appears once recruitment data is loaded.
+
+### Data completeness and queries
+
+**Completeness data…** in the toolbar imports the return-rates export — the
+same file the TONIC dashboard reads — and unlocks a second set of fields and
+charts, for the trophy for the most complete data. Three layouts are read:
+
+| Layout | Looks like |
+| --- | --- |
+| One row per site, event and form | `Site · Event · Form · Expected · Due · Entered · % Due Entered` |
+| One row per site | `Site · Forms Due · Forms Entered` |
+| One row per site, percentage only | `Site · % Complete` |
+
+`.Overall` rows are taken as the trial figure rather than counted as a site,
+and a site with nothing due yet is left out of the league table rather than
+being ranked last on a rate it had no chance to earn.
+
+**Rates are calculated against forms due, not forms expected.** "Expected"
+counts every form a participant will eventually reach, including windows that
+have not opened — Day 90 for someone randomised last week — which would
+deflate the rate. Forms entered before their window opens are capped at due,
+so a site cannot come out above 100%. Both choices match the dashboard, so the
+figure in an email agrees with the figure on screen. *Rate calculated against*
+in the import dialog switches to expected if your trial reports it that way.
+
+The charts are `{{completeness_chart}}` (all sites ranked, the recipient's own
+highlighted), `{{completeness_leaderboard}}` (the league table, with places
+gained or lost since the last import), `{{completeness_gauge}}` (the recipient
+against the trial average and the leader), `{{completeness_event_chart}}`
+(their completeness by timepoint), `{{completeness_form_chart}}` (the forms
+they are furthest behind on), `{{completeness_trend_chart}}` (their own
+history) and `{{overall_completeness_chart}}` (the whole trial).
+
+Alongside them are the competitive figures — `{{completeness}}`,
+`{{completeness_position}}`, `{{completeness_gap_to_top}}`,
+`{{completeness_gap_to_next}}`, `{{completeness_vs_average_words}}`,
+`{{completeness_movement}}` and `{{completeness_trophy}}` — plus
+`{{completeness_headline}}`, which assembles the lot into one sentence:
+
+> 71% of your due forms are entered, which puts Freeman Hospital 5th of 6
+> sites, 15.7 points below the trial average.
+
+**Movement needs two imports.** Each import is snapshotted, and the next one
+compares against it, which is where "up two places since the last update"
+comes from. The first import has no movement to report and says nothing
+rather than inventing a change. *Remove imported data* keeps the snapshots, so
+re-importing later picks the history back up.
+
+**Data queries** come from the same file. If the export carries query columns
+— raised, open, resolved, overdue — they are read too and add
+`{{quality_scorecard}}` (completeness and queries in one table),
+`{{query_chart}}`, `{{query_breakdown_chart}}`, `{{queries_open}}`,
+`{{queries_overdue}}`, `{{query_position}}` and `{{query_headline}}`. Sites
+are ranked on the *share* of their queries closed rather than the number
+outstanding, so a large site is not permanently bottom for being large. If the
+export has no query columns, none of these fields is offered.
+
+**Naming other sites in charts** in Settings applies to the completeness and
+query charts: name every site (the default), name the leading three only — the
+race is public, the tail is not — or name only the recipient's own.
+
+Three more ready-made templates appear once the data is loaded: **Data
+completeness update**, **Completeness league table (trophy chase)** and
+**Monthly update: recruitment and completeness**.
 
 **Send** one of three ways:
 
@@ -165,6 +229,9 @@ import `sample/site-contacts-sample.xlsx`:
 ```sh
 npm run sample
 ```
+
+That also writes `sample/return-rates-sample.xlsx`, for the completeness and
+query fields.
 
 ### Building an installer
 
@@ -226,7 +293,9 @@ npm test
 
 Covers address parsing, column detection, role grouping and filtering, the
 To/Bcc rule, template rendering in both plain text and HTML, the paste
-sanitiser, and the MIME structure of the generated drafts. `npm run sample`
+sanitiser, the MIME structure of the generated drafts, and — for completeness
+— the due-not-expected denominator, the 100% cap, ranking and ties, movement
+between imports, and that every advertised merge field is actually produced. `npm run sample`
 must have been run for the workbook tests to do anything (they skip
 themselves otherwise).
 
@@ -262,6 +331,7 @@ src/
     emails.js      address parsing, validation, de-duplication
     importer.js    column detection, role grouping, rows into sites
     recruitment.js randomisation layouts, monthly totals, ranking
+    completeness.js return-rate layouts, per-site rates, league table, queries
     charts.js      email-safe HTML charts (tables, no JS, no images)
     templates.js   the ready-made messages shipped with the app
     compose.js     template rendering, To/Bcc, role filtering, merges
@@ -270,7 +340,9 @@ src/
   main/        Electron main process — the only code with disk/network access
     main.js      window, menu, IPC handlers, attachments, delivery
     workbook.js  reading .xlsx/.csv via ExcelJS
-    store.js     persisted list, templates, drafts, settings, encrypted credentials
+    store.js     persisted list, templates, drafts, settings, encrypted
+                 credentials, and the completeness snapshots behind "up two
+                 places since last month"
     preload.js   the IPC bridge exposed to the page
   renderer/    The user interface (no Node access)
     editor.js    the rich-text editor and its paste handling

@@ -27,6 +27,8 @@
     <button id="btnImport" class="btn btn-primary">Import contact list…</button>
     <button id="btnImportRecruitment" class="btn btn-ghost"
             title="Import randomisation data for the recruitment charts">Recruitment data…</button>
+    <button id="btnImportCompleteness" class="btn btn-ghost"
+            title="Import the return-rates export for the data completeness fields">Completeness data…</button>
     <button id="btnExport" class="btn btn-ghost" title="Export the current list as CSV">Export</button>
     <button id="btnSettings" class="btn btn-ghost" title="Settings">Settings</button>
   </div>
@@ -374,6 +376,66 @@
   </div>
 </div>
 
+<!-- ── Data completeness ──────────────────────────────────────────── -->
+<div id="completenessModal" class="modal hidden">
+  <div class="modal-card modal-wide">
+    <header class="modal-head">
+      <h2>Data completeness</h2>
+      <button class="icon-btn" data-close="completenessModal" aria-label="Close">×</button>
+    </header>
+    <div class="modal-body">
+      <p class="hint" id="completenessIntro">
+        Import the return-rates export — the same file the dashboard reads — to add
+        completeness figures, league tables and charts to emails. One row per site
+        per event per form is the usual shape; site totals and a plain percentage
+        column also work.
+      </p>
+
+      <div class="field-row spaced">
+        <div class="field">
+          <label for="cmpSheetPicker">Sheet</label>
+          <select id="cmpSheetPicker"></select>
+        </div>
+        <div class="field">
+          <label for="cmpLayoutPicker">Layout</label>
+          <select id="cmpLayoutPicker">
+            <option value="long">One row per site, event and form</option>
+            <option value="site-total">One row per site, totals only</option>
+            <option value="site-percent">One row per site, percentage only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="cmpBasisPicker">Rate calculated against</label>
+          <select id="cmpBasisPicker">
+            <option value="due">Forms due now (recommended)</option>
+            <option value="expected">All forms expected</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="cmpMappingFields" class="mapping-grid"></div>
+
+      <div class="preview-block">
+        <div class="label-row">
+          <h3>League table</h3>
+          <span id="cmpStats" class="muted"></span>
+        </div>
+        <div id="cmpPreview" class="import-preview"></div>
+        <div id="cmpWarnings" class="warnings hidden"></div>
+        <div id="cmpMatch" class="warnings hidden"></div>
+      </div>
+    </div>
+    <footer class="modal-foot">
+      <button id="btnClearCompleteness" class="link-btn">Remove imported data</button>
+      <div class="footer-actions">
+        <button class="btn btn-ghost" data-close="completenessModal">Cancel</button>
+        <button id="btnChooseCompleteness" class="btn btn-ghost">Choose file…</button>
+        <button id="btnConfirmCompleteness" class="btn btn-primary" disabled>Use this data</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
 <!-- ── Preview ────────────────────────────────────────────────────── -->
 <div id="previewModal" class="modal hidden">
   <div class="modal-card modal-wide">
@@ -422,6 +484,27 @@
         <input id="putSelfInTo" type="checkbox">
         <span>Put my address in To when using Bcc
           <small>Recommended — a message with an empty To line is more likely to be filtered as spam.</small>
+        </span>
+      </label>
+
+      <div class="field">
+        <label for="chartNaming">Naming other sites in charts</label>
+        <select id="chartNaming">
+          <option value="all">Name every site</option>
+          <option value="top3">Name the leading three only</option>
+          <option value="none">Name only the recipient's own site</option>
+        </select>
+        <p class="hint">
+          Applies to the ranked completeness and query charts. A named league
+          table is what makes the trophy worth chasing; anonymising keeps a
+          site from being identified to its peers as the one furthest behind.
+        </p>
+      </div>
+
+      <label class="checkline">
+        <input id="anonymiseOtherSites" type="checkbox">
+        <span>Anonymise other sites in the recruitment chart
+          <small>Off by default — sites are named. Turn on to show everyone but the recipient as “Site A”, “Site B”.</small>
         </span>
       </label>
 

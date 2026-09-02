@@ -47,6 +47,77 @@ async function main() {
   const target = path.join(__dirname, 'site-contacts-sample.xlsx');
   await workbook.xlsx.writeFile(target);
   process.stdout.write(`Wrote ${target}\n`);
+
+  await writeReturnRates();
+}
+
+// A return-rates export in the shape the dashboard produces, so the
+// completeness fields can be tried without a real trial export.
+async function writeReturnRates() {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Return rates');
+  sheet.addRow(['Site', 'Event', 'Form', 'Expected', 'Due', 'Entered',
+    '% Due Entered', '% Expected Entered',
+    'Queries Raised', 'Open Queries', 'Resolved Queries', 'Overdue Queries']);
+
+  const sites = [
+    { name: 'Queen Elizabeth Hospital', participants: 24, entry: 0.96, queries: [32, 3, 29, 0] },
+    { name: 'Addenbrookes Hospital', participants: 18, entry: 0.88, queries: [21, 6, 15, 2] },
+    { name: 'Freeman Hospital', participants: 11, entry: 0.71, queries: [14, 9, 5, 4] },
+    { name: 'Royal Infirmary', participants: 6, entry: 1, queries: [4, 0, 4, 0] },
+    { name: 'Southmead Hospital', participants: 9, entry: 0.62, queries: [11, 8, 3, 3] },
+    { name: 'Royal Victoria Infirmary', participants: 4, entry: 0.93, queries: [5, 1, 4, 0] },
+  ];
+  // Later timepoints have fewer forms due: those windows have not all opened.
+  const events = [
+    { name: 'Baseline', dueShare: 1 },
+    { name: 'Discharge', dueShare: 0.9 },
+    { name: 'Day 30', dueShare: 0.65 },
+    { name: 'Day 90', dueShare: 0.3 },
+  ];
+  const forms = ['Demographics', 'Bowel Function', 'Quality of Life'];
+
+  const overall = new Map();
+  for (const site of sites) {
+    let first = true;
+    for (const event of events) {
+      for (const form of forms) {
+        const expected = site.participants;
+        const due = Math.round(expected * event.dueShare);
+        const entered = Math.round(due * site.entry);
+        const key = `${event.name}|${form}`;
+        const running = overall.get(key) || { expected: 0, due: 0, entered: 0 };
+        overall.set(key, {
+          expected: running.expected + expected,
+          due: running.due + due,
+          entered: running.entered + entered,
+        });
+        sheet.addRow([
+          site.name, event.name, form, expected, due, entered,
+          due ? Math.round(entered / due * 100) : '',
+          expected ? Math.round(entered / expected * 100) : '',
+          // Queries are a site-level figure, so they sit on the first row only.
+          ...(first ? site.queries : ['', '', '', '']),
+        ]);
+        first = false;
+      }
+    }
+  }
+
+  for (const [key, totals] of overall) {
+    const [event, form] = key.split('|');
+    sheet.addRow(['.Overall', event, form, totals.expected, totals.due, totals.entered,
+      totals.due ? Math.round(totals.entered / totals.due * 100) : '',
+      totals.expected ? Math.round(totals.entered / totals.expected * 100) : '',
+      '', '', '', '']);
+  }
+
+  sheet.getRow(1).font = { bold: true };
+  sheet.columns.forEach((column) => { column.width = 22; });
+
+  const target = path.join(__dirname, 'return-rates-sample.xlsx');
+  await workbook.xlsx.writeFile(target);
+  process.stdout.write(`Wrote ${target}\n`);
 }
 
 main().catch((error) => {
