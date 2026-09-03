@@ -27,14 +27,12 @@ upload_server <- function(input, output, session, state) {
     for (r in .AUTODETECT_FIELD_ROLES) {
       cur <- cfg$redcap_fields[[r$role]]
       det <- .autodetect_field(detected, r$role)
-      if ((is.null(cur) || (is.character(cur) && !nzchar(cur))) &&
-          !is.null(det) && nzchar(det)) return(TRUE)
+      if (mapping_is_blank(cur) && !mapping_is_blank(det)) return(TRUE)
     }
     for (r in .AUTODETECT_EVENT_ROLES) {
       cur <- cfg$redcap_events[[r$role]]
       det <- .autodetect_event(detected, r$role)
-      if ((is.null(cur) || (is.character(cur) && !nzchar(cur))) &&
-          !is.null(det) && nzchar(det)) return(TRUE)
+      if (mapping_is_blank(cur) && !mapping_is_blank(det)) return(TRUE)
     }
     fu <- cfg$redcap_fields$follow_up_instruments
     if ((is.null(fu) || length(fu) == 0) &&

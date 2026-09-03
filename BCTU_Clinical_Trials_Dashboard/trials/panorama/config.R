@@ -77,13 +77,15 @@ trial_config <- list(
   data_dir = NULL,
 
   # ── REDCap events ─────────────────────────────────────────────────────────
-  # Baseline lists the candidate names for the registration/index event: the
-  # dashboard matches with %in%, so trim this to the real event name once the
-  # first export is loaded.
+  # One event name per role. Confirm `baseline` (the registration/index event)
+  # and `discharge` against the first real export and correct them here or in
+  # Trial Settings → Follow-up schedule; other plausible names for baseline are
+  # baseline_arm_1, index_admission_arm_1, registration_arm_1, enrolment_arm_1.
+  # Until then baseline_rows() falls back to one row per participant, so the
+  # demographic and codebook views still populate.
   redcap_events = list(
-    baseline  = c("screening_arm_1", "baseline_arm_1", "index_admission_arm_1",
-                  "registration_arm_1", "enrolment_arm_1"),
-    discharge = c("discharge_arm_1", "day_of_discharge_arm_1"),
+    baseline  = "screening_arm_1",
+    discharge = "day_of_discharge_arm_1",
     day_7     = "day_7_arm_1",
     day_30    = "fu_30_day_arm_1",
     month_3   = "fu_3_month_arm_1",

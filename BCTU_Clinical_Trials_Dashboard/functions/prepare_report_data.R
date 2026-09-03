@@ -101,7 +101,7 @@ prepare_report_data <- function(df,
   # ── 4. Split by event ──────────────────────────────────────────────────────
   evcol <- if ("event_v" %in% names(df)) "event_v" else "redcap_event_name"
   ev    <- function(name) {
-    actual <- evt(name, default = NULL, cfg = cfg)
+    actual <- evt(name, default = NULL, cfg = cfg, all = TRUE)
     # A flat (non-longitudinal) export has no event column: everything is the
     # baseline record, so return the whole frame for that role rather than
     # nothing, which would leave the participant table empty.

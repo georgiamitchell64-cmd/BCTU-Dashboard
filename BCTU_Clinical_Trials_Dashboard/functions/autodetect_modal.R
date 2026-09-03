@@ -42,7 +42,7 @@
 
 #' Pretty cell for a detected value (or em-dash if NULL/empty).
 .autodetect_value_cell <- function(v) {
-  if (is.null(v) || !nzchar(v)) {
+  if (mapping_is_blank(v)) {
     span(style = "color:#94A3B8;font-style:italic;", HTML("&mdash; not found"))
   } else {
     tags$code(style = "background:#EEF3F8;padding:2px 8px;border-radius:4px;
@@ -167,8 +167,8 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
       sel_choices <- c("(not used)" = "", sort(unique(choices_pool %||% character(0))))
       # If detected value isn't in pool (e.g. role-pattern matched something
       # unusual), inject it so the dropdown still selects it.
-      if (!is.null(v) && nzchar(v) && !(v %in% sel_choices)) {
-        sel_choices <- c(setNames(v, v), sel_choices)
+      if (!mapping_is_blank(v) && !(v[1] %in% sel_choices)) {
+        sel_choices <- c(setNames(v[1], v[1]), sel_choices)
       }
       div(
         tags$label(style = "font-size:11px;color:#475569;font-weight:600;
@@ -197,11 +197,8 @@ merge_detected_into_config <- function(cfg, applied_fields = list(),
   cfg$redcap_events <- cfg$redcap_events %||% list()
 
   fill <- function(slot, name, value) {
-    if (is.null(value) || (is.character(value) && !nzchar(value))) return(slot)
-    if (force || is.null(slot[[name]]) ||
-        (is.character(slot[[name]]) && !nzchar(slot[[name]]))) {
-      slot[[name]] <- value
-    }
+    if (mapping_is_blank(value)) return(slot)
+    if (force || mapping_is_blank(slot[[name]])) slot[[name]] <- value
     slot
   }
 
