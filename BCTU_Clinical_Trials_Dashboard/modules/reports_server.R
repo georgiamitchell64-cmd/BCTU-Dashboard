@@ -1,5 +1,29 @@
 reports_server <- function(input, output, session, state) {
   rv <- state$rv
+
+  # Reports follow the work-package picker. With a WP selected, every generated
+  # report covers that work package's records and its own target; with
+  # "Overview · all WPs" they cover the whole trial, as before. Work packages
+  # have different designs, targets and outcomes, so a report that mixed them
+  # would be describing something nobody ran.
+  .report_df <- function() {
+    d  <- rv$raw_redcap
+    wp <- rv$active_wp
+    if (is.null(wp) || is.null(d) || !"work_package" %in% names(d)) return(d)
+    keep <- !is.na(d$work_package) &
+      suppressWarnings(as.integer(d$work_package)) == as.integer(wp)
+    d[keep, , drop = FALSE]
+  }
+
+  # Label for the work package a report covers, or NULL for the whole trial.
+  .report_wp_label <- function() {
+    wp  <- rv$active_wp
+    cfg <- rv$trial_config
+    if (is.null(wp) || is.null(cfg)) return(NULL)
+    ctx <- wp_report_context(cfg, wp)
+    if (is.null(ctx$label) || !nzchar(ctx$label)) ctx$code else
+      sprintf("%s \u00b7 %s", ctx$code, ctx$label)
+  }
   # WP-scoped views drive the Charts tab (rpt_monthly). Generated reports
   # (TMG / TSC documents) deliberately stay on the full rv$ stores — a report
   # is a whole-trial artefact, not a per-WP view.
@@ -501,13 +525,14 @@ reports_server <- function(input, output, session, state) {
       )
 
       report_data <- prepare_report_data(
-        df                = rv$raw_redcap,
+        df                = .report_df(),
         selected_sites    = sites_for_prep,
         date_from         = from_for_prep,
         date_to           = to_for_prep,
         include_withdrawn = isTRUE(input$include_withdrawn),
         pipeline_df       = rv$sites,
-        crf_csv_path      = latest_crf_path
+        crf_csv_path      = latest_crf_path,
+        target_override   = wp_effective_target(rv$trial_config, rv$active_wp)
       )
       
       site_label <- if (is.null(sites_for_prep) || length(sites_for_prep) == 0) {
@@ -1360,13 +1385,14 @@ reports_server <- function(input, output, session, state) {
 
       report_data <- tryCatch(
         prepare_report_data(
-          df                = rv$raw_redcap,
+          df                = .report_df(),
           selected_sites    = sites_for_prep,
           date_from         = from_for_prep,
           date_to           = to_for_prep,
           include_withdrawn = isTRUE(input$include_withdrawn),
           pipeline_df       = rv$sites,
-          crf_csv_path      = latest_crf_path),
+          crf_csv_path      = latest_crf_path,
+          target_override   = wp_effective_target(cfg, rv$active_wp)),
         error = function(e) {
           showNotification(
             paste("Cannot generate report:", conditionMessage(e)),
@@ -1660,13 +1686,14 @@ reports_server <- function(input, output, session, state) {
 
     report_data <- tryCatch(
       prepare_report_data(
-        df                = rv$raw_redcap,
+        df                = .report_df(),
         selected_sites    = sites_for_prep,
         date_from         = from_for_prep,
         date_to           = to_for_prep,
         include_withdrawn = isTRUE(input$include_withdrawn),
         pipeline_df       = rv$sites,
-        crf_csv_path      = latest_crf_path),
+        crf_csv_path      = latest_crf_path,
+        target_override   = wp_effective_target(cfg, rv$active_wp)),
       error = function(e) { tmg_preview_state$error <- e$message; NULL })
     if (is.null(report_data)) return(NULL)
 

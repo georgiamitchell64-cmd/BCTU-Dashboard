@@ -51,6 +51,13 @@ trial_settings_tab_ui <- function() {
                       span(style = "flex:1;min-width:0;",
                            span(class = "settings-lbl", "Follow-up schedule"),
                            span(class = "settings-desc", "Timepoints & REDCap events"))),
+          shinyjs::hidden(
+            tags$button(id = "settings_nav_workpackages",
+                        class = "settings-item", `data-section` = "workpackages",
+                        span(class = "settings-ic", HTML("&#x25A6;")),
+                        span(style = "flex:1;min-width:0;",
+                             span(class = "settings-lbl", "Work packages"),
+                             span(class = "settings-desc", "Targets, outcomes & each WP's export")))),
           tags$button(class = "settings-item", `data-section` = "demographics",
                       span(class = "settings-ic", HTML("&#x1F465;")),
                       span(style = "flex:1;min-width:0;",
@@ -352,6 +359,27 @@ trial_settings_tab_ui <- function() {
                       div(class = "sch-hint",
                           "Events holding SAEs, deviations, withdrawals or change-of-status forms."))
               )
+            )
+          ),
+
+          # ── Section: Work packages ─────────────────────────────────
+          # A platform trial or a multi-work-package study keeps one REDCap
+          # export per work package. Each is uploaded here against its own WP
+          # so its rows are tagged and every WP-scoped view and report reads
+          # only that work package's data.
+          div(id = "settings_sec_workpackages", class = "settings-section",
+              style = "display:none;",
+
+            tags$section(class = "s-card",
+              div(class = "s-card-head",
+                  div(style = "flex:1;min-width:0;",
+                      div(class = "s-card-title", "Work packages"),
+                      div(class = "s-card-sub",
+                          "Each work package has its own recruitment target, outcomes and REDCap export. Upload an export against a work package and its rows are tagged with it \u2014 selecting that work package's tab then scopes the dashboard and its reports to those records.")),
+                  actionButton("settings_save_wps", "Save",
+                               class = "btn-primary-sm")),
+              div(class = "s-card-body",
+                  uiOutput("settings_wp_ui"))
             )
           ),
 

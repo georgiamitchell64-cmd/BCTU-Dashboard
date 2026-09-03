@@ -81,11 +81,13 @@ current_trial_config <- function() .TRIAL_CFG
 wp_effective_target <- function(cfg, active_wp = NULL) {
   if (is.null(cfg)) return(0L)
   base <- cfg$trial_target %||% 0L
-  if (is.null(active_wp)) return(base)
+  if (is.null(active_wp) || !length(active_wp) || is.na(active_wp)) return(base)
   wpt <- cfg$work_package_targets
   if (!is.null(wpt) && length(wpt) >= active_wp) {
-    v <- suppressWarnings(as.integer(wpt[[active_wp]]))
-    if (!is.na(v) && v > 0) return(v)
+    # A target may be unset for a work package — and comes back from
+    # overrides.json as NULL rather than NA — so length is checked before use.
+    v <- suppressWarnings(as.integer(wpt[[active_wp]] %||% NA))
+    if (length(v) == 1 && !is.na(v) && v > 0) return(v)
   }
   base
 }
