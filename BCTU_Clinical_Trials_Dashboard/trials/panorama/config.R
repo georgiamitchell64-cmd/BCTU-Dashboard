@@ -194,7 +194,7 @@ trial_config <- list(
   # Pin the TMG/iTMG template to this trial's lilac WP4 layout so a newer
   # canonical tonic_report.Rmd at the project root can never take precedence.
   report_template_paths = list(
-    tonic = file.path(.panorama_dir, "reports", "tonic_report.Rmd")
+    tonic = file.path(.panorama_dir, "reports", "tmg_report.Rmd")
   ),
 
   # ── Feature flags ─────────────────────────────────────────────────────────

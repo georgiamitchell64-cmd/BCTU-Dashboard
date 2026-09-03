@@ -1317,7 +1317,7 @@ trial_settings_server <- function(input, output, session, state) {
     # Make sure the trial has its own copy on disk before editing.
     seed_trial_report_templates(cfg, overwrite = FALSE)
     
-    path <- trial_report_template_path(cfg, rt_kind())
+    path <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     content <- if (file.exists(path)) {
       tryCatch(paste(readLines(path, warn = FALSE), collapse = "\n"),
                error = function(e) "")
@@ -1341,7 +1341,7 @@ trial_settings_server <- function(input, output, session, state) {
     
     active_path <- resolve_report_template(cfg, rt_kind())
     override    <- cfg$report_template_paths[[rt_kind()]] %||% ""
-    trial_path  <- trial_report_template_path(cfg, rt_kind())
+    trial_path  <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     
     src_label <- if (!is.null(active_path) && nzchar(override) &&
                      normalizePath(active_path, mustWork = FALSE) ==
@@ -1438,7 +1438,7 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "warning", duration = 5)
       return()
     }
-    path <- trial_report_template_path(cfg, rt_kind())
+    path <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     tryCatch({
       writeLines(body, path, useBytes = TRUE)
@@ -1524,8 +1524,8 @@ trial_settings_server <- function(input, output, session, state) {
   observeEvent(input$rt_reset_confirm, {
     cfg <- rv$trial_config
     if (is.null(cfg)) { removeModal(); return() }
-    src <- default_report_template_path(rt_kind())
-    dst <- trial_report_template_path(cfg, rt_kind())
+    src <- default_report_template_path(rt_kind(), existing = TRUE)
+    dst <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     removeModal()
     if (!file.exists(src)) {
       showNotification(paste("Default template missing:", src),

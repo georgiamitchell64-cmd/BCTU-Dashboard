@@ -619,7 +619,7 @@ reports_server <- function(input, output, session, state) {
                  trial_report_template_path(rv$trial_config, "tonic"),
                  " (or top-level fallback ",
                  default_report_template_path("tonic"), ")")
-          rmd_dest <- file.path(tmp_dir, "tonic_report.Rmd")
+          rmd_dest <- file.path(tmp_dir, basename(rmd_src))
           file.copy(rmd_src, rmd_dest, overwrite = TRUE)
           file.copy("functions/consort_flow.R", file.path(tmp_dir, "consort_flow.R"), overwrite = TRUE)
           file.copy("functions/flat_completeness.R", file.path(tmp_dir, "flat_completeness.R"), overwrite = TRUE)
@@ -1355,7 +1355,7 @@ reports_server <- function(input, output, session, state) {
         return(invisible())
       }
 
-      # Resolve which Rmd to use. TMG and iTMG share tonic_report.Rmd
+      # Resolve which Rmd to use. TMG and iTMG share tmg_report.Rmd
       # (the Rmd reads `report_type` to switch headers). TSC has its own.
       rmd_kind <- if (template_choice == "TSC") "tsc" else "tonic"
       if (template_choice == "TSC") fmt <- "docx"   # TSC is always docx
@@ -1466,7 +1466,7 @@ reports_server <- function(input, output, session, state) {
       }
 
       # ── TMG / iTMG branch: render the Rmd to HTML, then convert ────────
-      # The tonic_report.Rmd is HTML-styled; PDF preserves formatting via
+      # The TMG template is HTML-styled; PDF preserves formatting via
       # chromote (it's just printing the HTML). DOCX via pandoc loses most
       # styling — we surface a warning so the user knows.
       report_type_param <- if (template_choice == "iTMG") "iTMG" else "TMG"
@@ -1650,7 +1650,7 @@ reports_server <- function(input, output, session, state) {
   })
 
   # ── TMG / iTMG preview: render the Rmd live and embed in an iframe ──────
-  # The TMG/iTMG download path uses tonic_report.Rmd. We render the same Rmd
+  # The TMG/iTMG download path uses the trial's TMG template. We render it
   # for the on-screen preview so what the user sees matches what they
   # download (byte-for-byte for HTML format).
   tmg_preview_state <- reactiveValues(html = NULL, error = NULL, rendering = FALSE)
