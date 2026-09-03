@@ -351,7 +351,7 @@ trial_selector_server <- function(input, output, session, state) {
                 tags$span(class = "psum-greet-sub",
                           sprintf("%d %s across %d %s",
                                   this_week,
-                                  if (this_week == 1) "new randomisation this week" else "new randomisations this week",
+                                  if (this_week == 1) "new participant this week" else "new participants this week",
                                   n_trials,
                                   if (n_trials == 1) "trial" else "trials")))
         ),
@@ -364,7 +364,7 @@ trial_selector_server <- function(input, output, session, state) {
             div(class = "psum-stat pos",
                 div(class = "psum-stat-k", "This week"),
                 div(class = "psum-stat-v", sprintf("+%d", this_week)),
-                div(class = "psum-stat-s", "randomisations across portfolio")),
+                div(class = "psum-stat-s", "recruited across portfolio")),
             div(class = paste("psum-stat", if (queries > 50) "warn"),
                 div(class = "psum-stat-k", "Open queries"),
                 div(class = "psum-stat-v", queries),
@@ -392,7 +392,7 @@ trial_selector_server <- function(input, output, session, state) {
                           tags$span(class = "psum-trow-code",
                                     cfg$short_name %||% toupper(r$code))),
                       div(class = "psum-trow-met",
-                          div(class = "psum-trow-met-k", "Randomised"),
+                          div(class = "psum-trow-met-k", "Recruited"),
                           div(class = "psum-trow-met-v",
                               format(r$n, big.mark = ","),
                               tags$span(class = "psum-trow-met-of",
@@ -1220,8 +1220,8 @@ trial_selector_server <- function(input, output, session, state) {
             div(class = "at-bar-label",
                 tags$span(tags$b(format(r$n, big.mark = ",")),
                           if (r$target > 0)
-                            sprintf(" / %s randomised", format(r$target, big.mark = ","))
-                          else " randomised"),
+                            sprintf(" / %s recruited", format(r$target, big.mark = ","))
+                          else " recruited"),
                 tags$span(sprintf("%.0f%%", pct * 100)))),
           # Col 3 \u2014 Sites
           div(class = "at-stat",

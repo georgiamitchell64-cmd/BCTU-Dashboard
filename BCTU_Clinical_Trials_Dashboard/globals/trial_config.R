@@ -113,11 +113,18 @@ is_randomised_trial <- function(cfg = .TRIAL_CFG) {
 recruit_term <- function(key = "past", cfg = .TRIAL_CFG) {
   rand <- is_randomised_trial(cfg)
   switch(key,
-    past        = if (rand) "randomised"       else "registered",
-    noun        = if (rand) "randomisations"   else "registrations",
-    event       = if (rand) "randomisation"    else "registration",
-    total_label = if (rand) "Total randomised" else "Total registered",
-    if (rand) "randomised" else "registered")
+    past        = if (rand) "randomised"       else "recruited",
+    noun        = if (rand) "randomisations"   else "recruits",
+    event       = if (rand) "randomisation"    else "recruitment",
+    verb        = if (rand) "randomise"        else "recruit",
+    total_label = if (rand) "Total randomised" else "Total recruited",
+    per_month   = if (rand) "Randomisations / month" else "Recruits / month",
+    Noun        = if (rand) "Randomisations"   else "Recruitment",
+    Past        = if (rand) "Randomised"       else "Recruited",
+    tab_title   = if (rand) "Randomisations"   else "Recruitment",
+    no_data     = if (rand) "No randomisation data — upload a REDCap CSV"
+                  else      "No recruitment data — upload a REDCap CSV",
+    if (rand) "randomised" else "recruited")
 }
 
 #' Work-package context for reports and headers.

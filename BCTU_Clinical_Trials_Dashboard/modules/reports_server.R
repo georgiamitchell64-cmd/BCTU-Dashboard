@@ -123,7 +123,10 @@ reports_server <- function(input, output, session, state) {
     tags$span(paste(v, "recruitment vs target", b))
   })
   
-  empty_e <- function(msg = "No data \u2014 load REDCap CSV or add randomisations") {
+  empty_e <- function(msg = NULL) {
+    if (is.null(msg))
+      msg <- sprintf("No data \u2014 load a REDCap CSV or add %s",
+                     recruit_term("noun", rv$trial_config))
     empty_echart(msg)
   }
   
@@ -145,7 +148,9 @@ reports_server <- function(input, output, session, state) {
                lineStyle = list(type = "dashed", width = 2.5),
                symbol = "circle", symbolSize = 5) %>%
         e_tonic() %>%
-        e_y_axis(name = if (isCum) "Cumulative randomisations" else "Randomisations / month",
+        e_y_axis(name = if (isCum)
+                   sprintf("Cumulative %s", recruit_term("noun", rv$trial_config))
+                 else recruit_term("per_month", rv$trial_config),
                  nameTextStyle = list(fontFamily = "Outfit", fontSize = 11,
                                       color = col_muted)) %>%
         e_toolbox(feature = list(saveAsImage = list(title = "Save PNG")))
@@ -1557,7 +1562,8 @@ reports_server <- function(input, output, session, state) {
             div(class = "rb-trial-meta-k", "Current trial"),
             div(class = "rb-trial-meta-name", cfg$short_name %||% toupper(cfg$code)),
             div(class = "rb-trial-meta-sub",
-                sprintf("%d / %d randomised · %d%%", n, target, pct))))
+                sprintf("%d / %d %s · %d%%", n, target,
+                        recruit_term("past", cfg), pct))))
   })
 
   output$rb_template_seg <- renderUI({
@@ -1595,7 +1601,7 @@ reports_server <- function(input, output, session, state) {
     }
 
     div(class = "rb-stat-row",
-        tile("Randomised",   n_rand,  "across the trial"),
+        tile(recruit_term("Past", rv$trial_config), n_rand, "across the trial"),
         tile("Active sites", n_open,  sprintf("of %d", n_sites)),
         tile("Insights",
              length(tryCatch(
