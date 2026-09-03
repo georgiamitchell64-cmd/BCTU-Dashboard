@@ -77,33 +77,35 @@ trial_config <- list(
   data_dir = NULL,
 
   # ── REDCap events ─────────────────────────────────────────────────────────
-  # One event name per role. Confirm `baseline` (the registration/index event)
-  # and `discharge` against the first real export and correct them here or in
-  # Trial Settings → Follow-up schedule; other plausible names for baseline are
-  # baseline_arm_1, index_admission_arm_1, registration_arm_1, enrolment_arm_1.
-  # Until then baseline_rows() falls back to one row per participant, so the
-  # demographic and codebook views still populate.
+  # From the project's data dictionary codebook (PID 554). Screening, consent,
+  # demographics, index admission and withdrawal all sit in baseline_arm_1;
+  # each PROM timepoint has its own event. site_records_arm_2 holds the site
+  # and investigator forms, not participants.
   redcap_events = list(
-    baseline  = "screening_arm_1",
+    baseline  = "baseline_arm_1",
     discharge = "day_of_discharge_arm_1",
-    day_7     = "day_7_arm_1",
+    day_7     = "fu_7_day_arm_1",
     day_30    = "fu_30_day_arm_1",
     month_3   = "fu_3_month_arm_1",
     month_6   = "fu_6_month_arm_1",
-    sub_forms = c("withdrawal_arm_1", "ad_hoc_arm_1")
+    sub_forms = "site_records_arm_2"
   ),
 
   # ── REDCap field mappings ─────────────────────────────────────────────────
   redcap_fields = list(
     record_id              = "record_id",
-    site_name              = "redcap_data_access_group",
+    site_name              = "rc_site_name",          # DAG name; rc_site_id is its code
     randomisation_datetime = "screen_created_date",   # registration date
     discharge_date         = "index_discharge_date",
 
     age                    = "age",
+    sex                    = "sex",
+    ethnicity              = "ethnicity",             # eth_white / eth_asian etc. hold the detail
 
     # Screening / eligibility / consent
+    # screening_calc = sum(screening_1..4); all four answered "eligible" = 4.
     screening_calc         = "screening_calc",        # 4 = eligible
+    screening_date         = "screen_date",           # date the patient was screened
     approached             = "approached_yn",
     valid_consent          = "valid_consent",         # 1 = consented
     screen_created_date    = "screen_created_date",
@@ -161,12 +163,18 @@ trial_config <- list(
     month_6   = list(label = "6 months",         offset_days = 182, window_days = 7,  anchor = "discharge")
   ),
 
-  # ── Withdrawal levels (protocol section 15) ───────────────────────────────
+  # ── Withdrawal levels (withdraw_level, from the REDCap codebook) ──────────
+  # The codebook carries three levels, not the two the protocol text describes.
   cos_type_labels = c(
-    "1" = "No study-related follow-up",
-    "2" = "No further data collection"
+    "1" = "No study intervention",
+    "2" = "No study-related follow-up",
+    "3" = "No further data collection"
   ),
 
+  # Coded values come from the project codebook in trials/panorama/codebook.csv
+  # and are applied through overrides.json (column_labels), so every view and
+  # report reads labels rather than numbers. Re-import the codebook from Trial
+  # Settings after a REDCap change.
   ethnicity_labels = NULL,
   target_schedule  = NULL,
   participant_table_layout = NULL,

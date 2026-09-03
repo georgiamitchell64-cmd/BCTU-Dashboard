@@ -119,6 +119,96 @@ parse_codebook_text <- function(txt) {
        n_fields = length(labels), source = "pasted text")
 }
 
+# REDCap's own "Data Dictionary Codebook" PDF lays each field out as
+#
+#   129 [index_panc_aetio]   Aetiology of this index episode      dropdown, Required
+#                                                                 1    Gallstones
+#                                                                 2    Alcohol
+#                                                                -99   Unknown
+#
+# — the variable in brackets, its label, and the code list running down the
+# right-hand column, which the generic text parser cannot see because the codes
+# never start a line. This reads that layout directly.
+.CB_ATTR_WORDS <- paste0("^(Min|Max|Custom|Field|Section|Show|Required|",
+                         "Validation|Identifier|Branching|Choices|Note|",
+                         "Matrix|Alignment|Annotation|Calculation|Action|",
+                         "SELECT|FROM|WHERE)\\b")
+.CB_TYPE_RE <- paste0("\\b(text|notes|dropdown|radio|checkbox|yesno|truefalse|",
+                      "calc|descriptive|file|slider|sql|signature)\\b")
+
+# REDCap's codebook PDF has no glyph mapping for the fi/ff/ffi ligatures, so
+# pdftools reads "confirmed" as "con!rmed", "Staff" as 'Sta"' and "Office" as
+# "O%ce". Restore them, but only between letters so real punctuation survives.
+.cb_fix_ligatures <- function(x) {
+  x <- gsub("\ufb01", "fi", x); x <- gsub("\ufb00", "ff", x)
+  x <- gsub("\ufb03", "ffi", x)
+  x <- gsub("(?<=[A-Za-z])!(?=[a-z])", "fi", x, perl = TRUE)
+  x <- gsub("(?<=\\s)!(?=eld)",       "fi", x, perl = TRUE)
+  x <- gsub("(?<=[A-Za-z])\"(?=[a-z])", "ff", x, perl = TRUE)
+  x <- gsub("(?<=[A-Za-z])%(?=[a-z])", "ffi", x, perl = TRUE)
+  x
+}
+
+parse_redcap_codebook_pdf_text <- function(txt) {
+  lines <- .cb_fix_ligatures(unlist(strsplit(paste(txt, collapse = "\n"), "\n")))
+
+  field_re <- "^\\s*[0-9]+\\s+\\[([A-Za-z0-9_]+)\\]\\s*(.*)$"
+
+  labels <- list(); field_labels <- character(0)
+  current <- NULL; attr_col <- NA_integer_; last_code <- NULL
+  for (l in lines) {
+    m <- regmatches(l, regexec(field_re, l))[[1]]
+    if (length(m) == 3) {
+      current <- m[2]
+      # The attributes column starts where the field type is printed. Codes are
+      # listed underneath it, so remembering that column is what separates a
+      # code list from the wrapped field label to its left — the gap between
+      # the two can be a single space on a long label.
+      tpos <- regexpr(.CB_TYPE_RE, m[3], perl = TRUE)
+      attr_col <- if (tpos > 0) nchar(l) - nchar(m[3]) + tpos else NA_integer_
+      lbl <- trimws(sub("\\s{3,}.*$", "", m[3]))
+      if (nzchar(lbl) && !grepl(.CB_ATTR_WORDS, lbl))
+        field_labels[[current]] <- lbl
+      last_code <- NULL
+      next
+    }
+    if (is.null(current)) next
+    # Read only the attributes column; without one, fall back to a wide indent.
+    right <- if (!is.na(attr_col) && nchar(l) >= attr_col)
+      substr(l, max(1L, attr_col - 3L), nchar(l)) else
+      if (grepl("^\\s{35,}\\S", l)) l else ""
+    cm <- regmatches(right, regexec("^\\s*(-?[0-9]+)\\s{1,8}(\\S.*?)\\s*$", right))[[1]]
+    if (length(cm) != 3) {
+      # A long choice wraps onto the next line with no code of its own
+      # ("English, Welsh, Scottish, Northern Irish or / British"), so the tail
+      # belongs to the code above it.
+      tail <- trimws(right)
+      if (!is.null(last_code) && nzchar(tail) && !grepl(.CB_ATTR_WORDS, tail) &&
+          !grepl("^[0-9]", tail) && nchar(tail) < 80) {
+        cur <- labels[[current]]
+        if (!is.null(cur) && !is.null(cur[[last_code]]))
+          labels[[current]][[last_code]] <- paste(cur[[last_code]], tail)
+      } else if (!nzchar(tail)) {
+        # Blank lines separate choices, not fields — keep the current code.
+      } else last_code <- NULL
+      next
+    }
+    code  <- cm[2]
+    label <- trimws(cm[3])
+    if (!nzchar(label) || grepl(.CB_ATTR_WORDS, label)) next
+    if (grepl("^[0-9]+\\)?$", label)) next
+    cur <- labels[[current]] %||% list()
+    if (is.null(cur[[code]])) cur[[code]] <- label
+    labels[[current]] <- cur
+    last_code <- code
+  }
+
+  # A single code is a checkbox or a stray match, not a code list worth keeping.
+  labels <- Filter(function(x) length(x) >= 2, labels)
+  list(labels = labels, field_labels = field_labels,
+       n_fields = length(labels), source = "REDCap codebook PDF")
+}
+
 #' Extract the text of a PDF codebook. Needs the pdftools package; without it
 #' the caller is told to paste the text instead rather than failing silently.
 parse_codebook_pdf <- function(path) {
@@ -128,7 +218,11 @@ parse_codebook_pdf <- function(path) {
          "(install.packages(\"pdftools\")). Until then, paste the codebook ",
          "text into the box instead.")
   txt <- pdftools::pdf_text(path)
-  out <- parse_codebook_text(txt)
+  # REDCap's own codebook export is the common case and needs its column
+  # layout read; anything else falls back to the generic text parser.
+  out <- if (any(grepl("Data Dictionary Codebook|Variable / Field Name", txt)))
+    parse_redcap_codebook_pdf_text(txt) else parse_codebook_text(txt)
+  if (!length(out$labels)) out <- parse_codebook_text(txt)
   out$source <- basename(path)
   out
 }
