@@ -59,9 +59,15 @@ fld <- function(name, default = name, cfg = .TRIAL_CFG) {
 }
 
 #' Look up a REDCap event name by logical role.
-evt <- function(name, default = name, cfg = .TRIAL_CFG) {
+#' A role may map to several event names (a trial that registers under any of
+#' a few candidate events). Callers that compare against a single name — most
+#' of them — get the first; pass `all = TRUE` for the whole set, which is what
+#' row filtering wants.
+evt <- function(name, default = name, cfg = .TRIAL_CFG, all = FALSE) {
   if (is.null(cfg) || is.null(cfg$redcap_events)) return(default)
-  cfg$redcap_events[[name]] %||% default
+  v <- cfg$redcap_events[[name]] %||% default
+  if (all || is.null(v) || length(v) <= 1) return(v)
+  as.character(unlist(v))[1]
 }
 
 #' Get the active trial config (or NULL if none selected yet).

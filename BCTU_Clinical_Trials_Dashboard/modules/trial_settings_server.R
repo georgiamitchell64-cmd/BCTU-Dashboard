@@ -534,7 +534,8 @@ trial_settings_server <- function(input, output, session, state) {
     
     # Follow-up schedule
     ev <- cfg$redcap_events %||% list()
-    updateTextInput(session, "set_ev_baseline", value = ev$baseline %||% "")
+    updateTextInput(session, "set_ev_baseline",
+                    value = mapping_first(ev$baseline, ""))
     sf <- ev$sub_forms
     updateTextInput(session, "set_ev_subforms",
                     value = if (is.null(sf)) "" else paste(unlist(sf), collapse = ", "))

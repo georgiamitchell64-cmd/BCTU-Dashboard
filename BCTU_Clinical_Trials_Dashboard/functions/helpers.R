@@ -64,6 +64,22 @@ ensure_pandoc <- function() {
   FALSE
 }
 
+# A config mapping (a redcap_fields / redcap_events entry) may hold one name or
+# several — a trial that registers under any of a few candidate events maps them
+# all. Test emptiness with this rather than `nzchar(x)`, which returns a vector
+# for a multi-value mapping and makes `&&` / `if` raise
+# "'length = n' in coercion to 'logical(1)'".
+mapping_is_blank <- function(x) {
+  is.null(x) || length(x) == 0 ||
+    (is.character(x) && !any(nzchar(trimws(x))))
+}
+
+# First name in a mapping, for the call sites that can only use one.
+mapping_first <- function(x, default = NA_character_) {
+  if (mapping_is_blank(x)) return(default)
+  as.character(unlist(x))[1]
+}
+
 # =============================================================================
 # Baseline rows
 # =============================================================================
