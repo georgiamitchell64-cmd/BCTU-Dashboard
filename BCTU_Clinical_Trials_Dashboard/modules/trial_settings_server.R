@@ -342,6 +342,260 @@ trial_settings_server <- function(input, output, session, state) {
   })
   outputOptions(output, "settings_demographics_ui", suspendWhenHidden = FALSE)
   
+  # ── Work packages ─────────────────────────────────────────────────────────
+  # Each work package recruits to its own target and keeps its own REDCap
+  # export. Uploads land in trials/<code>/data/wp<i>/ and the folder list is
+  # written back to work_package_data_dirs, which is what the loader reads to
+  # tag each row with its work package.
+  .wp_dir <- function(cfg, i)
+    file.path(cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code),
+              "data", sprintf("wp%d", i))
+
+  .wp_latest <- function(cfg, i) {
+    d <- .wp_dir(cfg, i)
+    if (!dir.exists(d)) return(NULL)
+    f <- list.files(d, pattern = "\\.(csv|CSV)$", full.names = TRUE)
+    if (!length(f)) return(NULL)
+    f <- f[order(file.mtime(f), decreasing = TRUE)]
+    list(path = f[1], name = basename(f[1]),
+         when = format(file.mtime(f[1]), "%d %b %Y %H:%M"))
+  }
+
+  observeEvent(rv$trial_config, {
+    cfg <- rv$trial_config
+    shinyjs::toggle("settings_nav_workpackages",
+                    condition = !is.null(cfg) &&
+                      length(cfg$work_packages %||% character(0)) > 0)
+  }, ignoreNULL = FALSE)
+
+  output$settings_wp_ui <- renderUI({
+    rv$settings_changed
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(div(class = "sch-empty", "No trial selected."))
+    wps <- cfg$work_packages %||% character(0)
+    if (!length(wps))
+      return(div(class = "sch-empty",
+                 "This trial has no work packages. Add them in the trial's config.R (work_packages) and they will appear here."))
+
+    tgts <- cfg$work_package_targets
+    meta <- cfg$work_package_meta %||% list()
+    cards <- lapply(seq_along(wps), function(i) {
+      nm  <- sub("^WKP[0-9]+:\\s*", "", as.character(wps[[i]]))
+      m   <- if (length(meta) >= i) meta[[i]] else list()
+      tgt <- if (!is.null(tgts) && length(tgts) >= i)
+        suppressWarnings(as.integer(tgts[[i]])) else NA_integer_
+      cur <- .wp_latest(cfg, i)
+      outs <- m$outcomes %||% character(0)
+
+      div(class = "dg-col",
+          div(class = "dg-col-head",
+              span(class = "dg-col-title", sprintf("WKP%d", i)),
+              span(class = "dg-col-var", nm),
+              if (!is.null(cur))
+                span(class = "mu-pill mu-pill-ok", style = "margin-left:auto;",
+                     "Export loaded")),
+          div(class = "nt-grid-2", style = "margin-top:8px;",
+              div(class = "s-field",
+                  tags$label("Name"),
+                  textInput(paste0("wp_name_", i), label = NULL, value = nm,
+                            width = "100%")),
+              div(class = "s-field",
+                  tags$label("Recruitment target"),
+                  numericInput(paste0("wp_target_", i), label = NULL,
+                               value = if (is.na(tgt)) NA else tgt,
+                               min = 0, width = "100%"))),
+          div(class = "s-field",
+              tags$label("Outcome measures (one per line)"),
+              textAreaInput(paste0("wp_outcomes_", i), label = NULL, rows = 2,
+                            value = paste(unlist(outs), collapse = "\n"),
+                            width = "100%")),
+          div(class = "s-field",
+              tags$label(sprintf("REDCap export for WKP%d", i)),
+              fileInput(paste0("wp_file_", i), label = NULL, accept = ".csv",
+                        width = "100%"),
+              div(class = "sch-hint",
+                  if (is.null(cur)) "No export uploaded for this work package yet."
+                  else sprintf("Current: %s (uploaded %s)", cur$name, cur$when))))
+    })
+    tagList(
+      div(class = "sch-hint", style = "margin-bottom:10px;",
+          "After uploading, reload the data from the Data tab to bring the new export in."),
+      cards)
+  })
+  outputOptions(output, "settings_wp_ui", suspendWhenHidden = FALSE)
+
+  # One upload observer per possible work package (the config caps them at 10).
+  # Created once at startup; each is a no-op until that WP exists.
+  for (.i in seq_len(10)) local({
+    i <- .i
+    observeEvent(input[[paste0("wp_file_", i)]], {
+      if (!require_role(rv, "manager")) return()
+      cfg <- rv$trial_config; req(cfg)
+      up  <- input[[paste0("wp_file_", i)]]
+      req(up, nrow(up) > 0)
+
+      dest_dir <- .wp_dir(cfg, i)
+      dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
+      dest <- file.path(dest_dir, up$name[1])
+      ok <- tryCatch({ file.copy(up$datapath[1], dest, overwrite = TRUE); TRUE },
+                     error = function(e) {
+                       showNotification(paste("Upload failed:", e$message),
+                                        type = "error", duration = 8); FALSE })
+      if (!ok) return()
+
+      # Point work_package_data_dirs at every WP folder that now holds an
+      # export, so the loader reads one export per work package.
+      wps  <- cfg$work_packages %||% character(0)
+      dirs <- vapply(seq_along(wps), function(k) {
+        d <- .wp_dir(cfg, k)
+        if (dir.exists(d) && length(list.files(d, pattern = "\\.(csv|CSV)$"))) d else ""
+      }, character(1))
+      tryCatch({
+        update_overrides(cfg, work_package_data_dirs = as.list(dirs))
+        new_cfg <- cfg; new_cfg$work_package_data_dirs <- dirs
+        rv$trial_config <- new_cfg
+        apply_trial_globals(new_cfg)
+      }, error = function(e)
+        showNotification(paste("Saved the file but could not update the config:",
+                               e$message), type = "warning", duration = 8))
+
+      rv$settings_changed <- Sys.time()
+      log_activity("wp_export_uploaded",
+                   sprintf("Uploaded REDCap export <strong>%s</strong> for WKP%d",
+                           htmltools::htmlEscape(up$name[1]), i),
+                   username = rv$username, trial_code = cfg$code)
+      showNotification(sprintf("Export saved for WKP%d — reload the data on the Data tab to bring it in.", i),
+                       type = "message", duration = 6)
+    }, ignoreInit = TRUE)
+  })
+
+  observeEvent(input$settings_save_wps, {
+    if (!require_role(rv, "manager")) return()
+    cfg <- rv$trial_config; req(cfg)
+    wps <- cfg$work_packages %||% character(0)
+    if (!length(wps)) return()
+
+    names_new <- vapply(seq_along(wps), function(i) {
+      v <- trimws(input[[paste0("wp_name_", i)]] %||% "")
+      if (nzchar(v)) sprintf("WKP%d: %s", i, v) else sprintf("WKP%d", i)
+    }, character(1))
+    targets <- vapply(seq_along(wps), function(i) {
+      v <- suppressWarnings(as.integer(input[[paste0("wp_target_", i)]]))
+      if (is.na(v) || v < 0) NA_integer_ else v
+    }, integer(1))
+    meta <- cfg$work_package_meta %||% vector("list", length(wps))
+    for (i in seq_along(wps)) {
+      m <- if (length(meta) >= i && !is.null(meta[[i]])) meta[[i]] else list()
+      m$label <- trimws(input[[paste0("wp_name_", i)]] %||% (m$label %||% ""))
+      outs <- trimws(unlist(strsplit(input[[paste0("wp_outcomes_", i)]] %||% "", "\n")))
+      m$outcomes <- as.list(outs[nzchar(outs)])
+      meta[[i]] <- m
+    }
+
+    ok <- tryCatch({
+      update_overrides(cfg, work_packages = as.list(names_new),
+                       work_package_targets = as.list(targets),
+                       work_package_meta = meta)
+      TRUE
+    }, error = function(e) {
+      showNotification(paste("Save failed:", e$message), type = "error", duration = 8)
+      FALSE })
+    if (!ok) return()
+
+    new_cfg <- cfg
+    new_cfg$work_packages        <- names_new
+    new_cfg$work_package_targets <- targets
+    new_cfg$work_package_meta    <- meta
+    rv$trial_config <- new_cfg
+    apply_trial_globals(new_cfg)
+    rv$settings_changed <- Sys.time()
+    showNotification("Saved work packages.", type = "message", duration = 4)
+  })
+
+  # ── Codebook import ───────────────────────────────────────────────────────
+  # A REDCap data dictionary, a PDF codebook or pasted text all end up in the
+  # same place: cfg$column_labels, which the participant views and the reports
+  # read. Labels already typed by hand are kept unless the user asks otherwise.
+  cb_status <- reactiveVal(NULL)
+  output$settings_cb_status <- renderUI({
+    st <- cb_status()
+    if (is.null(st)) return(NULL)
+    div(class = if (isTRUE(st$ok)) "sch-hint" else "sch-empty",
+        style = if (isTRUE(st$ok)) "color:#166534;" else "color:#B91C1C;",
+        st$msg)
+  })
+
+  observeEvent(input$settings_cb_import, {
+    if (!require_role(rv, "manager")) return()
+    cfg <- rv$trial_config; req(cfg)
+
+    up   <- input$settings_cb_file
+    txt  <- trimws(input$settings_cb_text %||% "")
+    if ((is.null(up) || !nrow(up)) && !nzchar(txt)) {
+      cb_status(list(ok = FALSE,
+                     msg = "Choose a codebook file or paste some code lists first."))
+      return()
+    }
+
+    parsed <- tryCatch({
+      if (!is.null(up) && nrow(up)) {
+        # Shiny stores the upload under a temp name; keep the real extension so
+        # the importer can tell a dictionary from a PDF.
+        ext  <- tolower(tools::file_ext(up$name[1]))
+        dest <- file.path(tempdir(), paste0("codebook_", Sys.getpid(), ".", ext))
+        file.copy(up$datapath[1], dest, overwrite = TRUE)
+        import_codebook_file(dest)
+      } else {
+        parse_codebook_text(txt)
+      }
+    }, error = function(e) e)
+
+    if (inherits(parsed, "error")) {
+      cb_status(list(ok = FALSE, msg = conditionMessage(parsed)))
+      return()
+    }
+    if (!length(parsed$labels)) {
+      cb_status(list(ok = FALSE, msg = paste(
+        "No coded values found in that codebook. Expected lines like",
+        "\"1, Gallstones | 2, Alcohol\" against a variable name.")))
+      return()
+    }
+
+    # A dictionary usually covers far more fields than this export has; keep
+    # the ones that appear in the loaded data so the editor below stays useful,
+    # but fall back to everything when no CSV is loaded yet.
+    raw  <- rv$raw_redcap
+    subs <- if (!is.null(raw) && nrow(raw))
+      codebook_for_columns(parsed$labels, names(raw)) else parsed$labels
+    if (!length(subs)) subs <- parsed$labels
+
+    merged <- merge_codebook_labels(cfg$column_labels, subs,
+                                    overwrite = isTRUE(input$settings_cb_overwrite))
+    ok <- tryCatch({
+      update_overrides(cfg, column_labels = merged$labels); TRUE
+    }, error = function(e) {
+      cb_status(list(ok = FALSE, msg = paste("Save failed:", e$message))); FALSE })
+    if (!ok) return()
+
+    new_cfg <- cfg; new_cfg$column_labels <- merged$labels
+    rv$trial_config <- new_cfg
+    apply_trial_globals(new_cfg)
+    rv$settings_changed <- Sys.time()
+    cb_status(list(ok = TRUE, msg = sprintf(
+      "Imported %d label%s across %d field%s from %s.%s",
+      merged$n_added, if (merged$n_added == 1) "" else "s",
+      merged$n_columns, if (merged$n_columns == 1) "" else "s",
+      parsed$source %||% "the codebook",
+      if (merged$n_kept > 0) sprintf(" %d name%s you had already typed were kept.",
+                                     merged$n_kept,
+                                     if (merged$n_kept == 1) "" else "s") else "")))
+    log_activity("codebook_imported",
+                 sprintf("Imported <strong>%d</strong> codebook labels from %s",
+                         merged$n_added,
+                         htmltools::htmlEscape(parsed$source %||% "a codebook")),
+                 username = rv$username, trial_code = cfg$code)
+  })
+
   observeEvent(input$settings_save_demographics, {
     cfg <- rv$trial_config; req(cfg)
     all_inputs <- reactiveValuesToList(input)
@@ -1063,7 +1317,7 @@ trial_settings_server <- function(input, output, session, state) {
     # Make sure the trial has its own copy on disk before editing.
     seed_trial_report_templates(cfg, overwrite = FALSE)
     
-    path <- trial_report_template_path(cfg, rt_kind())
+    path <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     content <- if (file.exists(path)) {
       tryCatch(paste(readLines(path, warn = FALSE), collapse = "\n"),
                error = function(e) "")
@@ -1087,7 +1341,7 @@ trial_settings_server <- function(input, output, session, state) {
     
     active_path <- resolve_report_template(cfg, rt_kind())
     override    <- cfg$report_template_paths[[rt_kind()]] %||% ""
-    trial_path  <- trial_report_template_path(cfg, rt_kind())
+    trial_path  <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     
     src_label <- if (!is.null(active_path) && nzchar(override) &&
                      normalizePath(active_path, mustWork = FALSE) ==
@@ -1184,7 +1438,7 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "warning", duration = 5)
       return()
     }
-    path <- trial_report_template_path(cfg, rt_kind())
+    path <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     tryCatch({
       writeLines(body, path, useBytes = TRUE)
@@ -1270,8 +1524,8 @@ trial_settings_server <- function(input, output, session, state) {
   observeEvent(input$rt_reset_confirm, {
     cfg <- rv$trial_config
     if (is.null(cfg)) { removeModal(); return() }
-    src <- default_report_template_path(rt_kind())
-    dst <- trial_report_template_path(cfg, rt_kind())
+    src <- default_report_template_path(rt_kind(), existing = TRUE)
+    dst <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     removeModal()
     if (!file.exists(src)) {
       showNotification(paste("Default template missing:", src),

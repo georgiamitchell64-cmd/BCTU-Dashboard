@@ -9,14 +9,14 @@ randomisations_tab_ui <- function() {
       div(class = "rand-charts",
         tags$section(class = "tonic-card ov-card",
           div(class = "ov-card-head",
-              tags$h2("Monthly randomisations")),
+              tags$h2(textOutput("rand_monthly_title", inline = TRUE))),
           div(class = "ov-card-body",
               withSpinner(echarts4rOutput("rand_monthly_chart", height = "280px"),
                           type = 4, color = col_teal))
         ),
         tags$section(class = "tonic-card ov-card",
           div(class = "ov-card-head",
-              tags$h2("Cumulative randomisations")),
+              tags$h2(textOutput("rand_cumulative_title", inline = TRUE))),
           div(class = "ov-card-body",
               withSpinner(echarts4rOutput("rand_cumulative_chart", height = "280px"),
                           type = 4, color = col_teal))
@@ -26,7 +26,7 @@ randomisations_tab_ui <- function() {
       # ── Per-site randomisation counts (read-only) ────────────────
       tags$section(class = "tonic-card ov-card",
         div(class = "ov-card-head",
-            tags$h2("Per-site randomisations"),
+            tags$h2(textOutput("rand_site_title", inline = TRUE)),
             span(class = "ov-card-tool-note",
                  "Counts come from the latest REDCap CSV export.")),
         div(class = "ov-card-body",

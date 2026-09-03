@@ -153,14 +153,14 @@ F <- utils::modifyList(list(
   record      = "record_id",
   event       = "redcap_event_name",
   site        = c("rc_site_name", "redcap_data_access_group", "site_name"),
-  age         = c("cae_age", "age"),
-  sex         = "base_sex",
-  ethnicity   = "base_ethnic_gp",
+  age         = "age",
+  sex         = "sex",
+  ethnicity   = "ethnicity",
   aetiology   = "index_panc_aetio",
   screen_calc = "screening_calc",
   approached  = "approached_yn",
   consent     = "valid_consent",
-  screen_date = "screen_created_date",
+  screen_date = c("screen_created_date", "screen_date"),
   f_screening = "screening_complete",
   f_consent   = "consent_complete",
   f_demog     = "demographics_past_history_complete",
@@ -177,6 +177,10 @@ E <- utils::modifyList(list(
   m3  = "fu_3_month_arm_1",
   m6  = "fu_6_month_arm_1"
 ), rc$events %||% list())
+
+# Withdrawal levels and aetiology codes come from the project codebook via
+# params$column_labels; these stay only as a fallback for a report rendered
+# before a codebook has been imported.
 
 find_col <- function(...) {
   wants <- unlist(c(...))
@@ -292,8 +296,9 @@ wd_rate     <- pctg(n_wd, n_cons)
 retention   <- if (is.na(wd_rate)) NA_real_ else round(100 - wd_rate, 1)
 
 wd_labels <- lab_for("withdraw", F$withdraw,
-                     c("1" = "No study-related follow-up",
-                       "2" = "No further data collection"))
+                     c("1" = "No study intervention",
+                       "2" = "No study-related follow-up",
+                       "3" = "No further data collection"))
 wd_tbl <- if (n_wd > 0) {
   code <- as.character(v_wd[wd_ids])
   lbl  <- ifelse(code %in% names(wd_labels), wd_labels[code],
@@ -410,11 +415,10 @@ cat_tbl <- function(v, labels, who) {
 }
 
 aetio_labels <- lab_for("aetiology", F$aetiology, c(
-  "1" = "Gallstones", "2" = "Alcohol", "3" = "Post-ERCP",
-  "4" = "Hypertriglyceridaemia", "5" = "Drug-induced",
-  "6" = "Idiopathic", "7" = "Other"))
-sex_labels <- lab_for("sex", F$sex, c("1" = "Male", "2" = "Female",
-                                      "3" = "Other", "4" = "Prefer not to say"))
+  "1" = "Gallstones", "2" = "Alcohol", "3" = "Drug related",
+  "4" = "Idiopathic", "5" = "Other", "-99" = "Unknown"))
+sex_labels <- lab_for("sex", F$sex, c("1" = "Female", "2" = "Male",
+                                      "3" = "Not disclosed / not known"))
 eth_labels <- lab_for("ethnicity", F$ethnicity, NULL)
 
 aetio_tbl <- cat_tbl(v_aetio, aetio_labels, cons_ids)

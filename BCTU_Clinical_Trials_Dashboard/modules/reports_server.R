@@ -1,5 +1,29 @@
 reports_server <- function(input, output, session, state) {
   rv <- state$rv
+
+  # Reports follow the work-package picker. With a WP selected, every generated
+  # report covers that work package's records and its own target; with
+  # "Overview · all WPs" they cover the whole trial, as before. Work packages
+  # have different designs, targets and outcomes, so a report that mixed them
+  # would be describing something nobody ran.
+  .report_df <- function() {
+    d  <- rv$raw_redcap
+    wp <- rv$active_wp
+    if (is.null(wp) || is.null(d) || !"work_package" %in% names(d)) return(d)
+    keep <- !is.na(d$work_package) &
+      suppressWarnings(as.integer(d$work_package)) == as.integer(wp)
+    d[keep, , drop = FALSE]
+  }
+
+  # Label for the work package a report covers, or NULL for the whole trial.
+  .report_wp_label <- function() {
+    wp  <- rv$active_wp
+    cfg <- rv$trial_config
+    if (is.null(wp) || is.null(cfg)) return(NULL)
+    ctx <- wp_report_context(cfg, wp)
+    if (is.null(ctx$label) || !nzchar(ctx$label)) ctx$code else
+      sprintf("%s \u00b7 %s", ctx$code, ctx$label)
+  }
   # WP-scoped views drive the Charts tab (rpt_monthly). Generated reports
   # (TMG / TSC documents) deliberately stay on the full rv$ stores — a report
   # is a whole-trial artefact, not a per-WP view.
@@ -123,7 +147,10 @@ reports_server <- function(input, output, session, state) {
     tags$span(paste(v, "recruitment vs target", b))
   })
   
-  empty_e <- function(msg = "No data \u2014 load REDCap CSV or add randomisations") {
+  empty_e <- function(msg = NULL) {
+    if (is.null(msg))
+      msg <- sprintf("No data \u2014 load a REDCap CSV or add %s",
+                     recruit_term("noun", rv$trial_config))
     empty_echart(msg)
   }
   
@@ -145,7 +172,9 @@ reports_server <- function(input, output, session, state) {
                lineStyle = list(type = "dashed", width = 2.5),
                symbol = "circle", symbolSize = 5) %>%
         e_tonic() %>%
-        e_y_axis(name = if (isCum) "Cumulative randomisations" else "Randomisations / month",
+        e_y_axis(name = if (isCum)
+                   sprintf("Cumulative %s", recruit_term("noun", rv$trial_config))
+                 else recruit_term("per_month", rv$trial_config),
                  nameTextStyle = list(fontFamily = "Outfit", fontSize = 11,
                                       color = col_muted)) %>%
         e_toolbox(feature = list(saveAsImage = list(title = "Save PNG")))
@@ -496,13 +525,14 @@ reports_server <- function(input, output, session, state) {
       )
 
       report_data <- prepare_report_data(
-        df                = rv$raw_redcap,
+        df                = .report_df(),
         selected_sites    = sites_for_prep,
         date_from         = from_for_prep,
         date_to           = to_for_prep,
         include_withdrawn = isTRUE(input$include_withdrawn),
         pipeline_df       = rv$sites,
-        crf_csv_path      = latest_crf_path
+        crf_csv_path      = latest_crf_path,
+        target_override   = wp_effective_target(rv$trial_config, rv$active_wp)
       )
       
       site_label <- if (is.null(sites_for_prep) || length(sites_for_prep) == 0) {
@@ -589,7 +619,7 @@ reports_server <- function(input, output, session, state) {
                  trial_report_template_path(rv$trial_config, "tonic"),
                  " (or top-level fallback ",
                  default_report_template_path("tonic"), ")")
-          rmd_dest <- file.path(tmp_dir, "tonic_report.Rmd")
+          rmd_dest <- file.path(tmp_dir, basename(rmd_src))
           file.copy(rmd_src, rmd_dest, overwrite = TRUE)
           file.copy("functions/consort_flow.R", file.path(tmp_dir, "consort_flow.R"), overwrite = TRUE)
           file.copy("functions/flat_completeness.R", file.path(tmp_dir, "flat_completeness.R"), overwrite = TRUE)
@@ -1325,7 +1355,7 @@ reports_server <- function(input, output, session, state) {
         return(invisible())
       }
 
-      # Resolve which Rmd to use. TMG and iTMG share tonic_report.Rmd
+      # Resolve which Rmd to use. TMG and iTMG share tmg_report.Rmd
       # (the Rmd reads `report_type` to switch headers). TSC has its own.
       rmd_kind <- if (template_choice == "TSC") "tsc" else "tonic"
       if (template_choice == "TSC") fmt <- "docx"   # TSC is always docx
@@ -1355,13 +1385,14 @@ reports_server <- function(input, output, session, state) {
 
       report_data <- tryCatch(
         prepare_report_data(
-          df                = rv$raw_redcap,
+          df                = .report_df(),
           selected_sites    = sites_for_prep,
           date_from         = from_for_prep,
           date_to           = to_for_prep,
           include_withdrawn = isTRUE(input$include_withdrawn),
           pipeline_df       = rv$sites,
-          crf_csv_path      = latest_crf_path),
+          crf_csv_path      = latest_crf_path,
+          target_override   = wp_effective_target(cfg, rv$active_wp)),
         error = function(e) {
           showNotification(
             paste("Cannot generate report:", conditionMessage(e)),
@@ -1435,7 +1466,7 @@ reports_server <- function(input, output, session, state) {
       }
 
       # ── TMG / iTMG branch: render the Rmd to HTML, then convert ────────
-      # The tonic_report.Rmd is HTML-styled; PDF preserves formatting via
+      # The TMG template is HTML-styled; PDF preserves formatting via
       # chromote (it's just printing the HTML). DOCX via pandoc loses most
       # styling — we surface a warning so the user knows.
       report_type_param <- if (template_choice == "iTMG") "iTMG" else "TMG"
@@ -1557,7 +1588,8 @@ reports_server <- function(input, output, session, state) {
             div(class = "rb-trial-meta-k", "Current trial"),
             div(class = "rb-trial-meta-name", cfg$short_name %||% toupper(cfg$code)),
             div(class = "rb-trial-meta-sub",
-                sprintf("%d / %d randomised · %d%%", n, target, pct))))
+                sprintf("%d / %d %s · %d%%", n, target,
+                        recruit_term("past", cfg), pct))))
   })
 
   output$rb_template_seg <- renderUI({
@@ -1595,7 +1627,7 @@ reports_server <- function(input, output, session, state) {
     }
 
     div(class = "rb-stat-row",
-        tile("Randomised",   n_rand,  "across the trial"),
+        tile(recruit_term("Past", rv$trial_config), n_rand, "across the trial"),
         tile("Active sites", n_open,  sprintf("of %d", n_sites)),
         tile("Insights",
              length(tryCatch(
@@ -1618,7 +1650,7 @@ reports_server <- function(input, output, session, state) {
   })
 
   # ── TMG / iTMG preview: render the Rmd live and embed in an iframe ──────
-  # The TMG/iTMG download path uses tonic_report.Rmd. We render the same Rmd
+  # The TMG/iTMG download path uses the trial's TMG template. We render it
   # for the on-screen preview so what the user sees matches what they
   # download (byte-for-byte for HTML format).
   tmg_preview_state <- reactiveValues(html = NULL, error = NULL, rendering = FALSE)
@@ -1654,13 +1686,14 @@ reports_server <- function(input, output, session, state) {
 
     report_data <- tryCatch(
       prepare_report_data(
-        df                = rv$raw_redcap,
+        df                = .report_df(),
         selected_sites    = sites_for_prep,
         date_from         = from_for_prep,
         date_to           = to_for_prep,
         include_withdrawn = isTRUE(input$include_withdrawn),
         pipeline_df       = rv$sites,
-        crf_csv_path      = latest_crf_path),
+        crf_csv_path      = latest_crf_path,
+        target_override   = wp_effective_target(cfg, rv$active_wp)),
       error = function(e) { tmg_preview_state$error <- e$message; NULL })
     if (is.null(report_data)) return(NULL)
 

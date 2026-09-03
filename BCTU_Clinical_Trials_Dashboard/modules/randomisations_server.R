@@ -5,6 +5,18 @@ randomisations_server <- function(input, output, session, state) {
   redcap_wp <- state$redcap_wp
   sites_wp  <- state$sites_wp
 
+  # Card headings follow the trial's recruitment model: a cohort study
+  # recruits, it does not randomise.
+  output$rand_monthly_title <- renderText({
+    sprintf("Monthly %s", recruit_term("noun", rv$trial_config))
+  })
+  output$rand_cumulative_title <- renderText({
+    sprintf("Cumulative %s", recruit_term("noun", rv$trial_config))
+  })
+  output$rand_site_title <- renderText({
+    sprintf("Per-site %s", recruit_term("noun", rv$trial_config))
+  })
+
   # Resolve the randomisation-date column from the trial config, with the
   # same fallbacks the portfolio-review chart uses. Returns NA when nothing
   # in the loaded CSV looks like a randomisation date.
@@ -80,7 +92,7 @@ randomisations_server <- function(input, output, session, state) {
     }
 
     div(class = "rand-kpi-row",
-        make_kpi(total_rand,   "Total randomised",
+        make_kpi(total_rand,   recruit_term("total_label", rv$trial_config),
                  sprintf("%d%% of target (%s)", pct,
                          format(trial_target, big.mark = ","))),
         make_kpi(this_month,   "This month"),
@@ -91,7 +103,8 @@ randomisations_server <- function(input, output, session, state) {
   # ── Monthly bar chart ───────────────────────────────────────────────────
   output$rand_monthly_chart <- renderEcharts4r({
     d <- rand_dates()
-    if (!length(d)) return(.empty_chart("No randomisation data — upload a REDCap CSV"))
+    if (!length(d))
+      return(.empty_chart(recruit_term("no_data", rv$trial_config)))
 
     months_chr <- format(d, "%Y-%m")
     monthly <- as.data.frame(table(months_chr), stringsAsFactors = FALSE)
@@ -101,7 +114,7 @@ randomisations_server <- function(input, output, session, state) {
 
     monthly |>
       echarts4r::e_charts(month) |>
-      echarts4r::e_bar(n, name = "Randomisations",
+      echarts4r::e_bar(n, name = recruit_term("Noun", rv$trial_config),
                        itemStyle = list(color = "#2EC4A5",
                                          borderRadius = c(4, 4, 0, 0))) |>
       echarts4r::e_x_axis(axisLabel = list(rotate = 45, fontSize = 10)) |>
@@ -114,7 +127,8 @@ randomisations_server <- function(input, output, session, state) {
   # ── Cumulative line chart ───────────────────────────────────────────────
   output$rand_cumulative_chart <- renderEcharts4r({
     d <- rand_dates()
-    if (!length(d)) return(.empty_chart("No randomisation data — upload a REDCap CSV"))
+    if (!length(d))
+      return(.empty_chart(recruit_term("no_data", rv$trial_config)))
 
     trial_target <- wp_effective_target(rv$trial_config, rv$active_wp)
     if (trial_target <= 0) trial_target <- 100L
@@ -160,7 +174,8 @@ randomisations_server <- function(input, output, session, state) {
                              cell = function(v) htmltools::span(class = "sid", v)),
         site_name   = colDef(name = "Site", minWidth = 180),
         status_html = colDef(name = "Status", html = TRUE, minWidth = 120),
-        randomised  = colDef(name = "Randomised", align = "center", minWidth = 110),
+        randomised  = colDef(name = recruit_term("Past", rv$trial_config),
+                             align = "center", minWidth = 110),
         target      = colDef(name = "Target", align = "center", minWidth = 90,
                              style = list(color = col_muted)),
         prog_html   = colDef(name = "Progress", html = TRUE, minWidth = 180)

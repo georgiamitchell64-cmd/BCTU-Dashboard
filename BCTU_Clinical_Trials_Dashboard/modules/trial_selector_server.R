@@ -351,7 +351,7 @@ trial_selector_server <- function(input, output, session, state) {
                 tags$span(class = "psum-greet-sub",
                           sprintf("%d %s across %d %s",
                                   this_week,
-                                  if (this_week == 1) "new randomisation this week" else "new randomisations this week",
+                                  if (this_week == 1) "new participant this week" else "new participants this week",
                                   n_trials,
                                   if (n_trials == 1) "trial" else "trials")))
         ),
@@ -364,7 +364,7 @@ trial_selector_server <- function(input, output, session, state) {
             div(class = "psum-stat pos",
                 div(class = "psum-stat-k", "This week"),
                 div(class = "psum-stat-v", sprintf("+%d", this_week)),
-                div(class = "psum-stat-s", "randomisations across portfolio")),
+                div(class = "psum-stat-s", "recruited across portfolio")),
             div(class = paste("psum-stat", if (queries > 50) "warn"),
                 div(class = "psum-stat-k", "Open queries"),
                 div(class = "psum-stat-v", queries),
@@ -392,7 +392,7 @@ trial_selector_server <- function(input, output, session, state) {
                           tags$span(class = "psum-trow-code",
                                     cfg$short_name %||% toupper(r$code))),
                       div(class = "psum-trow-met",
-                          div(class = "psum-trow-met-k", "Randomised"),
+                          div(class = "psum-trow-met-k", "Recruited"),
                           div(class = "psum-trow-met-v",
                               format(r$n, big.mark = ","),
                               tags$span(class = "psum-trow-met-of",
@@ -1220,8 +1220,8 @@ trial_selector_server <- function(input, output, session, state) {
             div(class = "at-bar-label",
                 tags$span(tags$b(format(r$n, big.mark = ",")),
                           if (r$target > 0)
-                            sprintf(" / %s randomised", format(r$target, big.mark = ","))
-                          else " randomised"),
+                            sprintf(" / %s recruited", format(r$target, big.mark = ","))
+                          else " recruited"),
                 tags$span(sprintf("%.0f%%", pct * 100)))),
           # Col 3 \u2014 Sites
           div(class = "at-stat",
@@ -2152,22 +2152,51 @@ trial_selector_server <- function(input, output, session, state) {
     if (is.null(tps) || !length(tps)) {
       return(div(class = "nt-hint", "No follow-up timepoints selected — Baseline only."))
     }
+    # A sensible default due-day guessed from the label ("Day 30" -> 30,
+    # "Month 3" -> 91), so common schedules need no typing.
+    guess_day <- function(lbl) {
+      l <- tolower(lbl)
+      n <- suppressWarnings(as.numeric(
+        regmatches(l, regexpr("[0-9]+", l))))
+      if (length(n) == 0 || is.na(n)) return(NA_real_)
+      if (grepl("week", l))  return(n * 7)
+      if (grepl("month", l)) return(round(n * 30.44))
+      if (grepl("year", l))  return(round(n * 365.25))
+      n
+    }
     seen <- character(0)
     rows <- lapply(tps, function(tp) {
       key <- .wiz_tp_slug(tp)
       if (!nzchar(key) || key %in% seen) return(NULL)
       seen <<- c(seen, key)
-      id  <- paste0("wiz_tp_evt_", key)
-      div(style = "display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;margin-bottom:8px;",
+      ev_id  <- paste0("wiz_tp_evt_", key)
+      day_id <- paste0("wiz_tp_day_", key)
+      win_id <- paste0("wiz_tp_win_", key)
+      div(style = "display:grid;grid-template-columns:150px 1fr 110px 110px;gap:10px;
+                   align-items:center;margin-bottom:8px;",
           tags$label(tp, style = "font-size:12px;font-weight:600;color:var(--ov-navy);
                                   background:var(--ov-rail);border:1px solid var(--ov-line);
                                   border-radius:6px;padding:7px 10px;text-align:center;margin:0;"),
-          textInput(id, label = NULL,
-                    value = isolate(input[[id]]) %||% "",
+          textInput(ev_id, label = NULL,
+                    value = isolate(input[[ev_id]]) %||% "",
                     placeholder = paste0(key, "_arm_1"),
-                    width = "100%"))
+                    width = "100%"),
+          numericInput(day_id, label = NULL,
+                       value = isolate(input[[day_id]]) %||% guess_day(tp),
+                       min = 0, width = "100%"),
+          numericInput(win_id, label = NULL,
+                       value = isolate(input[[win_id]]) %||% 0,
+                       min = 0, width = "100%"))
     })
-    div(style = "margin-top:10px;", rows)
+    tagList(
+      div(style = "display:grid;grid-template-columns:150px 1fr 110px 110px;gap:10px;
+                   margin-top:10px;font-size:11px;font-weight:600;color:#64748B;
+                   text-transform:uppercase;letter-spacing:.05em;",
+          span("Timepoint"), span("REDCap event name"),
+          span("Due (days)"), span("Window (\u00b1 days)")),
+      div(rows),
+      div(class = "nt-hint",
+          "Due day counts from recruitment. Leave it blank for a timepoint with no fixed schedule \u2014 it will always be treated as due."))
   })
 
   # Capture toggles on the Field-mapping step: default the procedure group on
@@ -2186,30 +2215,116 @@ trial_selector_server <- function(input, output, session, state) {
   # Render N labelled text inputs (WKP1 ... WKPN) when multi-WP is enabled.
   # Re-rendering preserves user-typed values via input[[id]] lookup so users
   # don't lose edits when bumping the count up or down.
+  # Work packages differ in design, target and outcomes — a qualitative
+  # interview study and a 1,000-patient cohort sit in the same trial — so each
+  # gets its own name, target and outcome list rather than sharing the trial's.
   output$wiz_wp_fields_ui <- renderUI({
     if (!isTRUE(input$wiz_is_multi_wp)) return(NULL)
     n <- suppressWarnings(as.integer(input$wiz_n_wps))
     if (is.na(n) || n < 1) n <- 1
     if (n > 10) n <- 10
     rows <- lapply(seq_len(n), function(i) {
-      id  <- paste0("wiz_wp_name_", i)
-      lbl <- paste0("WKP", i, " name")
-      div(style = "display:grid;grid-template-columns:80px 1fr;gap:10px;
-                   align-items:center;margin-bottom:6px;",
-          tags$label(paste0("WKP", i),
-                     style = "font-size:12px;font-weight:600;color:#1B4F6B;
-                              background:#EEF3F8;border-radius:6px;
-                              padding:6px 10px;text-align:center;margin:0;"),
-          textInput(id, label = NULL,
-                    value = isolate(input[[id]]) %||% "",
-                    placeholder = "e.g. Surgery cohort",
-                    width = "100%"))
+      nm_id  <- paste0("wiz_wp_name_", i)
+      tg_id  <- paste0("wiz_wp_target_", i)
+      ds_id  <- paste0("wiz_wp_design_", i)
+      out_id <- paste0("wiz_wp_outcomes_", i)
+      div(class = "nt-wp-row",
+          style = "border:1px solid var(--ov-line, #E2E8EE);border-radius:8px;
+                   padding:10px 12px;margin-bottom:10px;background:#fff;",
+          div(style = "display:grid;grid-template-columns:70px 1fr 110px;gap:10px;
+                       align-items:center;",
+              tags$label(paste0("WKP", i),
+                         style = "font-size:12px;font-weight:600;color:#1B4F6B;
+                                  background:#EEF3F8;border-radius:6px;
+                                  padding:6px 10px;text-align:center;margin:0;"),
+              textInput(nm_id, label = NULL,
+                        value = isolate(input[[nm_id]]) %||% "",
+                        placeholder = "e.g. Cohort study", width = "100%"),
+              numericInput(tg_id, label = NULL,
+                           value = isolate(input[[tg_id]]) %||% NA,
+                           min = 0, width = "100%")),
+          div(style = "display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;",
+              textInput(ds_id, label = NULL,
+                        value = isolate(input[[ds_id]]) %||% "",
+                        placeholder = "Design, e.g. prospective cohort",
+                        width = "100%"),
+              textInput(out_id, label = NULL,
+                        value = isolate(input[[out_id]]) %||% "",
+                        placeholder = "Outcomes, separated by ;",
+                        width = "100%")))
     })
-    div(style = "margin-top:4px;", rows)
+    tagList(
+      div(class = "nt-hint",
+          "Name, recruitment target, design and outcome measures for each work package. The target is the denominator the dashboard uses when that work package's tab is selected."),
+      div(style = "margin-top:6px;", rows))
   })
 
   wiz_step  <- reactiveVal(1L)
-  WIZ_TOTAL <- 6L
+  WIZ_TOTAL <- 8L
+
+  # Recruitment step: the consent fields only matter when consent is what
+  # counts, and the screening block only when the trial screens in REDCap.
+  observeEvent(input$wiz_recruit_basis, {
+    shinyjs::toggle("wiz_consent_fields",
+                    condition = identical(input$wiz_recruit_basis, "consent_field"))
+  }, ignoreNULL = FALSE)
+  observeEvent(input$wiz_has_screening, {
+    shinyjs::toggle("wiz_screening_panel", condition = isTRUE(input$wiz_has_screening))
+  }, ignoreNULL = FALSE)
+
+  # Trial type implies how participants are counted, so preselect the matching
+  # basis — the user can still change it.
+  observeEvent(input$wiz_trial_type, {
+    randomised <- grepl("random|blind|platform", input$wiz_trial_type %||% "")
+    updateRadioButtons(session, "wiz_recruit_basis",
+                       selected = if (randomised) "date_field" else "consent_field")
+  }, ignoreInit = TRUE)
+
+  # ── Wizard codebook ───────────────────────────────────────────────────────
+  # Read now, write when the trial is created: the labels go into the new
+  # trial's overrides.json so they are live the first time it opens.
+  wiz_codebook <- reactiveVal(NULL)
+  output$wiz_cb_status <- renderUI({
+    st <- wiz_codebook()
+    if (is.null(st)) return(NULL)
+    if (!isTRUE(st$ok))
+      return(div(class = "nt-hint", style = "color:#B91C1C;", st$msg))
+    div(class = "nt-hint", style = "color:#166534;", st$msg)
+  })
+
+  observeEvent(input$wiz_cb_load, {
+    up  <- input$wiz_cb_file
+    txt <- trimws(input$wiz_cb_text %||% "")
+    if ((is.null(up) || !nrow(up)) && !nzchar(txt)) {
+      wiz_codebook(list(ok = FALSE,
+                        msg = "Choose a file or paste some code lists first."))
+      return()
+    }
+    parsed <- tryCatch({
+      if (!is.null(up) && nrow(up)) {
+        ext  <- tolower(tools::file_ext(up$name[1]))
+        dest <- file.path(tempdir(), paste0("wiz_codebook_", Sys.getpid(), ".", ext))
+        file.copy(up$datapath[1], dest, overwrite = TRUE)
+        import_codebook_file(dest)
+      } else parse_codebook_text(txt)
+    }, error = function(e) e)
+
+    if (inherits(parsed, "error")) {
+      wiz_codebook(list(ok = FALSE, msg = conditionMessage(parsed))); return()
+    }
+    if (!length(parsed$labels)) {
+      wiz_codebook(list(ok = FALSE, msg = paste(
+        "No coded values found. Expected lines like",
+        "\"1, Gallstones | 2, Alcohol\" against a variable name."))); return()
+    }
+    n_codes <- sum(vapply(parsed$labels, length, integer(1)))
+    wiz_codebook(list(ok = TRUE, labels = parsed$labels,
+                      msg = sprintf("Read %d code%s across %d field%s from %s. They will be saved with the trial.",
+                                    n_codes, if (n_codes == 1) "" else "s",
+                                    length(parsed$labels),
+                                    if (length(parsed$labels) == 1) "" else "s",
+                                    parsed$source %||% "the codebook")))
+  })
 
   # Step-1 validation, shared by Next and the clickable stepper.
   .wiz_validate_step1 <- function() {
@@ -2315,9 +2430,46 @@ trial_selector_server <- function(input, output, session, state) {
     logo_loc <- if (nzchar(input$wiz_logo_path %||% ""))
       input$wiz_logo_path else "\u2014"
 
-    # Follow-up timepoints chosen on step 3.
+    # Follow-up timepoints, with the day each falls due where one was given.
     tps <- input$wiz_timepoints %||% character(0)
-    tp_label <- if (length(tps)) paste(tps, collapse = " \u00b7 ") else "Baseline only"
+    tp_label <- if (length(tps)) {
+      paste(vapply(tps, function(tp) {
+        d <- suppressWarnings(as.numeric(input[[paste0("wiz_tp_day_", .wiz_tp_slug(tp))]]))
+        if (is.na(d)) tp else sprintf("%s (day %s)", tp, format(d))
+      }, character(1)), collapse = " \u00b7 ")
+    } else "Baseline only"
+
+    # What counts as recruited, and whether screening is tracked.
+    basis_label <- c(
+      "date_field"    = "Randomisation / recruitment date",
+      "consent_field" = "Consent field",
+      "event_present" = "A record at the baseline event"
+    )[input$wiz_recruit_basis %||% "date_field"]
+    screen_label <- if (isTRUE(input$wiz_has_screening)) {
+      parts <- c(
+        if (nzchar(input$wiz_ev_screening %||% "")) input$wiz_ev_screening,
+        if (nzchar(input$wiz_fld_eligible %||% ""))
+          sprintf("eligible when %s = %s", input$wiz_fld_eligible,
+                  input$wiz_val_eligible %||% "4"))
+      if (length(parts)) paste(parts, collapse = " \u00b7 ") else "Tracked"
+    } else "Not tracked"
+
+    cb <- wiz_codebook()
+    cb_label <- if (!is.null(cb) && isTRUE(cb$ok))
+      sprintf("%d field%s imported", length(cb$labels),
+              if (length(cb$labels) == 1) "" else "s") else "\u2014"
+
+    wp_detail <- if (isTRUE(input$wiz_is_multi_wp)) {
+      n <- suppressWarnings(as.integer(input$wiz_n_wps))
+      if (is.na(n) || n < 1) n <- 0
+      parts <- vapply(seq_len(min(n, 10L)), function(i) {
+        nm <- trimws(input[[paste0("wiz_wp_name_", i)]] %||% "")
+        tg <- suppressWarnings(as.integer(input[[paste0("wiz_wp_target_", i)]]))
+        lbl <- if (nzchar(nm)) sprintf("WKP%d %s", i, nm) else sprintf("WKP%d", i)
+        if (is.na(tg)) lbl else sprintf("%s (n=%s)", lbl, format(tg, big.mark = ","))
+      }, character(1))
+      paste(parts, collapse = " \u00b7 ")
+    } else NULL
 
     # Capture summary for the field-mapping step.
     caps <- c("Demographics"[isTRUE(input$wiz_cap_demographics)],
@@ -2364,6 +2516,11 @@ trial_selector_server <- function(input, output, session, state) {
       row("Category",            input$wiz_category %||% "Other"),
       row("Trial type",          type_label %||% "Randomised"),
       row("Work packages",       wp_label),
+      if (!is.null(wp_detail) && nzchar(wp_detail))
+        row("Work package targets", wp_detail),
+      row("Counts as recruited",  basis_label %||% "Randomisation date"),
+      row("Screening",            screen_label),
+      row("Codebook",             cb_label),
       row("Target",              as.character(input$wiz_target %||% 100)),
       row("CI",                  input$wiz_ci %||% "\u2014"),
       row("REDCap data",         data_loc),
@@ -2563,6 +2720,90 @@ trial_selector_server <- function(input, output, session, state) {
                     collapse = ", "))
     } else "  work_packages = NULL,"
 
+    # Per-work-package target, design and outcomes. Each WP recruits to its own
+    # number and reports its own outcomes, so the dashboard and its reports read
+    # these rather than the trial-wide values when a WP tab is active.
+    if (length(wp_names_raw) > 0) {
+      n_wp <- length(wp_names_raw)
+      targets <- vapply(seq_len(n_wp), function(i) {
+        v <- suppressWarnings(as.integer(input[[paste0("wiz_wp_target_", i)]]))
+        if (is.na(v) || v < 0) NA_integer_ else v
+      }, integer(1))
+      wp_line <- paste(wp_line,
+        sprintf('  work_package_targets = c(%s),',
+                paste(ifelse(is.na(targets), "NA_integer_",
+                             paste0(targets, "L")), collapse = ", ")),
+        sep = "\n")
+
+      meta_entries <- vapply(seq_len(n_wp), function(i) {
+        nm  <- trimws(input[[paste0("wiz_wp_name_", i)]] %||% "")
+        des <- trimws(input[[paste0("wiz_wp_design_", i)]] %||% "")
+        out <- trimws(input[[paste0("wiz_wp_outcomes_", i)]] %||% "")
+        outs <- trimws(unlist(strsplit(out, ";")))
+        outs <- outs[nzchar(outs)]
+        outs_code <- if (length(outs))
+          sprintf("c(%s)", paste(sprintf('"%s"', gsub('"', '\\\\"', outs)),
+                                 collapse = ", ")) else "NULL"
+        sprintf('    list(label = %s, design = %s, outcomes = %s)',
+                rq(nm), rq(des), outs_code)
+      }, character(1))
+      wp_line <- paste(wp_line,
+        "  work_package_meta = list(",
+        paste(meta_entries, collapse = ",\n"),
+        "  ),", sep = "\n")
+    }
+
+    # ── Recruitment model: what counts as recruited, and screening ──────────
+    trial_type_val <- input$wiz_trial_type %||% "randomised"
+    basis <- input$wiz_recruit_basis %||% "date_field"
+    recruit_model <- if (identical(basis, "date_field") &&
+                         grepl("random|blind|platform", trial_type_val %||% ""))
+      "randomised" else if (identical(basis, "date_field")) "randomised" else "registration"
+    screening_block <- if (isTRUE(input$wiz_has_screening)) {
+      paste(
+        "    screening = list(",
+        "      enabled          = TRUE,",
+        sprintf("      event            = %s,", rq(input$wiz_ev_screening)),
+        sprintf("      screened_field   = %s,", rq(input$wiz_fld_eligible)),
+        sprintf("      eligible_field   = %s,", rq(input$wiz_fld_eligible)),
+        sprintf("      eligible_value   = %s,", rq(input$wiz_val_eligible %||% "4")),
+        sprintf("      approached_field = %s,", rq(input$wiz_fld_approached)),
+        sprintf("      approached_value = %s", rq(input$wiz_val_approached %||% "1")),
+        "    )", sep = "\n")
+    } else "    screening = list(enabled = FALSE)"
+
+    recruitment_block <- paste(
+      "  # -- Recruitment model: screening, and what counts towards the target --",
+      "  recruitment = list(",
+      sprintf('    model         = "%s",', recruit_model),
+      sprintf('    basis         = "%s",', basis),
+      sprintf("    event         = %s,", rq(input$wiz_ev_baseline)),
+      sprintf("    date_field    = %s,",
+              rq(if (nzchar(trimws(input$wiz_fld_recruit_date %||% "")))
+                   input$wiz_fld_recruit_date else input$wiz_fld_rand_dt)),
+      sprintf("    consent_field = %s,", rq(input$wiz_fld_consent)),
+      sprintf("    consent_value = %s,", rq(input$wiz_val_consent %||% "1")),
+      screening_block,
+      "  ),", sep = "\n")
+
+    # ── Timepoint schedule: when each follow-up falls due ───────────────────
+    tp_meta <- character(0)
+    for (tp in (input$wiz_timepoints %||% character(0))) {
+      key <- .wiz_tp_slug(tp)
+      if (!nzchar(key)) next
+      day <- suppressWarnings(as.numeric(input[[paste0("wiz_tp_day_", key)]]))
+      win <- suppressWarnings(as.numeric(input[[paste0("wiz_tp_win_", key)]]))
+      if (is.na(day)) next
+      tp_meta <- c(tp_meta, sprintf(
+        '    %s = list(label = %s, offset_days = %s, window_days = %s, anchor = "recruitment")',
+        key, rq(tp), format(day), if (is.na(win)) "0" else format(win)))
+    }
+    timepoints_block <- if (length(tp_meta))
+      paste("  # -- When each follow-up falls due (days from recruitment) --",
+            "  timepoints = list(", paste(tp_meta, collapse = ",\n"), "  ),",
+            sep = "\n")
+    else "  timepoints = NULL,"
+
     # Build the data-paths block. When a trial keeps a separate export per work
     # package, write work_package_data_dirs (aligned to work_packages) so the
     # loader reads, tags and combines each WP's newest CSV.
@@ -2581,8 +2822,6 @@ trial_selector_server <- function(input, output, session, state) {
     } else {
       data_block <- paste(data_dir_line, rr_dir_line, sep = "\n")
     }
-
-    trial_type_val <- input$wiz_trial_type %||% "randomised"
 
     config_text <- sprintf('# ===========================================================================
 # Trial Configuration: %s
@@ -2619,6 +2858,10 @@ trial_config <- list(
   redcap_events = list(
 %s
   ),
+
+%s
+
+%s
 
   # -- REDCap field mappings --
   redcap_fields = list(
@@ -2681,6 +2924,8 @@ trial_config <- list(
       input$wiz_col_accent %||% "#F59E0B",
       data_block,
       events_block,
+      recruitment_block,
+      timepoints_block,
       input$wiz_fld_record_id %||% "record_id",
       input$wiz_fld_site %||% "site_name",
       input$wiz_fld_rand_dt %||% "rand_dttm_s",
@@ -2707,6 +2952,18 @@ trial_config <- list(
       seed_trial_report_templates(
         list(trial_dir = trial_dir, code = code),
         overwrite = FALSE)
+
+      # A codebook read on the Codebook step lands in the new trial's
+      # overrides.json, so the coded values read as labels the first time the
+      # trial is opened rather than waiting for someone to type them.
+      cb <- wiz_codebook()
+      if (!is.null(cb) && isTRUE(cb$ok) && length(cb$labels)) {
+        tryCatch(
+          update_overrides(list(trial_dir = trial_dir, code = code),
+                           column_labels = cb$labels),
+          error = function(e)
+            message("Codebook save failed for ", code, ": ", e$message))
+      }
 
       # Copy logo to www/trial_logos/ if a path was provided
       logo_src <- trimws(input$wiz_logo_path %||% "")

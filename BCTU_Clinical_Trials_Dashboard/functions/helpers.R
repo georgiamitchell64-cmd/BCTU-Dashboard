@@ -126,7 +126,12 @@ baseline_rows <- function(raw, cfg = NULL, event_col = "redcap_event_name",
 # affecting other trials.
 # =============================================================================
 
-REPORT_TEMPLATE_KINDS <- c("tonic", "tsc")  # tonic_report.Rmd = TMG/iTMG, tsc_report.Rmd = TSC
+# "tonic" is the TMG/iTMG kind. Its file is tmg_report.Rmd; the original name,
+# tonic_report.Rmd, still resolves so trials set up before the rename keep
+# working — nothing needs renaming on disk.
+REPORT_TEMPLATE_KINDS <- c("tonic", "tsc")
+.REPORT_TEMPLATE_FILES <- list(tonic = "tmg_report.Rmd", tsc = "tsc_report.Rmd")
+.REPORT_TEMPLATE_LEGACY <- list(tonic = "tonic_report.Rmd")
 
 # Resolve the URL path (relative to Shiny's www/) for a trial's logo, if one
 # was copied to www/trial_logos/<code>.<ext> at startup. Returns NULL when
@@ -189,22 +194,40 @@ filter_params_for_rmd <- function(params, rmd_path) {
   params[intersect(names(params), decl)]
 }
 
-# Filename for a given template kind, e.g. "tonic" → "tonic_report.Rmd"
+# Filename for a given template kind, e.g. "tonic" → "tmg_report.Rmd"
 report_template_filename <- function(kind) {
   if (!kind %in% REPORT_TEMPLATE_KINDS)
     stop("Unknown report template kind: ", kind)
-  paste0(kind, "_report.Rmd")
+  .REPORT_TEMPLATE_FILES[[kind]] %||% paste0(kind, "_report.Rmd")
+}
+
+# Every filename a kind may be stored under, current name first.
+report_template_filenames <- function(kind) {
+  c(report_template_filename(kind), .REPORT_TEMPLATE_LEGACY[[kind]])
 }
 
 # Path to the trial's own copy (may not exist yet).
-trial_report_template_path <- function(cfg, kind) {
+trial_report_template_path <- function(cfg, kind, existing = FALSE) {
   trial_dir <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
-  file.path(trial_dir, "reports", report_template_filename(kind))
+  paths <- file.path(trial_dir, "reports", report_template_filenames(kind))
+  # `existing` picks whichever name is actually on disk (a trial set up before
+  # the rename still has tonic_report.Rmd); otherwise the current name, which
+  # is where a save writes.
+  if (existing) {
+    hit <- paths[file.exists(paths)]
+    if (length(hit)) return(hit[1])
+  }
+  paths[1]
 }
 
 # Path to the project-level fallback template (the "factory default").
-default_report_template_path <- function(kind) {
-  file.path(getwd(), report_template_filename(kind))
+default_report_template_path <- function(kind, existing = FALSE) {
+  paths <- file.path(getwd(), report_template_filenames(kind))
+  if (existing) {
+    hit <- paths[file.exists(paths)]
+    if (length(hit)) return(hit[1])
+  }
+  paths[1]
 }
 
 # Resolve which file to use at render time. Order of precedence:
@@ -224,8 +247,8 @@ resolve_report_template <- function(cfg, kind) {
   if (!is.null(override) && nzchar(override) && file.exists(override))
     return(override)
   
-  trial_path   <- trial_report_template_path(cfg, kind)
-  default_path <- default_report_template_path(kind)
+  trial_path   <- trial_report_template_path(cfg, kind, existing = TRUE)
+  default_path <- default_report_template_path(kind, existing = TRUE)
   has_trial    <- file.exists(trial_path)
   has_default  <- file.exists(default_path)
   
@@ -253,8 +276,8 @@ seed_trial_report_templates <- function(cfg, overwrite = FALSE) {
   if (!dir.exists(reports_dir))
     dir.create(reports_dir, recursive = TRUE, showWarnings = FALSE)
   for (kind in REPORT_TEMPLATE_KINDS) {
-    src <- default_report_template_path(kind)
-    dst <- trial_report_template_path(cfg, kind)
+    src <- default_report_template_path(kind, existing = TRUE)
+    dst <- trial_report_template_path(cfg, kind, existing = TRUE)
     if (!file.exists(src)) next
     if (file.exists(dst) && !overwrite) next
     tryCatch(file.copy(src, dst, overwrite = TRUE),

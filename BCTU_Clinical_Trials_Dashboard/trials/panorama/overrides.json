@@ -1,0 +1,1553 @@
+{
+  "column_labels": {
+    "screening_1": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "screening_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "screening_3": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "screening_4": {
+      "0": "Yes",
+      "1": "No"
+    },
+    "approached_yn": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "consent_yn": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "consent_n": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "screening_complete": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "cons2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "cons4": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "cons6": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "cons7": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "cons9": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "cons10": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "cons11": {
+      "1": "Yes",
+      "0": "No essage with            Custom alignment: RH act."
+    },
+    "cons12": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "cons_checked": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "complete_pref": {
+      "1": "Electronically via emailed link",
+      "2": "On paper"
+    },
+    "reminder_pref": {
+      "1": "Email",
+      "2": "SMS - text message"
+    },
+    "address_4": {
+      "1": "Aberdeen City",
+      "2": "Aberdeenshire",
+      "3": "Anglesey",
+      "4": "Angus",
+      "52": "Leicestershire",
+      "53": "Lincolnshire",
+      "54": "Merionethshire",
+      "55": "Merseyside",
+      "56": "Midlothian",
+      "57": "Monmouthshire",
+      "58": "Montgomeryshire",
+      "59": "Moray",
+      "60": "Norfolk",
+      "61": "North Ayrshire",
+      "62": "North Lanarkshire",
+      "63": "North Yorkshire",
+      "64": "Northamptonshire",
+      "65": "Northumberland",
+      "66": "Nottinghamshire",
+      "67": "Orkney Islands",
+      "68": "Oxfordshire",
+      "69": "Pembrokeshire",
+      "70": "Perth and Kinross",
+      "71": "Radnorshire",
+      "72": "Renfrewshire",
+      "73": "Scottish Borders",
+      "74": "Shetland Islands",
+      "75": "Shropshire",
+      "76": "Somerset",
+      "77": "South Ayrshire",
+      "78": "South Lanarkshire",
+      "79": "South Yorkshire",
+      "80": "Staffordshire",
+      "81": "Stirling",
+      "82": "Suffolk",
+      "83": "Surrey",
+      "84": "Tyne and Wear",
+      "85": "Tyrone",
+      "86": "Warwickshire",
+      "87": "West Berkshire",
+      "88": "West Dunbartonshire",
+      "89": "West Lothian",
+      "90": "West Midlands",
+      "91": "West Sussex",
+      "92": "West Yorkshire",
+      "93": "Wiltshire",
+      "94": "Worcestershire"
+    },
+    "consent_complete": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "q1": {
+      "0": "Never",
+      "1": "Monthly or Less",
+      "2": "2 to 4 times a month",
+      "3": "2 to 3 times a week",
+      "4": "4 or more times a week"
+    },
+    "q2": {
+      "0": "1 or 2",
+      "1": "3 or 4",
+      "2": "5 or 6 to 9"
+    },
+    "q3": {
+      "0": "Never occasion in the last year?",
+      "1": "Less than monthly",
+      "2": "Monthly",
+      "3": "Weekly",
+      "4": "Daily or almost daily"
+    },
+    "audit_c_complete": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "sex": {
+      "1": "Female",
+      "2": "Male",
+      "3": "Not disclosed / not known"
+    },
+    "ethnicity": {
+      "1": "White",
+      "2": "Asian or Asian British",
+      "3": "Mixed",
+      "4": "Black or Black British",
+      "16": "Other",
+      "-99": "Unknown"
+    },
+    "eth_white": {
+      "1": "English, Welsh, Scottish, Northern Irish or British",
+      "2": "Irish",
+      "3": "Gypsy or Irish Traveller",
+      "4": "Roma",
+      "5": "Any other White background"
+    },
+    "eth_asian": {
+      "1": "Indian",
+      "2": "Pakistani",
+      "3": "Bangladeshi",
+      "4": "Chinese",
+      "5": "Any other Asian background"
+    },
+    "eth_mixed": {
+      "1": "White and Black Caribbean",
+      "2": "White and Black African",
+      "3": "White and Asian",
+      "4": "Any other Mixed or multiple ethnic background"
+    },
+    "eth_black": {
+      "1": "Caribbean",
+      "2": "African",
+      "3": "Any other Black, Black British, or Caribbean background"
+    },
+    "prev_panc_yn": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "prev_panc_aetio": {
+      "1": "prev_panc_aetio___1      Gallstones",
+      "2": "prev_panc_aetio___2      Alcohol",
+      "3": "prev_panc_aetio___3      Drug related",
+      "4": "prev_panc_aetio___4      Idiopathic",
+      "5": "prev_panc_aetio___5      Other",
+      "-99": "prev_panc_aetio____99 Not known"
+    },
+    "prev_panc_drug": {
+      "1": "Steroids",
+      "2": "Thiazide diuretics",
+      "3": "Azothioprine",
+      "4": "Valoret",
+      "5": "Carbamazepine",
+      "0": "Other"
+    },
+    "prev_psych_yn": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "prev_psych_y": {
+      "1": "prev_psych_y___1   Anxiety",
+      "2": "prev_psych_y___2   Depression",
+      "4": "prev_psych_y___4   Other",
+      "-99": "prev_psych_y____99 Not known"
+    },
+    "comorb_diab": {
+      "0": "No",
+      "1": "Diet controlled",
+      "2": "Uncomplicated",
+      "3": "End-organ damage"
+    },
+    "comorb_ckd": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comorb_liver": {
+      "0": "None",
+      "1": "Mild",
+      "2": "Moderate to severe"
+    },
+    "comorb_cancer": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comorb_copd": {
+      "1": "Yes",
+      "0": "No om alignment: RH"
+    },
+    "comorb_cardio": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comorb_frailty": {
+      "1": "Very !t",
+      "2": "Fit",
+      "3": "Managing well",
+      "4": "Living with very mild frailty",
+      "5": "Living with mild faulty",
+      "6": "Living with moderate frailty",
+      "7": "Living with severe frailty",
+      "8": "Living with very severe frailty",
+      "9": "Terminally ill",
+      "0": "Unknown"
+    },
+    "comorb_smoke": {
+      "1": "Never smoked or vaped",
+      "2": "Ex smoker/ vaper (> 6 weeks)",
+      "3": "Current or recently ceased (< 6 weeks) smoker/ vaper"
+    },
+    "comorb_etoh": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "demo_created_time": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "index_admiss_from": {
+      "1": "Community",
+      "2": "Other secondary care team at this hospital",
+      "3": "Transfer for tertiary care"
+    },
+    "index_team": {
+      "1": "General Medicine",
+      "2": "Gastroenterology",
+      "3": "General Surgery",
+      "4": "Upper GI Surgery",
+      "5": "Hepatobiliary Surgery",
+      "6": "Other",
+      "-99": "Unknown"
+    },
+    "index_panc_aetio": {
+      "1": "Gallstones",
+      "2": "Alcohol",
+      "3": "Drug related",
+      "4": "Idiopathic",
+      "5": "Other",
+      "-99": "Unknown"
+    },
+    "prev_panc_drug_2": {
+      "1": "Steroids",
+      "2": "Thiazide diuretics",
+      "3": "Azothioprine",
+      "4": "Valoret",
+      "5": "Carbamazepine",
+      "0": "Other"
+    },
+    "index_itu_yn": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "index_naso": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "index_naso_type": {
+      "1": "Nasogastric",
+      "2": "Nasojejunal",
+      "0": "Not known"
+    },
+    "index_pare": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "index_chole": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "index_ercp": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "index_etoh": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_necrosis": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_necrosis_y": {
+      "1": "Sterile",
+      "2": "Infected"
+    },
+    "comp_necrosis_manage": {
+      "1": "Conservatively",
+      "2": "Radiologically",
+      "3": "Surgically",
+      "-99": "Unknown"
+    },
+    "comp_abscess": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_abscess_manage": {
+      "1": "Conservatively",
+      "2": "Radiologically",
+      "3": "Surgically",
+      "-99": "Unknown"
+    },
+    "comp_pseudo": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_pseudo_manage": {
+      "1": "Conservatively",
+      "2": "Radiologically",
+      "3": "Surgically",
+      "-99": "Unknown"
+    },
+    "comp_splein_thromb": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_other_thromb": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_fistula": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_pei": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_diabetes": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_anxiety": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_depress": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "comp_other": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_outpat_yn": {
+      "1": "Yes",
+      "0": "No",
+      "2": "Gastroenterology",
+      "3": "General Surgery",
+      "4": "Upper GI Surgery",
+      "5": "Hepatobiliary Surgery",
+      "-99": "Unknown"
+    },
+    "post_outpat_yn_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_virtual": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_amb": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_chole": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_chole_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_ercp": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_ercp_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_other": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_other_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_pifu": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_pifu_y": {
+      "1": "Contact via emergency surgery team",
+      "2": "Contact via patient consultant outpatient",
+      "3": "Contact via UGI/ HPB surgeon outpatient",
+      "4": "Contact via specialist nurse outpatient",
+      "0": "Other"
+    },
+    "post_gp": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_gp_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_community": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_community_what": {
+      "1": "Telephone call",
+      "2": "Video call",
+      "3": "Home visit",
+      "0": "Other"
+    },
+    "post_community_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_meds": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_meds_what": {
+      "1": "post_meds_what___1 LMWH",
+      "2": "post_meds_what___2 Creon",
+      "3": "post_meds_what___3 Insulin",
+      "4": "post_meds_what___4 Antiemetic",
+      "5": "post_meds_what___5 Other anticoagulants",
+      "0": "post_meds_what___0 Other"
+    },
+    "post_dietetic": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_dietetic_2": {
+      "1": "Yes",
+      "0": "No ustom alignment: RH"
+    },
+    "post_diabetic": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_diabetic_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_psych": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_psych_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_etoh": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "post_etoh_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "index_created_time": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete Enabled as survey"
+    },
+    "gad1": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad2": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad3": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad4": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad5": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad6": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad7": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad_difficult": {
+      "0": "Not difficult at all",
+      "1": "Somewhat difficult",
+      "2": "Very difficult",
+      "3": "Extremely difficult"
+    },
+    "littlint": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "dephop": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "sleepy": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "triedenergy": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "appover": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "failure": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "trubconc": {
+      "0": "Not at all",
+      "1": "Several days alf the days y day"
+    },
+    "slowly": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "deaddying": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "phq9_how_difficult": {
+      "1": "1- Not difficult at all",
+      "2": "2- Somewhat difficult",
+      "3": "3- Very difficult",
+      "4": "4- Extremely difficult"
+    },
+    "eq5d_mb_5l_uk_eng": {
+      "1": "I have no problems in walking about",
+      "2": "I have slight problems in walking about",
+      "3": "I have moderate problems in walking about",
+      "4": "I have severe problems in walking about",
+      "5": "I am unable to walk about"
+    },
+    "eq5d_sc_5l_uk_eng": {
+      "1": "I have no problems washing or dressing myself",
+      "2": "I have slight problems washing or dressing myself",
+      "3": "I have moderate problems washing or dressing myself",
+      "4": "I have severe problems washing or dressing myself",
+      "5": "I am unable to wash or dress myself"
+    },
+    "eq5d_ua_5l_uk_eng": {
+      "1": "I have no problems doing my usual activities",
+      "2": "I have slight problems doing my usual activities",
+      "3": "I have moderate problems doing my usual activities",
+      "4": "I have severe problems doing my usual activities",
+      "5": "I am unable to do my usual activities"
+    },
+    "eq5d_pd_5l_uk_eng": {
+      "1": "I have no pain or discomfort",
+      "2": "I have slight pain or discomfort",
+      "3": "I have moderate pain or discomfort",
+      "4": "I have severe pain or discomfort",
+      "5": "I have extreme pain or discomfort"
+    },
+    "eq5d_ad_5l_uk_eng": {
+      "1": "I am not anxious or depressed",
+      "2": "I am slightly anxious or depressed",
+      "3": "I am moderately anxious or depressed",
+      "4": "I am severely anxious or depressed",
+      "5": "I am extremely anxious or depressed"
+    },
+    "eq5d5l_vas2_uk_eng": {
+      "0": "- The worst health you can imagine ,",
+      "100": "- The best health you can imagine"
+    },
+    "spain": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "tight": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "nois": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "gas7": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "samllgas": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "nauseas": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "appetitedown": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "watpoo": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "rushtoil": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "lightorangepoo": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "poosmell": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "poofat": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "urgencytoilet": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "fatfoodavoid": {
+      "1": "No not at all",
+      "2": "Yes a little of the time",
+      "3": "Yes sometimes",
+      "4": "Yes most of the time",
+      "5": "Yes all of the time"
+    },
+    "concentrationpoor": {
+      "1": "No not at all",
+      "2": "Yes a little of the time",
+      "3": "Yes sometimes",
+      "4": "Yes most of the time",
+      "5": "Yes all of the time"
+    },
+    "embarrassedpoo": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes moderately",
+      "4": "Yes quite a bit",
+      "5": "Yes extremely"
+    },
+    "ansiosenzyme": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes moderately",
+      "4": "Yes quite a bit",
+      "5": "Yes extremely"
+    },
+    "socialactivityimpact": {
+      "1": "No not at all",
+      "2": "Yes a little of the time",
+      "3": "Yes sometimes",
+      "4": "Yes most of the time",
+      "5": "Yes all of the time"
+    },
+    "wp4_7_30_proms_v": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "gad1_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad2_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad3_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad4_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad5_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad6_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad7_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad_difficult_7d": {
+      "0": "Not difficult at all",
+      "1": "Somewhat difficult",
+      "2": "Very difficult",
+      "3": "Extremely difficult"
+    },
+    "littlint_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "dephop_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "sleepy_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "triedenergy_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "appover_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days very day"
+    },
+    "failure_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "trubconc_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "slowly_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "deaddying_7d": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "phq_calc_7d": {
+      "1": "1- Not difficult at all",
+      "2": "2- Somewhat difficult",
+      "3": "3- Very difficult",
+      "4": "4- Extremely difficult descriptive descriptive"
+    },
+    "eq5d_mb_5l_uk_eng_7d": {
+      "1": "I have no problems in walking about",
+      "2": "I have slight problems in walking about",
+      "3": "I have moderate problems in walking about",
+      "4": "I have severe problems in walking about",
+      "5": "I am unable to walk about"
+    },
+    "eq5d_sc_5l_uk_eng_7d": {
+      "1": "I have no problems washing or dressing myself",
+      "2": "I have slight problems washing or dressing myself",
+      "3": "I have moderate problems washing or dressing myself",
+      "4": "I have severe problems washing or dressing myself",
+      "5": "I am unable to wash or dress myself"
+    },
+    "eq5d_ua_5l_uk_eng_7d": {
+      "1": "I have no problems doing my usual activities",
+      "2": "I have slight problems doing my usual activities",
+      "3": "I have moderate problems doing my usual activities",
+      "4": "I have severe problems doing my usual activities",
+      "5": "I am unable to do my usual activities"
+    },
+    "eq5d_pd_5l_uk_eng_7d": {
+      "1": "I have no pain or discomfort",
+      "2": "I have slight pain or discomfort",
+      "3": "I have moderate pain or discomfort",
+      "4": "I have severe pain or discomfort",
+      "5": "I have extreme pain or discomfort"
+    },
+    "eq5d_ad_5l_uk_eng_7d": {
+      "1": "I am not anxious or depressed",
+      "2": "I am slightly anxious or depressed",
+      "3": "I am moderately anxious or depressed",
+      "4": "I am severely anxious or depressed",
+      "5": "I am extremely anxious or depressed",
+      "0": "- The worst health you can imagine ,",
+      "100": "- The best health you can imagine"
+    },
+    "spain_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "tight_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "nois_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "gas7_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "samllgas_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "nauseas_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "appetitedown_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "watpoo_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "rushtoil_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "lightorangepoo_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "poosmell_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "poofat_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "urgencytoilet_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "fatfoodavoid_7d": {
+      "1": "No not at all",
+      "2": "Yes a little of the time",
+      "3": "Yes sometimes",
+      "4": "Yes most of the time",
+      "5": "Yes all of the time"
+    },
+    "concentrationpoor_7d": {
+      "1": "No not at all",
+      "2": "Yes a little of the time",
+      "3": "Yes sometimes",
+      "4": "Yes most of the time",
+      "5": "Yes all of the time"
+    },
+    "embarrassedpoo_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes moderately",
+      "4": "Yes quite a bit",
+      "5": "Yes extremely"
+    },
+    "ansiosenzyme_7d": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes moderately",
+      "4": "Yes quite a bit",
+      "5": "Yes extremely radio (Matrix)"
+    },
+    "day7_proms_complete": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "gad1_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad2_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad3_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad4_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad5_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad6_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad7_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "Over half the days",
+      "3": "Nearly every day"
+    },
+    "gad_difficult_30": {
+      "0": "Not difficult at all",
+      "1": "Somewhat difficult",
+      "2": "Very difficult",
+      "3": "Extremely difficult"
+    },
+    "littlint_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "dephop_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "sleepy_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days ly every day"
+    },
+    "triedenergy_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "appover_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "failure_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "trubconc_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "slowly_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "deaddying_30": {
+      "0": "Not at all",
+      "1": "Several days",
+      "2": "More than half the days",
+      "3": "Nearly every day"
+    },
+    "phq_calc_30": {
+      "1": "1- Not difficult at all",
+      "2": "2- Somewhat difficult",
+      "3": "3- Very difficult",
+      "4": "4- Extremely difficult"
+    },
+    "func_1m_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "mo_opd_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "mo_ed_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "admit_mo_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "blood_yn_mo_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "uss_yn_mo_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "endo_yn_mo_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "ct_yn_mo_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "mri_yn_mo_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "medication_yn_mo_136": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "eq5d_mb_5l_uk_eng_30": {
+      "1": "I have no problems in walking about",
+      "2": "I have slight problems in walking about",
+      "3": "I have moderate problems in walking about",
+      "4": "I have severe problems in walking about",
+      "5": "I am unable to walk about"
+    },
+    "eq5d_sc_5l_uk_eng_30": {
+      "1": "I have no problems washing or dressing myself",
+      "2": "I have slight problems washing or dressing myself",
+      "3": "I have moderate problems washing or dressing myself",
+      "4": "I have severe problems washing or dressing myself",
+      "5": "I am unable to wash or dress myself"
+    },
+    "eq5d_ua_5l_uk_eng_30": {
+      "1": "I have no problems doing my usual activities",
+      "2": "I have slight problems doing my usual activities",
+      "3": "I have moderate problems doing my usual activities",
+      "4": "I have severe problems doing my usual activities",
+      "5": "I am unable to do my usual activities"
+    },
+    "eq5d_pd_5l_uk_eng_30": {
+      "1": "I have no pain or discomfort",
+      "2": "I have slight pain or discomfort",
+      "3": "I have moderate pain or discomfort",
+      "4": "I have severe pain or discomfort",
+      "5": "I have extreme pain or discomfort"
+    },
+    "eq5d_ad_5l_uk_eng_30": {
+      "1": "I am not anxious or depressed",
+      "2": "I am slightly anxious or depressed",
+      "3": "I am moderately anxious or depressed",
+      "4": "I am severely anxious or depressed",
+      "5": "I am extremely anxious or depressed",
+      "0": "- The worst health you can imagine ,",
+      "100": "- The best health you can imagine"
+    },
+    "spain_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "tight_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "nois_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "gas7_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "samllgas_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "nauseas_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "appetitedown_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "watpoo_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "rushtoil_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "lightorangepoo_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "poosmell_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "poofat_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "urgencytoilet_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes some",
+      "4": "Yes quite a bit",
+      "5": "Yes a lot"
+    },
+    "fatfoodavoid_30": {
+      "1": "No not at all",
+      "2": "Yes a little of the time",
+      "3": "Yes sometimes",
+      "4": "Yes most of the time",
+      "5": "Yes all of the time"
+    },
+    "concentrationpoor_30": {
+      "1": "No not at all",
+      "2": "Yes a little of the time",
+      "3": "Yes sometimes",
+      "4": "Yes most of the time",
+      "5": "Yes all of the time"
+    },
+    "embarrassedpoo_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes moderately",
+      "4": "Yes quite a bit",
+      "5": "Yes extremely"
+    },
+    "ansiosenzyme_30": {
+      "1": "No not at all",
+      "2": "Yes a little bit",
+      "3": "Yes moderately",
+      "4": "Yes quite a bit",
+      "5": "Yes extremely radio (Matrix)"
+    },
+    "month_proms_complete": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "withdraw_who": {
+      "1": "Site lead withdrawal of patient for clinical reasons",
+      "2": "Patient's wish"
+    },
+    "withdraw_pt_ask_yn": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "withdraw_pt_fu_yn": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "withdraw_level": {
+      "1": "No study intervention",
+      "2": "No study-related follow-up",
+      "3": "No further data collection"
+    },
+    "created_tm": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "exclude_why": {
+      "1": "Patient ineligible",
+      "2": "Duplicate record",
+      "3": "Does not meet data completion threshold",
+      "4": "Unresolved errors with potential to impact on project outcomes / objectives"
+    },
+    "ineligible_patient": {
+      "1": "Informed by site",
+      "2": "Responses to questions make the patient ineligible",
+      "3": "Responses to queries in the DRW make the patient ineligible"
+    },
+    "ineligible_patient_2": {
+      "1": "Did not meet eligibility criteria",
+      "2": "Outside audit period",
+      "3": "Other"
+    },
+    "ineligible_patient_3": {
+      "1": "Email",
+      "2": "Telephone",
+      "3": "DRW text (date_dmy) dropdown ?     text (date_dmy)"
+    },
+    "incomp_why": {
+      "1": "Site non-responsive",
+      "2": "Patient lost to follow-up",
+      "3": "Site unable to locate the link sheet",
+      "4": "None of the project team remain at site",
+      "5": "Other"
+    },
+    "paid_when": {
+      "1": "1st Quarter (Nov 26)",
+      "2": "2nd Quarter (Feb 27)",
+      "3": "3rd Quarter (May-27)",
+      "4": "4th Quarter (Aug 27)",
+      "0": "Other"
+    },
+    "admin_complete": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "s_substudy": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "site_complete": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    },
+    "i_queries": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_type": {
+      "1": "Site",
+      "2": "Central",
+      "3": "BiCOPS TM Sta\""
+    },
+    "i_pi": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_central_sae_review": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_bctu_enter": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_bctu_crf": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_bctu_sae": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_onlog": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_inv_signature": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_pi_initials": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_task_1": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_task_2": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_task_3": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_task_4": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_role": {
+      "1": "Consultant",
+      "2": "Trainee",
+      "3": "Research Nurse",
+      "4": "Data Manager",
+      "5": "Site R&D Admin",
+      "6": "Site R&D Admin (non-delivery)",
+      "7": "Lab sta\"",
+      "99": "Other"
+    },
+    "i_cv_rec": {
+      "1": "Yes",
+      "0": "No",
+      "2": "N/A"
+    },
+    "i_cv_signed": {
+      "1": "Yes",
+      "0": "No"
+    },
+    "i_gcp_rec": {
+      "1": "Yes",
+      "0": "No",
+      "2": "N/A"
+    },
+    "i_train_rec": {
+      "1": "Yes",
+      "0": "No",
+      "2": "N/A"
+    },
+    "i_train_del": {
+      "1": "Site Initiation by CTU",
+      "2": "Additional training session by CTU",
+      "3": "PI or delegate",
+      "4": "Self-learning using Site Initiation slides and protocol",
+      "99": "Other"
+    },
+    "i_created_by_name": {
+      "0": "Incomplete",
+      "1": "Unverified",
+      "2": "Complete"
+    }
+  }
+}

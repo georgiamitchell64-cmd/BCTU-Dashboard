@@ -13,7 +13,8 @@ prepare_report_data <- function(df,
                                 date_to           = NULL,
                                 include_withdrawn = FALSE,
                                 pipeline_df       = NULL,
-                                crf_csv_path      = NULL) {
+                                crf_csv_path      = NULL,
+                                target_override   = NULL) {
 
   cfg <- current_trial_config()
 
@@ -389,8 +390,12 @@ prepare_report_data <- function(df,
     month_date = as.Date(character(0)),
     cumulative_target = integer(0),
     stringsAsFactors = FALSE)
-  trial_target <- cfg$trial_target %||% if (nrow(target_schedule) > 0)
-    max(target_schedule$cumulative_target, na.rm = TRUE) else NA_integer_
+  # A report scoped to one work package is measured against that work
+  # package's own target, not the whole trial's.
+  trial_target <- if (!is.null(target_override) && !is.na(target_override) &&
+                      target_override > 0) as.integer(target_override) else
+    cfg$trial_target %||% if (nrow(target_schedule) > 0)
+      max(target_schedule$cumulative_target, na.rm = TRUE) else NA_integer_
   today <- Sys.Date()
 
   past_targets <- target_schedule[target_schedule$month_date <= today, , drop = FALSE]

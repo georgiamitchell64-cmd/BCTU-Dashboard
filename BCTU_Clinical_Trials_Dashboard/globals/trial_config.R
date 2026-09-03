@@ -81,11 +81,13 @@ current_trial_config <- function() .TRIAL_CFG
 wp_effective_target <- function(cfg, active_wp = NULL) {
   if (is.null(cfg)) return(0L)
   base <- cfg$trial_target %||% 0L
-  if (is.null(active_wp)) return(base)
+  if (is.null(active_wp) || !length(active_wp) || is.na(active_wp)) return(base)
   wpt <- cfg$work_package_targets
   if (!is.null(wpt) && length(wpt) >= active_wp) {
-    v <- suppressWarnings(as.integer(wpt[[active_wp]]))
-    if (!is.na(v) && v > 0) return(v)
+    # A target may be unset for a work package — and comes back from
+    # overrides.json as NULL rather than NA — so length is checked before use.
+    v <- suppressWarnings(as.integer(wpt[[active_wp]] %||% NA))
+    if (length(v) == 1 && !is.na(v) && v > 0) return(v)
   }
   base
 }
@@ -113,11 +115,18 @@ is_randomised_trial <- function(cfg = .TRIAL_CFG) {
 recruit_term <- function(key = "past", cfg = .TRIAL_CFG) {
   rand <- is_randomised_trial(cfg)
   switch(key,
-    past        = if (rand) "randomised"       else "registered",
-    noun        = if (rand) "randomisations"   else "registrations",
-    event       = if (rand) "randomisation"    else "registration",
-    total_label = if (rand) "Total randomised" else "Total registered",
-    if (rand) "randomised" else "registered")
+    past        = if (rand) "randomised"       else "recruited",
+    noun        = if (rand) "randomisations"   else "recruits",
+    event       = if (rand) "randomisation"    else "recruitment",
+    verb        = if (rand) "randomise"        else "recruit",
+    total_label = if (rand) "Total randomised" else "Total recruited",
+    per_month   = if (rand) "Randomisations / month" else "Recruits / month",
+    Noun        = if (rand) "Randomisations"   else "Recruitment",
+    Past        = if (rand) "Randomised"       else "Recruited",
+    tab_title   = if (rand) "Randomisations"   else "Recruitment",
+    no_data     = if (rand) "No randomisation data — upload a REDCap CSV"
+                  else      "No recruitment data — upload a REDCap CSV",
+    if (rand) "randomised" else "recruited")
 }
 
 #' Work-package context for reports and headers.

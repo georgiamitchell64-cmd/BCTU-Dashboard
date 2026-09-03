@@ -51,6 +51,13 @@ trial_settings_tab_ui <- function() {
                       span(style = "flex:1;min-width:0;",
                            span(class = "settings-lbl", "Follow-up schedule"),
                            span(class = "settings-desc", "Timepoints & REDCap events"))),
+          shinyjs::hidden(
+            tags$button(id = "settings_nav_workpackages",
+                        class = "settings-item", `data-section` = "workpackages",
+                        span(class = "settings-ic", HTML("&#x25A6;")),
+                        span(style = "flex:1;min-width:0;",
+                             span(class = "settings-lbl", "Work packages"),
+                             span(class = "settings-desc", "Targets, outcomes & each WP's export")))),
           tags$button(class = "settings-item", `data-section` = "demographics",
                       span(class = "settings-ic", HTML("&#x1F465;")),
                       span(style = "flex:1;min-width:0;",
@@ -355,9 +362,58 @@ trial_settings_tab_ui <- function() {
             )
           ),
 
+          # ── Section: Work packages ─────────────────────────────────
+          # A platform trial or a multi-work-package study keeps one REDCap
+          # export per work package. Each is uploaded here against its own WP
+          # so its rows are tagged and every WP-scoped view and report reads
+          # only that work package's data.
+          div(id = "settings_sec_workpackages", class = "settings-section",
+              style = "display:none;",
+
+            tags$section(class = "s-card",
+              div(class = "s-card-head",
+                  div(style = "flex:1;min-width:0;",
+                      div(class = "s-card-title", "Work packages"),
+                      div(class = "s-card-sub",
+                          "Each work package has its own recruitment target, outcomes and REDCap export. Upload an export against a work package and its rows are tagged with it \u2014 selecting that work package's tab then scopes the dashboard and its reports to those records.")),
+                  actionButton("settings_save_wps", "Save",
+                               class = "btn-primary-sm")),
+              div(class = "s-card-body",
+                  uiOutput("settings_wp_ui"))
+            )
+          ),
+
           # ── Section: Demographics ──────────────────────────────────
           div(id = "settings_sec_demographics", class = "settings-section",
               style = "display:none;",
+
+            # Import a codebook rather than typing every code by hand.
+            tags$section(class = "s-card",
+              div(class = "s-card-head",
+                  div(style = "flex:1;min-width:0;",
+                      div(class = "s-card-title", "Import a codebook"),
+                      div(class = "s-card-sub",
+                          "Load the meanings of coded values from your REDCap data dictionary (CSV), a PDF codebook, or text you paste below. Existing names you have typed are kept.")),
+                  actionButton("settings_cb_import", "Import",
+                               class = "btn-primary-sm")),
+              div(class = "s-card-body",
+                  div(class = "nt-grid-2",
+                      div(class = "s-field",
+                          tags$label("Codebook file"),
+                          fileInput("settings_cb_file", label = NULL,
+                                    accept = c(".csv", ".tsv", ".pdf", ".txt"),
+                                    width = "100%"),
+                          div(class = "sch-hint",
+                              "REDCap: Project Setup \u2192 Data Dictionary \u2192 Download. A PDF codebook works too.")),
+                      div(class = "s-field",
+                          tags$label("or paste code lists"),
+                          textAreaInput("settings_cb_text", label = NULL, rows = 5,
+                                        width = "100%",
+                                        placeholder = "index_panc_aetio: 1, Gallstones | 2, Alcohol\nbase_sex: 1, Male | 2, Female"))),
+                  checkboxInput("settings_cb_overwrite",
+                                "Overwrite names I have already typed", value = FALSE),
+                  uiOutput("settings_cb_status"))
+            ),
 
             tags$section(class = "s-card",
               div(class = "s-card-head",

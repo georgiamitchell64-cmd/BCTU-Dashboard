@@ -15,12 +15,14 @@
 # Step metadata (kept in sync with WIZ_TOTAL / the wiz_step_N divs below and
 # the show_step() helper in trial_selector_server.R).
 NT_STEPS <- list(
-  list(n = 1, title = "Trial basics",   blurb = "Name, target and design"),
+  list(n = 1, title = "Trial basics",    blurb = "Name, target and design"),
   list(n = 2, title = "Data & branding", blurb = "Folders, logo and colours"),
-  list(n = 3, title = "REDCap events",  blurb = "Map your event names"),
-  list(n = 4, title = "Field mapping",  blurb = "Map your variable names"),
-  list(n = 5, title = "Features",       blurb = "Tabs and sections to show"),
-  list(n = 6, title = "Review & create", blurb = "Check it over and go")
+  list(n = 3, title = "Recruitment",     blurb = "Screening and what counts as recruited"),
+  list(n = 4, title = "Follow-up",       blurb = "Timepoints and when they fall due"),
+  list(n = 5, title = "Field mapping",   blurb = "Map your variable names"),
+  list(n = 6, title = "Codebook",        blurb = "What the coded values mean"),
+  list(n = 7, title = "Features",        blurb = "Tabs and sections to show"),
+  list(n = 8, title = "Review & create", blurb = "Check it over and go")
 )
 
 new_trial_setup_ui <- function() {
@@ -165,17 +167,90 @@ new_trial_setup_ui <- function() {
                           .nt_color("wiz_col_accent",    "Accent",    "#F59E0B")))
               )),
 
-              # ── Step 3 — Follow-up schedule (events) ──────────────────
+              # ── Step 3 — Recruitment & screening ──────────────────────
               shinyjs::hidden(div(class = "nt-step", id = "wiz_step_3",
-                  step_head("3", "Follow-up schedule",
-                            "Which REDCap events make up your trial's timeline?"),
+                  step_head("3", "Recruitment & screening",
+                            "How does someone come to count towards your target?"),
+                  div(class = "nt-callout",
+                      HTML("Screening and recruitment are not the same thing. Many trials screen a large group in REDCap and only a fraction consent \u2014 if the dashboard counted every screening record as a participant, recruitment would look far ahead of where it is. Tell it which records count, and it will show the funnel (screened \u2192 eligible \u2192 approached \u2192 recruited) alongside progress to target.")),
+
+                  div(class = "nt-card",
+                      group_label("What counts as recruited"),
+                      div(class = "nt-field",
+                          tags$label(help_label("A participant counts from\u2026",
+                              "The moment a participant joins the trial for good. Randomised trials count from randomisation; cohorts, registries and single-arm studies count from consent or registration.")),
+                          radioButtons("wiz_recruit_basis", label = NULL,
+                              choiceNames = list(
+                                "Randomisation \u2014 they have a randomisation date",
+                                "Consent / registration \u2014 a field says they consented",
+                                "Reaching an event \u2014 a record exists at the baseline event"),
+                              choiceValues = c("date_field", "consent_field", "event_present"),
+                              selected = "date_field", width = "100%")),
+                      div(id = "wiz_consent_fields", class = "nt-grid-3",
+                          div(class = "nt-field",
+                              tags$label(help_label("Consent field",
+                                  "Variable that records valid consent, e.g. valid_consent.")),
+                              textInput("wiz_fld_consent", label = NULL,
+                                        placeholder = "valid_consent", width = "100%")),
+                          div(class = "nt-field",
+                              tags$label(help_label("Value meaning consented",
+                                  "The coded value that means yes \u2014 usually 1.")),
+                              textInput("wiz_val_consent", label = NULL,
+                                        value = "1", width = "100%")),
+                          div(class = "nt-field",
+                              tags$label(help_label("Recruitment date field",
+                                  "Date the participant joined \u2014 the record-created or consent date. Drives recruitment-over-time and projections.")),
+                              textInput("wiz_fld_recruit_date", label = NULL,
+                                        placeholder = "screen_created_date", width = "100%")))),
+
+                  div(class = "nt-card nt-card-soft",
+                      checkboxInput("wiz_has_screening",
+                                    "Patients are screened in REDCap before consent",
+                                    value = FALSE),
+                      hint("Switch this on if screening records exist for patients who never consent. The dashboard will report the funnel and keep them out of the recruitment count."),
+                      shinyjs::hidden(div(id = "wiz_screening_panel",
+                          div(class = "nt-field",
+                              tags$label(help_label("Screening event",
+                                  "REDCap event holding the screening records, e.g. screening_arm_1. Leave blank if screening lives in the same event as everything else.")),
+                              textInput("wiz_ev_screening", label = NULL,
+                                        placeholder = "screening_arm_1", width = "100%")),
+                          div(class = "nt-grid-2",
+                              div(class = "nt-field",
+                                  tags$label(help_label("Eligibility field",
+                                      "Variable that says whether the patient was eligible, e.g. screening_calc.")),
+                                  textInput("wiz_fld_eligible", label = NULL,
+                                            placeholder = "screening_calc", width = "100%")),
+                              div(class = "nt-field",
+                                  tags$label(help_label("Value meaning eligible",
+                                      "The value that means eligible \u2014 e.g. 4 when the calc field must equal 4.")),
+                                  textInput("wiz_val_eligible", label = NULL,
+                                            value = "4", width = "100%"))),
+                          div(class = "nt-grid-2",
+                              div(class = "nt-field",
+                                  tags$label(help_label("Approached field",
+                                      "Variable recording whether an eligible patient was approached, e.g. approached_yn.")),
+                                  textInput("wiz_fld_approached", label = NULL,
+                                            placeholder = "approached_yn", width = "100%")),
+                              div(class = "nt-field",
+                                  tags$label(help_label("Value meaning approached",
+                                      "Usually 1 for yes.")),
+                                  textInput("wiz_val_approached", label = NULL,
+                                            value = "1", width = "100%"))))))
+              )),
+
+              # ── Step 4 — Follow-up schedule (events) ──────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_4",
+                  step_head("4", "Follow-up schedule",
+                            "Which REDCap events make up your trial's timeline, and when is each one due?"),
                   div(class = "nt-callout",
                       HTML("For each timepoint, enter its <strong>REDCap event name</strong> — the value in the <code>redcap_event_name</code> column of your export (e.g. <code>baseline_arm_1</code>). Only Baseline is required. Not sure of the names? Leave them as-is and let the app auto-detect them on your first upload.")),
+                  div(class = "nt-callout",
+                      HTML("Give each timepoint the <strong>day it falls due</strong> after recruitment. A trial that opened last month has no 3-month follow-ups yet, and their event won't be in the export at all — with a due day the dashboard reports them as <em>not yet due</em> instead of 0% complete.")),
 
                   div(class = "nt-card",
                       div(class = "nt-field",
-                          tags$label(help_label("Baseline / randomisation event *",
-                              "The event participants are randomised or enrolled at — this is what the dashboard counts as 'randomised'. Usually baseline_arm_1.")),
+                          tags$label(help_label("Baseline / registration event *",
+                              "The event participants are enrolled at — where the dashboard looks for one row per participant. Usually baseline_arm_1, or your screening event when recruitment starts there.")),
                           textInput("wiz_ev_baseline", label = NULL,
                                     value = "baseline_arm_1", width = "100%"))),
 
@@ -202,9 +277,9 @@ new_trial_setup_ui <- function() {
                                     value = "sub_forms_arm_1, ad_hoc_arm_1", width = "100%")))
               )),
 
-              # ── Step 4 — Field mapping ────────────────────────────────
-              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_4",
-                  step_head("4", "Field mapping",
+              # ── Step 5 — Field mapping ────────────────────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_5",
+                  step_head("5", "Field mapping",
                             "Map the REDCap variable names your export uses."),
                   div(class = "nt-callout",
                       HTML("Enter <strong>variable names</strong> (the column headers in your export), not their labels. The optional groups below adapt to what your trial captures — switch off anything that doesn't apply, so you're not asked for fields you don't collect.")),
@@ -265,9 +340,33 @@ new_trial_setup_ui <- function() {
                           textInput("wiz_fld_cos_type", label = NULL, placeholder = "cos_type", width = "100%")))
               )),
 
-              # ── Step 5 — Features ─────────────────────────────────────
-              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_5",
-                  step_head("5", "Features",
+              # ── Step 6 — Codebook ─────────────────────────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_6",
+                  step_head("6", "Codebook",
+                            "What do the coded values in your export mean?"),
+                  div(class = "nt-callout",
+                      HTML("An export carries codes, not labels: <code>index_panc_aetio = 2</code>. Load your <strong>REDCap data dictionary</strong> (Project Setup &rarr; Data Dictionary &rarr; Download) and every code list comes across at once. A PDF codebook or a pasted list works too, and you can skip this and add them later in Trial Settings.")),
+                  div(class = "nt-card",
+                      div(class = "nt-grid-2",
+                          div(class = "nt-field",
+                              tags$label("Data dictionary or codebook file"),
+                              fileInput("wiz_cb_file", label = NULL,
+                                        accept = c(".csv", ".tsv", ".pdf", ".txt"),
+                                        width = "100%"),
+                              hint("CSV, TSV, PDF or plain text.")),
+                          div(class = "nt-field",
+                              tags$label("or paste code lists"),
+                              textAreaInput("wiz_cb_text", label = NULL, rows = 6,
+                                            width = "100%",
+                                            placeholder = "index_panc_aetio: 1, Gallstones | 2, Alcohol\nbase_sex: 1, Male | 2, Female"))),
+                      actionButton("wiz_cb_load", "Read codebook",
+                                   class = "nt-btn nt-btn-ghost"),
+                      uiOutput("wiz_cb_status"))
+              )),
+
+              # ── Step 7 — Features ─────────────────────────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_7",
+                  step_head("7", "Features",
                             "Choose which tabs and sections to show. Change these any time in Trial Settings."),
                   div(class = "nt-card",
                       div(class = "nt-grid-2 nt-features",
@@ -281,8 +380,8 @@ new_trial_setup_ui <- function() {
                       hint("Uncheck PROMs for trials where patients don't complete questionnaires (e.g. observational, registry, biomarker-only)."))
               )),
 
-              # ── Step 6 — Review & create ──────────────────────────────
-              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_6",
+              # ── Step 8 — Review & create ──────────────────────────────
+              shinyjs::hidden(div(class = "nt-step", id = "wiz_step_8",
                   step_head(HTML("&#x2714;"), "Review & create",
                             "One last look before the dashboard is generated."),
                   div(class = "nt-card nt-review",
