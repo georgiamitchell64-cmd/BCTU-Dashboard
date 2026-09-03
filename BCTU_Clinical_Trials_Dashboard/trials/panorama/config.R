@@ -128,6 +128,39 @@ trial_config <- list(
     change_of_status_date     = NULL
   ),
 
+  # ── Recruitment model ─────────────────────────────────────────────────────
+  # WP4 screens far more patients than it consents: only valid_consent = 1
+  # counts towards the 1017 target. The rest are reported in the funnel.
+  recruitment = list(
+    model         = "registration",
+    basis         = "consent_field",
+    event         = "screening_arm_1",
+    date_field    = "screen_created_date",
+    consent_field = "valid_consent",
+    consent_value = "1",
+    screening = list(
+      enabled          = TRUE,
+      event            = "screening_arm_1",
+      screened_field   = "screening_calc",
+      eligible_field   = "screening_calc",
+      eligible_value   = "4",
+      approached_field = "approached_yn",
+      approached_value = "1"
+    )
+  ),
+
+  # ── Follow-up schedule (days from discharge; protocol section 13.8) ───────
+  # Windows are the protocol's: day 7 and 28 +/-3, 3 and 6 months +/-7. A
+  # timepoint is only counted once its window has closed, so early months do
+  # not read as 0% complete.
+  timepoints = list(
+    discharge = list(label = "Day of discharge", offset_days = 0,   window_days = 0,  anchor = "discharge"),
+    day_7     = list(label = "Day 7",            offset_days = 7,   window_days = 3,  anchor = "discharge"),
+    day_30    = list(label = "Day 28",           offset_days = 28,  window_days = 3,  anchor = "discharge"),
+    month_3   = list(label = "3 months",         offset_days = 91,  window_days = 7,  anchor = "discharge"),
+    month_6   = list(label = "6 months",         offset_days = 182, window_days = 7,  anchor = "discharge")
+  ),
+
   # ── Withdrawal levels (protocol section 15) ───────────────────────────────
   cos_type_labels = c(
     "1" = "No study-related follow-up",

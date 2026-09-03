@@ -342,6 +342,90 @@ trial_settings_server <- function(input, output, session, state) {
   })
   outputOptions(output, "settings_demographics_ui", suspendWhenHidden = FALSE)
   
+  # ── Codebook import ───────────────────────────────────────────────────────
+  # A REDCap data dictionary, a PDF codebook or pasted text all end up in the
+  # same place: cfg$column_labels, which the participant views and the reports
+  # read. Labels already typed by hand are kept unless the user asks otherwise.
+  cb_status <- reactiveVal(NULL)
+  output$settings_cb_status <- renderUI({
+    st <- cb_status()
+    if (is.null(st)) return(NULL)
+    div(class = if (isTRUE(st$ok)) "sch-hint" else "sch-empty",
+        style = if (isTRUE(st$ok)) "color:#166534;" else "color:#B91C1C;",
+        st$msg)
+  })
+
+  observeEvent(input$settings_cb_import, {
+    if (!require_role(rv, "manager")) return()
+    cfg <- rv$trial_config; req(cfg)
+
+    up   <- input$settings_cb_file
+    txt  <- trimws(input$settings_cb_text %||% "")
+    if ((is.null(up) || !nrow(up)) && !nzchar(txt)) {
+      cb_status(list(ok = FALSE,
+                     msg = "Choose a codebook file or paste some code lists first."))
+      return()
+    }
+
+    parsed <- tryCatch({
+      if (!is.null(up) && nrow(up)) {
+        # Shiny stores the upload under a temp name; keep the real extension so
+        # the importer can tell a dictionary from a PDF.
+        ext  <- tolower(tools::file_ext(up$name[1]))
+        dest <- file.path(tempdir(), paste0("codebook_", Sys.getpid(), ".", ext))
+        file.copy(up$datapath[1], dest, overwrite = TRUE)
+        import_codebook_file(dest)
+      } else {
+        parse_codebook_text(txt)
+      }
+    }, error = function(e) e)
+
+    if (inherits(parsed, "error")) {
+      cb_status(list(ok = FALSE, msg = conditionMessage(parsed)))
+      return()
+    }
+    if (!length(parsed$labels)) {
+      cb_status(list(ok = FALSE, msg = paste(
+        "No coded values found in that codebook. Expected lines like",
+        "\"1, Gallstones | 2, Alcohol\" against a variable name.")))
+      return()
+    }
+
+    # A dictionary usually covers far more fields than this export has; keep
+    # the ones that appear in the loaded data so the editor below stays useful,
+    # but fall back to everything when no CSV is loaded yet.
+    raw  <- rv$raw_redcap
+    subs <- if (!is.null(raw) && nrow(raw))
+      codebook_for_columns(parsed$labels, names(raw)) else parsed$labels
+    if (!length(subs)) subs <- parsed$labels
+
+    merged <- merge_codebook_labels(cfg$column_labels, subs,
+                                    overwrite = isTRUE(input$settings_cb_overwrite))
+    ok <- tryCatch({
+      update_overrides(cfg, column_labels = merged$labels); TRUE
+    }, error = function(e) {
+      cb_status(list(ok = FALSE, msg = paste("Save failed:", e$message))); FALSE })
+    if (!ok) return()
+
+    new_cfg <- cfg; new_cfg$column_labels <- merged$labels
+    rv$trial_config <- new_cfg
+    apply_trial_globals(new_cfg)
+    rv$settings_changed <- Sys.time()
+    cb_status(list(ok = TRUE, msg = sprintf(
+      "Imported %d label%s across %d field%s from %s.%s",
+      merged$n_added, if (merged$n_added == 1) "" else "s",
+      merged$n_columns, if (merged$n_columns == 1) "" else "s",
+      parsed$source %||% "the codebook",
+      if (merged$n_kept > 0) sprintf(" %d name%s you had already typed were kept.",
+                                     merged$n_kept,
+                                     if (merged$n_kept == 1) "" else "s") else "")))
+    log_activity("codebook_imported",
+                 sprintf("Imported <strong>%d</strong> codebook labels from %s",
+                         merged$n_added,
+                         htmltools::htmlEscape(parsed$source %||% "a codebook")),
+                 username = rv$username, trial_code = cfg$code)
+  })
+
   observeEvent(input$settings_save_demographics, {
     cfg <- rv$trial_config; req(cfg)
     all_inputs <- reactiveValuesToList(input)
