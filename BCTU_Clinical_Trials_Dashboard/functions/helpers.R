@@ -128,8 +128,11 @@ baseline_rows <- function(raw, cfg = NULL, event_col = "redcap_event_name",
 
 # "tonic" is the TMG/iTMG kind. Its file is tmg_report.Rmd; the original name,
 # tonic_report.Rmd, still resolves so trials set up before the rename keep
-# working — nothing needs renaming on disk.
-REPORT_TEMPLATE_KINDS <- c("tonic", "tsc")
+# working — nothing needs renaming on disk. "tsc" is the TSC Word report and
+# "tsc_interim" the TSC Interim v0.1 HTML report, derived from the TMG layout;
+# neither was ever stored under another name, so tsc_interim resolves through
+# report_template_filename()'s <kind>_report.Rmd default.
+REPORT_TEMPLATE_KINDS <- c("tonic", "tsc", "tsc_interim")
 .REPORT_TEMPLATE_FILES <- list(tonic = "tmg_report.Rmd", tsc = "tsc_report.Rmd")
 .REPORT_TEMPLATE_LEGACY <- list(tonic = "tonic_report.Rmd")
 

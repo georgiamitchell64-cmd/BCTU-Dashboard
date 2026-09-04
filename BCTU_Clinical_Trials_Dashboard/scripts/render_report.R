@@ -17,8 +17,16 @@
 #   --wp=<n>         work package to scope the report to   (default: none)
 #   --out=<path>     output HTML                           (default:
 #                    <trial>_tmg_report_<date>.html in the working directory)
-#   --kind=<tonic|tsc>  which template                     (default: tonic, the
+#   --kind=<tonic|tsc|tsc_interim>  which template         (default: tonic, the
 #                    TMG/iTMG report)
+#   --check          print what the export contains and how the trial's rules
+#                    read it, then stop without rendering. Answers "why is the
+#                    dashboard showing 0" without producing a report.
+#   --raw            skip the shared summary pipeline and hand the template the
+#                    export directly. PANORAMA's template derives every figure
+#                    from the export itself, so this needs nothing but knitr,
+#                    rmarkdown and pandoc. Used automatically if the pipeline
+#                    fails, so the report still comes out.
 # =============================================================================
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -33,6 +41,8 @@ csv_path   <- opt("csv")
 wp_arg     <- opt("wp")
 out_path   <- opt("out")
 kind       <- opt("kind", "tonic")
+raw_only   <- "--raw" %in% args
+check_only <- "--check" %in% args
 
 suppressPackageStartupMessages({
   library(dplyr); library(tidyr); library(stringr); library(lubridate)
@@ -85,13 +95,92 @@ if (!is.null(wp_index) && !is.na(wp_index) && "work_package" %in% names(raw))
   raw <- raw[!is.na(raw$work_package) & raw$work_package == wp_index, , drop = FALSE]
 
 # ── What the recruitment rules make of it ───────────────────────────────────
+# Printed before rendering so the funnel can be checked straight against
+# REDCap, and so a mismatch between the config and the export is visible here
+# rather than only as an odd number in the report.
+message(sprintf("Records in export: %d · rows: %d",
+                length(unique(as.character(raw[[
+                  mapping_first(cfg$redcap_fields$record_id, "record_id")]]))),
+                nrow(raw)))
+if ("redcap_event_name" %in% names(raw))
+  message("Events present: ",
+          paste(sort(unique(as.character(raw$redcap_event_name))), collapse = ", "),
+          "\n  (baseline is mapped to: ",
+          paste(unlist(cfg$redcap_events$baseline), collapse = ", "), ")")
 rc <- recruitment_counts(raw, cfg)
 message(sprintf(
-  "Recruitment (%s): screened %d · eligible %d · approached %d · recruited %d · screened only %d",
+  "Recruitment (%s): screened %d · eligible %d · approached %d · recruited %s · screened only %d",
   rc$spec$basis, rc$n_screened, rc$n_eligible, rc$n_approached,
-  rc$n_recruited, rc$n_screened_only))
+  if (isTRUE(rc$recruited_known)) as.character(rc$n_recruited)
+  else "not applicable to this export",
+  rc$n_screened_only))
 
-report_data <- prepare_report_data(raw)
+# The shared pipeline builds the randomisation-centric summaries. Templates
+# that derive their own figures (PANORAMA's) only need raw_df, so a pipeline
+# failure is not a reason to produce no report at all.
+# Every field the recruitment definition depends on, and what the export
+# actually holds in it. A count of 0 is either "nobody qualifies yet" or "the
+# column the rule needs is missing / holds something unexpected", and these
+# lines say which without opening the CSV.
+.tally <- function(field) {
+  if (!field %in% names(raw))
+    return(sprintf("  %-34s NOT IN THIS EXPORT", field))
+  v <- trimws(as.character(raw[[field]]))
+  v[is.na(v) | !nzchar(v)] <- "(blank)"
+  tb <- sort(table(v), decreasing = TRUE)
+  sprintf("  %-34s %s", field,
+          paste(sprintf("%s x%d", names(tb), as.integer(tb)), collapse = ",  "))
+}
+.fields <- unique(c(vapply(rc$spec$conditions, function(x) x$field, character(1)),
+                    rc$spec$screening$screened_field, rc$spec$screening$eligible_field,
+                    rc$spec$screening$approached_field, rc$spec$consent_field))
+.fields <- .fields[!is.na(.fields) & nzchar(.fields)]
+message("Fields the recruitment rules read:\n",
+        paste(vapply(.fields, .tally, character(1)), collapse = "\n"))
+if (!isTRUE(rc$recruited_known)) {
+  message("  -> The definition could not be applied to this export, so ",
+          "recruitment is being counted by the fallback rule. Fix the field ",
+          "mapping, or load the export that has these columns.")
+} else if (rc$n_recruited == 0 && rc$n_screened > 0) {
+  message("  -> Everyone screened is missing at least one recruitment ",
+          "condition, so 0 recruited is what the data says.")
+}
+
+# Every mapped role against the export. A role whose variable is not there is
+# silently empty in the report — blank demographics, a flat recruitment chart —
+# with nothing on screen to say why, so list them.
+.roles <- Filter(function(r) !is.list(cfg$redcap_fields[[r]]),
+                 names(cfg$redcap_fields %||% list()))
+.rows <- lapply(.roles, function(r) {
+  cand <- as.character(unlist(cfg$redcap_fields[[r]] %||% character(0)))
+  cand <- cand[!is.na(cand) & nzchar(cand)]
+  if (!length(cand)) return(NULL)
+  list(role = r, cand = cand, hit = fld_present(r, raw, cfg = cfg))
+})
+.rows <- Filter(Negate(is.null), .rows)
+.miss <- Filter(function(x) is.null(x$hit), .rows)
+message("Field mapping vs this export: ", length(.rows) - length(.miss), " of ",
+        length(.rows), " mapped fields found.")
+if (length(.miss))
+  message("  Not in the export (these read as empty in the report):\n",
+          paste(vapply(.miss, function(x)
+            sprintf("    %-26s mapped to %s", x$role, paste(x$cand, collapse = " or ")),
+            character(1)), collapse = "\n"),
+          "\n  Fix these in Trial Settings -> Field mapping, or in ",
+          file.path("trials", cfg$code, "config.R"), ".")
+
+if (check_only) {
+  message("\n--check: stopping before rendering.")
+  quit(status = 0L)
+}
+
+report_data <- if (raw_only) list(raw_df = raw) else
+  tryCatch(prepare_report_data(raw), error = function(e) {
+    message("Summary pipeline failed (", conditionMessage(e),
+            ")\n  — handing the template the export directly instead. ",
+            "Sections built from the shared summaries will be empty.")
+    list(raw_df = raw)
+  })
 
 # ── Render ──────────────────────────────────────────────────────────────────
 tmpl <- resolve_report_template(cfg, kind)

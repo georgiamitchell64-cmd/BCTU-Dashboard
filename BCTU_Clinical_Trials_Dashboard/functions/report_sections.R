@@ -895,6 +895,13 @@ REPORT_TEMPLATES <- list(
                  "site_summary", "safety_summary", "complications", "amendments",
                  "next_period", "custom_text")
   ),
+  `TSC Interim` = list(
+    label = "TSC Interim v0.1",
+    description = "TSC interim progress report — the TMG layout plus baseline characteristics, protocol deviations and monthly recruitment by site; recruiting sites only.",
+    sections = c("header", "recruitment_summary", "demographics", "consort",
+                 "site_summary", "safety_summary", "complications", "amendments",
+                 "next_period", "custom_text")
+  ),
   NIHR = list(
     label = "NIHR funder update",
     description = "Concise sponsor/funder report — recruitment vs target, plans.",

@@ -47,6 +47,27 @@ randomisations_server <- function(input, output, session, state) {
     d[!is.na(d)]
   })
 
+  # Why there is nothing to plot. "Upload a REDCap CSV" is right when nothing
+  # is loaded, and actively misleading when an export is loaded but does not
+  # carry the field the recruitment date is mapped to: every count reads 0 and
+  # the screen blames the upload. Name the field instead.
+  .no_dates_msg <- function() {
+    df <- redcap_wp()
+    if (is.null(df) || !nrow(df))
+      return(recruit_term("no_data", rv$trial_config))
+    if (is.na(.rand_col(df))) {
+      cand <- as.character(unlist(
+        (rv$trial_config$redcap_fields %||% list())$randomisation_datetime %||%
+          character(0)))
+      return(sprintf(
+        "Export loaded, but it has no %s date field (looked for %s). Map it in Settings \u2192 Field mapping.",
+        recruit_term("event", rv$trial_config),
+        if (length(cand)) paste(cand, collapse = " or ") else "a registration date"))
+    }
+    sprintf("No usable %s dates in the loaded export.",
+            recruit_term("event", rv$trial_config))
+  }
+
   # Empty-state chart: a single hidden series so e_charts() has data to
   # initialise and the loading spinner clears even when there's nothing to plot.
   .empty_chart <- function(msg) {
@@ -67,20 +88,28 @@ randomisations_server <- function(input, output, session, state) {
     df  <- sites_wp()
     d   <- rand_dates()
 
-    total_rand    <- length(d)
+    # How many were recruited does not depend on having a date for it. Counting
+    # dates read 0 against an export that carries the recruitment fields but no
+    # date column, which is the whole headline wrong. Use the trial's
+    # recruitment definition where it applies, and fall back to counting dates
+    # for trials that define none.
+    rec <- tryCatch(recruited_ids(redcap_wp(), rv$trial_config),
+                    error = function(e) NULL)
+    total_rand    <- if (!is.null(rec)) length(rec) else length(d)
     n_recruiting  <- sum(df$status == "Recruiting", na.rm = TRUE)
     trial_target  <- wp_effective_target(rv$trial_config, rv$active_wp)
     if (trial_target <= 0) trial_target <- 100L
 
+    # Anything per-period genuinely needs dates. With none, an em dash says so;
+    # a 0 would read as "nobody this month" rather than "we cannot tell".
     month_start <- as.Date(format(Sys.Date(), "%Y-%m-01"))
-    this_month  <- sum(d >= month_start)
-
+    this_month   <- if (length(d)) sum(d >= month_start) else "\u2014"
     monthly_rate <- if (length(d)) {
       first_date     <- min(d)
       months_elapsed <- max(1, as.numeric(difftime(Sys.Date(), first_date,
                                                     units = "days")) / 30.44)
       round(length(d) / months_elapsed, 1)
-    } else 0
+    } else "\u2014"
 
     pct <- if (trial_target > 0) round(100 * total_rand / trial_target) else 0
 
@@ -104,7 +133,7 @@ randomisations_server <- function(input, output, session, state) {
   output$rand_monthly_chart <- renderEcharts4r({
     d <- rand_dates()
     if (!length(d))
-      return(.empty_chart(recruit_term("no_data", rv$trial_config)))
+      return(.empty_chart(.no_dates_msg()))
 
     months_chr <- format(d, "%Y-%m")
     monthly <- as.data.frame(table(months_chr), stringsAsFactors = FALSE)
@@ -128,7 +157,7 @@ randomisations_server <- function(input, output, session, state) {
   output$rand_cumulative_chart <- renderEcharts4r({
     d <- rand_dates()
     if (!length(d))
-      return(.empty_chart(recruit_term("no_data", rv$trial_config)))
+      return(.empty_chart(.no_dates_msg()))
 
     trial_target <- wp_effective_target(rv$trial_config, rv$active_wp)
     if (trial_target <= 0) trial_target <- 100L

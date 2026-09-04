@@ -1,5 +1,5 @@
 ---
-pagetitle: "TONIC TMG Progress Report"
+title: "TONIC Progress Report"
 output:
   html_document:
     theme: null
@@ -19,10 +19,21 @@ params:
   nihr_logo_path: NULL
   crf_csv_path: NULL
   screening_xlsx_path: NULL
-  report_type: "TMG"
+  report_type: "TSC Interim"
   completeness_style: "heatmap"
   report_content: NULL
 ---
+
+<!--
+  TSC Interim v0.1 — derived from tonic_report.Rmd (the TMG/iTMG template).
+  Same layout, styling and section structure, with four differences:
+    * the header says "Progress Report", not "Trial Management Group";
+    * the site status and recruitment table lists recruiting sites only;
+    * three tables are added — monthly recruitment by site (06), protocol
+      deviations (09) and participant baseline characteristics (11);
+    * sections renumber accordingly and the report runs to nine pages.
+  Keep visual changes in step with tonic_report.Rmd so the two stay siblings.
+-->
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, results="asis")
@@ -62,11 +73,7 @@ funder_ref   <- safe(rc$funder_ref,    "NIHR155875")
 isrctn       <- safe(rc$isrctn,        "ISRCTN59200516")
 sample_size  <- safe(rc$sample_size,   safe(kpi$trial_target, 898))
 n_sites_plan <- safe(rc$sites_planned, 25)
-proj_start   <- safe(rc$project_start, "Jun 2024")
-# Distinct from proj_start: proj_start anchors the project timeline
-# (meta-strip, section 03), pilot_open is when recruitment into the
-# pilot actually began, shown only in the trial-snapshot sentence.
-pilot_open   <- safe(rc$pilot_open,    "Apr 2026")
+proj_start   <- safe(rc$project_start, "Apr 2026")
 proj_end     <- safe(rc$project_end,   "Feb 2028")
 proj_months  <- safe(rc$project_months, 45)
 pilot_target <- safe(rc$pilot_target,  60)
@@ -403,6 +410,21 @@ eth_min_pct <- local({
   e <- demo$ethnicity
   if (is.null(e) || safe(e$total, 0) == 0) NA else round(safe(e$minority, 0) / e$total * 100)
 })
+
+# Protocol deviations — one line for the section 09 heading, distinguishing
+# "none reported" from "this export has no deviation form".
+dev_count <- safe(rd$deviation_count, 0)
+# Braces, not a bare multi-line if/else: at top level R closes the expression at
+# the end of the first line and the dangling `else` is a parse error.
+dev_hint <- if (!isTRUE(rd$deviation_available)) {
+  "Deviation form not present in this export"
+} else if (dev_count == 0) {
+  "None reported since trial start"
+} else {
+  sprintf("%d deviation%s reported", dev_count, if (dev_count == 1) "" else "s")
+}
+
+
 ```
 
 <style>
@@ -418,7 +440,7 @@ eth_min_pct <- local({
   --pad-page:14mm; --gap-sec:14px; --fs-base:10pt;
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;font-family:Calibri,'Segoe UI',-apple-system,system-ui,sans-serif;color:var(--ink);background:#e8eef2;font-size:var(--fs-base);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+html,body{margin:0;padding:0;font-family:'Inter',-apple-system,system-ui,sans-serif;color:var(--ink);background:#e8eef2;font-size:var(--fs-base);-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{padding:24px 0}
 .doc{max-width:210mm;margin:0 auto}
 .page{background:#fff;width:210mm;min-height:297mm;margin:0 auto 18px;padding:var(--pad-page);position:relative;box-shadow:0 1px 2px rgba(0,0,0,.08),0 8px 24px rgba(15,40,60,.08);border-radius:2px;display:flex;flex-direction:column}
@@ -431,13 +453,14 @@ body{padding:24px 0}
   /* Real @page margins frame every sheet — including table continuation
      sheets — so the fixed 297mm canvas and its 14mm padding go. The flex
      column with min-height keeps each footer at the base of a full page;
-     1mm slack below the 274mm printable height avoids rounding spilling a
-     blank sheet. */
-  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:273mm;padding:0;page-break-after:always}
+     the printable area is ~274mm, and generous slack below it stops
+     sub-millimetre rounding from pushing just the footer onto the next
+     sheet (it sits a few mm above the bottom margin instead). */
+  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:266mm;padding:0;page-break-after:always}
   .page:last-child{page-break-after:auto}
   /* Blocks never split mid-element: anything that will not fit in the space
      left on the current page starts on the next one instead. */
-  .ph,.ph-info,.card,.row2,.row3,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
+  .card,.row2,.row3,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
   .ol-chart-wrap,.ol-status,.milestones,.ml-grp,.chart-wrap,
   .demo,.note,.scale-key,.eth-split,.eth-legend,svg{
     break-inside:avoid;page-break-inside:avoid}
@@ -452,16 +475,16 @@ body{padding:24px 0}
   table.rt tr.grp{break-after:avoid-page;page-break-after:avoid}
   .pf{break-inside:avoid;page-break-inside:avoid}
 }
-/* Header — 1a: trial mark + title tag left · BCTU + report meta right */
-.ph{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:10px;border-bottom:2px solid var(--navy);margin-bottom:12px}
-.ph .brand{display:flex;align-items:center;gap:14px;min-width:0}
-.ph .ph-trial-logo{height:50px;width:auto;display:block}
-.ph .ph-trial-name{font-family:'Source Serif 4',serif;font-size:20pt;font-weight:700;color:var(--navy);letter-spacing:-.5px;line-height:1}
-.ph .brand .tag{font-size:8.5pt;color:var(--muted);line-height:1.35;font-weight:500;border-left:1px solid var(--line);padding-left:14px}
-.ph .brand .tag b{color:var(--navy);font-weight:600;display:block;font-size:9.5pt}
-.ph .meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;font-size:8.5pt;color:var(--muted);line-height:1.4;flex-shrink:0}
-.ph .ph-bctu-logo{height:30px;width:auto;display:block}
-.ph .meta b{color:var(--navy);font-weight:600}
+.ph{display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:2px solid var(--navy);margin-bottom:12px;gap:16px}
+.ph .brand{display:flex;align-items:center;gap:12px;min-width:0}
+.ph .brand img,
+.ph .brand .ph-trial-logo{height:38px;width:auto;display:block}
+.ph .brand .tag{font-size:8.5pt;color:var(--muted);line-height:1.25;font-weight:500;letter-spacing:.02em}
+.ph .brand .tag b{color:var(--navy);font-weight:600;display:block;font-size:9pt}
+.ph .meta{display:flex;align-items:center;gap:14px;text-align:right;font-size:8.5pt;color:var(--muted);line-height:1.4}
+.ph .meta .meta-text{text-align:right}
+.ph .meta .ph-bctu-logo{height:30px;width:auto;display:block;flex-shrink:0}
+.ph .meta b{color:var(--navy);font-weight:600;display:block;font-size:10pt}
 
 .meta-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;background:var(--navy-tint-2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;margin:0 0 12px}
 .meta-strip .mi{padding:0 8px;border-right:1px solid var(--line)}
@@ -471,14 +494,14 @@ body{padding:24px 0}
 .meta-strip .mv small{font-weight:500;color:var(--muted);font-size:8.5pt}
 
 .pf{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:6px;margin-top:auto;font-size:8pt;color:var(--muted)}
-.pf .pn{color:var(--navy);font-weight:600}
 .pf .pf-nihr{height:14px;width:auto;display:block}
+.pf .pn{color:var(--navy);font-weight:600}
 
-h1.title{font-family:'Source Serif 4',serif;font-size:26pt;font-weight:700;color:var(--navy);margin:0 0 6px;letter-spacing:-.5px;line-height:1.1}
+h1.title{font-family:'Source Serif 4',serif;font-size:26pt;font-weight:700;color:var(--navy);margin:0 0 2px;letter-spacing:-.5px;line-height:1.05}
 .sub{font-size:11pt;color:var(--ink-2);margin:0 0 12px;font-weight:500}
 .sub b{color:var(--navy)}
 
-h2.sec{font-family:Calibri,'Segoe UI',sans-serif;font-size:11pt;font-weight:700;color:var(--navy);margin:var(--gap-sec) 0 6px;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding-bottom:4px;border-bottom:1px solid var(--line);white-space:nowrap}
+h2.sec{font-family:'Inter',sans-serif;font-size:11pt;font-weight:700;color:var(--navy);margin:var(--gap-sec) 0 6px;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding-bottom:4px;border-bottom:1px solid var(--line);white-space:nowrap}
 h2.sec .num{font-size:8.5pt;color:#fff;background:var(--teal);padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:0;flex-shrink:0}
 h2.sec .hint{margin-left:auto;font-size:8.5pt;color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0;white-space:normal}
 
@@ -493,7 +516,7 @@ h2.sec .hint{margin-left:auto;font-size:8.5pt;color:var(--muted);font-weight:500
 .snap .cell.navy::before{background:var(--navy)}
 .snap .k{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 .snap .v{font-size:22pt;line-height:1;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;letter-spacing:-.02em;margin-top:3px}
-.snap .v small{font-size:11pt;color:var(--muted);font-weight:500;font-family:Calibri,'Segoe UI',sans-serif;letter-spacing:0}
+.snap .v small{font-size:11pt;color:var(--muted);font-weight:500;font-family:'Inter',sans-serif;letter-spacing:0}
 .snap .s{font-size:8pt;color:var(--ink-2);margin-top:2px;line-height:1.25}
 
 .milestones .lane-head{display:grid;grid-template-columns:1fr 110px 110px;gap:8px;font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:4px 12px 4px 14px;margin-top:2px}
@@ -582,7 +605,7 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .sw-cell.safe .big{color:var(--green)}
 .sw-cell.wd{background:var(--amber-tint);border-color:#f0d6a4}
 .sw-cell.wd .big{color:var(--amber)}
-.sw-cell.wd .big small{font-size:14pt;color:var(--muted);font-family:Calibri,'Segoe UI',sans-serif;font-weight:500}
+.sw-cell.wd .big small{font-size:14pt;color:var(--muted);font-family:'Inter',sans-serif;font-weight:500}
 .sw-cell .det{font-size:9pt;color:var(--ink-2);margin-top:4px;line-height:1.45}
 .sw-cell .det b{color:var(--navy);font-weight:600}
 
@@ -631,54 +654,52 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 
 </style>
 
-<link rel="preconnect" href="https://fonts.googleapis.com"> <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
-
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <div class="doc">
+
 ```{r page-header-helper}
 ph_header <- function(page_label) {
-  # 1a layout — trial mark + title tag left; BCTU logo stacked above the
-  # report meta on the right.
   trial_logo_html <- if (nchar(logo_b64) > 0)
     sprintf('<img class="ph-trial-logo" src="%s" alt="%s logo">',
-            logo_b64, esc(trial_short))
-  else
-    sprintf('<span class="ph-trial-name">%s</span>', esc(trial_short))
-
+            logo_b64, esc(trial_short)) else ""
   bctu_logo_html <- if (nchar(bctu_logo_b64) > 0)
     sprintf('<img class="ph-bctu-logo" src="%s" alt="Birmingham Clinical Trials Unit">',
             bctu_logo_b64) else ""
-
-  meta_line <- if (nzchar(page_label))
-    sprintf('<b>%s</b> · %s', esc(report_date_str), esc(page_label))
-  else
-    sprintf('<b>%s</b> · <span style="color:var(--teal);font-weight:600">Confidential</span>',
-            esc(report_date_str))
-
   cat(sprintf(
 '<header class="ph">
   <div class="brand">%s
-    <div class="tag"><b>%s</b>Trial Management Group · Progress Report</div>
+    <div class="tag"><b>%s</b>Progress Report</div>
   </div>
-  <div class="meta">%s<div>%s</div></div>
+  <div class="meta">
+    %s
+    <div class="meta-text"><b>%s</b>%s</div>
+  </div>
 </header>',
-    trial_logo_html, esc(trial_title), bctu_logo_html, meta_line))
+    trial_logo_html,
+    esc(trial_title),
+    bctu_logo_html,
+    esc(report_date_str),
+    if (nzchar(page_label)) sprintf("<br>%s", esc(page_label)) else
+      sprintf("<br>Reporting period · %s → %s<br><span style=\"color:var(--teal);font-weight:600\">Confidential</span>",
+              esc(rep_from), esc(rep_to))
+  ))
 }
-pf_footer <- function(n_page, n_total = 6) {
-  rt <- safe(params$report_type, "TMG")
-  ver <- safe(rc$version, "1.0")
+pf_footer <- function(n_page, n_total = 9) {
+  ver <- safe(rc$version, "0.1")
   nihr_html <- if (nchar(nihr_logo_b64) > 0)
     sprintf('<img class="pf-nihr" src="%s" alt="Funded by NIHR">', nihr_logo_b64) else "<span></span>"
-  cat(sprintf('<footer class="pf"><span>%s %s Progress Report v%s (%s)</span>%s<span class="pn">Page %d of %d</span></footer>',
-              esc(trial_short), esc(rt), esc(ver), format(Sys.Date(), "%d-%b-%Y"), nihr_html, n_page, n_total))
+  cat(sprintf('<footer class="pf"><span>%s Progress Report v%s (%s)</span>%s<span class="pn">Page %d of %d</span></footer>',
+              esc(trial_short), esc(ver), format(Sys.Date(), "%d-%b-%Y"), nihr_html, n_page, n_total))
 }
 ```
 
 <!-- ============================================================
      PAGE 1 — KEY MILESTONES · PILOT PROGRESSION · TIMELINE
 ============================================================== -->
-
 <section class="page">
 
 ```{r page1-header}
@@ -686,105 +707,43 @@ ph_header("")
 ```
 
 <div class="meta-strip">
-<div class="mi">
-<div class="mk">
-Chief Investigator
+  <div class="mi"><div class="mk">Chief Investigator</div><div class="mv">`r esc(chief_inv)`</div></div>
+  <div class="mi"><div class="mk">Sponsor · Funder</div><div class="mv">`r esc(sponsor)` <small>· `r esc(funder)`</small></div></div>
+  <div class="mi"><div class="mk">Funder ref · Registration</div><div class="mv">`r esc(funder_ref)` <small>· `r esc(isrctn)`</small></div></div>
+  <div class="mi"><div class="mk">Sample · Sites</div><div class="mv">`r fmt_int(sample_size)` <small>(`r fmt_int(round(as.numeric(sample_size)/2))`/arm)</small> · `r fmt_int(n_sites_plan)` UK</div></div>
+  <div class="mi"><div class="mk">Project dates</div><div class="mv">`r esc(proj_start)` → `r esc(proj_end)` <small>(`r fmt_int(proj_months)` mo)</small></div></div>
 </div>
 
-<div class="mv">
-`r esc(chief_inv)`
-</div>
-</div>
-
-<div class="mi">
-<div class="mk">
-Sponsor · Funder
-</div>
-
-<div class="mv">
-`r esc(sponsor)` <small>· `r esc(funder)`</small>
-</div>
-</div>
-
-<div class="mi">
-<div class="mk">
-Funder ref · Registration
-</div>
-
-<div class="mv">
-`r esc(funder_ref)` <small>· `r esc(isrctn)`</small>
-</div>
-</div>
-
-<div class="mi">
-<div class="mk">
-Sample · Sites
-</div>
-
-<div class="mv">
-`r fmt_int(sample_size)` <small>(`r fmt_int(round(as.numeric(sample_size)/2))`/arm)</small> · `r fmt_int(n_sites_plan)` UK
-</div>
-</div>
-
-<div class="mi">
-<div class="mk">
-Project dates
-</div>
-
-<div class="mv">
-`r esc(proj_start)` → `r esc(proj_end)` <small>(`r fmt_int(proj_months)` mo)</small>
-</div>
-</div>
-</div>
-
-<h1 class="title">
-
-Trial Overview
-
-</h1>
-
+<h1 class="title">Trial snapshot</h1>
 <p class="sub">
-
-`r fmt_int(n_rand)` participant`r if (!is.na(n_rand) && n_rand == 1) "" else "s"` randomised across `r fmt_int(n_open_sites)` active site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"` — pilot opened <b>`r esc(pilot_open)`</b>, `r if (rec_band == "green") "on protocol target" else if (rec_band == "amber") "near protocol target" else "behind protocol target"`.
-
+`r fmt_int(n_rand)` participant`r if (!is.na(n_rand) && n_rand == 1) "" else "s"` randomised across `r fmt_int(n_open_sites)` active site`r if (!is.na(n_open_sites) && n_open_sites == 1) "" else "s"` —
+pilot opened <b>`r esc(proj_start)`</b>, `r if (rec_band == "green") "on protocol target" else if (rec_band == "amber") "near protocol target" else "behind protocol target"`.
 </p>
 
 <div class="snap">
-<div class="cell navy">
-<div class="k">Participants randomised</div>
-<div class="v">`r fmt_int(n_rand)`<small> / `r fmt_int(n_target)`</small></div>
-<div class="s">`r if (!is.na(pct_of_target)) sprintf("%.1f%% of trial target", pct_of_target) else "—"` · pilot `r if (!is.na(pilot_pct)) sprintf("%.0f%%", pilot_pct) else "—"`</div>
+  <div class="cell navy">
+    <div class="k">Participants randomised</div>
+    <div class="v">`r fmt_int(n_rand)`<small> / `r fmt_int(n_target)`</small></div>
+    <div class="s">`r if (!is.na(pct_of_target)) sprintf("%.1f%% of trial target", pct_of_target) else "—"` · pilot `r if (!is.na(pilot_pct)) sprintf("%.0f%%", pilot_pct) else "—"`</div>
+  </div>
+  <div class="cell">
+    <div class="k">Sites open · recruiting</div>
+    <div class="v">`r fmt_int(n_open_sites)`<small> / `r fmt_int(n_sites_plan)`</small></div>
+    <div class="s">`r fmt_int(n_setup_sites + n_ident_sites)` in set-up / identified</div>
+  </div>
+  <div class="cell `r rec_band`">
+    <div class="k">Recruitment vs. protocol</div>
+    <div class="v">`r fmt_pct(rec_pct, 0)`</div>
+    <div class="s">`r fmt_int(n_rand)` actual vs `r fmt_int(exp_to_date)` expected (`r format(Sys.Date(), "%b %y")`)</div>
+  </div>
+  <div class="cell `r if (sae_count == 0) "green" else "amber"`">
+    <div class="k">SAEs to date</div>
+    <div class="v">`r fmt_int(sae_count)`</div>
+    <div class="s">`r if (sae_count == 0) "No safety signals reported" else "See section 08 for detail"`</div>
+  </div>
 </div>
 
-<div class="cell">
-<div class="k">Sites open · recruiting</div>
-<div class="v">`r fmt_int(n_open_sites)`<small> / `r fmt_int(n_sites_plan)`</small></div>
-<div class="s">`r fmt_int(n_setup_sites + n_ident_sites)` in set-up / identified</div>
-</div>
-
-<div class="cell `r rec_band`">
-<div class="k">Recruitment vs. protocol</div>
-<div class="v">`r fmt_pct(rec_pct, 0)`</div>
-<div class="s">`r fmt_int(n_rand)` actual vs `r fmt_int(exp_to_date)` expected (`r format(Sys.Date(), "%b %y")`)</div>
-</div>
-
-<div class="cell `r if (sae_count == 0) "green" else "amber"`">
-
-<div class="k">
-SAEs to date
-</div>
-
-<div class="v">`r fmt_int(sae_count)`</div>
-<div class="s">`r if (sae_count == 0) "No safety signals reported" else "See section 07 for detail"`</div>
-</div>
-
-</div>
-
-<h2 class="sec">
-
-<span class="num">01</span> Key milestones <span class="hint">`r esc(next_ms_lbl)`</span>
-
-</h2>
+<h2 class="sec"><span class="num">01</span> Key milestones <span class="hint">`r esc(next_ms_lbl)`</span></h2>
 
 <div class="milestones">
 <div class="lane-head"><span>Milestone</span><span style="text-align:right">Planned / actual</span><span style="text-align:right">Status</span></div>
@@ -820,14 +779,24 @@ ms_future2   <- Filter(function(m) !identical(m$status, "complete"), ms_seq)
 render_ms_group(ms_complete2, "p-g", "Complete", "Set-up & trial activation")
 render_ms_group(ms_future2,   "p-a", "Upcoming", "Pilot · recruitment · close-out")
 ```
+
 </div>
 
-<h2 class="sec">
+```{r page1-footer}
+pf_footer(1)
+```
+</section>
 
-<span class="num">02</span> Internal pilot progression <span class="hint">6-month pilot · review `r esc(pilot_end)`</span>
+<!-- ============================================================
+     PAGE 2 — PILOT PROGRESSION · TIMELINE · RECRUITMENT VS TARGET
+============================================================== -->
+<section class="page">
 
-</h2>
+```{r page2-header}
+ph_header("Page 2 — Pilot, timeline & recruitment")
+```
 
+<h2 class="sec" style="margin-top:0"><span class="num">02</span> Internal pilot progression <span class="hint">6-month pilot · review `r esc(pilot_end)`</span></h2>
 <div class="pilot-strip">
 ```{r pilot-cards}
 for (i in seq_along(pc_cards)) {
@@ -841,52 +810,27 @@ for (i in seq_along(pc_cards)) {
 }
 ```
 </div>
+<div class="note">Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on pages 8–9.</div>
 
-<div class="note">
-Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on page 4.
-</div>
-
-```{r page1-footer}
-pf_footer(1)
-```
-
-</section>
-
-<!-- ============================================================
-     PAGE 2 — PROJECT TIMELINE · RECRUITMENT VS TARGET
-============================================================== -->
-
-<section class="page">
-
-```{r page2-header}
-ph_header("Page 2 — Timeline & recruitment")
-```
-
-<h2 class="sec" style="margin-top:0">
-
-<span class="num">03</span> Project timeline <span class="hint">`r esc(proj_start)` → `r esc(safe(rc$timeline_end, "Feb 2029"))` · `r fmt_int(safe(rc$timeline_months, 57))` mo end-to-end</span>
-
-</h2>
-
+<h2 class="sec"><span class="num">03</span> Project timeline <span class="hint">`r esc(proj_start)` → `r esc(safe(rc$timeline_end, "Feb 2029"))` · `r fmt_int(safe(rc$timeline_months, 57))` mo end-to-end</span></h2>
 <div class="timeline-wrap">
-<div class="legend">
-<span class="lg"><span class="sw" style="background:#9bc3da"></span>Study set-up</span>
-<span class="lg"><span class="sw" style="background:var(--navy)"></span>6-mo pilot</span>
-<span class="lg"><span class="sw" style="background:var(--teal)"></span>Full recruitment</span>
-<span class="lg"><span class="sw" style="background:#f3b860"></span>Treatment &amp; follow-up</span>
-<span class="lg"><span class="sw" style="background:#9bd07a"></span>Data cleaning</span>
-<span class="lg"><span class="sw" style="background:#f29278"></span>Analysis &amp; writeup</span>
-<span class="lg"><span class="sw" style="background:#e587a8"></span>Close-out</span>
-<span class="lg" style="margin-left:auto"><span style="width:10px;border-left:1.5px dashed var(--red);height:10px;display:inline-block"></span>&nbsp;Now (`r format(Sys.Date(), "%b %y")`)</span>
-</div>
-
+  <div class="legend">
+    <span class="lg"><span class="sw" style="background:#9bc3da"></span>Study set-up</span>
+    <span class="lg"><span class="sw" style="background:var(--navy)"></span>6-mo pilot</span>
+    <span class="lg"><span class="sw" style="background:var(--teal)"></span>Full recruitment</span>
+    <span class="lg"><span class="sw" style="background:#f3b860"></span>Treatment &amp; follow-up</span>
+    <span class="lg"><span class="sw" style="background:#9bd07a"></span>Data cleaning</span>
+    <span class="lg"><span class="sw" style="background:#f29278"></span>Analysis &amp; writeup</span>
+    <span class="lg"><span class="sw" style="background:#e587a8"></span>Close-out</span>
+    <span class="lg" style="margin-left:auto"><span style="width:10px;border-left:1.5px dashed var(--red);height:10px;display:inline-block"></span>&nbsp;Now (`r format(Sys.Date(), "%b %y")`)</span>
+  </div>
   <svg viewBox="0 0 816 258" width="100%" style="display:block">
     <g fill="#f6f9fb">
       <rect x="90" y="18" width="144" height="214"/>
       <rect x="378" y="18" width="144" height="214"/>
       <rect x="666" y="18" width="108" height="214"/>
     </g>
-    <g font-family="Calibri, Segoe UI, sans-serif" font-size="9" fill="#6a7d8a">
+    <g font-family="Inter" font-size="9" fill="#6a7d8a">
       <text x="90" y="12" text-anchor="middle">Jun 24</text>
       <text x="162" y="12" text-anchor="middle">Dec 24</text>
       <text x="234" y="12" text-anchor="middle">Jun 25</text>
@@ -899,7 +843,7 @@ ph_header("Page 2 — Timeline & recruitment")
       <text x="738" y="12" text-anchor="middle">Dec 28</text>
     </g>
     <line x1="90" y1="18" x2="774" y2="18" stroke="#dfe7ec" stroke-width="1"/>
-    <g font-family="Calibri, Segoe UI, sans-serif" font-size="10.5" fill="#3d5363" font-weight="500">
+    <g font-family="Inter" font-size="10.5" fill="#3d5363" font-weight="500">
       <text x="0" y="42">Study set-up</text>
       <rect x="90" y="28" width="252" height="20" rx="3" fill="#9bc3da"/>
       <text x="216" y="42" text-anchor="middle" font-size="8.5" font-weight="600" fill="#01344F">21 mo</text>
@@ -931,17 +875,13 @@ ph_header("Page 2 — Timeline & recruitment")
 mo_now <- as.integer(round(as.numeric(difftime(Sys.Date(), as.Date("2024-06-01"), units = "days")) / 30.44))
 mo_now <- max(0, min(57, mo_now))
 xn <- 90 + mo_now * 12
-cat(sprintf('<g><line x1="%d" y1="18" x2="%d" y2="234" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="246" font-family="Calibri, Segoe UI, sans-serif" font-size="9" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
+cat(sprintf('<g><line x1="%d" y1="18" x2="%d" y2="234" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="246" font-family="Inter" font-size="9" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
             xn, xn, xn, format(Sys.Date(), "%b %y")))
 ```
   </svg>
 </div>
 
-<h2 class="sec">
-
-<span class="num">04</span> Recruitment vs. protocol target
-
-</h2>
+<h2 class="sec"><span class="num">04</span> Recruitment vs. protocol target</h2>
 
 <div class="keyline">
   <span>Total randomised: <b>`r fmt_int(n_rand)`</b></span>
@@ -960,64 +900,49 @@ cat(sprintf('<g><line x1="%d" y1="18" x2="%d" y2="234" stroke="#B4321E" stroke-w
 ```{r page2-footer}
 pf_footer(2)
 ```
-
 </section>
 
 <!-- ============================================================
      PAGE 3 — SITE PERFORMANCE
 ============================================================== -->
-
 <section class="page">
 
 ```{r page3-header}
 ph_header("Page 3 — Site performance")
 ```
 
-<h2 class="sec" style="margin-top:0">
-
-<span class="num">05</span> Site performance <span class="hint">`r fmt_int(n_sites_total)` UK hospitals · `r fmt_int(n_open_sites)` recruiting · `r fmt_int(n_setup_sites)` in set-up · `r fmt_int(n_ident_sites)` identified</span>
-
-</h2>
+<h2 class="sec" style="margin-top:0"><span class="num">05</span> Site performance <span class="hint">`r fmt_int(n_sites_total)` UK hospitals · `r fmt_int(n_open_sites)` recruiting · `r fmt_int(n_setup_sites)` in set-up · `r fmt_int(n_ident_sites)` identified</span></h2>
 
 <div class="row3" style="margin-top:2px">
-<div class="card" style="text-align:center;background:var(--green-tint);border-color:#bce6cf">
-<div class="ct" style="color:var(--green)">Open · recruiting</div>
-<div style="font-size:22pt;font-weight:700;color:var(--green);font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_open_sites)`</div>
-<div class="note" style="margin-top:2px">
-
+  <div class="card" style="text-align:center;background:var(--green-tint);border-color:#bce6cf">
+    <div class="ct" style="color:var(--green)">Open · recruiting</div>
+    <div style="font-size:22pt;font-weight:700;color:var(--green);font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_open_sites)`</div>
+    <div class="note" style="margin-top:2px">
 ```{r open-sites-note}
 open_names <- if (nrow(pipeline) && "stage" %in% names(pipeline))
   pipeline$site_name[is_open(pipeline$stage)] else character(0)
 cat(esc(if (length(open_names)) paste(open_names, collapse = " · ") else "—"))
 ```
-
-</div>
-</div>
-
-<div class="card" style="text-align:center;background:var(--amber-tint);border-color:#f0d6a4">
-<div class="ct" style="color:var(--amber)">In set-up</div>
-<div style="font-size:22pt;font-weight:700;color:var(--amber);font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_setup_sites)`</div>
-<div class="note" style="margin-top:2px">Capacity &amp; capability in progress</div>
-</div>
-
-<div class="card" style="text-align:center;background:#e6effa;border-color:#bcd2ec">
-<div class="ct" style="color:#0c558a">Identified — pending</div>
-<div style="font-size:22pt;font-weight:700;color:#0c558a;font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_ident_sites)`</div>
-<div class="note" style="margin-top:2px">Feasibility &amp; local info pack</div>
-</div>
+    </div>
+  </div>
+  <div class="card" style="text-align:center;background:var(--amber-tint);border-color:#f0d6a4">
+    <div class="ct" style="color:var(--amber)">In set-up</div>
+    <div style="font-size:22pt;font-weight:700;color:var(--amber);font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_setup_sites)`</div>
+    <div class="note" style="margin-top:2px">Capacity &amp; capability in progress</div>
+  </div>
+  <div class="card" style="text-align:center;background:#e6effa;border-color:#bcd2ec">
+    <div class="ct" style="color:#0c558a">Identified — pending</div>
+    <div style="font-size:22pt;font-weight:700;color:#0c558a;font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_ident_sites)`</div>
+    <div class="note" style="margin-top:2px">Feasibility &amp; local info pack</div>
+  </div>
 </div>
 
-<p class="lab" style="margin-top:10px">
-
-All sites — status & recruitment
-
-</p>
-
+<p class="lab" style="margin-top:10px">Recruiting sites — status &amp; recruitment</p>
 <table class="rt">
   <thead><tr>
     <th class="l">Site</th><th class="l">Status</th>
     <th>Opened</th><th>Rand.</th><th>Avg / mo</th><th>Target</th>
-    <th class="l" style="width:20%">Progress</th>
+    <th class="l" style="width:24%">Progress</th>
   </tr></thead>
   <tbody>
 ```{r site-table}
@@ -1029,12 +954,13 @@ if (nrow(ss) > 0) {
   if (!"target"         %in% names(ss)) ss$target <- 42L
   if (!"open_date"      %in% names(ss)) ss$open_date <- NA
   if (!"stage"          %in% names(ss)) ss$stage <- "—"
-  # Sort: recruiting first, then set-up, then identified, then by name
-  rank_stage <- function(s) {
-    if (is_open(s))  1L else if (is_setup(s)) 2L else if (is_ident(s)) 3L else 4L
-  }
-  ss$.rank <- vapply(as.character(ss$stage), rank_stage, integer(1))
-  ss <- ss[order(ss$.rank, -ss$randomisations, ss$site_name), ]
+  # TSC Interim: recruiting sites only. Sites in set-up, identified, closed,
+  # suspended or withdrawn are left out of this table — the three cards above
+  # still carry the full site pipeline.
+  ss <- ss[is_open(as.character(ss$stage)) %in% TRUE, , drop = FALSE]
+  ss <- ss[order(-ss$randomisations, ss$site_name), ]
+}
+if (nrow(ss) > 0) {
   for (i in seq_len(nrow(ss))) {
     r <- ss[i, ]
     pill_cls <- if (is_open(r$stage)) "p-g" else
@@ -1047,16 +973,15 @@ if (nrow(ss) > 0) {
                 fmt_date(r$open_date, "%b %Y") else "—"
     rand <- as.integer(r$randomisations %||% 0)
     tgt  <- as.integer(r$target %||% 42)
-    # Average randomisations per month since this site opened. The denominator
-    # is floored at one month so a site open a fortnight cannot report a rate
-    # extrapolated far above what it has actually achieved. Only meaningful for
-    # a recruiting site with a known open date; anything else reads "—".
+    # Average randomisations per month since this site opened; denominator
+    # floored at one month so a newly opened site cannot report a rate
+    # extrapolated far above what it has actually achieved.
     mo_open <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date))) {
       d <- suppressWarnings(as.Date(r$open_date))
       if (is.na(d)) NA_real_ else
         max(1, as.numeric(difftime(Sys.Date(), d, units = "days")) / 30.44)
     } else NA_real_
-    avg_mo   <- if (!is.na(mo_open) && is_open(r$stage)) rand / mo_open else NA_real_
+    avg_mo   <- if (!is.na(mo_open)) rand / mo_open else NA_real_
     avg_cell <- if (is.na(avg_mo)) "\u2014" else sprintf("%.1f", avg_mo)
     pct  <- if (tgt > 0) round(rand/tgt*100, 1) else 0
     progress_html <- if (is_open(r$stage))
@@ -1066,7 +991,7 @@ if (nrow(ss) > 0) {
                 esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, avg_cell, tgt, progress_html))
   }
 } else {
-  cat('<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px">No site data available.</td></tr>')
+  cat('<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px">No recruiting sites to report.</td></tr>')
 }
 ```
   </tbody>
@@ -1075,40 +1000,99 @@ if (nrow(ss) > 0) {
 ```{r page3-footer}
 pf_footer(3)
 ```
-
 </section>
 
 <!-- ============================================================
-     PAGE 4 — DATA · SAFETY & WITHDRAWALS · DEMOGRAPHICS
+     PAGE 4 — MONTHLY RECRUITMENT BY SITE
 ============================================================== -->
-
 <section class="page">
 
 ```{r page4-header}
-ph_header("Page 4 — Data, safety & outcomes")
+ph_header("Page 4 — Monthly recruitment by site")
 ```
 
-<h2 class="sec" style="margin-top:0">
+<h2 class="sec" style="margin-top:0"><span class="num">06</span> Monthly recruitment by site <span class="hint">Participants randomised per calendar month · recruiting sites</span></h2>
 
-<span class="num">06</span> CRF return rates <span class="hint">Forms entered ÷ forms due in each timepoint window · n = `r fmt_int(n_rand)` randomised</span>
+```{r monthly-by-site}
+hm <- rd$site_month_heatmap
+if (is.null(hm) || nrow(hm) == 0) {
+  cat('<p class="note">No monthly recruitment data available yet.</p>')
+} else {
+  months <- sort(unique(as.character(hm$month)))
+  # A portrait page carries about a year of month columns; when recruitment has
+  # run longer, show the most recent twelve and say so under the table. The
+  # Total column always covers every month, trimmed or not.
+  max_cols <- 12
+  trimmed  <- length(months) > max_cols
+  shown    <- if (trimmed) months[(length(months) - max_cols + 1):length(months)] else months
+  lab_of   <- function(m) format(as.Date(paste0(m, "-01")), "%b %y")
 
-</h2>
+  totals <- tapply(hm$actual, hm$site_name, function(x) sum(x, na.rm = TRUE))
+  sites  <- names(sort(totals, decreasing = TRUE))
+
+  cell <- function(site, m) {
+    v <- hm$actual[hm$site_name == site & as.character(hm$month) == m]
+    if (length(v) == 0) 0L else as.integer(v[1])
+  }
+  # A zero reads as clutter across a wide grid — show it greyed.
+  cell_html <- function(v) if (v == 0)
+    '<td style="color:var(--line)">·</td>' else sprintf('<td>%d</td>', v)
+
+  cat('<table class="rt"><thead><tr><th class="l">Site</th>')
+  for (m in shown) cat(sprintf('<th>%s</th>', esc(lab_of(m))))
+  cat('<th>Total</th></tr></thead><tbody>')
+
+  for (site in sites) {
+    cat(sprintf('<tr><td class="sn">%s</td>', esc(site)))
+    for (m in shown) cat(cell_html(cell(site, m)))
+    cat(sprintf('<td><b>%d</b></td></tr>', as.integer(totals[[site]])))
+  }
+
+  cat('<tr class="tot"><td class="l">All recruiting sites</td>')
+  for (m in shown) {
+    cat(sprintf('<td>%d</td>',
+                as.integer(sum(hm$actual[as.character(hm$month) == m], na.rm = TRUE))))
+  }
+  cat(sprintf('<td>%d</td></tr>', as.integer(sum(hm$actual, na.rm = TRUE))))
+  cat('</tbody></table>')
+
+  if (trimmed) {
+    cat(sprintf('<div class="note">Showing the most recent %d months of %d. The Total column covers the whole recruitment period.</div>',
+                max_cols, length(months)))
+  }
+  cat('<div class="note">A dot means no randomisations that month. Sites are ordered by total recruitment.</div>')
+}
+```
+
+```{r page4-footer}
+pf_footer(4)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 5 — DATA · SAFETY & WITHDRAWALS
+============================================================== -->
+<section class="page">
+
+```{r page5-header}
+ph_header("Page 5 — Data, safety & outcomes")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">07</span> CRF return rates <span class="hint">Forms entered ÷ forms due in each timepoint window · n = `r fmt_int(n_rand)` randomised</span></h2>
 
 <div class="row2">
-<div class="card" style="background:var(--teal-tint-2);border-color:#bfe2dd">
-<div class="ct" style="color:var(--teal)">Primary outcome completeness</div>
-<div style="display:flex;gap:18px;align-items:baseline;margin-top:4px">
-  <div style="font-size:24pt;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;line-height:1">`r fmt_pct((rd$primary_outcome %||% list())$pct, 0)`</div>
-  <div class="note" style="margin:0">`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Due" else "Eligible"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$eligible, 0))`</b> · `r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Entered" else "Complete"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$complete, 0))`</b><br>`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Discharge form · entered ÷ due, as per return rates below" else "Discharge form, ≥7&nbsp;d post-op"`</div>
-</div>
-</div>
-
-<div class="card" style="background:var(--navy-tint-2)">
-<div class="ct">Overall — all events combined</div>
-<div style="display:flex;gap:14px;align-items:baseline;margin-top:4px">
-  <div style="font-size:24pt;font-weight:700;color:`r if (!is.na(crf_overall_pct) && crf_overall_pct < 70) "var(--red)" else if (!is.na(crf_overall_pct) && crf_overall_pct < 90) "var(--amber)" else "var(--green)"`;font-family:'Source Serif 4',serif;line-height:1">`r fmt_pct(crf_overall_pct, 1)`</div>
-  <div class="note" style="margin:0">
-
+  <div class="card" style="background:var(--teal-tint-2);border-color:#bfe2dd">
+    <div class="ct" style="color:var(--teal)">Primary outcome completeness</div>
+    <div style="display:flex;gap:18px;align-items:baseline;margin-top:4px">
+      <div style="font-size:24pt;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;line-height:1">`r fmt_pct((rd$primary_outcome %||% list())$pct, 0)`</div>
+      <div class="note" style="margin:0">`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Due" else "Eligible"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$eligible, 0))`</b> · `r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Entered" else "Complete"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$complete, 0))`</b><br>`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Discharge form · entered ÷ due, as per return rates below" else "Discharge form, ≥7&nbsp;d post-op"`</div>
+    </div>
+  </div>
+  <div class="card" style="background:var(--navy-tint-2)">
+    <div class="ct">Overall — all events combined</div>
+    <div style="display:flex;gap:14px;align-items:baseline;margin-top:4px">
+      <div style="font-size:24pt;font-weight:700;color:`r if (!is.na(crf_overall_pct) && crf_overall_pct < 70) "var(--red)" else if (!is.na(crf_overall_pct) && crf_overall_pct < 90) "var(--amber)" else "var(--green)"`;font-family:'Source Serif 4',serif;line-height:1">`r fmt_pct(crf_overall_pct, 1)`</div>
+      <div class="note" style="margin:0">
 ```{r crf-summary}
 if (!is.null(crf_stage_rows)) {
   e <- sum(crf_stage_rows$expected, na.rm = TRUE)
@@ -1117,18 +1101,12 @@ if (!is.null(crf_stage_rows)) {
   cat(sprintf("Expected: <b>%d</b> · Due: <b>%d</b> · Entered: <b>%d</b>", e, d, en))
 } else cat("No CRF return-rate data available.")
 ```
-
+      </div>
+    </div>
   </div>
 </div>
-</div>
-</div>
 
-<p class="lab" style="margin-top:8px">
-
-Return rates by timepoint & form
-
-</p>
-
+<p class="lab" style="margin-top:8px">Return rates by timepoint &amp; form</p>
 <table class="rt">
   <thead><tr><th class="l">Timepoint / Form</th><th>Forms</th><th>Expected</th><th>Due</th><th>Entered</th><th>% Entered<small style="font-weight:400">&nbsp;(of due)</small></th></tr></thead>
   <tbody>
@@ -1189,7 +1167,6 @@ if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0) {
 ```
   </tbody>
 </table>
-
 <div class="scale-key">
   <span><b style="color:var(--green)">≥90%</b> on track</span>
   <span><b style="color:var(--amber)">70–89%</b> attention</span>
@@ -1197,18 +1174,12 @@ if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0) {
   <span><b style="color:var(--grey)">—</b> not yet due</span>
 </div>
 
-<h2 class="sec">
-
-<span class="num">07</span> Safety & withdrawals <span class="hint">`r if (sae_count == 0) "No safety signals since trial start" else sprintf("%d SAE(s) reported", sae_count)`</span>
-
-</h2>
-
+<h2 class="sec"><span class="num">08</span> Safety &amp; withdrawals <span class="hint">`r if (sae_count == 0) "No safety signals since trial start" else sprintf("%d SAE(s) reported", sae_count)`</span></h2>
 <div class="sw-grid">
-<div class="sw-cell wd">
-<div class="lab2">Participant withdrawals</div>
-<div class="big">`r fmt_int(n_wd)`<small> / `r fmt_int(n_rand)`</small></div>
-<div class="det">
-
+  <div class="sw-cell wd">
+    <div class="lab2">Participant withdrawals</div>
+    <div class="big">`r fmt_int(n_wd)`<small> / `r fmt_int(n_rand)`</small></div>
+    <div class="det">
 ```{r wd-detail}
 if (!is.null(wd_log) && nrow(wd_log) > 0) {
   fmt_wd_date <- function(x) {
@@ -1243,10 +1214,8 @@ if (!is.null(wd_log) && nrow(wd_log) > 0) {
   cat('<div style="margin-top:6px"><b>Full consent retained for outcome data collection.</b></div>')
 } else cat("No withdrawals to date.")
 ```
-
-</div>
-</div>
-
+    </div>
+  </div>
 </div>
 
 ```{r sae-log}
@@ -1284,17 +1253,83 @@ if (!is.null(sl) && nrow(sl) > 0) {
 }
 ```
 
-<h2 class="sec">
+```{r page5-footer}
+pf_footer(5)
+```
+</section>
 
-<span class="num">08</span> Demographics <span class="hint">n = `r fmt_int(n_rand)` participants randomised</span>
+<!-- ============================================================
+     PAGE 6 — PROTOCOL DEVIATIONS · DEMOGRAPHICS
+============================================================== -->
+<section class="page">
 
-</h2>
+```{r page6-header}
+ph_header("Page 6 — Deviations & demographics")
+```
 
+<h2 class="sec" style="margin-top:0"><span class="num">09</span> Protocol deviations <span class="hint">`r dev_hint`</span></h2>
+
+```{r deviations}
+dl <- rd$deviation_log
+if (!isTRUE(rd$deviation_available)) {
+  cat('<p class="note">This export carries no protocol-deviation form, so deviations cannot be reported. Map the deviation fields in Trial Settings to include this table.</p>')
+} else if (is.null(dl) || nrow(dl) == 0) {
+  cat('<p class="note">No protocol deviations have been reported to date.</p>')
+} else {
+  fmt_dev_date <- function(x) {
+    d <- suppressWarnings(as.Date(x))
+    ifelse(is.na(d), "—", format(d, "%d %b %Y"))
+  }
+  # Only render a column that carries at least one value, so a trial that maps
+  # a subset of the deviation fields gets a narrow table rather than a wall of
+  # em-dashes.
+  has <- function(col) col %in% names(dl) &&
+    any(!is.na(dl[[col]]) & nzchar(trimws(as.character(dl[[col]]))))
+  cols <- list(
+    list(key = "record_id",  head = "Participant", align = "l",  fmt = as.character),
+    list(key = "site",       head = "Site",        align = "l",  fmt = as.character),
+    list(key = "term",       head = "Reference",   align = "l",  fmt = as.character),
+    list(key = "onset_date", head = "Date of deviation", align = "", fmt = fmt_dev_date),
+    list(key = "report_date",head = "Date team aware",   align = "", fmt = fmt_dev_date),
+    list(key = "severity",   head = "Severity",    align = "l",  fmt = as.character),
+    list(key = "status",     head = "Status",      align = "l",  fmt = as.character),
+    list(key = "narrative",  head = "Summary",     align = "l",  fmt = as.character)
+  )
+  cols <- Filter(function(x) has(x$key), cols)
+
+  cat('<table class="rt"><thead><tr>')
+  for (cc in cols)
+    cat(sprintf('<th class="%s">%s</th>', cc$align, esc(cc$head)))
+  cat('</tr></thead><tbody>')
+  for (i in seq_len(nrow(dl))) {
+    cat('<tr>')
+    for (j in seq_along(cols)) {
+      cc  <- cols[[j]]
+      val <- cc$fmt(dl[[cc$key]][i])
+      if (is.na(val) || !nzchar(trimws(as.character(val)))) val <- "—"
+      cls <- if (j == 1) "sn" else cc$align
+      cat(sprintf('<td class="%s">%s</td>', cls, esc(val)))
+    }
+    cat('</tr>')
+  }
+  cat('</tbody></table>')
+
+  by_site <- sort(table(dl$site[!is.na(dl$site) & nzchar(dl$site)]), decreasing = TRUE)
+  if (length(by_site) > 0) {
+    cat(sprintf('<div class="note">%s across %d site%s — %s.</div>',
+                if (nrow(dl) == 1) "1 deviation" else sprintf("%d deviations", nrow(dl)),
+                length(by_site), if (length(by_site) == 1) "" else "s",
+                paste(sprintf("%s (%d)", esc(names(by_site)), as.integer(by_site)),
+                      collapse = " · ")))
+  }
+}
+```
+
+<h2 class="sec"><span class="num">10</span> Demographics <span class="hint">n = `r fmt_int(n_rand)` participants randomised</span></h2>
 <div class="row2">
-<div class="card">
-<div class="ct">Age at operation</div>
-<div class="demo">
-
+  <div class="card">
+    <div class="ct">Age at operation</div>
+    <div class="demo">
 ```{r age-chips}
 ad <- demo$age
 if (!is.null(ad)) {
@@ -1305,15 +1340,12 @@ if (!is.null(ad)) {
   cat(sprintf('<div class="chip"><b>%d</b><span>70 and over (%d%%)</span></div>', o70, po))
 } else cat('<div class="chip"><b>—</b><span>No age data</span></div>')
 ```
-
-</div>
-<div class="note" style="margin-top:8px">Median age at randomisation broadly mirrors NELA emergency-laparotomy population.</div>
-</div>
-
-<div class="card">
-<div class="ct">NELA 30-day predicted mortality</div>
-<div class="demo">
-
+    </div>
+    <div class="note" style="margin-top:8px">Median age at randomisation broadly mirrors NELA emergency-laparotomy population.</div>
+  </div>
+  <div class="card">
+    <div class="ct">NELA 30-day predicted mortality</div>
+    <div class="demo">
 ```{r nela-chips}
 nd <- demo$nela
 if (!is.null(nd)) {
@@ -1324,11 +1356,9 @@ if (!is.null(nd)) {
   cat(sprintf('<div class="chip"><b>%d</b><span>5%% and over (%d%%)</span></div>', o5, po))
 } else cat('<div class="chip"><b>—</b><span>No NELA data</span></div>')
 ```
-
-</div>
-<div class="note" style="margin-top:8px">Even split across the standard NELA risk stratum — monitoring for balance at randomisation.</div>
-</div>
-
+    </div>
+    <div class="note" style="margin-top:8px">Even split across the standard NELA risk stratum — monitoring for balance at randomisation.</div>
+  </div>
 </div>
 
 <div class="card" style="margin-top:14px">
@@ -1359,32 +1389,71 @@ if (!is.null(eth)) {
 ```
 </div>
 
-```{r page4-footer}
-pf_footer(4)
+```{r page6-footer}
+pf_footer(6)
 ```
-
 </section>
 
 <!-- ============================================================
-     PAGE 5 — PILOT PROGRESSION THRESHOLDS
+     PAGE 7 — PARTICIPANT BASELINE CHARACTERISTICS
 ============================================================== -->
-
 <section class="page">
 
-```{r page5-header}
-ph_header("Page 5 — Pilot thresholds")
+```{r page7-header}
+ph_header("Page 7 — Baseline characteristics")
 ```
 
-<h2 class="sec" style="margin-top:0">
+<h2 class="sec" style="margin-top:0"><span class="num">11</span> Participant baseline characteristics <span class="hint">n = `r fmt_int(n_rand)` participants randomised</span></h2>
 
-<span class="num">09</span> Pilot progression thresholds <span class="hint">Decisions reviewed at 6-month pilot end · `r esc(pilot_end)`</span>
+```{r baseline-characteristics}
+# baseline_characteristics_df() is the shared builder the TSC Word report also
+# uses, so the two reports can never disagree on a number. Rendered here with
+# the report's own table styling rather than the helper's HTML, which carries
+# its own palette.
+bl <- if (exists("baseline_characteristics_df", mode = "function"))
+        tryCatch(baseline_characteristics_df(rd), error = function(e) NULL) else NULL
 
-</h2>
+if (is.null(bl) || nrow(bl) == 0) {
+  cat('<p class="note">No baseline characteristics available — the export carries none of the mapped baseline fields.</p>')
+} else {
+  total_n <- safe(bl$total_n[1], n_rand)
+  cat(sprintf('<table class="rt"><thead><tr><th class="l">Characteristic</th><th class="l">Category</th><th>n = %s</th></tr></thead><tbody>',
+              fmt_int(total_n)))
+  for (sec in unique(bl$section)) {
+    cat(sprintf('<tr class="grp"><td class="l" colspan="3" style="font-weight:700;color:var(--navy);background:var(--navy-tint)">%s</td></tr>',
+                esc(sec)))
+    rows <- bl[bl$section == sec, , drop = FALSE]
+    last_label <- ""
+    for (i in seq_len(nrow(rows))) {
+      # The characteristic name prints once per run of its categories.
+      lbl <- if (identical(rows$label[i], last_label)) "" else rows$label[i]
+      last_label <- rows$label[i]
+      cat(sprintf('<tr><td class="sn">%s</td><td class="l">%s</td><td>%s</td></tr>',
+                  esc(lbl), esc(rows$sublabel[i]), esc(rows$stat[i])))
+    }
+  }
+  cat('</tbody></table>')
+  cat('<div class="note">Percentages are of participants with the field recorded; a Missing row shows how many were not. Minimisation variables are the factors randomisation balances on.</div>')
+}
+```
 
+```{r page7-footer}
+pf_footer(7)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 8 — PILOT PROGRESSION THRESHOLDS
+============================================================== -->
+<section class="page">
+
+```{r page8-header}
+ph_header("Page 8 — Pilot thresholds")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">12</span> Pilot progression thresholds <span class="hint">Decisions reviewed at 6-month pilot end · `r esc(pilot_end)`</span></h2>
 <p class="note" style="font-style:normal;color:var(--ink-2);margin:2px 0 6px;font-size:9pt;line-height:1.5">
-
 Six pre-specified criteria. Performance against each lands in one of three bands — <b style="color:var(--red)">Stop</b>, <b style="color:var(--amber)">Modify</b>, or <b style="color:var(--green)">Proceed</b>. The TMG and oversight committee use this together to decide whether to continue, adapt, or stop the trial after the pilot phase.
-
 </p>
 
 <div class="card" style="padding:6px 14px">
@@ -1412,75 +1481,43 @@ for (i in seq_along(thr)) {
 ```
 </div>
 
-```{r page5-footer}
-pf_footer(5)
+```{r page8-footer}
+pf_footer(8)
 ```
-
 </section>
 
 <!-- ============================================================
-     PAGE 6 — RECRUITMENT OUTLOOK
+     PAGE 9 — RECRUITMENT OUTLOOK
 ============================================================== -->
-
 <section class="page">
 
-```{r page6-header}
-ph_header("Page 6 — Recruitment outlook")
+```{r page9-header}
+ph_header("Page 9 — Recruitment outlook")
 ```
 
-<h2 class="sec" style="margin-top:0">
+<h2 class="sec" style="margin-top:0"><span class="num">13</span> Recruitment outlook <span class="hint">Protocol projection · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)`</span></h2>
 
-<span class="num">10</span> Recruitment outlook <span class="hint">Protocol projection · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)`</span>
+<div class="ol-status `r rec_band`"><div class="icon">`r if (rec_band == "green") "✓" else if (rec_band == "amber") "!" else "×"`</div><div class="txt"><div class="h">`r if (rec_band == "green") sprintf("On track — %.0f%% of protocol target at this point", safe(rec_pct, 0)) else if (rec_band == "amber") sprintf("Near track — %.0f%% of protocol target", safe(rec_pct, 0)) else sprintf("Behind track — %.0f%% of protocol target", safe(rec_pct, 0))`</div><div class="s"><b style="color:var(--navy)">`r fmt_int(n_rand)` randomised</b> against <b style="color:var(--navy)">`r fmt_int(exp_to_date)` expected</b> by `r esc(format(Sys.Date(), "%d %b %Y"))` · `r fmt_int(n_open_sites)` site`r if (n_open_sites == 1) "" else "s"` open.</div></div></div>
 
-</h2>
-
-<div class="ol-status `r rec_band`">
-<div class="icon">
-`r if (rec_band == "green") "✓" else if (rec_band == "amber") "!" else "×"`
-</div>
-
-<div class="txt">
-<div class="h">
-`r if (rec_band == "green") sprintf("On track — %.0f%% of protocol target at this point", safe(rec_pct, 0)) else if (rec_band == "amber") sprintf("Near track — %.0f%% of protocol target", safe(rec_pct, 0)) else sprintf("Behind track — %.0f%% of protocol target", safe(rec_pct, 0))`
-</div>
-
-<div class="s">
-<b style="color:var(--navy)">`r fmt_int(n_rand)` randomised</b> against <b style="color:var(--navy)">`r fmt_int(exp_to_date)` expected</b> by `r esc(format(Sys.Date(), "%d %b %Y"))` · `r fmt_int(n_open_sites)` site`r if (n_open_sites == 1) "" else "s"` open.
-</div>
-</div>
-</div>
-
-<div class="ol-chart">
-<div class="h"><span>Cumulative recruitment · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)` <b>(`r fmt_int(n_target)` target)</b></span><span>Source: protocol schedule</span></div>
-
-<div class="ol-chart-wrap">
-<canvas id="outlookC">
-
-</canvas>
-</div>
-
-<div class="ol-leg"><span class="lg"><span class="ln"></span>Cumulative target (protocol)</span><span class="lg"><span class="sw" style="background:var(--teal)"></span>Actual randomised</span></div>
-</div>
+<div class="ol-chart"><div class="h"><span>Cumulative recruitment · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)` <b>(`r fmt_int(n_target)` target)</b></span><span>Source: protocol schedule</span></div><div class="ol-chart-wrap"><canvas id="outlookC"></canvas></div><div class="ol-leg"><span class="lg"><span class="ln"></span>Cumulative target (protocol)</span><span class="lg"><span class="sw" style="background:var(--teal)"></span>Actual randomised</span></div></div>
 
 
 <p class="note" style="margin-top:8px">
-
 Projections from the original application. Project month re-baselined to the current timeline; monthly targets unchanged at this stage. Follow-up runs to Sep 2028, database lock Nov 2028, analysis Jan 2029, close-out Feb 2029 — see milestones on page 1.
-
 </p>
 
-```{r page6-footer}
-pf_footer(6)
+```{r page9-footer}
+pf_footer(9)
 ```
-
 </section>
+
 </div>
 
 <script>
 (function(){
   if (typeof Chart === 'undefined') return;
   const navy = '#01344F', muted = '#6a7d8a', teal = '#12A192';
-  Chart.defaults.font.family = 'Calibri, Segoe UI, system-ui, sans-serif';
+  Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
   Chart.defaults.font.size = 10;
   Chart.defaults.color = muted;
 

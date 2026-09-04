@@ -58,6 +58,29 @@ fld <- function(name, default = name, cfg = .TRIAL_CFG) {
   fields[[name]] %||% default
 }
 
+#' The mapped variable name for a role that the data actually carries.
+#' A role may map to several candidate names. REDCap projects rename variables
+#' between versions, and a study set up from another trial's data dictionary
+#' carries a mix — PANORAMA's export holds cae_age, base_sex and base_ethnic_gp
+#' where its own codebook says age, sex and ethnicity. Callers that need the
+#' column rather than the configured name resolve through this: the first
+#' candidate the export has, matched case-insensitively as a fallback because
+#' REDCap exports are lower-case and hand-edited configs are not always.
+#' Returns `default` when the export has none of them.
+fld_present <- function(name, data, default = NULL, cfg = .TRIAL_CFG) {
+  cand <- as.character(unlist(fld(name, default = NULL, cfg = cfg) %||% character(0)))
+  cand <- cand[!is.na(cand) & nzchar(cand)]
+  if (!length(cand) || is.null(data) || !length(names(data))) return(default)
+  hit <- cand[cand %in% names(data)]
+  if (length(hit)) return(hit[1])
+  lower <- tolower(names(data))
+  for (one in cand) {
+    i <- match(tolower(one), lower)
+    if (!is.na(i)) return(names(data)[i])
+  }
+  default
+}
+
 #' Look up a REDCap event name by logical role.
 #' A role may map to several event names (a trial that registers under any of
 #' a few candidate events). Callers that compare against a single name — most

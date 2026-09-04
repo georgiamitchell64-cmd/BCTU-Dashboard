@@ -59,10 +59,13 @@ prepare_report_data <- function(df,
     record_v         = "record_id",
     event_v          = "redcap_event_name"
   )
+  # fld_present() picks whichever of a role's candidate names the export
+  # actually has. It also keeps this loop safe: a role mapped to several names
+  # made `src %in% names(df)` return a vector, and `&&` on that is an error in
+  # R 4.3+ rather than the intended test.
   for (canon in names(alias_map)) {
-    src <- fld(alias_map[[canon]], default = NULL, cfg = cfg)
-    if (!is.null(src) && src %in% names(df) && !(canon %in% names(df)))
-      df[[canon]] <- df[[src]]
+    src <- fld_present(alias_map[[canon]], df, cfg = cfg)
+    if (!is.null(src) && !(canon %in% names(df))) df[[canon]] <- df[[src]]
   }
 
   # PN timing reasons (TONIC: nut_o_pn_late_rsn / nut_o_pn_early_rsn) —
@@ -109,7 +112,26 @@ prepare_report_data <- function(df,
     if (!(evcol %in% names(df)))
       return(if (identical(name, "baseline")) df else df[0, ])
     if (is.null(actual)) return(df[0, ])
-    df[df[[evcol]] %in% actual, ]
+    out <- df[df[[evcol]] %in% actual, ]
+    # A baseline event that matches nothing means the mapping names an event
+    # the export does not have — renamed in REDCap, or a per-work-package
+    # export that labels its events differently. Every participant view is
+    # built from these rows, so returning none leaves a zero-row frame that
+    # fails later with base R's "replacement has 1 row, data has 0" rather
+    # than saying what is wrong. Fall back to one row per participant, which
+    # is what baseline_rows() already does everywhere else.
+    if (!nrow(out) && identical(name, "baseline") && nrow(df)) {
+      message("Report data: no rows at the mapped baseline event (",
+              paste(actual, collapse = ", "), "); the export has ",
+              paste(utils::head(sort(unique(as.character(df[[evcol]]))), 6),
+                    collapse = ", "),
+              ". Falling back to the first row per participant \u2014 remap the ",
+              "baseline event in Trial Settings \u2192 Follow-up schedule.")
+      idc <- intersect(c("record_v", "record_id"), names(df))[1]
+      out <- if (!is.na(idc) && !is.null(idc))
+        df[!duplicated(as.character(df[[idc]])), , drop = FALSE] else df
+    }
+    out
   }
   baseline  <- ev("baseline")
   discharge <- ev("discharge")
@@ -151,6 +173,12 @@ prepare_report_data <- function(df,
   complete_cols <- grep("_complete$", names(ptcp), value = TRUE)
   for (cc in complete_cols) ptcp[[cc]] <- as.numeric(ptcp[[cc]])
 
+  # Base R raises "replacement has 1 row, data has 0" when a length-1 default is
+  # assigned into a zero-row data frame, which is what an export with no
+  # participants produces. Size every default to the frame so an empty report
+  # renders as empty rather than dying with that message.
+  fill <- function(x) rep(x, length.out = nrow(ptcp))
+
   # ── 7. Trial arm (only meaningful when PN fields are mapped) ───────────────
   has_late   <- if ("pn_late"  %in% names(ptcp)) filled(ptcp$pn_late)   else rep(FALSE, nrow(ptcp))
   has_noline <- if ("pn_noline" %in% names(ptcp)) filled(ptcp$pn_noline) else rep(FALSE, nrow(ptcp))
@@ -164,25 +192,25 @@ prepare_report_data <- function(df,
 
   # ── 8. Dates (formatted to avoid UTC shift) ────────────────────────────────
   ptcp$op_date <- if ("op_dt" %in% names(ptcp)) ptcp$op_dt else
-    if ("op_dttm" %in% names(ptcp)) as.Date(format(ptcp$op_dttm, "%Y-%m-%d")) else NA_Date_
+    if ("op_dttm" %in% names(ptcp)) as.Date(format(ptcp$op_dttm, "%Y-%m-%d")) else fill(NA_Date_)
   ptcp$rand_date <- if ("rand_dttm" %in% names(ptcp))
-    as.Date(format(ptcp$rand_dttm, "%Y-%m-%d")) else NA_Date_
+    as.Date(format(ptcp$rand_dttm, "%Y-%m-%d")) else fill(NA_Date_)
 
   # ── 9. Follow-up flags ────────────────────────────────────────────────────
   d30q <- intersect(paste0("d30_", fu_cols), names(ptcp))
   d90q <- intersect(paste0("d90_", fu_cols), names(ptcp))
   ptcp$fu_30_complete <- if (length(d30q) > 0)
     as.integer(rowSums(ptcp[, d30q, drop = FALSE] == 2, na.rm = FALSE) == length(d30q))
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_90_complete <- if (length(d90q) > 0)
     as.integer(rowSums(ptcp[, d90q, drop = FALSE] == 2, na.rm = FALSE) == length(d90q))
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_30_any <- if (length(d30q) > 0)
     as.integer(rowSums(ptcp[, d30q, drop = FALSE] == 2, na.rm = TRUE) >= 1)
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_90_any <- if (length(d90q) > 0)
     as.integer(rowSums(ptcp[, d90q, drop = FALSE] == 2, na.rm = TRUE) >= 1)
-    else NA_integer_
+    else fill(NA_integer_)
 
   # ── 10. COS / Withdrawals ─────────────────────────────────────────────────
   cos_label <- cfg$cos_type_labels %||% c(
@@ -276,7 +304,8 @@ prepare_report_data <- function(df,
   }
   if (nrow(withdrawal_events) > 0)
     ptcp <- merge(ptcp, withdrawal_events, by = "record_id", all.x = TRUE)
-  else { ptcp$cos_type <- NA_integer_; ptcp$cos_label <- NA_character_; ptcp$has_cos <- FALSE }
+  else { ptcp$cos_type <- fill(NA_integer_); ptcp$cos_label <- fill(NA_character_)
+         ptcp$has_cos <- fill(FALSE) }
   ptcp$has_cos         <- !is.na(ptcp$has_cos) & ptcp$has_cos
   ptcp$is_death        <- !is.na(ptcp$cos_type) & ptcp$cos_type == 1
   ptcp$is_no_operation <- !is.na(ptcp$cos_type) & ptcp$cos_type == 2
@@ -468,6 +497,17 @@ prepare_report_data <- function(df,
     filtered <- filtered[!is.na(filtered$rand_date) & filtered$rand_date <= as.Date(date_to), ]
   withdrawn_df <- ptcp_randomised[ptcp_randomised$is_withdrawn, ]
 
+  # Some sections of the report are lifetime views, not period views: the site
+  # performance table sets its counts beside all-time targets, and the
+  # demographics breakdown is captioned with the all-time randomised total. Both
+  # read this set — the same site selection as `filtered`, but without the date
+  # window — so their figures track the trial rather than freezing at whatever
+  # fell inside the reporting period.
+  unwindowed <- ptcp_randomised
+  if (!is.null(selected_sites) && length(selected_sites) > 0 &&
+      !("All sites" %in% selected_sites) && "site_name" %in% names(unwindowed))
+    unwindowed <- unwindowed[unwindowed$site_name %in% selected_sites, ]
+
   # ── 15. Monthly recruitment ────────────────────────────────────────────────
   monthly_recruit <- if ("rand_date" %in% names(filtered) && nrow(filtered) > 0 &&
                          any(!is.na(filtered$rand_date))) {
@@ -563,10 +603,13 @@ prepare_report_data <- function(df,
       pipeline_df$site_name <- pipeline_df$site_id
   }
 
-  recruiting_sites <- if ("site_name" %in% names(filtered) && nrow(filtered) > 0) {
-    sites <- unique(filtered$site_name)
+  # Lifetime counts: the Target column and progress bar beside them are all-time
+  # figures, so a date-windowed count would be a period numerator over a
+  # lifetime denominator (and read zero whenever the window caught nothing).
+  recruiting_sites <- if ("site_name" %in% names(unwindowed) && nrow(unwindowed) > 0) {
+    sites <- unique(unwindowed$site_name)
     data.frame(site_name = sites, stage = "Open — Recruiting",
-      randomisations = sapply(sites, function(s) sum(filtered$site_name == s)),
+      randomisations = sapply(sites, function(s) sum(unwindowed$site_name == s)),
       source = "redcap", stringsAsFactors = FALSE)
   } else data.frame(site_name=character(0), stage=character(0),
                     randomisations=integer(0), source=character(0),
@@ -579,9 +622,12 @@ prepare_report_data <- function(df,
       recruiting_sites <- merge(recruiting_sites, lk, by = "site_name", all.x = TRUE)
     }
   }
-  if (!"target"          %in% names(recruiting_sites)) recruiting_sites$target          <- 42
-  if (!"monthly_target"  %in% names(recruiting_sites)) recruiting_sites$monthly_target  <- 2
-  if (!"open_date"       %in% names(recruiting_sites)) recruiting_sites$open_date       <- NA_character_
+  # Sized to the frame: with nobody recruited yet there are no recruiting
+  # sites, and a length-1 default into that zero-row frame is an error.
+  rs_fill <- function(x) rep(x, length.out = nrow(recruiting_sites))
+  if (!"target"          %in% names(recruiting_sites)) recruiting_sites$target          <- rs_fill(42)
+  if (!"monthly_target"  %in% names(recruiting_sites)) recruiting_sites$monthly_target  <- rs_fill(2)
+  if (!"open_date"       %in% names(recruiting_sites)) recruiting_sites$open_date       <- rs_fill(NA_character_)
   recruiting_sites$target[is.na(recruiting_sites$target)]                 <- 42
   recruiting_sites$monthly_target[is.na(recruiting_sites$monthly_target)] <- 2
 
@@ -735,7 +781,10 @@ prepare_report_data <- function(df,
   }
 
   # ── 24. Demographics ──────────────────────────────────────────────────────
-  dem_df   <- baseline[baseline$record_v %in% filtered$record_id, , drop = FALSE]
+  # Captioned "n = <all-time randomised>" in the report, so the breakdown has to
+  # cover the same participants; `filtered` would count only the reporting
+  # window and disagree with its own heading.
+  dem_df   <- baseline[baseline$record_v %in% unwindowed$record_id, , drop = FALSE]
   age_data <- if ("age_v" %in% names(dem_df)) list(
     under_70 = sum(dem_df$age_v < 70, na.rm = TRUE),
     over_70  = sum(dem_df$age_v >= 70, na.rm = TRUE)) else NULL
@@ -810,6 +859,48 @@ prepare_report_data <- function(df,
     fu_90_elig = elig_90, fu_90_comp = comp_90,
     interv_rate = interv_rate, contam_rate = contam_rate, crossover_rate = crossover_rate)
 
+  # ── 27. Protocol deviations ───────────────────────────────────────────────
+  # Reuses the Data-tab extractor so the report and the drill-down never
+  # disagree. NULL when the trial maps no deviation form or none is recorded —
+  # the report then omits the section rather than printing an empty table.
+  deviation_log <- NULL
+  if (exists("deviation_events", mode = "function")) {
+    deviation_log <- tryCatch({
+      d <- deviation_events(df)
+      if (is.null(d) || nrow(d) == 0) NULL else d
+    }, error = function(e) NULL)
+  }
+  if (!is.null(deviation_log)) {
+    # Scope to the participants this report covers, and label the site from the
+    # resolved participant record rather than the raw DAG column.
+    deviation_log <- deviation_log[
+      as.character(deviation_log$record_id) %in% as.character(filtered$record_id), ,
+      drop = FALSE]
+    if (nrow(deviation_log) == 0) {
+      deviation_log <- NULL
+    } else if ("site_name" %in% names(filtered)) {
+      lk <- data.frame(record_id = as.character(filtered$record_id),
+                       .site     = as.character(filtered$site_name),
+                       stringsAsFactors = FALSE)
+      lk <- lk[!duplicated(lk$record_id), , drop = FALSE]
+      deviation_log$record_id <- as.character(deviation_log$record_id)
+      deviation_log <- merge(deviation_log, lk, by = "record_id", all.x = TRUE)
+      has_site <- !is.na(deviation_log$.site) & nzchar(deviation_log$.site)
+      deviation_log$site[has_site] <- deviation_log$.site[has_site]
+      deviation_log$.site <- NULL
+      deviation_log <- deviation_log[order(deviation_log$onset_date,
+                                           deviation_log$record_id,
+                                           na.last = TRUE), , drop = FALSE]
+    }
+  }
+  deviation_count <- if (is.null(deviation_log)) 0L else nrow(deviation_log)
+  # Distinguishes "no deviations reported" from "this export carries no
+  # deviation form", so the report can say which.
+  deviation_available <- {
+    dc <- fld("deviation_complete", default = "deviation_complete", cfg = cfg)
+    !is.null(dc) && dc %in% names(df)
+  }
+
   # ── Return ────────────────────────────────────────────────────────────────
   # raw_df is the cleaned, aliased export exactly as loaded. Templates whose
   # metrics are not randomisation-based (screening funnels, PROM windows,
@@ -828,6 +919,8 @@ prepare_report_data <- function(df,
                   fu_90_count = fu_90_kpi, fu_90_elig = elig_90),
     safety_summary = safety_summary, site_summary = site_summary,
     sae_log = sae_log,
+    deviation_log = deviation_log, deviation_count = deviation_count,
+    deviation_available = deviation_available,
     site_status = site_status_table, monthly_achievement = monthly_achievement,
     open_sites = open_sites_table, site_month_heatmap = site_month_heatmap,
     crf_data = crf_data, pipeline = pipeline_combined,

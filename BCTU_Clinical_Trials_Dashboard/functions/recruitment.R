@@ -180,12 +180,31 @@ recruitment_counts <- function(raw, cfg = current_trial_config()) {
     # screening form complete but consent blank or 0 fails here and stays in
     # `screened` only.
     all_conditions = {
-      ok <- all_ids
-      for (cnd in spec$conditions) {
-        v  <- val(cnd$field, cnd$event)
-        ok <- intersect(ok, names(v)[trimws(v) == cnd$value])
+      # Every condition has to hold, so every one has to be testable. A field
+      # the export does not carry means the config and the export disagree (a
+      # per-work-package export without the consent form, a renamed variable),
+      # and neither way of guessing is safe: dropping the condition counts
+      # everyone who met the rest, applying it counts nobody. Both are silently
+      # wrong. Say so and return NULL, which tells recruited_ids() the
+      # definition cannot be applied here and leaves the count to the caller's
+      # own rule.
+      missing <- Filter(function(f) !f %in% names(raw),
+                        vapply(spec$conditions, function(x) x$field, character(1)))
+      if (length(missing)) {
+        message("Recruitment: the export has no ", paste(missing, collapse = ", "),
+                " column, so this trial's recruitment definition cannot be ",
+                "applied to it. Counting as configured elsewhere instead. ",
+                "Check the field mapping in Trial Settings, or whether the ",
+                "export you loaded is the right one.")
+        NULL
+      } else {
+        ok <- all_ids
+        for (cnd in spec$conditions) {
+          v  <- val(cnd$field, cnd$event)
+          ok <- intersect(ok, names(v)[trimws(v) == cnd$value])
+        }
+        as.character(ok)
       }
-      ok
     },
     consent_field = {
       v <- val(spec$consent_field, spec$event)
@@ -197,8 +216,12 @@ recruitment_counts <- function(raw, cfg = current_trial_config()) {
       unique(as.character(b[[id_col]]))
     },
     all_ids)
-  recruited     <- intersect(recruited, all_ids)
-  screened_only <- setdiff(screened, recruited)
+  # NULL means "this export cannot be judged against the trial's definition";
+  # character(0) means "judged, and nobody qualifies". Callers act differently
+  # on the two, so the difference must survive this point.
+  recruited     <- if (is.null(recruited)) NULL else
+    as.character(intersect(recruited, all_ids))
+  screened_only <- setdiff(screened, recruited %||% character(0))
 
   list(spec = spec, all_ids = all_ids,
        screened = screened, eligible = eligible,
@@ -206,7 +229,9 @@ recruitment_counts <- function(raw, cfg = current_trial_config()) {
        screened_only = screened_only,
        n_screened = length(screened), n_eligible = length(eligible),
        n_approached = length(approached), n_recruited = length(recruited),
-       n_screened_only = length(screened_only))
+       n_screened_only = length(screened_only),
+       # TRUE when the trial's definition could actually be applied here.
+       recruited_known = !is.null(recruited))
 }
 
 #' Participant ids that count towards the recruitment target, or NULL.
@@ -216,6 +241,9 @@ recruitment_counts <- function(raw, cfg = current_trial_config()) {
 recruited_ids <- function(raw, cfg = current_trial_config()) {
   if (is.null(cfg) || is.null(cfg$recruitment)) return(NULL)
   out <- tryCatch(recruitment_counts(raw, cfg)$recruited, error = function(e) NULL)
+  # NULL travels through unchanged: the definition could not be applied to this
+  # export, so the caller counts as it did before. character(0) is a real
+  # answer — nobody is recruited yet — and must not be turned into NULL.
   if (is.null(out)) NULL else as.character(out)
 }
 
