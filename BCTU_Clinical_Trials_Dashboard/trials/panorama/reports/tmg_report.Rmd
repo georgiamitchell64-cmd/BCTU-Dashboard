@@ -396,7 +396,12 @@ expected_to_date <- if (length(past)) {
 pct_vs_plan <- pctg(n_cons, expected_to_date)
 
 months_active <- length(past)
-rate_per_month <- if (months_active > 0) round(n_cons / months_active, 1) else NA
+# A rate needs a period to measure over, and that comes from the registration
+# dates. With none in the export, months_active falls back to the current month
+# alone and every consented participant lands in it — reporting the whole
+# cohort as this month's rate. Report it as unknown instead.
+rate_per_month <- if (months_active > 0 && length(rec_dates))
+  round(n_cons / months_active, 1) else NA
 rate_site_month <- if (!is.na(rate_per_month) && !is.na(n_sites_open) &&
                        n_sites_open > 0) round(rate_per_month / n_sites_open, 2) else NA
 remaining <- max(0, sample_size - n_cons)

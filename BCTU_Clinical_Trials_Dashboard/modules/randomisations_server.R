@@ -88,20 +88,28 @@ randomisations_server <- function(input, output, session, state) {
     df  <- sites_wp()
     d   <- rand_dates()
 
-    total_rand    <- length(d)
+    # How many were recruited does not depend on having a date for it. Counting
+    # dates read 0 against an export that carries the recruitment fields but no
+    # date column, which is the whole headline wrong. Use the trial's
+    # recruitment definition where it applies, and fall back to counting dates
+    # for trials that define none.
+    rec <- tryCatch(recruited_ids(redcap_wp(), rv$trial_config),
+                    error = function(e) NULL)
+    total_rand    <- if (!is.null(rec)) length(rec) else length(d)
     n_recruiting  <- sum(df$status == "Recruiting", na.rm = TRUE)
     trial_target  <- wp_effective_target(rv$trial_config, rv$active_wp)
     if (trial_target <= 0) trial_target <- 100L
 
+    # Anything per-period genuinely needs dates. With none, an em dash says so;
+    # a 0 would read as "nobody this month" rather than "we cannot tell".
     month_start <- as.Date(format(Sys.Date(), "%Y-%m-01"))
-    this_month  <- sum(d >= month_start)
-
+    this_month   <- if (length(d)) sum(d >= month_start) else "\u2014"
     monthly_rate <- if (length(d)) {
       first_date     <- min(d)
       months_elapsed <- max(1, as.numeric(difftime(Sys.Date(), first_date,
                                                     units = "days")) / 30.44)
       round(length(d) / months_elapsed, 1)
-    } else 0
+    } else "\u2014"
 
     pct <- if (trial_target > 0) round(100 * total_rand / trial_target) else 0
 
