@@ -97,4 +97,29 @@ no_model <- cfg; no_model$recruitment <- NULL
 ok(is.null(recruited_ids(raw, no_model)),
    "recruited_ids is NULL for a trial with no recruitment model")
 
+# A condition whose field the export does not carry cannot be tested. Applying
+# it anyway excluded everyone and reported 0 recruited against a full export —
+# the definition is reported as inapplicable instead, and recruited_ids() hands
+# the count back to the caller's own rule.
+no_consent_col <- raw[, setdiff(names(raw), "consent_complete"), drop = FALSE]
+rc_nc <- suppressMessages(recruitment_counts(no_consent_col, cfg))
+ok(!isTRUE(rc_nc$recruited_known),
+   "a missing condition column makes the definition inapplicable, not 0")
+ok(is.null(suppressMessages(recruited_ids(no_consent_col, cfg))),
+   "recruited_ids is NULL when the export cannot be judged")
+
+# Judged, and nobody qualifies, is a real answer and must stay distinct from
+# the above — it is what a trial that is still screening should report.
+none_yet <- raw
+none_yet$consent_complete <- "0"
+rc_none <- recruitment_counts(none_yet, cfg)
+ok(isTRUE(rc_none$recruited_known),
+   "an export with the columns present is judged")
+ok(identical(rc_none$recruited, character(0)) && rc_none$n_recruited == 0L,
+   "nobody consented yet reports 0 recruited")
+ok(identical(recruited_ids(none_yet, cfg), character(0)),
+   "recruited_ids is character(0), not NULL, when nobody qualifies")
+ok(rc_none$n_screened_only == 4L,
+   "everyone screened is screened-only when nobody has consented")
+
 cat("\nAll recruitment assertions passed.\n")

@@ -109,7 +109,26 @@ prepare_report_data <- function(df,
     if (!(evcol %in% names(df)))
       return(if (identical(name, "baseline")) df else df[0, ])
     if (is.null(actual)) return(df[0, ])
-    df[df[[evcol]] %in% actual, ]
+    out <- df[df[[evcol]] %in% actual, ]
+    # A baseline event that matches nothing means the mapping names an event
+    # the export does not have — renamed in REDCap, or a per-work-package
+    # export that labels its events differently. Every participant view is
+    # built from these rows, so returning none leaves a zero-row frame that
+    # fails later with base R's "replacement has 1 row, data has 0" rather
+    # than saying what is wrong. Fall back to one row per participant, which
+    # is what baseline_rows() already does everywhere else.
+    if (!nrow(out) && identical(name, "baseline") && nrow(df)) {
+      message("Report data: no rows at the mapped baseline event (",
+              paste(actual, collapse = ", "), "); the export has ",
+              paste(utils::head(sort(unique(as.character(df[[evcol]]))), 6),
+                    collapse = ", "),
+              ". Falling back to the first row per participant \u2014 remap the ",
+              "baseline event in Trial Settings \u2192 Follow-up schedule.")
+      idc <- intersect(c("record_v", "record_id"), names(df))[1]
+      out <- if (!is.na(idc) && !is.null(idc))
+        df[!duplicated(as.character(df[[idc]])), , drop = FALSE] else df
+    }
+    out
   }
   baseline  <- ev("baseline")
   discharge <- ev("discharge")
@@ -151,6 +170,12 @@ prepare_report_data <- function(df,
   complete_cols <- grep("_complete$", names(ptcp), value = TRUE)
   for (cc in complete_cols) ptcp[[cc]] <- as.numeric(ptcp[[cc]])
 
+  # Base R raises "replacement has 1 row, data has 0" when a length-1 default is
+  # assigned into a zero-row data frame, which is what an export with no
+  # participants produces. Size every default to the frame so an empty report
+  # renders as empty rather than dying with that message.
+  fill <- function(x) rep(x, length.out = nrow(ptcp))
+
   # ── 7. Trial arm (only meaningful when PN fields are mapped) ───────────────
   has_late   <- if ("pn_late"  %in% names(ptcp)) filled(ptcp$pn_late)   else rep(FALSE, nrow(ptcp))
   has_noline <- if ("pn_noline" %in% names(ptcp)) filled(ptcp$pn_noline) else rep(FALSE, nrow(ptcp))
@@ -164,25 +189,25 @@ prepare_report_data <- function(df,
 
   # ── 8. Dates (formatted to avoid UTC shift) ────────────────────────────────
   ptcp$op_date <- if ("op_dt" %in% names(ptcp)) ptcp$op_dt else
-    if ("op_dttm" %in% names(ptcp)) as.Date(format(ptcp$op_dttm, "%Y-%m-%d")) else NA_Date_
+    if ("op_dttm" %in% names(ptcp)) as.Date(format(ptcp$op_dttm, "%Y-%m-%d")) else fill(NA_Date_)
   ptcp$rand_date <- if ("rand_dttm" %in% names(ptcp))
-    as.Date(format(ptcp$rand_dttm, "%Y-%m-%d")) else NA_Date_
+    as.Date(format(ptcp$rand_dttm, "%Y-%m-%d")) else fill(NA_Date_)
 
   # ── 9. Follow-up flags ────────────────────────────────────────────────────
   d30q <- intersect(paste0("d30_", fu_cols), names(ptcp))
   d90q <- intersect(paste0("d90_", fu_cols), names(ptcp))
   ptcp$fu_30_complete <- if (length(d30q) > 0)
     as.integer(rowSums(ptcp[, d30q, drop = FALSE] == 2, na.rm = FALSE) == length(d30q))
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_90_complete <- if (length(d90q) > 0)
     as.integer(rowSums(ptcp[, d90q, drop = FALSE] == 2, na.rm = FALSE) == length(d90q))
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_30_any <- if (length(d30q) > 0)
     as.integer(rowSums(ptcp[, d30q, drop = FALSE] == 2, na.rm = TRUE) >= 1)
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_90_any <- if (length(d90q) > 0)
     as.integer(rowSums(ptcp[, d90q, drop = FALSE] == 2, na.rm = TRUE) >= 1)
-    else NA_integer_
+    else fill(NA_integer_)
 
   # ── 10. COS / Withdrawals ─────────────────────────────────────────────────
   cos_label <- cfg$cos_type_labels %||% c(
@@ -276,7 +301,8 @@ prepare_report_data <- function(df,
   }
   if (nrow(withdrawal_events) > 0)
     ptcp <- merge(ptcp, withdrawal_events, by = "record_id", all.x = TRUE)
-  else { ptcp$cos_type <- NA_integer_; ptcp$cos_label <- NA_character_; ptcp$has_cos <- FALSE }
+  else { ptcp$cos_type <- fill(NA_integer_); ptcp$cos_label <- fill(NA_character_)
+         ptcp$has_cos <- fill(FALSE) }
   ptcp$has_cos         <- !is.na(ptcp$has_cos) & ptcp$has_cos
   ptcp$is_death        <- !is.na(ptcp$cos_type) & ptcp$cos_type == 1
   ptcp$is_no_operation <- !is.na(ptcp$cos_type) & ptcp$cos_type == 2
@@ -593,9 +619,12 @@ prepare_report_data <- function(df,
       recruiting_sites <- merge(recruiting_sites, lk, by = "site_name", all.x = TRUE)
     }
   }
-  if (!"target"          %in% names(recruiting_sites)) recruiting_sites$target          <- 42
-  if (!"monthly_target"  %in% names(recruiting_sites)) recruiting_sites$monthly_target  <- 2
-  if (!"open_date"       %in% names(recruiting_sites)) recruiting_sites$open_date       <- NA_character_
+  # Sized to the frame: with nobody recruited yet there are no recruiting
+  # sites, and a length-1 default into that zero-row frame is an error.
+  rs_fill <- function(x) rep(x, length.out = nrow(recruiting_sites))
+  if (!"target"          %in% names(recruiting_sites)) recruiting_sites$target          <- rs_fill(42)
+  if (!"monthly_target"  %in% names(recruiting_sites)) recruiting_sites$monthly_target  <- rs_fill(2)
+  if (!"open_date"       %in% names(recruiting_sites)) recruiting_sites$open_date       <- rs_fill(NA_character_)
   recruiting_sites$target[is.na(recruiting_sites$target)]                 <- 42
   recruiting_sites$monthly_target[is.na(recruiting_sites$monthly_target)] <- 2
 

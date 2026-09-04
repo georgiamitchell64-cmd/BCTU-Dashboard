@@ -17,8 +17,13 @@
 #   --wp=<n>         work package to scope the report to   (default: none)
 #   --out=<path>     output HTML                           (default:
 #                    <trial>_tmg_report_<date>.html in the working directory)
-#   --kind=<tonic|tsc>  which template                     (default: tonic, the
+#   --kind=<tonic|tsc|tsc_interim>  which template         (default: tonic, the
 #                    TMG/iTMG report)
+#   --raw            skip the shared summary pipeline and hand the template the
+#                    export directly. PANORAMA's template derives every figure
+#                    from the export itself, so this needs nothing but knitr,
+#                    rmarkdown and pandoc. Used automatically if the pipeline
+#                    fails, so the report still comes out.
 # =============================================================================
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -33,6 +38,7 @@ csv_path   <- opt("csv")
 wp_arg     <- opt("wp")
 out_path   <- opt("out")
 kind       <- opt("kind", "tonic")
+raw_only   <- "--raw" %in% args
 
 suppressPackageStartupMessages({
   library(dplyr); library(tidyr); library(stringr); library(lubridate)
@@ -85,13 +91,36 @@ if (!is.null(wp_index) && !is.na(wp_index) && "work_package" %in% names(raw))
   raw <- raw[!is.na(raw$work_package) & raw$work_package == wp_index, , drop = FALSE]
 
 # ── What the recruitment rules make of it ───────────────────────────────────
+# Printed before rendering so the funnel can be checked straight against
+# REDCap, and so a mismatch between the config and the export is visible here
+# rather than only as an odd number in the report.
+message(sprintf("Records in export: %d · rows: %d",
+                length(unique(as.character(raw[[
+                  mapping_first(cfg$redcap_fields$record_id, "record_id")]]))),
+                nrow(raw)))
+if ("redcap_event_name" %in% names(raw))
+  message("Events present: ",
+          paste(sort(unique(as.character(raw$redcap_event_name))), collapse = ", "),
+          "\n  (baseline is mapped to: ",
+          paste(unlist(cfg$redcap_events$baseline), collapse = ", "), ")")
 rc <- recruitment_counts(raw, cfg)
 message(sprintf(
-  "Recruitment (%s): screened %d · eligible %d · approached %d · recruited %d · screened only %d",
+  "Recruitment (%s): screened %d · eligible %d · approached %d · recruited %s · screened only %d",
   rc$spec$basis, rc$n_screened, rc$n_eligible, rc$n_approached,
-  rc$n_recruited, rc$n_screened_only))
+  if (isTRUE(rc$recruited_known)) as.character(rc$n_recruited)
+  else "not applicable to this export",
+  rc$n_screened_only))
 
-report_data <- prepare_report_data(raw)
+# The shared pipeline builds the randomisation-centric summaries. Templates
+# that derive their own figures (PANORAMA's) only need raw_df, so a pipeline
+# failure is not a reason to produce no report at all.
+report_data <- if (raw_only) list(raw_df = raw) else
+  tryCatch(prepare_report_data(raw), error = function(e) {
+    message("Summary pipeline failed (", conditionMessage(e),
+            ")\n  — handing the template the export directly instead. ",
+            "Sections built from the shared summaries will be empty.")
+    list(raw_df = raw)
+  })
 
 # ── Render ──────────────────────────────────────────────────────────────────
 tmpl <- resolve_report_template(cfg, kind)
