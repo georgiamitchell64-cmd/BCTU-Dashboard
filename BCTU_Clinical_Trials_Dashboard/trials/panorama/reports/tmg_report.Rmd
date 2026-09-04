@@ -261,7 +261,6 @@ lab_for <- function(key, field = NULL, fallback = NULL) {
 
 # ── Screening funnel ─────────────────────────────────────────────────────────
 v_screen <- gv(F$screen_calc)
-v_appr   <- gv(F$approached)
 v_cons   <- gv(F$consent)
 v_wd     <- gv(F$withdraw)
 v_age    <- gv(F$age)
@@ -287,8 +286,6 @@ has_screen_col <- !all(is.na(v_screen))
 screened_ids <- if (has_form_flags) {
   ids[which(v_scr_done == 2)]
 } else if (has_screen_col) ids[!is.na(v_screen)] else ids
-elig_ids     <- ids[which(num(v_screen) == 4)]
-appr_ids     <- ids[which(num(v_appr) == 1)]
 cons_ids     <- if (has_form_flags) {
   ids[which(v_scr_done == 2 & v_cons_done == 2)]
 } else ids[which(num(v_cons) == 1)]
@@ -300,18 +297,15 @@ wd_ids       <- intersect(ids[!is.na(v_wd)], cons_ids)
 active_ids   <- setdiff(cons_ids, wd_ids)
 
 n_screened <- length(screened_ids)
-n_elig     <- length(elig_ids)
-n_inelig   <- max(0, n_screened - n_elig)
-n_appr     <- length(appr_ids)
 n_cons     <- length(cons_ids)
 n_scr_only <- length(scr_only_ids)
 n_wd       <- length(wd_ids)
 n_active   <- length(active_ids)
 
-pct_elig    <- pctg(n_elig, n_screened)
-pct_appr    <- pctg(n_appr, n_elig)
-pct_cons    <- pctg(n_cons, n_appr)
-pct_recruit <- pctg(n_cons, n_elig)
+# Conversion is measured against everyone screened: eligibility and approach
+# are not in the export, so they cannot be denominators.
+pct_cons    <- pctg(n_cons, n_screened)
+pct_recruit <- pct_cons
 pct_target  <- pctg(n_cons, sample_size)
 wd_rate     <- pctg(n_wd, n_cons)
 retention   <- if (is.na(wd_rate)) NA_real_ else round(100 - wd_rate, 1)
@@ -339,11 +333,9 @@ if (n_screened > 0 && !all(is.na(v_site))) {
   site_tbl <- data.frame(
     site      = all_sites,
     screened  = vapply(all_sites, function(s) sum(site_of(screened_ids) == s), integer(1)),
-    eligible  = vapply(all_sites, function(s) sum(site_of(elig_ids)     == s), integer(1)),
-    approached= vapply(all_sites, function(s) sum(site_of(appr_ids)     == s), integer(1)),
     consented = vapply(all_sites, function(s) sum(site_of(cons_ids)     == s), integer(1)),
     stringsAsFactors = FALSE)
-  site_tbl$rate <- mapply(pctg, site_tbl$consented, site_tbl$eligible)
+  site_tbl$rate <- mapply(pctg, site_tbl$consented, site_tbl$screened)
   last_dt <- vapply(all_sites, function(s) {
     d <- d_screen[cons_ids][site_of(cons_ids) == s]
     d <- d[!is.na(d)]
@@ -456,19 +448,26 @@ n_codebook_gaps  <- n_aetio_unmapped + unmapped_n(sex_tbl) + unmapped_n(eth_tbl)
   (if (!is.null(eth_tbl) && (is.null(eth_labels) || !length(eth_labels)))
      nrow(eth_tbl) else 0)
 
-# ── Form completion (consented participants) ─────────────────────────────────
+# ── Form completion ──────────────────────────────────────────────────────────
+# Each form is measured against the participants it is actually due for.
+# Screening and consent are due for everyone screened; the baseline CRFs are
+# only due once a participant has consented, so counting them against the
+# screening log would report every screened-but-not-consented patient as an
+# outstanding form.
 form_defs <- list(
-  list(label = "Screening",                field = F$f_screening),
-  list(label = "Consent",                  field = F$f_consent),
-  list(label = "Demographics & past history", field = F$f_demog),
-  list(label = "Index admission",          field = F$f_index))
+  list(label = "Screening", field = F$f_screening, who = "screened"),
+  list(label = "Consent",   field = F$f_consent,   who = "screened"),
+  list(label = "Demographics & past history", field = F$f_demog, who = "consented"),
+  list(label = "Index admission", field = F$f_index, who = "consented"))
 form_rows <- do.call(rbind, lapply(form_defs, function(f) {
-  v <- num(gv(f$field)[cons_ids])
-  data.frame(form = f$label, due = n_cons,
+  who <- if (identical(f$who, "screened")) screened_ids else cons_ids
+  v <- num(gv(f$field)[who])
+  data.frame(form = f$label, due = length(who),
              complete   = sum(v == 2, na.rm = TRUE),
              unverified = sum(v == 1, na.rm = TRUE),
              incomplete = sum(v == 0, na.rm = TRUE),
              missing    = sum(is.na(v)),
+             due_of     = if (identical(f$who, "screened")) "screened" else "consented",
              stringsAsFactors = FALSE)
 }))
 if (!is.null(form_rows)) form_rows$pct <- mapply(pctg, form_rows$complete, form_rows$due)
@@ -517,14 +516,11 @@ health_cards <- list(
   list(title = "Recruitment vs plan", val = pct_vs_plan,
        sub = sprintf("%s of %s expected", fmt_int(n_cons), fmt_int(expected_to_date)),
        b = band(pct_vs_plan, 90, 70)),
-  list(title = "Eligible approached", val = pct_appr,
-       sub = sprintf("%s of %s eligible", fmt_int(n_appr), fmt_int(n_elig)),
-       b = band(pct_appr, 80, 60)),
-  list(title = "Approached consented", val = pct_cons,
-       sub = sprintf("%s of %s approached", fmt_int(n_cons), fmt_int(n_appr)),
+  list(title = "Screened consented", val = pct_cons,
+       sub = sprintf("%s of %s screened", fmt_int(n_cons), fmt_int(n_screened)),
        b = band(pct_cons, 60, 40)),
   list(title = "Form completion", val = form_overall,
-       sub = "baseline CRFs, consented participants",
+       sub = "screening & consent vs screened; baseline CRFs vs consented",
        b = band(form_overall, 95, 85)),
   list(title = "PROM return", val = prom_overall,
        sub = "all timepoints due to date",
@@ -557,8 +553,11 @@ ms <- rc$key_milestones %||% list(
 ms_complete <- Filter(function(m) identical(m$status, "complete"), ms)
 
 # ── Chart payloads ───────────────────────────────────────────────────────────
-funnel_labels <- c("Screened", "Eligible", "Approached", "Consented")
-funnel_values <- c(n_screened, n_elig, n_appr, n_cons)
+# Eligibility and approach are recorded on instruments this project does not
+# export (screening_calc, approached_yn), so those stages always read 0 and are
+# left out. The funnel is the two stages the export can actually evidence.
+funnel_labels <- c("Screened", "Consented")
+funnel_values <- c(n_screened, n_cons)
 prom_labels <- if (!is.null(prom_rows)) prom_rows$timepoint else character(0)
 prom_pcts   <- if (!is.null(prom_rows)) prom_rows$pct else numeric(0)
 aetio_labels_v <- if (!is.null(aetio_tbl)) aetio_tbl$label else character(0)
@@ -591,7 +590,7 @@ body{padding:24px 0}
   .doc{max-width:none}
   .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:273mm;padding:0;page-break-after:always}
   .page:last-child{page-break-after:auto}
-  .ph,.card,.row2,.row3,.pc,.meta-strip,.health-strip,.funnel,.ml-grp,.chart-wrap,
+  .ph,.card,.row2,.row3,.pc,.meta-strip,.health-strip,.funnel,.ml-grp,.chart-wrap,.chart-wrap-lg,
   .demo,.note,.keyline,.sw-cell,svg{break-inside:avoid;page-break-inside:avoid}
   h2.sec,p.lab{break-after:avoid-page;page-break-after:avoid;break-inside:avoid}
   table.rt{break-inside:auto;page-break-inside:auto}
@@ -697,6 +696,7 @@ table.rt tr.tot td{background:var(--lilac-tint);font-weight:700;color:var(--lila
 .card .ct{font-size:8.5pt;color:var(--lilac);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .chart-wrap{position:relative;height:150px}
 .chart-wrap.tall{height:210px}
+.chart-wrap-lg{position:relative;height:330px}
 
 .demo{display:flex;gap:6px;margin-top:4px}
 .demo .chip{flex:1;text-align:center;padding:8px 6px;border-radius:6px;background:var(--lilac-tint-2);border:1px solid var(--line)}
@@ -837,7 +837,8 @@ cat('<div class="snap">')
 snap_cell("Consented", fmt_int(n_cons),
           sprintf("of %s target · %s", fmt_int(sample_size), fmt_pct(pct_target, 1)), "lilac")
 snap_cell("Screened", fmt_int(n_screened),
-          sprintf("%s eligible (%s)", fmt_int(n_elig), fmt_pct(pct_elig)), "")
+          sprintf("%s screened only (%s)", fmt_int(n_scr_only),
+                  fmt_pct(pctg(n_scr_only, n_screened))), "")
 snap_cell("Open sites", fmt_int(n_sites_open),
           sprintf("%s per site per month", fmt_num(rate_site_month, 2)), "")
 snap_cell("In follow-up", fmt_int(n_active),
@@ -856,29 +857,23 @@ cat('</div>')
 sec("03", "Screening funnel",
     if (has_form_flags) {
       "screening_complete = 2 is screened; with consent_complete = 2 it is recruited"
-    } else "screening_calc = 4 defines eligibility")
+    } else "consent defines entry to the cohort")
 cat('<div class="funnel">')
 fn_max <- max(c(funnel_values, 1))
 fn_subs <- c(
   if (has_form_flags) {
     sprintf("%s with the screening form complete", fmt_int(n_screened))
   } else sprintf("%s records with screening data", fmt_int(n_screened)),
-  sprintf("%s of screened · %s ineligible", fmt_pct(pct_elig), fmt_int(n_inelig)),
-  sprintf("%s of eligible", fmt_pct(pct_appr)),
-  if (has_form_flags) {
-    sprintf("%s of approached · %s screened only (consent not complete)",
-            fmt_pct(pct_cons), fmt_int(n_scr_only))
-  } else sprintf("%s of approached · %s of eligible",
-                 fmt_pct(pct_cons), fmt_pct(pct_recruit)))
+  sprintf("%s of screened \u00b7 %s screened only (consent not complete)",
+          fmt_pct(pct_cons), fmt_int(n_scr_only)))
 for (i in seq_along(funnel_labels)) {
   cat(sprintf('<div class="fn-step"><div class="fk">%s</div><div class="fv">%s</div><div class="fs">%s</div><div class="fbar"><span style="width:%.1f%%"></span></div></div>',
               esc(funnel_labels[i]), fmt_int(funnel_values[i]), fn_subs[i],
               100 * funnel_values[i] / fn_max))
 }
 cat('</div>')
-cat(sprintf('<p class="note">Consent is the point of entry to WP4 — there is no randomisation. A participant counts as recruited only when <code>%s</code> and <code>%s</code> are both 2; screened with consent incomplete or blank counts as screened only (%s to date). Registration date is taken from <code>%s</code>; participants with no screening record are excluded from the funnel denominators.</p>',
-            esc(F$f_screening), esc(F$f_consent), fmt_int(n_scr_only),
-            esc(F$screen_date)))
+cat(sprintf('<p class="note">Consent is the point of entry to WP4 — there is no randomisation. A participant counts as recruited only when <code>%s</code> and <code>%s</code> are both 2; screened with consent incomplete or blank counts as screened only (%s to date). Eligibility and approach are not shown: the instruments recording them are not in the export, so those stages would always read zero.</p>',
+            esc(F$f_screening), esc(F$f_consent), fmt_int(n_scr_only)))
 
 sec("04", "Key milestones",
     sprintf("%d of %d complete", length(ms_complete), length(ms)))
@@ -921,10 +916,11 @@ cat(sprintf('<div class="keyline"><span>Consented: <b>%s</b></span><span>Expecte
             fmt_pct(pct_vs_plan, 1), fmt_num(rate_per_month, 1),
             fmt_num(rate_site_month, 2), fmt_date(first_rec), fmt_date(last_rec)))
 
-cat('<div class="row2" style="margin-top:8px">')
-cat('<div class="card"><div class="ct">Cumulative recruitment · actual vs plan</div><div class="chart-wrap tall"><canvas id="cumC"></canvas></div></div>')
-cat('<div class="card"><div class="ct">Monthly registrations</div><div class="chart-wrap tall"><canvas id="monC"></canvas></div></div>')
-cat('</div>')
+# One chart, as TONIC has: monthly recruitment against the protocol's monthly
+# target. The cumulative curve was the same information a second time.
+cat(sprintf('<div class="card" style="margin-top:8px"><div class="ct">Monthly recruitment · %s</div><div class="chart-wrap-lg"><canvas id="monC"></canvas></div><div class="note">Solid bars are participants consented in each month, labelled with the count. Pale bars behind them are the protocol\'s target for that month.%s</div></div>',
+            if (length(month_lab)) sprintf("%s \u2192 %s", month_lab[1], month_lab[length(month_lab)]) else "no schedule",
+            if (!length(rec_dates)) " No registration dates in the export, so no months can be plotted yet." else ""))
 
 cat(sprintf('<p class="note">The plan line is a linear ramp to %s over %d months from %s. Set <code>recruitment_start</code>, <code>recruitment_months</code> and <code>sample_size</code> in Trial Settings → Report content to match the agreed recruitment schedule.</p>',
             fmt_int(sample_size), plan_months, format(plan_start, "%b %Y")))
@@ -977,14 +973,12 @@ sec("08", "Screening and recruitment by site")
 
 if (!is.null(site_tbl) && nrow(site_tbl) > 0) {
   rows <- lapply(seq_len(nrow(site_tbl)), function(i) list(
-    esc(site_tbl$site[i]), fmt_int(site_tbl$screened[i]), fmt_int(site_tbl$eligible[i]),
-    fmt_int(site_tbl$approached[i]), fmt_int(site_tbl$consented[i]),
+    esc(site_tbl$site[i]), fmt_int(site_tbl$screened[i]),
+    fmt_int(site_tbl$consented[i]),
     fmt_pct(site_tbl$rate[i], 0), fmt_date(site_tbl$last[i], "%d %b %y")))
-  rt_table(c("Site", "Screened", "Eligible", "Approached", "Consented",
-             "Eligible → consented", "Last registration"), rows, align_left = 1,
+  rt_table(c("Site", "Screened", "Consented",
+             "Screened → consented", "Last registration"), rows, align_left = 1,
            total_row = list("All sites", fmt_int(sum(site_tbl$screened)),
-                            fmt_int(sum(site_tbl$eligible)),
-                            fmt_int(sum(site_tbl$approached)),
                             fmt_int(sum(site_tbl$consented)),
                             fmt_pct(pct_recruit, 0), fmt_date(last_rec, "%d %b %y")))
 } else {
@@ -1043,10 +1037,11 @@ pf_footer(3)
 
 ```{r page4}
 ph_header("Data completeness")
-sec("10", "CRF completion", "REDCap form status: 2 = complete, 1 = unverified, 0 = incomplete")
+sec("10", "CRF completion",
+    "2 = complete, 1 = unverified, 0 = incomplete; baseline CRFs are only due once consented")
 
-cat(sprintf('<div class="keyline"><span>Overall completion: <b>%s</b></span><span>Consented participants: <b>%s</b></span><span>Forms assessed: <b>%s</b></span></div>',
-            fmt_pct(form_overall, 1), fmt_int(n_cons),
+cat(sprintf('<div class="keyline"><span>Overall completion: <b>%s</b></span><span>Screened: <b>%s</b> \u00b7 consented: <b>%s</b></span><span>Forms assessed: <b>%s</b></span></div>',
+            fmt_pct(form_overall, 1), fmt_int(n_screened), fmt_int(n_cons),
             if (is.null(form_rows)) "0" else fmt_int(nrow(form_rows))))
 
 if (!is.null(form_rows) && nrow(form_rows) > 0) {
@@ -1054,13 +1049,13 @@ if (!is.null(form_rows) && nrow(form_rows) > 0) {
     p <- form_rows$pct[i]
     bar <- sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><div class="lbl">%s</div></div>',
                    if (is.na(p)) 0 else p, fmt_pct(p, 0))
-    list(esc(form_rows$form[i]), fmt_int(form_rows$due[i]),
+    list(esc(form_rows$form[i]), esc(form_rows$due_of[i]), fmt_int(form_rows$due[i]),
          fmt_int(form_rows$complete[i]), fmt_int(form_rows$unverified[i]),
          fmt_int(form_rows$incomplete[i]), fmt_int(form_rows$missing[i]), bar)
   })
-  rt_table(c("Form", "Expected", "Complete", "Unverified", "Incomplete",
-             "Not started", "% complete"), rows, align_left = 1,
-           total_row = list("All forms", fmt_int(sum(form_rows$due)),
+  rt_table(c("Form", "Due for", "Expected", "Complete", "Unverified", "Incomplete",
+             "Not started", "% complete"), rows, align_left = c(1, 2),
+           total_row = list("All forms", "", fmt_int(sum(form_rows$due)),
                             fmt_int(sum(form_rows$complete)),
                             fmt_int(sum(form_rows$unverified)),
                             fmt_int(sum(form_rows$incomplete)),
@@ -1082,38 +1077,6 @@ cat(sprintf('<div class="sw-cell"><div class="lab2">Withdrawals by level</div><d
             wd_detail, esc(F$withdraw)))
 cat('</div>')
 
-sec("12", "Data queries and actions")
-actions <- list()
-if (!is.na(form_overall) && form_overall < 95)
-  actions[[length(actions) + 1]] <- sprintf(
-    "CRF completion is %s — chase the %s outstanding baseline forms with sites.",
-    fmt_pct(form_overall, 1),
-    fmt_int(sum(form_rows$due) - sum(form_rows$complete)))
-if (n_no_dc_date > 0)
-  actions[[length(actions) + 1]] <- sprintf(
-    "%s consented participant(s) have no index discharge date, so their follow-up windows cannot be calculated.",
-    fmt_int(n_no_dc_date))
-if (!is.na(prom_overall) && prom_overall < 80)
-  actions[[length(actions) + 1]] <- sprintf(
-    "PROM return is %s across all timepoints due — review reminder scheduling (SMS, email, postal).",
-    fmt_pct(prom_overall, 1))
-if (!is.na(pct_vs_plan) && pct_vs_plan < 90)
-  actions[[length(actions) + 1]] <- sprintf(
-    "Recruitment is %s of plan — %s behind the expected %s.",
-    fmt_pct(pct_vs_plan, 1), fmt_int(max(0, expected_to_date - n_cons)),
-    fmt_int(expected_to_date))
-if (n_codebook_gaps > 0)
-  actions[[length(actions) + 1]] <- sprintf(
-    "%d coded value(s) have no codebook entry — add them in Trial Settings → Codebook so reports read as labels.",
-    n_codebook_gaps)
-if (!length(actions))
-  actions[[1]] <- "No actions outstanding: recruitment, data completeness and PROM return are all within threshold."
-rows <- lapply(seq_along(actions), function(i) list(sprintf("%d", i), actions[[i]]))
-cat('<table class="rt"><thead><tr><th class="l" style="width:28px">#</th><th class="l">Action</th></tr></thead><tbody>')
-for (r in rows)
-  cat(sprintf('<tr><td class="l sn">%s</td><td class="l">%s</td></tr>', r[[1]], r[[2]]))
-cat('</tbody></table>')
-
 pf_footer(4)
 ```
 
@@ -1125,7 +1088,7 @@ pf_footer(4)
 
 ```{r page5}
 ph_header("Follow-up & PROMs")
-sec("13", "PROM completion by timepoint",
+sec("12", "PROM completion by timepoint",
     "denominator = participants whose window has closed")
 
 cat(sprintf('<div class="keyline"><span>Overall PROM return: <b>%s</b></span><span>6-month return: <b>%s</b></span><span>In follow-up: <b>%s</b></span><span>Follow-up ends at <b>%s months</b> post discharge</span></div>',
@@ -1154,7 +1117,7 @@ if (!is.null(prom_rows) && nrow(prom_rows) > 0) {
 cat('<div class="card" style="margin-top:10px"><div class="ct">PROM return by timepoint</div><div class="chart-wrap tall"><canvas id="promC"></canvas></div></div>')
 
 if (length(wp_outcomes)) {
-  sec("14", sprintf("Outcome measures — %s", wp_name),
+  sec("13", sprintf("Outcome measures — %s", wp_name),
       if (nzchar(wp_interv)) sprintf("Intervention: %s", wp_interv) else "")
   cat('<table class="rt"><thead><tr><th class="l" style="width:28px">#</th><th class="l">Outcome measure</th></tr></thead><tbody>')
   for (i in seq_along(wp_outcomes))
@@ -1162,27 +1125,6 @@ if (length(wp_outcomes)) {
                 i, esc(wp_outcomes[[i]])))
   cat('</tbody></table>')
 }
-
-sec(if (length(wp_outcomes)) "15" else "14", "How these figures are derived")
-cat('<table class="rt"><thead><tr><th class="l">Metric</th><th class="l">Definition</th></tr></thead><tbody>')
-defs <- list(
-  c("Screened", sprintf("Records with a value in <code>%s</code>.", esc(F$screen_calc))),
-  c("Eligible", sprintf("<code>%s</code> = 4.", esc(F$screen_calc))),
-  c("Approached", sprintf("<code>%s</code> = 1.", esc(F$approached))),
-  c("Consented", sprintf("<code>%s</code> = 1 — the point of entry to the cohort.", esc(F$consent))),
-  c("Registration date", sprintf("<code>%s</code>, the date the REDCap record was created.", esc(F$screen_date))),
-  c("Withdrawn", sprintf("Any non-blank value in <code>%s</code>.", esc(F$withdraw))),
-  c("Form complete", "REDCap form status = 2 (complete); 1 counts as unverified, 0 as incomplete, blank as not started."),
-  c("PROM due", sprintf("Index discharge date (<code>%s</code>) + timepoint offset + window: day 7 &plusmn;3, day 28 &plusmn;3, 3 and 6 months &plusmn;7 days.", esc(F$dc_date))),
-  c("PROM complete", sprintf("Completion flag = 2 in the timepoint's event (<code>%s</code>, <code>%s</code>, <code>%s</code>).",
-                             esc(E$d28), esc(E$m3), esc(E$m6))))
-for (d in defs)
-  cat(sprintf('<tr><td class="l sn">%s</td><td class="l">%s</td></tr>', d[1], d[2]))
-cat('</tbody></table>')
-
-cat(sprintf('<p class="note">Prepared by the %s study office (%s) for the Trial Management Group. Figures are drawn from the REDCap export loaded into the dashboard on %s and cover %s. Participants who withdrew are excluded from follow-up denominators; all other percentages use the denominators stated above.</p>',
-            esc(trial_short), esc(study_mgr), esc(report_date_str),
-            esc(safe(params$selected_sites, "all sites"))))
 
 pf_footer(5)
 ```
@@ -1204,27 +1146,48 @@ pf_footer(5)
   const actual = `r j(cum_actual_plot)`;
   const monthly = `r j(month_actual_plot)`;
 
-  const cumEl = document.getElementById('cumC');
-  if (cumEl) new Chart(cumEl, {
-    type:'line',
-    data:{labels: labels, datasets:[
-      {label:'Plan', data: target, borderColor:'#CFC4E8', borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false, tension:.2},
-      {label:'Actual', data: actual, borderColor: lilac, backgroundColor:'rgba(155,127,212,.20)', fill:true, borderWidth:2, pointBackgroundColor: lilac, pointRadius:2.5, tension:.3, spanGaps:false}
-    ]},
-    options:{responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:true,labels:{boxWidth:10,boxHeight:10,padding:8,font:{size:9}}}},
-      scales:{x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-              y:{beginAtZero:true,grid:{color:grid},border:{display:false},ticks:{padding:4}}}}
+  // Counts drawn above each bar, as the TONIC report does.
+  const valueLabels = (dsIndex) => ({
+    id: 'valueLabels',
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx, ds = chart.data.datasets[dsIndex];
+      const meta = chart.getDatasetMeta(dsIndex);
+      if (!ds || meta.hidden) return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined) return;
+        ctx.save();
+        ctx.font = '700 9.5px ' + Chart.defaults.font.family;
+        ctx.fillStyle = lilac;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(v, el.x, el.y - 3);
+        ctx.restore();
+      });
+    }
+  });
+
+  // Monthly recruitment against the protocol's monthly target. `target` is
+  // cumulative, so step it down to per-month before plotting.
+  const diffs = (xs) => xs.map((v, i) => {
+    if (v == null) return null;
+    const prev = i > 0 ? (xs[i-1] || 0) : 0;
+    return v - prev;
   });
 
   const monEl = document.getElementById('monC');
   if (monEl) new Chart(monEl, {
     type:'bar',
-    data:{labels: labels, datasets:[{data: monthly, backgroundColor: ctx => (ctx.parsed && ctx.parsed.y) ? mauve : '#EFEAF8', borderRadius:4, maxBarThickness:22}]},
-    options:{responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(c.parsed.y||0)+' registered'}}},
-      scales:{x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-              y:{beginAtZero:true,grid:{color:grid},border:{display:false},ticks:{stepSize:1,padding:4}}}}
+    data:{labels: labels, datasets:[
+      {label:'Consented', data: monthly, backgroundColor: mauve, borderRadius:3, maxBarThickness:22, order:1},
+      {label:'Monthly target (protocol)', data: diffs(target), backgroundColor:'#EFEAF8', borderRadius:3, maxBarThickness:22, order:2}
+    ]},
+    plugins:[valueLabels(0)],
+    options:{responsive:true, maintainAspectRatio:false, layout:{padding:{top:18}},
+      plugins:{legend:{display:true,labels:{boxWidth:12,boxHeight:12,padding:10,font:{size:9.5}}},
+               tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y||0)}}},
+      scales:{x:{grid:{display:false},border:{display:false},ticks:{maxRotation:60,minRotation:60,autoSkip:false,font:{size:7.5}}},
+              y:{beginAtZero:true,grid:{color:grid},border:{display:false},title:{display:true,text:'Participants consented',font:{size:9.5,weight:600}},ticks:{stepSize:1,padding:4}}}}
   });
 
   const ageEl = document.getElementById('ageC');
