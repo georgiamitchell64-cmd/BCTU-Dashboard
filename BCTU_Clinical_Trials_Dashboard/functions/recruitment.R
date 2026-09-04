@@ -19,10 +19,26 @@
 #       enabled          = TRUE,
 #       event            = "screening_arm_1",
 #       screened_field   = "screening_calc",   # any non-blank value = screened
+#       screened_value   = NULL,               # or a value the field must equal
 #       eligible_field   = "screening_calc", eligible_value  = "4",
 #       approached_field = "approached_yn",  approached_value = "1"
 #     )
 #   )
+#
+# Some trials need more than one field to agree before a participant counts.
+# PANORAMA screens and consents inside REDCap, so recruitment is the two form
+# completion flags together: `screening_complete = 2` AND `consent_complete = 2`.
+# List them under `conditions` and every one must hold:
+#
+#   recruitment = list(
+#     basis = "all_conditions",
+#     event = "baseline_arm_1",
+#     conditions = list(
+#       list(field = "screening_complete", value = "2"),
+#       list(field = "consent_complete",   value = "2")))
+#
+# A participant who meets the screening definition but not every recruitment
+# condition is reported as screened only — see `screened_only` below.
 #
 # Nothing here is required: a config without a `recruitment` block falls back to
 # the legacy behaviour (randomisation datetime + baseline event), so trials
@@ -36,20 +52,36 @@ recruitment_spec <- function(cfg = current_trial_config()) {
   f   <- cfg$redcap_fields %||% list()
 
   model <- r$model %||% (if (is_randomised_trial(cfg)) "randomised" else "registration")
+  event <- mapping_first(r$event %||% cfg$redcap_events$baseline, NA_character_)
+
+  # Every condition that must hold for a participant to count as recruited.
+  # Each inherits the recruitment event unless it names its own.
+  conds <- lapply(r$conditions %||% list(), function(x) list(
+    field = mapping_first(x$field, NA_character_),
+    value = trimws(as.character(x$value %||% "")),
+    event = mapping_first(x$event %||% r$event %||% cfg$redcap_events$baseline,
+                          NA_character_)))
+  conds <- Filter(function(x) !is.na(x$field) && nzchar(x$field), conds)
+
   basis <- r$basis
   if (is.null(basis) || !nzchar(basis)) {
-    basis <- if (!mapping_is_blank(r$consent_field)) "consent_field"
+    basis <- if (length(conds)) "all_conditions"
+             else if (!mapping_is_blank(r$consent_field)) "consent_field"
              else if (!mapping_is_blank(f$randomisation_datetime)) "date_field"
              else "event_present"
   }
+  # A config that asks for all_conditions but lists none would count everyone;
+  # fall back to the single consent field rather than inflate the total.
+  if (identical(basis, "all_conditions") && !length(conds)) basis <- "consent_field"
 
   list(
     model         = model,
     basis         = basis,
-    event         = mapping_first(r$event %||% cfg$redcap_events$baseline, NA_character_),
+    event         = event,
     date_field    = mapping_first(r$date_field %||% f$randomisation_datetime, NA_character_),
     consent_field = mapping_first(r$consent_field %||% f$valid_consent, NA_character_),
     consent_value = as.character(r$consent_value %||% "1"),
+    conditions    = conds,
     screening     = screening_spec(cfg))
 }
 
@@ -70,6 +102,10 @@ screening_spec <- function(cfg = current_trial_config()) {
     enabled          = enabled,
     event            = mapping_first(s$event %||% cfg$redcap_events$screening, NA_character_),
     screened_field   = screened,
+    # NA means "any non-blank value counts as screened"; a value means the
+    # field has to equal it (PANORAMA: screening_complete = 2).
+    screened_value   = if (is.null(s$screened_value)) NA_character_
+                       else trimws(as.character(s$screened_value)),
     eligible_field   = eligible,
     eligible_value   = as.character(s$eligible_value %||% "4"),
     approached_field = approached,
@@ -83,8 +119,15 @@ screening_spec <- function(cfg = current_trial_config()) {
   if (is.null(raw) || !nrow(raw) || is.na(field) || !field %in% names(raw) ||
       !id_col %in% names(raw)) return(character(0))
   d <- raw
-  if (!is.na(event) && nzchar(event) && event_col %in% names(d))
-    d <- d[as.character(d[[event_col]]) %in% event, , drop = FALSE]
+  if (!is.na(event) && nzchar(event) && event_col %in% names(d)) {
+    in_event <- d[as.character(d[[event_col]]) %in% event, , drop = FALSE]
+    # A mapped event that matches nothing means the config names an event the
+    # export does not have — renamed in REDCap, or never created. Reading zero
+    # rows there silently collapses the whole funnel (and the recruited count)
+    # to 0 while the participants are sitting in the export, so fall back to
+    # the unfiltered frame, as baseline_rows() already does.
+    if (nrow(in_event)) d <- in_event
+  }
   if (!nrow(d)) return(character(0))
   v <- as.character(d[[field]]); r <- as.character(d[[id_col]])
   keep <- !is.na(v) & nzchar(trimws(v)) & !is.na(r) & nzchar(r)
@@ -97,7 +140,8 @@ screening_spec <- function(cfg = current_trial_config()) {
 #' Screening funnel and recruited count for a raw REDCap export.
 #' Returns counts plus the participant ids behind each, so callers can filter.
 #' `recruited` is whichever definition the trial's spec says counts towards the
-#' target; ids that never got that far are still reported as screened.
+#' target; ids that never got that far are still reported as screened, and
+#' `screened_only` is exactly those — screened but not (yet) recruited.
 recruitment_counts <- function(raw, cfg = current_trial_config()) {
   spec <- recruitment_spec(cfg)
   scr  <- spec$screening
@@ -105,16 +149,20 @@ recruitment_counts <- function(raw, cfg = current_trial_config()) {
   if (is.null(raw) || !is.data.frame(raw) || !nrow(raw) || !id_col %in% names(raw))
     return(list(spec = spec, all_ids = character(0), screened = character(0),
                 eligible = character(0), approached = character(0),
-                recruited = character(0), n_screened = 0L, n_eligible = 0L,
-                n_approached = 0L, n_recruited = 0L))
+                recruited = character(0), screened_only = character(0),
+                n_screened = 0L, n_eligible = 0L, n_approached = 0L,
+                n_recruited = 0L, n_screened_only = 0L))
 
   all_ids <- unique(as.character(raw[[id_col]]))
   all_ids <- all_ids[!is.na(all_ids) & nzchar(all_ids)]
   val <- function(field, event = NA_character_)
     .rec_values(raw, field, event, id_col = id_col)
 
-  screened <- if (isTRUE(scr$enabled) && !is.na(scr$screened_field))
-    names(val(scr$screened_field, scr$event)) else all_ids
+  screened <- if (isTRUE(scr$enabled) && !is.na(scr$screened_field)) {
+    v <- val(scr$screened_field, scr$event)
+    if (is.na(scr$screened_value) || !nzchar(scr$screened_value)) names(v)
+    else names(v)[trimws(v) == scr$screened_value]
+  } else all_ids
 
   eligible <- if (isTRUE(scr$enabled) && !is.na(scr$eligible_field)) {
     v <- val(scr$eligible_field, scr$event)
@@ -127,6 +175,18 @@ recruitment_counts <- function(raw, cfg = current_trial_config()) {
   } else eligible
 
   recruited <- switch(spec$basis,
+    # Every condition must hold. PANORAMA is the case this exists for:
+    # screening_complete = 2 AND consent_complete = 2. A participant with the
+    # screening form complete but consent blank or 0 fails here and stays in
+    # `screened` only.
+    all_conditions = {
+      ok <- all_ids
+      for (cnd in spec$conditions) {
+        v  <- val(cnd$field, cnd$event)
+        ok <- intersect(ok, names(v)[trimws(v) == cnd$value])
+      }
+      ok
+    },
     consent_field = {
       v <- val(spec$consent_field, spec$event)
       names(v)[trimws(v) == spec$consent_value]
@@ -137,13 +197,26 @@ recruitment_counts <- function(raw, cfg = current_trial_config()) {
       unique(as.character(b[[id_col]]))
     },
     all_ids)
-  recruited <- intersect(recruited, all_ids)
+  recruited     <- intersect(recruited, all_ids)
+  screened_only <- setdiff(screened, recruited)
 
   list(spec = spec, all_ids = all_ids,
        screened = screened, eligible = eligible,
        approached = approached, recruited = recruited,
+       screened_only = screened_only,
        n_screened = length(screened), n_eligible = length(eligible),
-       n_approached = length(approached), n_recruited = length(recruited))
+       n_approached = length(approached), n_recruited = length(recruited),
+       n_screened_only = length(screened_only))
+}
+
+#' Participant ids that count towards the recruitment target, or NULL.
+#' NULL means "this trial has no explicit recruitment definition" — callers
+#' then count as they did before the spec existed, so nothing changes for a
+#' trial configured without a `recruitment` block.
+recruited_ids <- function(raw, cfg = current_trial_config()) {
+  if (is.null(cfg) || is.null(cfg$recruitment)) return(NULL)
+  out <- tryCatch(recruitment_counts(raw, cfg)$recruited, error = function(e) NULL)
+  if (is.null(out)) NULL else as.character(out)
 }
 
 # =============================================================================

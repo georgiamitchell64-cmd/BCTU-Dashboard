@@ -377,10 +377,23 @@ prepare_report_data <- function(df,
   # Trials that register rather than randomise (observational cohorts such as
   # PANORAMA WP4) have no randomisation datetime: every participant record
   # counts. Only stop when there are no participants at all.
-  ptcp_randomised <- if ("rand_dttm" %in% names(ptcp) && any(!is.na(ptcp$rand_dttm)))
-    ptcp[!is.na(ptcp$rand_dttm), ] else ptcp
-  if (is.null(ptcp_randomised) || nrow(ptcp_randomised) == 0)
+  # Where the trial defines a recruitment model (config `recruitment`) that
+  # decides who counts — PANORAMA needs the screening AND consent forms both
+  # complete, and everyone screened carries a registration date, so the date
+  # alone would count the whole screening log as recruited.
+  rec_ids <- tryCatch(recruited_ids(df, cfg), error = function(e) NULL)
+  ptcp_randomised <- if (!is.null(rec_ids)) {
+    keep <- ptcp[as.character(ptcp$record_id) %in% rec_ids, ]
+    if (nrow(keep) > 0) keep else ptcp[0, ]
+  } else if ("rand_dttm" %in% names(ptcp) && any(!is.na(ptcp$rand_dttm))) {
+    ptcp[!is.na(ptcp$rand_dttm), ]
+  } else ptcp
+  # Nobody meeting the recruitment definition yet is a real answer (a trial
+  # still screening), not a failure — the report should render and show 0.
+  # Only an export with no participants at all is unusable.
+  if (is.null(ptcp) || nrow(ptcp) == 0)
     stop("No participant data available after preprocessing")
+  if (is.null(ptcp_randomised)) ptcp_randomised <- ptcp[0, ]
   total_randomised <- nrow(ptcp_randomised)
   n_sites_active   <- if ("site_name" %in% names(ptcp_randomised))
     length(unique(ptcp_randomised$site_name)) else NA

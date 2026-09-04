@@ -93,6 +93,31 @@ wp_effective_target <- function(cfg, active_wp = NULL) {
 }
 
 
+#' Does this trial run several work packages, each with its own REDCap export?
+#' Multi-WP trials upload one export per work package (Settings → Work
+#' packages), so the single whole-trial REDCap folder does not apply to them.
+trial_is_multi_wp <- function(cfg = current_trial_config()) {
+  length((cfg %||% list())$work_packages %||% character(0)) > 1
+}
+
+#' The folder each work package's REDCap export is read from, aligned to
+#' `work_packages`. An explicit `work_package_data_dirs` entry wins; otherwise
+#' the standard per-trial layout trials/<code>/data/wp<i>/. Deriving the
+#' default matters: `work_package_data_dirs` is only written once someone has
+#' uploaded through Settings, so a trial whose work packages are declared in
+#' config.R would otherwise have no WP upload locations at all.
+wp_data_dirs <- function(cfg = current_trial_config()) {
+  cfg <- cfg %||% list()
+  wps <- cfg$work_packages %||% character(0)
+  if (!length(wps)) return(character(0))
+  dirs <- as.character(unlist(cfg$work_package_data_dirs %||% character(0)))
+  base <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
+  vapply(seq_along(wps), function(i) {
+    d <- if (length(dirs) >= i && !is.na(dirs[i])) trimws(dirs[i]) else ""
+    if (nzchar(d)) d else file.path(base, "data", sprintf("wp%d", i))
+  }, character(1))
+}
+
 #' Does this trial randomise?
 #' Observational cohorts, registries and single-arm studies register or consent
 #' participants instead — PANORAMA WP4 is one — so the dashboard should not

@@ -131,19 +131,35 @@ trial_config <- list(
   ),
 
   # ── Recruitment model ─────────────────────────────────────────────────────
-  # WP4 screens far more patients than it consents: only valid_consent = 1
-  # counts towards the 1017 target. The rest are reported in the funnel.
+  # Participants are screened AND consented inside REDCap, so recruitment is
+  # defined by the two form-completion flags together:
+  #
+  #   screening_complete = 2 AND consent_complete = 2  → recruited
+  #   screening_complete = 2, consent_complete 0/blank → screened only
+  #
+  # WP4 screens far more patients than it consents; only the recruited count
+  # goes towards the 1017 target, the rest are reported in the funnel.
+  #
+  # Both the recruitment and the screening event are `baseline_arm_1`. They
+  # previously named `screening_arm_1`, which does not exist in this project —
+  # every stage of the funnel filtered to zero rows and read 0.
   recruitment = list(
     model         = "registration",
-    basis         = "consent_field",
-    event         = "screening_arm_1",
+    basis         = "all_conditions",
+    event         = "baseline_arm_1",
     date_field    = "screen_created_date",
-    consent_field = "valid_consent",
-    consent_value = "1",
+    # Kept for the views that still show a single consent flag.
+    consent_field = "consent_complete",
+    consent_value = "2",
+    conditions = list(
+      list(field = "screening_complete", value = "2"),
+      list(field = "consent_complete",   value = "2")
+    ),
     screening = list(
       enabled          = TRUE,
-      event            = "screening_arm_1",
-      screened_field   = "screening_calc",
+      event            = "baseline_arm_1",
+      screened_field   = "screening_complete",
+      screened_value   = "2",
       eligible_field   = "screening_calc",
       eligible_value   = "4",
       approached_field = "approached_yn",

@@ -55,6 +55,15 @@ reports_server <- function(input, output, session, state) {
     if (is.null(dates) || length(dates) != 2)     return(NULL)
     if (!rand_col %in% names(raw))                return(NULL)
 
+    # Restrict to participants who count towards the target where the trial
+    # defines a recruitment model, so the recruitment curve does not plot
+    # everyone with a registration date (PANORAMA: everyone screened).
+    rec <- tryCatch(recruited_ids(raw, rv$trial_config), error = function(e) NULL)
+    if (!is.null(rec)) {
+      raw <- raw[as.character(raw$record_id) %in% rec, , drop = FALSE]
+      if (nrow(raw) == 0) return(NULL)
+    }
+
     rands <- raw %>%
       mutate(.rand_raw = trimws(as.character(.data[[rand_col]]))) %>%
       filter(nchar(.rand_raw) > 0, !is.na(.rand_raw),
