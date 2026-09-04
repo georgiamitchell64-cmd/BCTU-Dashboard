@@ -24,6 +24,11 @@ trial_selector_server <- function(input, output, session, state) {
     if (is.null(raw) || !"record_id" %in% names(raw)) return(0L)
     id_col <- cfg$redcap_fields$record_id %||% "record_id"
     if (!id_col %in% names(raw)) id_col <- "record_id"
+    # Honour the trial's recruitment model where it defines one, so a trial
+    # that screens far more people than it recruits (PANORAMA) shows the
+    # recruited count on its card, not everyone in the export.
+    rec <- tryCatch(recruited_ids(raw, cfg), error = function(e) NULL)
+    if (!is.null(rec)) return(length(rec))
     length(unique(baseline_rows(raw, cfg)[[id_col]]))
   }
 

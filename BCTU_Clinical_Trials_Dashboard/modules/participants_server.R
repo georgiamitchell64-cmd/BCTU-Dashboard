@@ -44,12 +44,16 @@ participants_server <- function(input, output, session, state) {
 
   # Number randomised — denominator for all four timepoint donuts. A record is
   # randomised when its randomisation-datetime field is non-empty (matches
-  # reports_server's recruitment logic). Falls back to total participants only
-  # if the randomisation column can't be found.
+  # reports_server's recruitment logic). A trial that defines a recruitment
+  # model uses that instead, so the denominator is the recruited count rather
+  # than everyone with a registration date. Falls back to total participants
+  # only if the randomisation column can't be found.
   n_randomised <- function() {
     raw <- redcap_wp()
     if (is.null(raw) || nrow(raw) == 0 || !"record_id" %in% names(raw))
       return(0L)
+    rec <- tryCatch(recruited_ids(raw, rv$trial_config), error = function(e) NULL)
+    if (!is.null(rec)) return(length(rec))
     rc <- fld("randomisation_datetime", "rand_dttm_s")
     if (!rc %in% names(raw)) return(total_p())
     v <- trimws(as.character(raw[[rc]]))

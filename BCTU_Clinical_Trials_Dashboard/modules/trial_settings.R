@@ -224,12 +224,22 @@ trial_settings_tab_ui <- function() {
                   actionButton("settings_save_paths", "Save paths",
                                class = "btn-primary-sm")),
               div(class = "s-card-body",
-                  div(class = "s-field",
-                      span(class = "s-field-l", HTML("REDCap data CSV folder &#x1F4C1;")),
-                      textInput("set_data_dir", label = NULL, value = "", width = "100%",
-                                placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/Data")),
-                  div(style = "font-size:11px;color:#64748B;margin-top:-8px;margin-bottom:12px;",
-                      "Folder containing your REDCap CSV exports. Leave blank to use the local trials/<code>/data/ folder."),
+                  # Whole-trial REDCap folder. Hidden for trials with more than
+                  # one work package: those upload one export per work package
+                  # (Settings → Work packages) and have no single folder.
+                  # Visibility is toggled in trial_settings_server.R.
+                  div(id = "settings_data_dir_wrap",
+                      div(class = "s-field",
+                          span(class = "s-field-l", HTML("REDCap data CSV folder &#x1F4C1;")),
+                          textInput("set_data_dir", label = NULL, value = "", width = "100%",
+                                    placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/Data")),
+                      div(style = "font-size:11px;color:#64748B;margin-top:-8px;margin-bottom:12px;",
+                          "Folder containing your REDCap CSV exports. Leave blank to use the local trials/<code>/data/ folder.")),
+                  shinyjs::hidden(
+                    div(id = "settings_data_dir_wp_note",
+                        class = "sch-hint",
+                        style = "margin-bottom:12px;",
+                        HTML("This trial has several work packages, so there is no single REDCap folder. Upload one export per work package under <strong>Settings &rarr; Work packages</strong>."))),
 
                   div(class = "s-field",
                       span(class = "s-field-l", HTML("Return rates CSV folder &#x1F4C1;")),

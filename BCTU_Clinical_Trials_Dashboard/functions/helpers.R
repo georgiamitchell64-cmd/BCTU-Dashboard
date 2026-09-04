@@ -833,11 +833,21 @@ process_redcap <- function(raw_df, current_sites) {
     ) %>%
     ungroup()
   participants <- df %>% select(record_id, event_type, site_dag, work_package) %>% distinct()
+
+  # Who counts towards the target. A trial that defines a recruitment model
+  # (config `recruitment`) decides it there — PANORAMA needs the screening AND
+  # consent forms both complete, so a screened-only participant must not be
+  # counted at a site. NULL means no model is configured, and the per-site
+  # count falls back to "has a registration/randomisation date", which is what
+  # this did before.
+  rec_ids <- tryCatch(recruited_ids(df, current_trial_config()),
+                      error = function(e) NULL)
   dag_summary  <- df %>%
     filter(!is.na(site_dag), nchar(trimws(site_dag)) > 0) %>%
     group_by(site_dag) %>%
     summarise(
-      rand_count = if (!is.na(rand_col))
+      rand_count = if (!is.null(rec_ids)) n_distinct(record_id[record_id %in% rec_ids])
+      else if (!is.na(rand_col))
         n_distinct(record_id[!is.na(.rand_dttm) & nchar(trimws(.rand_dttm)) > 0])
       else n_distinct(record_id[event_type == "Baseline"]),
       .groups = "drop")

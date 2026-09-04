@@ -269,12 +269,29 @@ d_screen <- as_date(gv(F$screen_date))
 d_disch  <- as_date(gv(F$dc_date))
 v_site   <- if (!is.null(site_col)) gv(site_col) else empty_vec()
 
+# Screening and consent both happen inside REDCap, so the form-completion
+# flags define the funnel:
+#   screening_complete = 2                          -> screened
+#   screening_complete = 2 AND consent_complete = 2  -> recruited (consented)
+#   screening_complete = 2, consent_complete 0/blank -> screened only
+# The old rule (valid_consent = 1) stays as the fallback for an export taken
+# before those flags existed.
+v_scr_done  <- num(gv(F$f_screening))
+v_cons_done <- num(gv(F$f_consent))
+has_form_flags <- !all(is.na(v_scr_done))
+
 has_screen_col <- !all(is.na(v_screen))
-screened_ids <- if (has_screen_col) ids[!is.na(v_screen)] else ids
+screened_ids <- if (has_form_flags) {
+  ids[which(v_scr_done == 2)]
+} else if (has_screen_col) ids[!is.na(v_screen)] else ids
 elig_ids     <- ids[which(num(v_screen) == 4)]
 appr_ids     <- ids[which(num(v_appr) == 1)]
-cons_ids     <- ids[which(num(v_cons) == 1)]
-if (!length(cons_ids) && all(is.na(v_cons))) cons_ids <- ids   # consent field absent
+cons_ids     <- if (has_form_flags) {
+  ids[which(v_scr_done == 2 & v_cons_done == 2)]
+} else ids[which(num(v_cons) == 1)]
+if (!has_form_flags && !length(cons_ids) && all(is.na(v_cons)))
+  cons_ids <- ids                                              # consent field absent
+scr_only_ids <- setdiff(screened_ids, cons_ids)
 # Withdrawal only means anything for someone who consented.
 wd_ids       <- intersect(ids[!is.na(v_wd)], cons_ids)
 active_ids   <- setdiff(cons_ids, wd_ids)
@@ -284,6 +301,7 @@ n_elig     <- length(elig_ids)
 n_inelig   <- max(0, n_screened - n_elig)
 n_appr     <- length(appr_ids)
 n_cons     <- length(cons_ids)
+n_scr_only <- length(scr_only_ids)
 n_wd       <- length(wd_ids)
 n_active   <- length(active_ids)
 
@@ -827,21 +845,31 @@ for (h in health_cards) {
 }
 cat('</div>')
 
-sec("03", "Screening funnel", "screening_calc = 4 defines eligibility")
+sec("03", "Screening funnel",
+    if (has_form_flags) {
+      "screening_complete = 2 is screened; with consent_complete = 2 it is recruited"
+    } else "screening_calc = 4 defines eligibility")
 cat('<div class="funnel">')
 fn_max <- max(c(funnel_values, 1))
 fn_subs <- c(
-  sprintf("%s records with screening data", fmt_int(n_screened)),
+  if (has_form_flags) {
+    sprintf("%s with the screening form complete", fmt_int(n_screened))
+  } else sprintf("%s records with screening data", fmt_int(n_screened)),
   sprintf("%s of screened · %s ineligible", fmt_pct(pct_elig), fmt_int(n_inelig)),
   sprintf("%s of eligible", fmt_pct(pct_appr)),
-  sprintf("%s of approached · %s of eligible", fmt_pct(pct_cons), fmt_pct(pct_recruit)))
+  if (has_form_flags) {
+    sprintf("%s of approached · %s screened only (consent not complete)",
+            fmt_pct(pct_cons), fmt_int(n_scr_only))
+  } else sprintf("%s of approached · %s of eligible",
+                 fmt_pct(pct_cons), fmt_pct(pct_recruit)))
 for (i in seq_along(funnel_labels)) {
   cat(sprintf('<div class="fn-step"><div class="fk">%s</div><div class="fv">%s</div><div class="fs">%s</div><div class="fbar"><span style="width:%.1f%%"></span></div></div>',
               esc(funnel_labels[i]), fmt_int(funnel_values[i]), fn_subs[i],
               100 * funnel_values[i] / fn_max))
 }
 cat('</div>')
-cat(sprintf('<p class="note">Consent is the point of entry to WP4 — there is no randomisation. Registration date is taken from <code>%s</code>; participants with no screening record are excluded from the funnel denominators.</p>',
+cat(sprintf('<p class="note">Consent is the point of entry to WP4 — there is no randomisation. A participant counts as recruited only when <code>%s</code> and <code>%s</code> are both 2; screened with consent incomplete or blank counts as screened only (%s to date). Registration date is taken from <code>%s</code>; participants with no screening record are excluded from the funnel denominators.</p>',
+            esc(F$f_screening), esc(F$f_consent), fmt_int(n_scr_only),
             esc(F$screen_date)))
 
 sec("04", "Key milestones",

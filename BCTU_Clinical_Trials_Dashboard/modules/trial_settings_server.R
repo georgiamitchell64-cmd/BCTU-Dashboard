@@ -347,9 +347,14 @@ trial_settings_server <- function(input, output, session, state) {
   # export. Uploads land in trials/<code>/data/wp<i>/ and the folder list is
   # written back to work_package_data_dirs, which is what the loader reads to
   # tag each row with its work package.
-  .wp_dir <- function(cfg, i)
+  # Same folders the loader reads (globals/trial_config.R), so an export
+  # uploaded here is the one the Data tab picks up.
+  .wp_dir <- function(cfg, i) {
+    dirs <- wp_data_dirs(cfg)
+    if (length(dirs) >= i && nzchar(dirs[i])) return(dirs[i])
     file.path(cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code),
               "data", sprintf("wp%d", i))
+  }
 
   .wp_latest <- function(cfg, i) {
     d <- .wp_dir(cfg, i)
@@ -366,6 +371,12 @@ trial_settings_server <- function(input, output, session, state) {
     shinyjs::toggle("settings_nav_workpackages",
                     condition = !is.null(cfg) &&
                       length(cfg$work_packages %||% character(0)) > 0)
+    # A trial with several work packages uploads one export per WP, so the
+    # single whole-trial REDCap folder does not apply — hide it and point at
+    # the work-package locations instead.
+    multi <- !is.null(cfg) && trial_is_multi_wp(cfg)
+    shinyjs::toggle("settings_data_dir_wrap",    condition = !multi)
+    shinyjs::toggle("settings_data_dir_wp_note", condition =  multi)
   }, ignoreNULL = FALSE)
 
   output$settings_wp_ui <- renderUI({
@@ -944,7 +955,9 @@ trial_settings_server <- function(input, output, session, state) {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
     
-    new_data_dir <- trimws(input$set_data_dir %||% "")
+    # The field is hidden for multi-WP trials; ignore whatever it still holds
+    # so saving other paths cannot re-point a multi-WP trial at one folder.
+    new_data_dir <- if (trial_is_multi_wp(cfg)) "" else trimws(input$set_data_dir %||% "")
     new_rr_dir   <- trimws(input$set_rr_dir %||% "")
     new_logo     <- trimws(input$set_logo_path %||% "")
     
