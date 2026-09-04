@@ -1170,8 +1170,10 @@ reports_server <- function(input, output, session, state) {
       # TSC always emits docx (template is word-native)
       if (template_choice == "TSC") fmt <- "docx"
       ext <- switch(fmt, "docx" = "docx", "pdf" = "pdf", "html")
+      # Template keys can carry spaces ("TSC Interim"), so slug them too.
+      tslug <- gsub("[^A-Za-z0-9]+", "_", template_choice)
       sprintf("%s_%s_%s.%s",
-              slug, template_choice, format(Sys.Date(), "%Y-%m-%d"), ext)
+              slug, tslug, format(Sys.Date(), "%Y-%m-%d"), ext)
     },
     content = function(file) {
       cfg <- rv$trial_config
@@ -1365,8 +1367,11 @@ reports_server <- function(input, output, session, state) {
       }
 
       # Resolve which Rmd to use. TMG and iTMG share tmg_report.Rmd
-      # (the Rmd reads `report_type` to switch headers). TSC has its own.
-      rmd_kind <- if (template_choice == "TSC") "tsc" else "tonic"
+      # (the Rmd reads `report_type` to switch headers). TSC has its own
+      # word-native template; TSC Interim v0.1 is its own HTML template,
+      # derived from the TMG layout, so it renders down the HTML branch.
+      rmd_kind <- if (template_choice == "TSC") "tsc" else
+                  if (template_choice == "TSC Interim") "tsc_interim" else "tonic"
       if (template_choice == "TSC") fmt <- "docx"   # TSC is always docx
 
       rmd_src <- resolve_report_template(cfg, rmd_kind)
@@ -1421,7 +1426,8 @@ reports_server <- function(input, output, session, state) {
                   "functions/baseline_table.R",
                   "functions/consort_flow.R",
                   "functions/tsc_charts.R",
-                  "www/BlackText-landscape.png")) {   # BCTU header logo
+                  "www/BlackText-landscape.png",                          # BCTU header logo
+                  "www/NIHR_Acknowledgement_Funded by_Logo_RGB.png")) {   # NIHR footer logo
         if (file.exists(h))
           file.copy(h, file.path(tmp_dir, basename(h)), overwrite = TRUE)
       }
@@ -1478,7 +1484,10 @@ reports_server <- function(input, output, session, state) {
       # The TMG template is HTML-styled; PDF preserves formatting via
       # chromote (it's just printing the HTML). DOCX via pandoc loses most
       # styling — we surface a warning so the user knows.
-      report_type_param <- if (template_choice == "iTMG") "iTMG" else "TMG"
+      report_type_param <- switch(template_choice,
+                                  "iTMG"        = "iTMG",
+                                  "TSC Interim" = "TSC Interim",
+                                  "TMG")
       html_out <- file.path(tmp_dir, "tonic_rendered.html")
 
       ok <- tryCatch({
@@ -1607,7 +1616,10 @@ reports_server <- function(input, output, session, state) {
     div(class = "rb-seg",
         lapply(keys, function(k) {
           tags$button(
-            id = paste0("rb_pick_", k),
+            # Template keys can carry spaces ("TSC Interim") and an element id
+            # cannot, so slug it. The click handler goes through
+            # Shiny.setInputValue below, not the id.
+            id = paste0("rb_pick_", gsub("[^A-Za-z0-9]+", "_", k)),
             class = paste("action-button", if (identical(k, cur)) "on" else ""),
             type = "button",
             onclick = sprintf("Shiny.setInputValue('rb_pick_template','%s',{priority:'event'})", k),
@@ -1658,21 +1670,30 @@ reports_server <- function(input, output, session, state) {
     sprintf("· %d sections · A4 · classic", length(secs))
   })
 
-  # ── TMG / iTMG preview: render the Rmd live and embed in an iframe ──────
-  # The TMG/iTMG download path uses the trial's TMG template. We render it
-  # for the on-screen preview so what the user sees matches what they
-  # download (byte-for-byte for HTML format).
+  # ── TMG / iTMG / TSC Interim preview: render the Rmd live and embed in an
+  # iframe ──────────────────────────────────────────────────────────────────
+  # These three templates are HTML-styled Rmds (tmg_report.Rmd for TMG/iTMG,
+  # tsc_interim_report.Rmd for TSC Interim). We render the same Rmd for the
+  # on-screen preview so what the user sees matches what they download
+  # (byte-for-byte for HTML format). Every other template in REPORT_TEMPLATES
+  # (TSC, NIHR, Portfolio) renders from the generic section registry instead —
+  # see output$rb_document_preview below — so it's essential every HTML-Rmd
+  # template gets added to this list, or its preview silently falls through to
+  # that generic stub instead of its own content.
   tmg_preview_state <- reactiveValues(html = NULL, error = NULL, rendering = FALSE)
+  HTML_RMD_TEMPLATES <- c("TMG", "iTMG", "TSC Interim")
 
   render_tmg_preview_html <- function() {
     cfg <- rv$trial_config
     if (is.null(cfg)) return(NULL)
     tmpl_choice <- rb_template_choice()
-    if (!tmpl_choice %in% c("TMG", "iTMG")) return(NULL)
+    if (!tmpl_choice %in% HTML_RMD_TEMPLATES) return(NULL)
 
-    rmd_src <- resolve_report_template(cfg, "tonic")
+    # TMG and iTMG share tmg_report.Rmd; TSC Interim has its own Rmd.
+    rmd_kind <- if (identical(tmpl_choice, "TSC Interim")) "tsc_interim" else "tonic"
+    rmd_src  <- resolve_report_template(cfg, rmd_kind)
     if (is.null(rmd_src)) {
-      tmg_preview_state$error <- "TMG report template not found."
+      tmg_preview_state$error <- sprintf("%s report template not found.", tmpl_choice)
       return(NULL)
     }
     if (!ensure_pandoc()) {
@@ -1712,7 +1733,8 @@ reports_server <- function(input, output, session, state) {
     for (h in c("functions/flat_completeness.R",
                 "functions/baseline_table.R",
                 "functions/consort_flow.R",
-                "www/BlackText-landscape.png")) {   # BCTU header logo
+                "www/BlackText-landscape.png",                          # BCTU header logo
+                "www/NIHR_Acknowledgement_Funded by_Logo_RGB.png")) {   # NIHR footer logo
       if (file.exists(h))
         file.copy(h, file.path(tmp_dir, basename(h)), overwrite = TRUE)
     }
@@ -1769,7 +1791,7 @@ reports_server <- function(input, output, session, state) {
   observeEvent(preview_trigger(), {
     tryCatch({
       tmpl <- rb_template_choice()
-      if (!tmpl %in% c("TMG", "iTMG")) return()
+      if (!tmpl %in% HTML_RMD_TEMPLATES) return()
       cfg <- rv$trial_config
       if (is.null(cfg)) return()
       tmg_preview_state$rendering <- TRUE
@@ -1796,9 +1818,9 @@ reports_server <- function(input, output, session, state) {
       return(div(style = "padding:60px;color:#94A3B8;font-style:italic;",
                  "Select a trial to preview the report."))
 
-    # TMG / iTMG → live Rmd render embedded as an iframe
+    # TMG / iTMG / TSC Interim → live Rmd render embedded as an iframe
     tmpl_choice <- rb_template_choice()
-    if (tmpl_choice %in% c("TMG", "iTMG")) {
+    if (tmpl_choice %in% HTML_RMD_TEMPLATES) {
       if (isTRUE(tmg_preview_state$rendering))
         return(div(style = "padding:60px;text-align:center;color:#64748B;",
                    div(style="font-size:13px;font-weight:500;","Rendering preview…"),
