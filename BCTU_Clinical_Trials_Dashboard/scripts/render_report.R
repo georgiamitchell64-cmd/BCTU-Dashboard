@@ -19,6 +19,9 @@
 #                    <trial>_tmg_report_<date>.html in the working directory)
 #   --kind=<tonic|tsc|tsc_interim>  which template         (default: tonic, the
 #                    TMG/iTMG report)
+#   --check          print what the export contains and how the trial's rules
+#                    read it, then stop without rendering. Answers "why is the
+#                    dashboard showing 0" without producing a report.
 #   --raw            skip the shared summary pipeline and hand the template the
 #                    export directly. PANORAMA's template derives every figure
 #                    from the export itself, so this needs nothing but knitr,
@@ -39,6 +42,7 @@ wp_arg     <- opt("wp")
 out_path   <- opt("out")
 kind       <- opt("kind", "tonic")
 raw_only   <- "--raw" %in% args
+check_only <- "--check" %in% args
 
 suppressPackageStartupMessages({
   library(dplyr); library(tidyr); library(stringr); library(lubridate)
@@ -114,6 +118,39 @@ message(sprintf(
 # The shared pipeline builds the randomisation-centric summaries. Templates
 # that derive their own figures (PANORAMA's) only need raw_df, so a pipeline
 # failure is not a reason to produce no report at all.
+# Every field the recruitment definition depends on, and what the export
+# actually holds in it. A count of 0 is either "nobody qualifies yet" or "the
+# column the rule needs is missing / holds something unexpected", and these
+# lines say which without opening the CSV.
+.tally <- function(field) {
+  if (!field %in% names(raw))
+    return(sprintf("  %-34s NOT IN THIS EXPORT", field))
+  v <- trimws(as.character(raw[[field]]))
+  v[is.na(v) | !nzchar(v)] <- "(blank)"
+  tb <- sort(table(v), decreasing = TRUE)
+  sprintf("  %-34s %s", field,
+          paste(sprintf("%s x%d", names(tb), as.integer(tb)), collapse = ",  "))
+}
+.fields <- unique(c(vapply(rc$spec$conditions, function(x) x$field, character(1)),
+                    rc$spec$screening$screened_field, rc$spec$screening$eligible_field,
+                    rc$spec$screening$approached_field, rc$spec$consent_field))
+.fields <- .fields[!is.na(.fields) & nzchar(.fields)]
+message("Fields the recruitment rules read:\n",
+        paste(vapply(.fields, .tally, character(1)), collapse = "\n"))
+if (!isTRUE(rc$recruited_known)) {
+  message("  -> The definition could not be applied to this export, so ",
+          "recruitment is being counted by the fallback rule. Fix the field ",
+          "mapping, or load the export that has these columns.")
+} else if (rc$n_recruited == 0 && rc$n_screened > 0) {
+  message("  -> Everyone screened is missing at least one recruitment ",
+          "condition, so 0 recruited is what the data says.")
+}
+
+if (check_only) {
+  message("\n--check: stopping before rendering.")
+  quit(status = 0L)
+}
+
 report_data <- if (raw_only) list(raw_df = raw) else
   tryCatch(prepare_report_data(raw), error = function(e) {
     message("Summary pipeline failed (", conditionMessage(e),
