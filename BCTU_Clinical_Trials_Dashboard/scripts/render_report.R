@@ -146,6 +146,29 @@ if (!isTRUE(rc$recruited_known)) {
           "condition, so 0 recruited is what the data says.")
 }
 
+# Every mapped role against the export. A role whose variable is not there is
+# silently empty in the report — blank demographics, a flat recruitment chart —
+# with nothing on screen to say why, so list them.
+.roles <- Filter(function(r) !is.list(cfg$redcap_fields[[r]]),
+                 names(cfg$redcap_fields %||% list()))
+.rows <- lapply(.roles, function(r) {
+  cand <- as.character(unlist(cfg$redcap_fields[[r]] %||% character(0)))
+  cand <- cand[!is.na(cand) & nzchar(cand)]
+  if (!length(cand)) return(NULL)
+  list(role = r, cand = cand, hit = fld_present(r, raw, cfg = cfg))
+})
+.rows <- Filter(Negate(is.null), .rows)
+.miss <- Filter(function(x) is.null(x$hit), .rows)
+message("Field mapping vs this export: ", length(.rows) - length(.miss), " of ",
+        length(.rows), " mapped fields found.")
+if (length(.miss))
+  message("  Not in the export (these read as empty in the report):\n",
+          paste(vapply(.miss, function(x)
+            sprintf("    %-26s mapped to %s", x$role, paste(x$cand, collapse = " or ")),
+            character(1)), collapse = "\n"),
+          "\n  Fix these in Trial Settings -> Field mapping, or in ",
+          file.path("trials", cfg$code, "config.R"), ".")
+
 if (check_only) {
   message("\n--check: stopping before rendering.")
   quit(status = 0L)

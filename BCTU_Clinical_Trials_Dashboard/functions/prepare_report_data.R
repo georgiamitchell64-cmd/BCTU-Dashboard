@@ -59,10 +59,13 @@ prepare_report_data <- function(df,
     record_v         = "record_id",
     event_v          = "redcap_event_name"
   )
+  # fld_present() picks whichever of a role's candidate names the export
+  # actually has. It also keeps this loop safe: a role mapped to several names
+  # made `src %in% names(df)` return a vector, and `&&` on that is an error in
+  # R 4.3+ rather than the intended test.
   for (canon in names(alias_map)) {
-    src <- fld(alias_map[[canon]], default = NULL, cfg = cfg)
-    if (!is.null(src) && src %in% names(df) && !(canon %in% names(df)))
-      df[[canon]] <- df[[src]]
+    src <- fld_present(alias_map[[canon]], df, cfg = cfg)
+    if (!is.null(src) && !(canon %in% names(df))) df[[canon]] <- df[[src]]
   }
 
   # PN timing reasons (TONIC: nut_o_pn_late_rsn / nut_o_pn_early_rsn) —

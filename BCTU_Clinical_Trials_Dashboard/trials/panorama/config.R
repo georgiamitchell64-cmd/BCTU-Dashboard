@@ -94,13 +94,19 @@ trial_config <- list(
   # ── REDCap field mappings ─────────────────────────────────────────────────
   redcap_fields = list(
     record_id              = "record_id",
-    site_name              = "rc_site_name",          # DAG name; rc_site_id is its code
-    randomisation_datetime = "screen_created_date",   # registration date
+    site_name              = c("rc_site_name", "redcap_data_access_group"),
+                                                      # DAG name; rc_site_id is its code
+    randomisation_datetime = c("screen_created_date", "screen_date"),
+                                                      # registration date
     discharge_date         = "index_discharge_date",
 
-    age                    = "age",
-    sex                    = "sex",
-    ethnicity              = "ethnicity",             # eth_white / eth_asian etc. hold the detail
+    # Candidates, most specific first: the live export carries cae_age,
+    # base_sex and base_ethnic_gp, while this project's own codebook
+    # (trials/panorama/codebook.csv) names age, sex and ethnicity. Whichever
+    # the loaded export actually has is used — see fld_present().
+    age                    = c("cae_age", "age"),
+    sex                    = c("base_sex", "sex"),
+    ethnicity              = c("base_ethnic_gp", "ethnicity"),  # eth_other holds the free text
 
     # Screening / eligibility / consent
     # screening_calc = sum(screening_1..4); all four answered "eligible" = 4.
