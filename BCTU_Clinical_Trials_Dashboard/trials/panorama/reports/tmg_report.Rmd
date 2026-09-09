@@ -1,5 +1,5 @@
 ---
-title: "PANORAMA WP4 TMG Progress Report"
+title: "PANORAMA WP4 SMG Progress Report"
 output:
   html_document:
     theme: null
@@ -19,7 +19,7 @@ params:
   nihr_logo_path: NULL
   crf_csv_path: NULL
   screening_xlsx_path: NULL
-  report_type: "TMG"
+  report_type: "SMG"
   completeness_style: "heatmap"
   report_content: NULL
   column_labels: NULL
@@ -96,6 +96,14 @@ funder_ref   <- safe(rc$funder_ref, "NIHR165210")
 iras         <- safe(rc$iras, "349680")
 cpms         <- safe(rc$cpms, "64883")
 protocol_v   <- safe(rc$protocol_version, "v1.1 (11-May-2026)")
+
+# PANORAMA is a study with a Study Management Group, so the TMG / iTMG the
+# dashboard's report picker sends are reported as SMG / iSMG. Anything else is
+# left as it arrives.
+report_kind <- {
+  rt <- safe(params$report_type, "SMG")
+  switch(toupper(rt), "TMG" = "SMG", "ITMG" = "iSMG", rt)
+}
 fu_months    <- safe(wp$follow_up_months, safe(rc$follow_up_months, 6))
 sample_size  <- suppressWarnings(as.integer(
   safe(wp$target, safe(rc$sample_size, safe(kpi$trial_target, 1017)))))
@@ -607,9 +615,9 @@ health_cards <- Filter(Negate(is.null), health_cards)
 ms <- rc$key_milestones %||% list(
   list(name = "Funding award (NIHR165210)",        date = "2025",          status = "complete",  group = "Set-up"),
   list(name = "Protocol v1.1 finalised",           date = "11 May 2026",   status = "complete",  group = "Set-up"),
-  list(name = "REC / HRA approval",                date = "TBC",           status = "upcoming",  group = "Set-up"),
-  list(name = "REDCap database live",              date = "TBC",           status = "upcoming",  group = "Set-up"),
-  list(name = "First site opened",                 date = "TBC",           status = "upcoming",  group = "Set-up"),
+  list(name = "REC / HRA approval",                date = "13 May 2026",   status = "complete",  group = "Set-up"),
+  list(name = "REDCap database live",              date = "18 Aug 2026",   status = "complete",  group = "Set-up"),
+  list(name = "First site opened",                 date = "19 Aug 2026",   status = "complete",  group = "Set-up"),
   list(name = "First participant registered",
        date = if (!is.na(first_rec)) format(first_rec, "%d %b %Y") else "TBC",
        status = if (!is.na(first_rec)) "complete" else "upcoming", group = "Recruitment & follow-up"),
@@ -828,7 +836,7 @@ ph_header <- function(page_label) {
   cat(sprintf(
 '<header class="ph">
   <div class="brand">%s
-    <div class="tag"><b>%s Study</b><span class="wp-chip">%s</span> Trial Management Group · Progress Report</div>
+    <div class="tag"><b>%s Study</b><span class="wp-chip">%s</span> Study Management Group · Progress Report</div>
   </div>
   <div class="meta">%s<div>%s</div></div>
 </header>',
@@ -836,7 +844,7 @@ ph_header <- function(page_label) {
 }
 
 pf_footer <- function(n_page, n_total = 5) {
-  rt  <- safe(params$report_type, "TMG")
+  rt  <- report_kind
   ver <- safe(rc$version, "1.0")
   nihr_html <- if (nchar(nihr_logo_b64) > 0)
     sprintf('<img class="pf-nihr" src="%s" alt="Funded by NIHR">', nihr_logo_b64) else "<span></span>"
@@ -900,7 +908,7 @@ ph_header("")
 meta_strip()
 
 cat(sprintf('<h1 class="title">%s</h1>', esc(sprintf("%s %s — %s progress report",
-  trial_short, wp_code, safe(params$report_type, "TMG")))))
+  trial_short, wp_code, report_kind))))
 cat(sprintf('<p class="sub">%s<br><b>%s:</b> %s &nbsp;·&nbsp; <b>Reporting date:</b> %s &nbsp;·&nbsp; <b>Protocol:</b> %s &nbsp;·&nbsp; <b>Sites reported:</b> %s</p>',
             esc(trial_title), esc(wp_long), esc(wp_design), esc(report_date_str),
             esc(protocol_v), esc(safe(params$selected_sites, "All sites"))))
@@ -1003,7 +1011,7 @@ cat(sprintf('<div class="card" style="margin-top:8px"><div class="ct">Monthly re
             if (!length(rec_dates)) " No registration dates in the export, so no months can be plotted yet." else ""))
 
 if (!has_targets)
-  cat('<p class="note">No monthly recruitment targets have been set for this trial, so the report shows recruitment as it happened rather than against a plan. Add them in Trial Settings → Recruitment targets to plot a target for each month.</p>')
+  cat('<p class="note">No monthly recruitment targets have been set for this study, so the report shows recruitment as it happened rather than against a plan. Add them in Trial Settings → Recruitment targets to plot a target for each month.</p>')
 
 sec("06", "Recruitment by month")
 mt_rows <- list()
