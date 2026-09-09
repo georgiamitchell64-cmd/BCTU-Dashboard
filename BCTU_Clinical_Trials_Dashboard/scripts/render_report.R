@@ -90,6 +90,16 @@ if (is.null(csv_path)) {
   raw <- read_redcap_file(csv_path)
 }
 
+# A Labels export has REDCap's question text where the variable names should
+# be, so nothing the report reads can be found. Say that, rather than letting
+# every section render empty.
+if (looks_like_labels_export(names(raw)))
+  stop("This export has REDCap's question text as column headings (for ",
+       "example several columns all called \"Complete?\"), which is what a ",
+       "Labels export produces. Re-export from REDCap with Data Exports, ",
+       "Reports, and Stats -> All data -> CSV / Microsoft Excel (raw data), ",
+       "not the labels option.")
+
 # Scope to one work package, as the dashboard's WP picker does.
 if (!is.null(wp_index) && !is.na(wp_index) && "work_package" %in% names(raw))
   raw <- raw[!is.na(raw$work_package) & raw$work_package == wp_index, , drop = FALSE]

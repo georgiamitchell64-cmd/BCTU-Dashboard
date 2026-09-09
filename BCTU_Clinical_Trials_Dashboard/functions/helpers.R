@@ -673,9 +673,29 @@ get_hospital_names <- function() sort(unique(.uk_hospital_coords$name))
 # ── Other helpers ─────────────────────────────────────────────────────────────
 clean_df_names <- function(x) {
   names(x) <- iconv(names(x), from = "UTF-8", to = "ASCII", sub = "")
-  names(x) <- tolower(gsub("[^a-z0-9]+", "_", trimws(names(x))))
+  # Lower-case BEFORE substituting: the class is [a-z0-9], so running it first
+  # deleted every capital letter rather than folding it — "Record ID" came out
+  # as "ecord". Raw REDCap exports are already lower-case, which is why it went
+  # unnoticed; anything hand-edited or exported with labels did not survive.
+  names(x) <- gsub("[^a-z0-9]+", "_", tolower(trimws(names(x))))
   names(x) <- gsub("^_+|_+$", "", names(x))
   x
+}
+
+#' TRUE when a file looks like a REDCap "Labels" export rather than raw data.
+#' A labels export replaces every variable name with its form question, so the
+#' four completion flags all arrive as "Complete?" and nothing the dashboard
+#' reads can be told apart. It has to be rejected outright — loading it would
+#' fill the dashboard with columns nothing can map.
+looks_like_labels_export <- function(cols) {
+  cols <- trimws(as.character(cols %||% character(0)))
+  if (!length(cols)) return(FALSE)
+  # Raw exports are lower-case, underscore-separated, and always carry
+  # record_id (plus redcap_event_name when the project is longitudinal).
+  if (any(tolower(cols) == "redcap_event_name")) return(FALSE)
+  if (sum(grepl("^Complete[?]$", cols, ignore.case = TRUE)) > 1) return(TRUE)
+  wordy <- grepl("[ ?]", cols)
+  !any(tolower(cols) == "record_id") && mean(wordy) >= 0.25
 }
 
 next_site_id <- function(sites_df) {
@@ -783,6 +803,13 @@ process_redcap <- function(raw_df, current_sites) {
   diag <- list(ncol = ncol(df), nrow = nrow(df), all_cols = paste(orig, collapse = ", "),
                rec_col = rec_col %||% "NOT FOUND", evt_col = evt_col %||% "NOT FOUND",
                dag_col = dag_col %||% "NOT FOUND", rand_col = rand_col %||% "NOT FOUND")
+  if (looks_like_labels_export(orig))
+    stop("This export has REDCap's question text as column headings (for ",
+         "example several columns all called \"Complete?\"), which is what a ",
+         "Labels export produces. The dashboard needs the variable names. In ",
+         "REDCap: Data Exports, Reports, and Stats -> All data -> Export Data ",
+         "-> CSV / Microsoft Excel (raw data), NOT the labels option. Then ",
+         "upload that file.")
   if (is.na(rec_col) || is.na(evt_col))
     stop(sprintf("Could not find required columns. Found: %s",
                  paste(orig[1:min(8, length(orig))], collapse = ", ")))
