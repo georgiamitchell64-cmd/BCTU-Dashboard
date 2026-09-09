@@ -321,7 +321,8 @@ consort_counts_live <- function(raw, cfg = current_trial_config()) {
   id_col   <- cfg$redcap_fields$record_id %||% "record_id"
   if (!id_col %in% names(raw)) id_col <- names(raw)[1]
   ids      <- raw[[id_col]]
-  rand_col <- cfg$redcap_fields$randomisation_datetime %||% "rand_dttm_s"
+  rand_col <- fld_present("randomisation_datetime", raw, default = "rand_dttm_s",
+                          cfg = cfg)
   bevt     <- cfg$redcap_events$baseline %||% "baseline_arm_1"
 
   if (rand_col %in% names(raw)) {

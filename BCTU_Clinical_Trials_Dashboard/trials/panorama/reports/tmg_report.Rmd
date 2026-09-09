@@ -163,7 +163,8 @@ F <- utils::modifyList(list(
   screen_calc = "screening_calc",
   approached  = "approached_yn",
   consent     = "valid_consent",
-  screen_date = c("screen_created_date", "screen_date", "screen_dt"),
+  screen_date = c("screen_date", "screen_created_date", "screen_dt"),
+  cons_date   = c("pat_sig_date", "consent_date", "cons_date"),
   f_screening = "screening_complete",
   f_consent   = "consent_complete",
   f_demog     = "demographics_past_history_complete",
@@ -241,8 +242,21 @@ gv <- function(field, event = NULL) {
   out[r[keep2]] <- v[keep2]
   out
 }
-as_date <- function(x) stats::setNames(
-  suppressWarnings(as.Date(substr(as.character(x), 1, 10))), names(x))
+# REDCap raw exports write ISO dates; an export routed through Excel can come
+# back as dd/mm/yyyy. Parse ISO first, then fill what is left from dd/mm/yyyy,
+# so neither shape silently reads as no dates at all.
+as_date <- function(x) {
+  v   <- trimws(substr(as.character(x), 1, 10))
+  out <- rep(as.Date(NA), length(v))
+  # Explicit formats only: bare as.Date() reads "20/04/2026" as year 20 rather
+  # than failing, which turns a dd/mm/yyyy export into dates in the year 30.
+  for (f in c("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d")) {
+    todo <- is.na(out) & !is.na(v) & nzchar(v)
+    if (!any(todo)) break
+    out[todo] <- suppressWarnings(as.Date(v[todo], format = f))
+  }
+  stats::setNames(out, names(x))
+}
 
 vlabs    <- rc$value_labels %||% list()
 codebook <- params$column_labels %||% list()
@@ -268,6 +282,15 @@ v_sex    <- gv(F$sex)
 v_eth    <- gv(F$ethnicity)
 v_aetio  <- gv(F$aetiology)
 d_screen <- as_date(gv(F$screen_date))
+d_cons   <- as_date(gv(F$cons_date))
+# Recruitment is consent, so a participant's recruitment date is the date they
+# signed the consent form. Fall back to the screening date for anyone (or any
+# export) without one, so the months still plot.
+d_rec <- d_cons
+if (length(d_rec)) {
+  gap <- is.na(d_rec)
+  if (any(gap)) d_rec[gap] <- d_screen[names(d_rec)[gap]]
+} else d_rec <- d_screen
 d_disch  <- as_date(gv(F$dc_date))
 v_site   <- if (!is.null(site_col)) gv(site_col) else empty_vec()
 
@@ -337,7 +360,7 @@ if (n_screened > 0 && !all(is.na(v_site))) {
     stringsAsFactors = FALSE)
   site_tbl$rate <- mapply(pctg, site_tbl$consented, site_tbl$screened)
   last_dt <- vapply(all_sites, function(s) {
-    d <- d_screen[cons_ids][site_of(cons_ids) == s]
+    d <- d_rec[cons_ids][site_of(cons_ids) == s]
     d <- d[!is.na(d)]
     if (!length(d)) NA_real_ else as.numeric(max(d))
   }, numeric(1))
@@ -348,7 +371,7 @@ n_sites_open <- if (!is.null(site_tbl))
   sum(site_tbl$site != "Not recorded") else safe(kpi$n_sites_active, NA)
 
 # ── Recruitment over time ────────────────────────────────────────────────────
-rec_dates <- d_screen[cons_ids]
+rec_dates <- d_rec[cons_ids]
 rec_dates <- rec_dates[!is.na(rec_dates)]
 first_rec <- if (length(rec_dates)) min(rec_dates) else NA
 last_rec  <- if (length(rec_dates)) max(rec_dates) else NA

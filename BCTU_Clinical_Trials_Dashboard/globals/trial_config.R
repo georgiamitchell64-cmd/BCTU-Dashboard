@@ -81,6 +81,24 @@ fld_present <- function(name, data, default = NULL, cfg = .TRIAL_CFG) {
   default
 }
 
+#' Parse a REDCap date or datetime column without assuming one layout.
+#' A raw REDCap export writes ISO; the same data routed through Excel comes
+#' back as dd/mm/yyyy. Each format is tried in turn and fills only what the
+#' previous ones could not parse. The formats are explicit on purpose: a bare
+#' as.Date() reads "20/04/2026" as the year 20 instead of failing, which turns
+#' a dd/mm/yyyy export into dates three decades out rather than an obvious
+#' error. Returns a Date vector, NA where nothing parsed.
+parse_redcap_date <- function(x) {
+  v   <- trimws(substr(as.character(x), 1, 10))
+  out <- rep(as.Date(NA), length(v))
+  for (f in c("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y")) {
+    todo <- is.na(out) & !is.na(v) & nzchar(v)
+    if (!any(todo)) break
+    out[todo] <- suppressWarnings(as.Date(v[todo], format = f))
+  }
+  out
+}
+
 #' Look up a REDCap event name by logical role.
 #' A role may map to several event names (a trial that registers under any of
 #' a few candidate events). Callers that compare against a single name — most

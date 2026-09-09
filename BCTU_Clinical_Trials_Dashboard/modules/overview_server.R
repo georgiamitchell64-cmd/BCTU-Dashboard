@@ -369,8 +369,8 @@ overview_server <- function(input, output, session, state) {
     # Actuals (scoped to the active work package via redcap_wp / sites_wp)
     rc <- redcap_wp()
     rand_dates <- tryCatch({
-      rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
-      if (!is.null(rc) && rand_col %in% names(rc)) {
+      rand_col <- fld_present("randomisation_datetime", rc, default = NULL)
+      if (!is.null(rc) && !is.null(rand_col)) {
         d <- suppressWarnings(as.Date(rc[[rand_col]]))
         d[!is.na(d)]
       } else {

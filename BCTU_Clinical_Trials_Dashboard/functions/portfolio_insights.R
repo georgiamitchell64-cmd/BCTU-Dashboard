@@ -85,9 +85,9 @@ trial_status_v2 <- function(row, sites_df = NULL, raw = NULL,
   if (n == 0L && open_sites == 0L) return("setup")
 
   # Stalled: no randomisation in last 30 days despite open sites
-  rand_field <- fld("randomisation_datetime", "rand_dttm_s")
+  rand_field <- fld_present("randomisation_datetime", raw, default = NA_character_)
   recent_n <- 0L
-  if (!is.null(raw) && rand_field %in% names(raw)) {
+  if (!is.null(raw) && !is.na(rand_field)) {
     dts <- suppressWarnings(as.POSIXct(trimws(raw[[rand_field]]),
                                        format = "%d/%m/%Y %H:%M", tz = "UTC"))
     if (!all(is.na(dts))) {
@@ -140,8 +140,8 @@ trial_site_counts <- function(cfg, sites_df = NULL) {
 # ("warm" — today, "cool" — this week, "cold" — older / none).
 trial_recent_activity <- function(cfg, raw = NULL) {
   if (is.null(raw)) raw <- .read_trial_raw(cfg)
-  rand_field <- fld("randomisation_datetime", "rand_dttm_s")
-  if (is.null(raw) || !(rand_field %in% names(raw)))
+  rand_field <- fld_present("randomisation_datetime", raw, default = NA_character_)
+  if (is.null(raw) || is.na(rand_field))
     return(list(label = "No data", detail = "", cls = "cold"))
   dts <- suppressWarnings(as.POSIXct(trimws(raw[[rand_field]]),
                                      format = "%d/%m/%Y %H:%M", tz = "UTC"))

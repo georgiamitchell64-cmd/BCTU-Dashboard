@@ -49,11 +49,11 @@ reports_server <- function(input, output, session, state) {
   rpt_monthly <- reactive({
     raw   <- redcap_wp()
     dates <- input$rpt_dates
-    rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
-    site_col <- fld("site_name",              default = "site_name")
     if (is.null(raw) || nrow(raw) == 0)          return(NULL)
     if (is.null(dates) || length(dates) != 2)     return(NULL)
-    if (!rand_col %in% names(raw))                return(NULL)
+    rand_col <- fld_present("randomisation_datetime", raw, default = NULL)
+    site_col <- fld_present("site_name", raw, default = "site_name")
+    if (is.null(rand_col))                        return(NULL)
 
     # Restrict to participants who count towards the target where the trial
     # defines a recruitment model, so the recruitment curve does not plot
