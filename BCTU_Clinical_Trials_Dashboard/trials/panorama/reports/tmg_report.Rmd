@@ -264,9 +264,17 @@ codebook <- params$column_labels %||% list()
 # Codebook first (Trial Settings → Demographics & codebook writes it per
 # column), then a report-content override, then the built-in default.
 lab_for <- function(key, field = NULL, fallback = NULL) {
-  col <- if (is.null(field)) NULL else find_col(field)
-  if (!is.null(col) && !is.null(codebook[[col]])) {
-    cb <- unlist(codebook[[col]])
+  # A role maps to several candidate variable names, and the codebook is keyed
+  # by whichever the project's own data dictionary used — PANORAMA's says
+  # "ethnicity" where the live export says "base_ethnic_gp". Try the column the
+  # export has, then every other candidate, then the role name itself, so the
+  # value labels are found whichever way round the two are.
+  keys <- unique(c(if (is.null(field)) NULL else find_col(field),
+                   as.character(unlist(field %||% character(0))), key))
+  keys <- keys[!is.na(keys) & nzchar(keys)]
+  for (k in keys) {
+    if (is.null(codebook[[k]])) next
+    cb <- unlist(codebook[[k]])
     cb <- cb[nzchar(as.character(cb))]
     if (length(cb)) return(cb)
   }
@@ -387,16 +395,26 @@ months_seq <- seq(plan_start, by = "1 month", length.out = plan_months)
 cum_target <- round(seq_len(plan_months) / plan_months * sample_size)
 month_lab  <- format(months_seq, "%b %y")
 
-month_actual <- vapply(months_seq, function(m) {
+# Screened in each month, from the screening date, so the chart shows how many
+# patients were screened to reach each month's consents.
+scr_dates <- d_screen[screened_ids]
+scr_dates <- scr_dates[!is.na(scr_dates)]
+
+per_month <- function(d) vapply(months_seq, function(m) {
   nxt <- seq(m, by = "1 month", length.out = 2)[2]
-  sum(rec_dates >= m & rec_dates < nxt)
+  sum(d >= m & d < nxt)
 }, integer(1))
+
+month_actual  <- per_month(rec_dates)
+month_screened <- per_month(scr_dates)
 cum_actual <- cumsum(month_actual)
 cur_month  <- as.Date(format(today, "%Y-%m-01"))
 cum_actual_plot <- as.numeric(cum_actual)
 cum_actual_plot[months_seq > cur_month] <- NA
 month_actual_plot <- as.numeric(month_actual)
 month_actual_plot[months_seq > cur_month] <- NA
+month_screened_plot <- as.numeric(month_screened)
+month_screened_plot[months_seq > cur_month] <- NA
 
 # Expected to date: last complete month's target plus a pro-rata share of the
 # current month's increment.
@@ -677,7 +695,7 @@ p.lab{font-size:8pt;color:var(--muted);font-weight:600;text-transform:uppercase;
 .pc.n{background:var(--grey-tint)} .pc.n .pcv,.pc.n .pcs{color:var(--grey)} .pc.n .pcs{background:rgba(138,133,160,.2)}
 
 .funnel{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:6px;border:1px solid var(--line);border-radius:6px;overflow:hidden}
-.fn-step{padding:10px 12px;background:#fff;position:relative;border-right:1px solid var(--line)}
+.fn-step{padding:10px 12px;background:#fff;position:relative;border-right:1px solid var(--line);text-align:center}
 .fn-step:last-child{border-right:0}
 .fn-step .fk{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 .fn-step .fv{font-size:20pt;font-weight:700;color:var(--lilac);font-family:'Source Serif 4',Charter,Georgia,serif;line-height:1;margin-top:2px}
@@ -881,7 +899,8 @@ sec("03", "Screening funnel",
     if (has_form_flags) {
       "screening_complete = 2 is screened; with consent_complete = 2 it is recruited"
     } else "consent defines entry to the cohort")
-cat('<div class="funnel">')
+cat(sprintf('<div class="funnel" style="grid-template-columns:repeat(%d,1fr)">',
+            max(1L, length(funnel_labels))))
 fn_max <- max(c(funnel_values, 1))
 fn_subs <- c(
   if (has_form_flags) {
@@ -895,8 +914,6 @@ for (i in seq_along(funnel_labels)) {
               100 * funnel_values[i] / fn_max))
 }
 cat('</div>')
-cat(sprintf('<p class="note">Consent is the point of entry to WP4 — there is no randomisation. A participant counts as recruited only when <code>%s</code> and <code>%s</code> are both 2; screened with consent incomplete or blank counts as screened only (%s to date). Eligibility and approach are not shown: the instruments recording them are not in the export, so those stages would always read zero.</p>',
-            esc(F$f_screening), esc(F$f_consent), fmt_int(n_scr_only)))
 
 sec("04", "Key milestones",
     sprintf("%d of %d complete", length(ms_complete), length(ms)))
@@ -941,29 +958,14 @@ cat(sprintf('<div class="keyline"><span>Consented: <b>%s</b></span><span>Expecte
 
 # One chart, as TONIC has: monthly recruitment against the protocol's monthly
 # target. The cumulative curve was the same information a second time.
-cat(sprintf('<div class="card" style="margin-top:8px"><div class="ct">Monthly recruitment · %s</div><div class="chart-wrap-lg"><canvas id="monC"></canvas></div><div class="note">Solid bars are participants consented in each month, labelled with the count. Pale bars behind them are the protocol\'s target for that month.%s</div></div>',
+cat(sprintf('<div class="card" style="margin-top:8px"><div class="ct">Monthly recruitment · %s</div><div class="chart-wrap-lg"><canvas id="monC"></canvas></div><div class="note">Each month shows patients screened and participants consented, labelled with the count, against the pale bar for the protocol\'s target that month.%s</div></div>',
             if (length(month_lab)) sprintf("%s \u2192 %s", month_lab[1], month_lab[length(month_lab)]) else "no schedule",
             if (!length(rec_dates)) " No registration dates in the export, so no months can be plotted yet." else ""))
 
 cat(sprintf('<p class="note">The plan line is a linear ramp to %s over %d months from %s. Set <code>recruitment_start</code>, <code>recruitment_months</code> and <code>sample_size</code> in Trial Settings → Report content to match the agreed recruitment schedule.</p>',
             fmt_int(sample_size), plan_months, format(plan_start, "%b %Y")))
 
-sec("06", "Projection")
-proj_txt <- if (!is.na(months_to_target)) {
-  sprintf("At the current rate of %s per month, the remaining %s participants would be recruited by <b>%s</b>.",
-          fmt_num(rate_per_month, 1), fmt_int(remaining), format(proj_end, "%b %Y"))
-} else {
-  paste("At the current rate the target would not be reached within ten years,",
-        "so no completion date is projected.")
-}
-cat('<div class="sw-grid">')
-cat(sprintf('<div class="sw-cell"><div class="lab2">Recruited to date</div><div class="big">%s<small> / %s</small></div><div class="det">%s of the WP4 target.</div></div>',
-            fmt_int(n_cons), fmt_int(sample_size), fmt_pct(pct_target, 1)))
-cat(sprintf('<div class="sw-cell"><div class="lab2">Projection</div><div class="det">%s</div><div class="det">Months recruiting: <b>%s</b> · Remaining to target: <b>%s</b> · Sites open: <b>%s</b></div></div>',
-            proj_txt, fmt_int(months_active), fmt_int(remaining), fmt_int(n_sites_open)))
-cat('</div>')
-
-sec("07", "Recruitment by month")
+sec("06", "Recruitment by month")
 mt_rows <- list()
 show_idx <- which(months_seq <= cur_month)
 if (length(show_idx) > 12) show_idx <- tail(show_idx, 12)
@@ -992,7 +994,7 @@ pf_footer(2)
 
 ```{r page3}
 ph_header("Sites & participants")
-sec("08", "Screening and recruitment by site")
+sec("07", "Screening and recruitment by site")
 
 if (!is.null(site_tbl) && nrow(site_tbl) > 0) {
   rows <- lapply(seq_len(nrow(site_tbl)), function(i) list(
@@ -1008,7 +1010,7 @@ if (!is.null(site_tbl) && nrow(site_tbl) > 0) {
   cat('<p class="note">No site identifier in the export — map a site field in Trial Settings → Field mapping to break recruitment down by site.</p>')
 }
 
-sec("09", "Participant characteristics", "consented participants")
+sec("08", "Participant characteristics", "consented participants")
 cat('<div class="demo">')
 if (!is.null(age_stats)) {
   cat(sprintf('<div class="chip"><b>%s</b><span>Median age (IQR %s–%s)</span></div>',
@@ -1060,7 +1062,7 @@ pf_footer(3)
 
 ```{r page4}
 ph_header("Data completeness")
-sec("10", "CRF completion",
+sec("09", "CRF completion",
     "2 = complete, 1 = unverified, 0 = incomplete; baseline CRFs are only due once consented")
 
 cat(sprintf('<div class="keyline"><span>Overall completion: <b>%s</b></span><span>Screened: <b>%s</b> \u00b7 consented: <b>%s</b></span><span>Forms assessed: <b>%s</b></span></div>',
@@ -1088,7 +1090,7 @@ if (!is.null(form_rows) && nrow(form_rows) > 0) {
   cat('<p class="note">No form status fields found in the export.</p>')
 }
 
-sec("11", "Withdrawals")
+sec("10", "Withdrawals")
 cat('<div class="sw-grid">')
 cat(sprintf('<div class="sw-cell %s"><div class="lab2">Retention</div><div class="big">%s</div><div class="det">%s of %s consented participants remain in follow-up.</div></div>',
             if (identical(band(retention, 85, 75), "g")) "ok" else "wd",
@@ -1111,7 +1113,7 @@ pf_footer(4)
 
 ```{r page5}
 ph_header("Follow-up & PROMs")
-sec("12", "PROM completion by timepoint",
+sec("11", "PROM completion by timepoint",
     "denominator = participants whose window has closed")
 
 cat(sprintf('<div class="keyline"><span>Overall PROM return: <b>%s</b></span><span>6-month return: <b>%s</b></span><span>In follow-up: <b>%s</b></span><span>Follow-up ends at <b>%s months</b> post discharge</span></div>',
@@ -1140,7 +1142,7 @@ if (!is.null(prom_rows) && nrow(prom_rows) > 0) {
 cat('<div class="card" style="margin-top:10px"><div class="ct">PROM return by timepoint</div><div class="chart-wrap tall"><canvas id="promC"></canvas></div></div>')
 
 if (length(wp_outcomes)) {
-  sec("13", sprintf("Outcome measures — %s", wp_name),
+  sec("12", sprintf("Outcome measures — %s", wp_name),
       if (nzchar(wp_interv)) sprintf("Intervention: %s", wp_interv) else "")
   cat('<table class="rt"><thead><tr><th class="l" style="width:28px">#</th><th class="l">Outcome measure</th></tr></thead><tbody>')
   for (i in seq_along(wp_outcomes))
@@ -1168,10 +1170,11 @@ pf_footer(5)
   const target = `r j(cum_target)`;
   const actual = `r j(cum_actual_plot)`;
   const monthly = `r j(month_actual_plot)`;
+  const screened = `r j(month_screened_plot)`;
 
   // Counts drawn above each bar, as the TONIC report does.
-  const valueLabels = (dsIndex) => ({
-    id: 'valueLabels',
+  const valueLabels = (dsIndex, colour) => ({
+    id: 'valueLabels' + dsIndex,
     afterDatasetsDraw(chart) {
       const ctx = chart.ctx, ds = chart.data.datasets[dsIndex];
       const meta = chart.getDatasetMeta(dsIndex);
@@ -1181,7 +1184,7 @@ pf_footer(5)
         if (v === null || v === undefined) return;
         ctx.save();
         ctx.font = '700 9.5px ' + Chart.defaults.font.family;
-        ctx.fillStyle = lilac;
+        ctx.fillStyle = colour || lilac;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         ctx.fillText(v, el.x, el.y - 3);
@@ -1202,15 +1205,16 @@ pf_footer(5)
   if (monEl) new Chart(monEl, {
     type:'bar',
     data:{labels: labels, datasets:[
-      {label:'Consented', data: monthly, backgroundColor: mauve, borderRadius:3, maxBarThickness:22, order:1},
-      {label:'Monthly target (protocol)', data: diffs(target), backgroundColor:'#EFEAF8', borderRadius:3, maxBarThickness:22, order:2}
+      {label:'Screened', data: screened, backgroundColor: lilac, borderRadius:3, maxBarThickness:18, order:1},
+      {label:'Consented', data: monthly, backgroundColor: mauve, borderRadius:3, maxBarThickness:18, order:2},
+      {label:'Monthly target (protocol)', data: diffs(target), backgroundColor:'#EFEAF8', borderRadius:3, maxBarThickness:18, order:3}
     ]},
-    plugins:[valueLabels(0)],
+    plugins:[valueLabels(0, lilac), valueLabels(1, mauve)],
     options:{responsive:true, maintainAspectRatio:false, layout:{padding:{top:18}},
       plugins:{legend:{display:true,labels:{boxWidth:12,boxHeight:12,padding:10,font:{size:9.5}}},
                tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y||0)}}},
       scales:{x:{grid:{display:false},border:{display:false},ticks:{maxRotation:60,minRotation:60,autoSkip:false,font:{size:7.5}}},
-              y:{beginAtZero:true,grid:{color:grid},border:{display:false},title:{display:true,text:'Participants consented',font:{size:9.5,weight:600}},ticks:{stepSize:1,padding:4}}}}
+              y:{beginAtZero:true,grid:{color:grid},border:{display:false},title:{display:true,text:'Patients per month',font:{size:9.5,weight:600}},ticks:{stepSize:1,padding:4}}}}
   });
 
   const ageEl = document.getElementById('ageC');
