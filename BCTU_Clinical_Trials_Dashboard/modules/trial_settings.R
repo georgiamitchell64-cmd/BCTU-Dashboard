@@ -78,6 +78,11 @@ trial_settings_tab_ui <- function() {
                       span(style = "flex:1;min-width:0;",
                            span(class = "settings-lbl", "Report content"),
                            span(class = "settings-desc", "Trial-specific fields"))),
+          tags$button(class = "settings-item", `data-section` = "recruitment_targets",
+                      span(class = "settings-ic", HTML("&#x1F3AF;")),
+                      span(style = "flex:1;min-width:0;",
+                           span(class = "settings-lbl", "Recruitment targets"),
+                           span(class = "settings-desc", "Monthly targets for the plan"))),
           tags$button(class = "settings-item", `data-section` = "portfolio_review",
                       span(class = "settings-ic", HTML("&#x1F5C2;")),
                       span(style = "flex:1;min-width:0;",
@@ -528,6 +533,65 @@ trial_settings_tab_ui <- function() {
                   div(style = "margin-top:18px;font-size:11px;color:var(--ov-muted);font-style:italic;",
                       "All fields are optional. Empty fields fall back to neutral defaults
                        in the report. Saved values persist in this trial's overrides.json.")
+              )
+            )
+          ),
+
+          # ── Section: Recruitment targets ───────────────────────────
+          div(id = "settings_sec_recruitment_targets", class = "settings-section",
+              style = "display:none;",
+
+            tags$section(class = "s-card",
+              div(class = "s-card-head",
+                  div(style = "flex:1;min-width:0;",
+                      div(class = "s-card-title", "Monthly recruitment targets"),
+                      div(class = "s-card-sub",
+                          "How many participants this trial expects to recruit in
+                           each month. Reports plot these behind the actual
+                           monthly figures and report progress against them.
+                           Leave empty for a trial with no agreed monthly
+                           profile: the report then shows recruitment as it
+                           happened, with no plan comparison.")),
+                  actionButton("rct_save", "Save",
+                               class = "btn-primary-sm")),
+              div(class = "s-card-body",
+                  div(class = "s-field",
+                      span(class = "s-field-l", "Targets — one month per line"),
+                      textAreaInput("rct_targets", label = NULL, value = "",
+                                    width = "100%", height = "260px",
+                                    placeholder = paste("2026-01, 5",
+                                                        "2026-02, 8",
+                                                        "2026-03, 8",
+                                                        sep = "\n"))),
+                  div(style = "font-size:11px;color:var(--ov-muted);margin-top:-8px;",
+                      "Month first, then the target: ", tags$code("2026-01, 5"),
+                      ". ", tags$code("Jan 2026 5"), " and ", tags$code("01/2026: 5"),
+                      " are read the same way. Months you leave out count as no
+                       target for that month."),
+                  uiOutput("rct_summary"),
+
+                  tags$hr(style = "margin:18px 0;border:0;border-top:1px solid var(--ov-line);"),
+                  div(class = "s-card-title", style = "font-size:12px;",
+                      "Fill a flat schedule"),
+                  div(style = "font-size:11px;color:var(--ov-muted);margin:2px 0 10px;",
+                      "For an evenly spread plan: this writes one line per month
+                       into the box above, ready to edit. It replaces what is
+                       there."),
+                  div(class = "form-grid",
+                      div(class = "s-field",
+                          span(class = "s-field-l", "First month"),
+                          textInput("rct_gen_start", label = NULL, value = "",
+                                    width = "100%", placeholder = "2026-01")),
+                      div(class = "s-field",
+                          span(class = "s-field-l", "Number of months"),
+                          numericInput("rct_gen_months", label = NULL, value = 12,
+                                       min = 1, max = 120, step = 1, width = "100%")),
+                      div(class = "s-field",
+                          span(class = "s-field-l", "Target per month"),
+                          numericInput("rct_gen_per", label = NULL, value = 5,
+                                       min = 0, step = 1, width = "100%"))),
+                  actionButton("rct_generate", "Fill the box",
+                               class = "btn-ghost-sm")
               )
             )
           ),

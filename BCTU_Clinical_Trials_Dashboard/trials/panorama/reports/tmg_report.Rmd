@@ -384,15 +384,44 @@ rec_dates <- rec_dates[!is.na(rec_dates)]
 first_rec <- if (length(rec_dates)) min(rec_dates) else NA
 last_rec  <- if (length(rec_dates)) max(rec_dates) else NA
 
-plan_start <- suppressWarnings(as.Date(safe(rc$recruitment_start, NA)))
-if (is.na(plan_start))
-  plan_start <- if (!is.na(first_rec)) as.Date(format(first_rec, "%Y-%m-01")) else
-    as.Date(format(today, "%Y-%m-01"))
-plan_months <- suppressWarnings(as.integer(safe(rc$recruitment_months, 18)))
-if (is.na(plan_months) || plan_months < 1) plan_months <- 18L
+# Monthly recruitment targets, entered by hand in Trial Settings → Recruitment
+# targets and stored as report_content$monthly_targets. PANORAMA has no
+# funder-agreed monthly profile, so there is no target to derive: where none
+# have been entered, every "against plan" figure is left out rather than
+# invented from sample size over a guessed recruitment period.
+mt_entries <- rc$monthly_targets %||% list()
+mt_month <- character(0); mt_value <- numeric(0)
+for (row in mt_entries) {
+  m <- suppressWarnings(as.Date(paste0(substr(as.character(row$month %||% ""), 1, 7),
+                                       "-01")))
+  v <- suppressWarnings(as.numeric(row$target %||% NA))
+  if (!is.na(m) && !is.na(v)) { mt_month <- c(mt_month, format(m, "%Y-%m")); mt_value <- c(mt_value, v) }
+}
+has_targets <- length(mt_month) > 0
+mt_lookup <- stats::setNames(mt_value, mt_month)
 
-months_seq <- seq(plan_start, by = "1 month", length.out = plan_months)
-cum_target <- round(seq_len(plan_months) / plan_months * sample_size)
+cur_month <- as.Date(format(today, "%Y-%m-01"))
+
+# The months to plot: every month a target was set for, every month someone was
+# screened or consented in, and the current month.
+# do.call(c, ...) rather than c(...): c() with a NULL first argument drops the
+# Date class and leaves bare numbers, which seq() then cannot step by month.
+span <- do.call(c, Filter(length, list(
+  if (has_targets) as.Date(paste0(mt_month, "-01")),
+  if (length(rec_dates)) as.Date(format(range(rec_dates), "%Y-%m-01")),
+  if (any(!is.na(d_screen)))
+    as.Date(format(range(d_screen[!is.na(d_screen)]), "%Y-%m-01")),
+  cur_month)))
+plan_start <- min(span)
+months_seq <- seq(plan_start, max(span), by = "1 month")
+plan_months <- length(months_seq)
+
+month_target <- if (has_targets) {
+  v <- as.numeric(mt_lookup[format(months_seq, "%Y-%m")])
+  v[is.na(v)] <- 0            # a month with no target entered contributes none
+  v
+} else NULL
+cum_target <- if (has_targets) cumsum(month_target) else NULL
 month_lab  <- format(months_seq, "%b %y")
 
 # Screened in each month, from the screening date, so the chart shows how many
@@ -408,7 +437,6 @@ per_month <- function(d) vapply(months_seq, function(m) {
 month_actual  <- per_month(rec_dates)
 month_screened <- per_month(scr_dates)
 cum_actual <- cumsum(month_actual)
-cur_month  <- as.Date(format(today, "%Y-%m-01"))
 cum_actual_plot <- as.numeric(cum_actual)
 cum_actual_plot[months_seq > cur_month] <- NA
 month_actual_plot <- as.numeric(month_actual)
@@ -419,14 +447,14 @@ month_screened_plot[months_seq > cur_month] <- NA
 # Expected to date: last complete month's target plus a pro-rata share of the
 # current month's increment.
 past <- which(months_seq <= cur_month)
-expected_to_date <- if (length(past)) {
+expected_to_date <- if (has_targets && length(past)) {
   i <- max(past)
   prev <- if (i > 1) cum_target[i - 1] else 0
   m_days <- as.numeric(seq(months_seq[i], by = "1 month", length.out = 2)[2] - months_seq[i])
   frac <- min(1, max(0, (as.numeric(today - months_seq[i]) + 1) / m_days))
   round(prev + frac * (cum_target[i] - prev))
-} else 0
-pct_vs_plan <- pctg(n_cons, expected_to_date)
+} else NA
+pct_vs_plan <- if (has_targets) pctg(n_cons, expected_to_date) else NA
 
 months_active <- length(past)
 # A rate needs a period to measure over, and that comes from the registration
@@ -554,9 +582,12 @@ band <- function(v, green, amber, higher_better = TRUE) {
 band_word <- function(b) switch(b, g = "ON TRACK", a = "MONITOR", r = "ACTION", "PENDING")
 
 health_cards <- list(
-  list(title = "Recruitment vs plan", val = pct_vs_plan,
-       sub = sprintf("%s of %s expected", fmt_int(n_cons), fmt_int(expected_to_date)),
-       b = band(pct_vs_plan, 90, 70)),
+  # Only where monthly targets have been entered — with none there is nothing
+  # to be on or off plan against.
+  if (has_targets)
+    list(title = "Recruitment vs plan", val = pct_vs_plan,
+         sub = sprintf("%s of %s expected", fmt_int(n_cons), fmt_int(expected_to_date)),
+         b = band(pct_vs_plan, 90, 70)),
   list(title = "Screened consented", val = pct_cons,
        sub = sprintf("%s of %s screened", fmt_int(n_cons), fmt_int(n_screened)),
        b = band(pct_cons, 60, 40)),
@@ -570,6 +601,7 @@ health_cards <- list(
        sub = sprintf("%s withdrawal%s recorded", fmt_int(n_wd),
                      if (identical(n_wd, 1L)) "" else "s"),
        b = band(retention, 85, 75)))
+health_cards <- Filter(Negate(is.null), health_cards)
 
 # ── Milestones ───────────────────────────────────────────────────────────────
 ms <- rc$key_milestones %||% list(
@@ -949,36 +981,49 @@ pf_footer(1)
 
 ```{r page2}
 ph_header("Recruitment")
-sec("05", "Recruitment against plan")
+sec("05", if (has_targets) "Recruitment against plan" else "Recruitment")
 
-cat(sprintf('<div class="keyline"><span>Consented: <b>%s</b></span><span>Expected by %s: <b>%s</b></span><span>Against plan: <b>%s</b></span><span>Rate: <b>%s per month</b> (%s per site)</span><span>First registration: <b>%s</b></span><span>Most recent: <b>%s</b></span></div>',
-            fmt_int(n_cons), format(today, "%b %y"), fmt_int(expected_to_date),
-            fmt_pct(pct_vs_plan, 1), fmt_num(rate_per_month, 1),
-            fmt_num(rate_site_month, 2), fmt_date(first_rec), fmt_date(last_rec)))
+keys <- c(sprintf('<span>Consented: <b>%s</b></span>', fmt_int(n_cons)),
+          if (has_targets)
+            sprintf('<span>Expected by %s: <b>%s</b></span><span>Against plan: <b>%s</b></span>',
+                    format(today, "%b %y"), fmt_int(expected_to_date),
+                    fmt_pct(pct_vs_plan, 1)),
+          sprintf('<span>Rate: <b>%s per month</b> (%s per site)</span>',
+                  fmt_num(rate_per_month, 1), fmt_num(rate_site_month, 2)),
+          sprintf('<span>First registration: <b>%s</b></span><span>Most recent: <b>%s</b></span>',
+                  fmt_date(first_rec), fmt_date(last_rec)))
+cat(sprintf('<div class="keyline">%s</div>', paste(keys, collapse = "")))
 
-# One chart, as TONIC has: monthly recruitment against the protocol's monthly
-# target. The cumulative curve was the same information a second time.
-cat(sprintf('<div class="card" style="margin-top:8px"><div class="ct">Monthly recruitment · %s</div><div class="chart-wrap-lg"><canvas id="monC"></canvas></div><div class="note">Each month shows patients screened and participants consented, labelled with the count, against the pale bar for the protocol\'s target that month.%s</div></div>',
+# Screened and consented per month. The target bars appear only where monthly
+# targets have been entered in Trial Settings: PANORAMA has no funder-agreed
+# monthly profile, so there is nothing to plot them against by default.
+cat(sprintf('<div class="card" style="margin-top:8px"><div class="ct">Monthly recruitment · %s</div><div class="chart-wrap-lg"><canvas id="monC"></canvas></div><div class="note">Each month shows patients screened and participants consented, labelled with the count.%s%s</div></div>',
             if (length(month_lab)) sprintf("%s \u2192 %s", month_lab[1], month_lab[length(month_lab)]) else "no schedule",
+            if (has_targets) " Pale bars are the target entered for that month." else "",
             if (!length(rec_dates)) " No registration dates in the export, so no months can be plotted yet." else ""))
 
-cat(sprintf('<p class="note">The plan line is a linear ramp to %s over %d months from %s. Set <code>recruitment_start</code>, <code>recruitment_months</code> and <code>sample_size</code> in Trial Settings → Report content to match the agreed recruitment schedule.</p>',
-            fmt_int(sample_size), plan_months, format(plan_start, "%b %Y")))
+if (!has_targets)
+  cat('<p class="note">No monthly recruitment targets have been set for this trial, so the report shows recruitment as it happened rather than against a plan. Add them in Trial Settings → Recruitment targets to plot a target for each month.</p>')
 
 sec("06", "Recruitment by month")
 mt_rows <- list()
 show_idx <- which(months_seq <= cur_month)
 if (length(show_idx) > 12) show_idx <- tail(show_idx, 12)
 for (i in show_idx) {
-  mt_rows[[length(mt_rows) + 1]] <- list(
-    month_lab[i], fmt_int(month_actual[i]), fmt_int(cum_actual[i]),
-    fmt_int(cum_target[i]), fmt_pct(pctg(cum_actual[i], cum_target[i]), 0))
+  mt_rows[[length(mt_rows) + 1]] <- c(
+    list(month_lab[i], fmt_int(month_screened[i]), fmt_int(month_actual[i]),
+         fmt_int(cum_actual[i])),
+    if (has_targets)
+      list(fmt_int(cum_target[i]), fmt_pct(pctg(cum_actual[i], cum_target[i]), 0)))
 }
 if (length(mt_rows)) {
-  rt_table(c("Month", "Registered", "Cumulative", "Plan", "% of plan"), mt_rows,
+  rt_table(c("Month", "Screened", "Consented", "Cumulative",
+             if (has_targets) c("Plan", "% of plan")), mt_rows,
            align_left = 1,
-           total_row = list("Total", fmt_int(sum(month_actual)), fmt_int(n_cons),
-                            fmt_int(expected_to_date), fmt_pct(pct_vs_plan, 0)))
+           total_row = c(list("Total", fmt_int(sum(month_screened)),
+                              fmt_int(sum(month_actual)), fmt_int(n_cons)),
+                         if (has_targets)
+                           list(fmt_int(expected_to_date), fmt_pct(pct_vs_plan, 0))))
 } else {
   cat('<p class="note">No registrations recorded yet.</p>')
 }
@@ -1167,7 +1212,7 @@ pf_footer(5)
   Chart.defaults.color = muted;
 
   const labels = `r j(month_lab)`;
-  const target = `r j(cum_target)`;
+  const target = `r j(if (has_targets) cum_target else numeric(0))`;
   const actual = `r j(cum_actual_plot)`;
   const monthly = `r j(month_actual_plot)`;
   const screened = `r j(month_screened_plot)`;
@@ -1193,8 +1238,8 @@ pf_footer(5)
     }
   });
 
-  // Monthly recruitment against the protocol's monthly target. `target` is
-  // cumulative, so step it down to per-month before plotting.
+  // `target` is the cumulative entered target, so step it down to per-month
+  // before plotting. It is empty when no monthly targets have been entered.
   const diffs = (xs) => xs.map((v, i) => {
     if (v == null) return null;
     const prev = i > 0 ? (xs[i-1] || 0) : 0;
@@ -1206,9 +1251,8 @@ pf_footer(5)
     type:'bar',
     data:{labels: labels, datasets:[
       {label:'Screened', data: screened, backgroundColor: lilac, borderRadius:3, maxBarThickness:18, order:1},
-      {label:'Consented', data: monthly, backgroundColor: mauve, borderRadius:3, maxBarThickness:18, order:2},
-      {label:'Monthly target (protocol)', data: diffs(target), backgroundColor:'#EFEAF8', borderRadius:3, maxBarThickness:18, order:3}
-    ]},
+      {label:'Consented', data: monthly, backgroundColor: mauve, borderRadius:3, maxBarThickness:18, order:2}
+    ].concat(target.length ? [{label:'Monthly target', data: diffs(target), backgroundColor:'#EFEAF8', borderRadius:3, maxBarThickness:18, order:3}] : [])},
     plugins:[valueLabels(0, lilac), valueLabels(1, mauve)],
     options:{responsive:true, maintainAspectRatio:false, layout:{padding:{top:18}},
       plugins:{legend:{display:true,labels:{boxWidth:12,boxHeight:12,padding:10,font:{size:9.5}}},
