@@ -58,7 +58,11 @@ welcome_server <- function(input, output, session, state) {
         style = "display:flex;align-items:center;gap:12px;padding:12px 14px;
                  background:#F8FAFD;border:1.5px solid #DDE5EE;border-radius:12px;
                  cursor:pointer;transition:all .15s;margin-bottom:8px;text-align:left;",
-        onclick = sprintf("Shiny.setInputValue('returning_user', %d, {priority:'event'})", i),
+        # Send the name, not the row number: the list is re-read on every
+        # click, so an index goes to the wrong person if a profile is added
+        # between render and click.
+        onclick = sprintf("Shiny.setInputValue('returning_user', %s, {priority:'event'})",
+                          jsonlite::toJSON(p$fullname, auto_unbox = TRUE)),
         onmouseover = "this.style.borderColor='#2EC4A5';this.style.background='#F0FDF9';",
         onmouseout  = "this.style.borderColor='#DDE5EE';this.style.background='#F8FAFD';",
 
@@ -107,8 +111,10 @@ welcome_server <- function(input, output, session, state) {
 
   observeEvent(input$returning_user, {
     profiles <- db_load_profiles()
-    idx <- input$returning_user
-    if (idx < 1 || idx > nrow(profiles)) return()
+    who <- input$returning_user
+    # Older sessions may still send a row index; accept both.
+    idx <- if (is.numeric(who)) as.integer(who) else match(who, profiles$fullname)
+    if (is.na(idx) || idx < 1 || idx > nrow(profiles)) return()
     p <- profiles[idx, ]
 
     pending_login(list(
@@ -232,6 +238,18 @@ welcome_server <- function(input, output, session, state) {
                        text = "Enter a valid email address (used for password reset)."))
       return()
     }
+    # Name already taken? fullname is UNIQUE in the profiles table, so without
+    # this the user meets a raw SQLite constraint error. Case-insensitive: two
+    # profiles differing only in case are two logins for one person, and the
+    # picker shows no way to tell them apart.
+    existing <- tryCatch(db_load_profiles(), error = function(e) NULL)
+    if (!is.null(existing) && nrow(existing) &&
+        tolower(name) %in% tolower(existing$fullname)) {
+      welcome_msg(list(severity = "warn",
+                       text = paste("A profile with that name already exists.",
+                                    "Go back and pick it, or ask an admin to reset its password.")))
+      return()
+    }
     # Email already in use? Cheaper to fail-fast than discover at INSERT time.
     if (!is.null(find_profile_by_email(email))) {
       welcome_msg(list(severity = "warn",
@@ -304,6 +322,13 @@ welcome_server <- function(input, output, session, state) {
     if (!identical(new_pw, confirm)) {
       change_pw_msg(list(severity = "warn",
                          text = "Passwords don't match."))
+      return()
+    }
+    # The point of this panel is that the temporary password an admin relayed
+    # stops working. Re-entering it would leave it as the permanent one.
+    if (verify_password(p$fullname, new_pw)) {
+      change_pw_msg(list(severity = "warn",
+                         text = "Choose a different password from the temporary one."))
       return()
     }
 

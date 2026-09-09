@@ -608,9 +608,14 @@ trial_selector_server <- function(input, output, session, state) {
         list()
       })
     if (length(rows) == 0) {
+      # A member with no memberships is not looking at an empty portfolio —
+      # they are looking at one they have not been added to yet.
       return(div(class = "home-empty",
                  div(class = "icon", HTML("&#x1F4CA;")),
-                 div("No trials yet \u2014 create one to see portfolio stats.")))
+                 div(if (isTRUE(rv$portfolio_role == "admin"))
+                       "No trials yet \u2014 create one to see portfolio stats."
+                     else
+                       "No trials yet \u2014 ask an admin to add you to one.")))
     }
 
     # \u2500\u2500 Pre-compute v2 status for each trial (avoids reading raw twice) \u2500\u2500
@@ -1749,6 +1754,9 @@ trial_selector_server <- function(input, output, session, state) {
   }
 
   observeEvent(input$mu_create_user, {
+    # Shiny inputs come from the browser, so the admin-only console's actions
+    # are checked here as well as being hidden in the UI.
+    if (!isTRUE(rv$portfolio_role == "admin")) return()
     name   <- trimws(input$mu_new_name %||% "")
     email  <- trimws(input$mu_new_email %||% "")
     jobt   <- trimws(input$mu_new_jobtitle %||% "")
@@ -1795,6 +1803,13 @@ trial_selector_server <- function(input, output, session, state) {
     mu_selected_user(name)
     mu_mode("detail")
     mu_last_temp(if (isTRUE(res$success)) list(user = name, pw = res$temp_password) else NULL)
+    # A profile with no password can be claimed by anyone who picks it off the
+    # sign-in screen, so a failure here needs saying out loud, not swallowing.
+    if (!isTRUE(res$success))
+      showNotification(
+        paste("Created", name, "but could not set a starting password.",
+              "Set one with Set password before telling them to sign in."),
+        type = "error", duration = 12)
     rv$home_membership_changed <- Sys.time()
     showNotification(sprintf("Created %s.", name), type = "message", duration = 4)
   })
@@ -1845,8 +1860,23 @@ trial_selector_server <- function(input, output, session, state) {
   })
 
   observeEvent(input$home_set_portrole, {
+    # Shiny inputs come from the browser, so the admin-only console's actions
+    # are checked here as well as being hidden in the UI.
+    if (!isTRUE(rv$portfolio_role == "admin")) return()
     u <- input$home_set_portrole$user
     r <- input$home_set_portrole$role
+    # Demoting the last admin leaves nobody able to add users, reset passwords
+    # or grant access — and no way back in through the app.
+    if (!identical(r, "admin")) {
+      admins <- tryCatch(list_all_users(), error = function(e) data.frame())
+      n_admins <- if (nrow(admins)) sum(admins$portfolio_role == "admin") else 0L
+      if (n_admins <= 1 && isTRUE(user_is_admin(u))) {
+        showNotification(
+          "This is the only admin. Make someone else an admin first.",
+          type = "warning", duration = 6)
+        return()
+      }
+    }
     set_portfolio_role(u, r)
     rv$home_membership_changed <- Sys.time()
     # Refresh own session if you changed your own role
@@ -1959,6 +1989,9 @@ trial_selector_server <- function(input, output, session, state) {
   })
 
   observeEvent(input$mu_reset_pw, {
+    # Shiny inputs come from the browser, so the admin-only console's actions
+    # are checked here as well as being hidden in the UI.
+    if (!isTRUE(rv$portfolio_role == "admin")) return()
     u <- mu_selected_user(); if (is.null(u)) return()
     res <- tryCatch(admin_reset_password(u, admin_fullname = rv$username),
                     error = function(e) list(success = FALSE, message = e$message))
@@ -1973,6 +2006,9 @@ trial_selector_server <- function(input, output, session, state) {
   })
 
   observeEvent(input$mu_set_pw, {
+    # Shiny inputs come from the browser, so the admin-only console's actions
+    # are checked here as well as being hidden in the UI.
+    if (!isTRUE(rv$portfolio_role == "admin")) return()
     u <- mu_selected_user(); if (is.null(u)) return()
     pw <- input$mu_new_pw %||% ""
     if (nchar(pw) < 6) {
@@ -1992,6 +2028,9 @@ trial_selector_server <- function(input, output, session, state) {
   })
 
   observeEvent(input$home_set_mem, {
+    # Shiny inputs come from the browser, so the admin-only console's actions
+    # are checked here as well as being hidden in the UI.
+    if (!isTRUE(rv$portfolio_role == "admin")) return()
     u <- input$home_set_mem$user
     t <- input$home_set_mem$trial
     r <- input$home_set_mem$role

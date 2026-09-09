@@ -179,13 +179,13 @@ db_save_profile <- function(fullname, role, password = NULL, email = NULL) {
   pw <- .hash_password(password)
   email_val <- if (is.null(email) || !nzchar(trimws(email))) NA_character_
                else trimws(tolower(email))
-  dbExecute(con,
+  invisible(dbExecute(con,
     "INSERT INTO profiles (fullname, role, portfolio_role, created,
                             password_hash, password_salt, email)
      VALUES (?, ?, ?, ?, ?, ?, ?)",
     params = list(fullname, role, portfolio_role,
                   format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-                  pw$hash, pw$salt, email_val))
+                  pw$hash, pw$salt, email_val)))
 }
 
 # Basic email format check — a single @ with a dot in the domain.
@@ -279,7 +279,7 @@ set_password <- function(fullname, new_password) {
 # another user. The flag forces a change on the user's next login so the
 # temp password is never their permanent secret.
 
-#' Generate a memorable temporary password — 3 short words + 2 digits.
+#' Generate a memorable temporary password — two short words and two digits.
 #' (Easier to read out over the phone than a random string.)
 .generate_temp_password <- function() {
   words <- c("river","sunset","quiet","apple","cedar","north","amber","tiger",
@@ -303,10 +303,10 @@ admin_reset_password <- function(target_fullname,
                 message = "No target user supplied."))
   }
   con <- shared_db_connect(); on.exit(dbDisconnect(con))
-  exists <- dbGetQuery(con,
+  found <- dbGetQuery(con,
     "SELECT 1 FROM profiles WHERE fullname = ?",
     params = list(target_fullname))
-  if (nrow(exists) == 0) {
+  if (nrow(found) == 0) {
     return(list(success = FALSE, temp_password = NA,
                 message = paste0("No profile named '", target_fullname, "'.")))
   }
@@ -413,14 +413,14 @@ user_visible_trials <- function(fullname) {
 
 grant_membership <- function(fullname, trial_code, trial_role = "readonly") {
   con <- shared_db_connect(); on.exit(dbDisconnect(con))
-  .grant_internal(con, fullname, trial_code, trial_role)
+  invisible(.grant_internal(con, fullname, trial_code, trial_role))
 }
 
 revoke_membership <- function(fullname, trial_code) {
   con <- shared_db_connect(); on.exit(dbDisconnect(con))
-  dbExecute(con,
+  invisible(dbExecute(con,
     "DELETE FROM trial_memberships WHERE fullname=? AND trial_code=?",
-    params = list(fullname, trial_code))
+    params = list(fullname, trial_code)))
 }
 
 set_portfolio_role <- function(fullname, role) {
