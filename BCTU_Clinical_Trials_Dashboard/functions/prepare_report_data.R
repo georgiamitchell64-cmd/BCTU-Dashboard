@@ -91,12 +91,13 @@ prepare_report_data <- function(df,
   # back to a date-only parse when the datetime format yields nothing.
   parse_dt <- function(x) {
     out <- as.POSIXct(x, format = "%Y-%m-%d %H:%M", tz = "Europe/London")
-    if (all(is.na(out)) && any(!is.na(x) & nzchar(trimws(as.character(x)))))
-      out <- as.POSIXct(substr(as.character(x), 1, 10), format = "%Y-%m-%d",
-                        tz = "Europe/London")
+    todo <- is.na(out) & !is.na(x) & nzchar(trimws(as.character(x)))
+    if (any(todo))
+      out[todo] <- as.POSIXct(as.character(parse_redcap_date(x[todo])),
+                              format = "%Y-%m-%d", tz = "Europe/London")
     out
   }
-  parse_d  <- function(x) as.Date(x, format = "%Y-%m-%d")
+  parse_d  <- function(x) parse_redcap_date(x)
   for (c in c("op_dttm", "rand_dttm", "pn_start"))
     if (c %in% names(df)) df[[c]] <- parse_dt(df[[c]])
   for (c in c("dis_day", "op_dt"))

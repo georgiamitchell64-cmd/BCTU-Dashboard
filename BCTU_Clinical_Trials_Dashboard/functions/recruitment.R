@@ -79,6 +79,15 @@ recruitment_spec <- function(cfg = current_trial_config()) {
     basis         = basis,
     event         = event,
     date_field    = mapping_first(r$date_field %||% f$randomisation_datetime, NA_character_),
+    # Every candidate, in order: a role may map to several variable names and
+    # only the export decides which one is there. `date_field` stays the first
+    # for callers that want a single name; anything reading dates out of an
+    # export should use these and take the first the export carries.
+    date_candidates = {
+      cand <- as.character(unlist(r$date_field %||% f$randomisation_datetime %||%
+                                    character(0)))
+      cand[!is.na(cand) & nzchar(cand)]
+    },
     consent_field = mapping_first(r$consent_field %||% f$valid_consent, NA_character_),
     consent_value = as.character(r$consent_value %||% "1"),
     conditions    = conds,
@@ -116,8 +125,13 @@ screening_spec <- function(cfg = current_trial_config()) {
 # First non-blank value per participant, optionally within one event.
 .rec_values <- function(raw, field, event = NA_character_, id_col = "record_id",
                         event_col = "redcap_event_name") {
-  if (is.null(raw) || !nrow(raw) || is.na(field) || !field %in% names(raw) ||
-      !id_col %in% names(raw)) return(character(0))
+  if (is.null(raw) || !nrow(raw) || !id_col %in% names(raw)) return(character(0))
+  # `field` may be several candidate names for one role; use the first the
+  # export actually carries.
+  field <- as.character(unlist(field %||% character(0)))
+  field <- field[!is.na(field) & nzchar(field) & field %in% names(raw)]
+  if (!length(field)) return(character(0))
+  field <- field[1]
   d <- raw
   if (!is.na(event) && nzchar(event) && event_col %in% names(d)) {
     in_event <- d[as.character(d[[event_col]]) %in% event, , drop = FALSE]

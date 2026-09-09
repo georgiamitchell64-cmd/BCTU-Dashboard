@@ -43,7 +43,7 @@ randomisations_server <- function(input, output, session, state) {
     if (is.null(df) || !nrow(df)) return(as.Date(character(0)))
     col <- .rand_col(df)
     if (is.na(col)) return(as.Date(character(0)))
-    d <- suppressWarnings(as.Date(df[[col]]))
+    d <- parse_redcap_date(df[[col]])
     d[!is.na(d)]
   })
 

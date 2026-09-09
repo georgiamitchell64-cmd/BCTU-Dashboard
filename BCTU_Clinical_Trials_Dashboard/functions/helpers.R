@@ -922,17 +922,33 @@ parse_safety <- function(raw_df) {
   )
 }
 
+# Parse a REDCap date/datetime column without assuming one layout. The
+# randomisation log writes "%d/%m/%Y %H:%M"; a REDCap export writes ISO, with
+# or without a time. Each format fills only the values the previous ones could
+# not parse.
+.parse_dt <- function(x) {
+  x   <- trimws(as.character(x))
+  out <- as.POSIXct(rep(NA_real_, length(x)), origin = "1970-01-01", tz = "UTC")
+  for (f in c("%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M")) {
+    todo <- is.na(out) & !is.na(x) & nzchar(x)
+    if (!any(todo)) break
+    out[todo] <- suppressWarnings(as.POSIXct(x[todo], format = f, tz = "UTC"))
+  }
+  todo <- is.na(out) & !is.na(x) & nzchar(x)
+  if (any(todo))
+    out[todo] <- as.POSIXct(as.character(parse_redcap_date(x[todo])), tz = "UTC")
+  out
+}
+
 make_monthly_df <- function(log_df, sites_df, site_filter = NULL) {
   
   # --- Standardise input formats (handles BOTH log + REDCap import) ---
-  rand_field <- fld("randomisation_datetime", "rand_dttm_s")
-  if (rand_field %in% names(log_df)) {
+  rand_field <- fld_present("randomisation_datetime", log_df, default = NA_character_)
+  if (!is.na(rand_field)) {
     rands <- log_df %>%
       dplyr::mutate(
         site_id   = dplyr::coalesce(site_id, site_name),
-        timestamp = as.POSIXct(trimws(.data[[rand_field]]),
-                               format = "%d/%m/%Y %H:%M",
-                               tz = "UTC"),
+        timestamp = .parse_dt(.data[[rand_field]]),
         action    = "+1",
         month     = lubridate::floor_date(timestamp, "month")
       )

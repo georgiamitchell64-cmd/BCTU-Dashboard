@@ -96,8 +96,12 @@ trial_config <- list(
     record_id              = "record_id",
     site_name              = c("rc_site_name", "redcap_data_access_group"),
                                                       # DAG name; rc_site_id is its code
-    randomisation_datetime = c("screen_created_date", "screen_date"),
-                                                      # registration date
+    # Recruitment is consent, so the registration date is the consent
+    # signature date (pat_sig_date). The screening date and REDCap's own
+    # record-creation date stand in for an export taken before pat_sig_date
+    # was collected.
+    randomisation_datetime = c("pat_sig_date", "screen_created_date", "screen_date"),
+    consent_date           = c("pat_sig_date", "consent_date"),
     discharge_date         = "index_discharge_date",
 
     # Candidates, most specific first: the live export carries cae_age,
@@ -111,10 +115,11 @@ trial_config <- list(
     # Screening / eligibility / consent
     # screening_calc = sum(screening_1..4); all four answered "eligible" = 4.
     screening_calc         = "screening_calc",        # 4 = eligible
-    screening_date         = "screen_date",           # date the patient was screened
+    screening_date         = c("screen_date", "screen_created_date"),
+                                                      # date the patient was screened
     approached             = "approached_yn",
     valid_consent          = "valid_consent",         # 1 = consented
-    screen_created_date    = "screen_created_date",
+    screen_created_date    = c("screen_created_date", "screen_date"),
     aetiology              = "index_panc_aetio",
 
     # Form completion flags
@@ -153,7 +158,7 @@ trial_config <- list(
     model         = "registration",
     basis         = "all_conditions",
     event         = "baseline_arm_1",
-    date_field    = "screen_created_date",
+    date_field    = c("pat_sig_date", "screen_created_date", "screen_date"),
     # Kept for the views that still show a single consent flag.
     consent_field = "consent_complete",
     consent_value = "2",
@@ -164,6 +169,7 @@ trial_config <- list(
     screening = list(
       enabled          = TRUE,
       event            = "baseline_arm_1",
+      date_field       = c("screen_date", "screen_created_date"),
       screened_field   = "screening_complete",
       screened_value   = "2",
       eligible_field   = "screening_calc",

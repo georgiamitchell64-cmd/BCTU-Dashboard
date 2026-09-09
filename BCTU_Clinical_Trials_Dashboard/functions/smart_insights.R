@@ -28,8 +28,8 @@
 .rand_dates <- function(raw, cfg) {
   base <- .baseline_rows(raw, cfg)
   if (!nrow(base)) return(as.Date(character(0)))
-  rand_col <- cfg$redcap_fields$randomisation_datetime %||% "rand_dttm_s"
-  if (!rand_col %in% names(base)) return(as.Date(character(0)))
+  rand_col <- fld_present("randomisation_datetime", base, cfg = cfg)
+  if (is.null(rand_col)) return(as.Date(character(0)))
   d <- suppressWarnings(as.Date(base[[rand_col]]))
   d[!is.na(d)]
 }
@@ -102,9 +102,9 @@ insight_stalled <- function(raw, cfg) {
 insight_top_site <- function(raw, cfg) {
   base <- .baseline_rows(raw, cfg)
   if (!nrow(base)) return(NULL)
-  rand_col <- cfg$redcap_fields$randomisation_datetime %||% "rand_dttm_s"
-  site_col <- cfg$redcap_fields$site_name %||% "site_name"
-  if (!all(c(rand_col, site_col) %in% names(base))) return(NULL)
+  rand_col <- fld_present("randomisation_datetime", base, cfg = cfg)
+  site_col <- fld_present("site_name", base, cfg = cfg)
+  if (is.null(rand_col) || is.null(site_col)) return(NULL)
 
   base$.d <- suppressWarnings(as.Date(base[[rand_col]]))
   recent  <- base[!is.na(base$.d) & base$.d >= (Sys.Date() - 30), , drop = FALSE]
@@ -131,9 +131,9 @@ insight_lagging_sites <- function(raw, sites, cfg) {
 
   base <- .baseline_rows(raw, cfg)
   if (!nrow(base)) return(NULL)
-  rand_col <- cfg$redcap_fields$randomisation_datetime %||% "rand_dttm_s"
-  site_col <- cfg$redcap_fields$site_name %||% "site_name"
-  if (!all(c(rand_col, site_col) %in% names(base))) return(NULL)
+  rand_col <- fld_present("randomisation_datetime", base, cfg = cfg)
+  site_col <- fld_present("site_name", base, cfg = cfg)
+  if (is.null(rand_col) || is.null(site_col)) return(NULL)
 
   base$.d <- suppressWarnings(as.Date(base[[rand_col]]))
   recent  <- base[!is.na(base$.d) & base$.d >= (Sys.Date() - 60), , drop = FALSE]

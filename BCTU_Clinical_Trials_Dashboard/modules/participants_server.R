@@ -147,16 +147,18 @@ participants_server <- function(input, output, session, state) {
     if (!length(ids)) return(empty)
 
     pick <- function(field) {
-      if (is.na(field) || !nzchar(field) || !field %in% names(raw))
+      field <- as.character(unlist(field %||% character(0)))
+      field <- field[!is.na(field) & nzchar(field) & field %in% names(raw)]
+      if (!length(field))
         return(stats::setNames(rep(NA, length(ids)), ids))
-      v <- .rec_values(raw, field)
+      v <- .rec_values(raw, field[1])
       out <- stats::setNames(rep(NA_character_, length(ids)), ids)
       hit <- intersect(names(v), ids)
       out[hit] <- v[hit]
       suppressWarnings(stats::setNames(as.Date(substr(out, 1, 10)), ids))
     }
-    dc_field <- mapping_first(rv$trial_config$redcap_fields$discharge_date, NA_character_)
-    list(ids = ids, recruitment = pick(spec$date_field), discharge = pick(dc_field))
+    list(ids = ids, recruitment = pick(spec$date_candidates %||% spec$date_field),
+         discharge = pick(rv$trial_config$redcap_fields$discharge_date))
   }
 
   # Turn a redcap_events role key into a readable label: "day_30" -> "Day 30",
