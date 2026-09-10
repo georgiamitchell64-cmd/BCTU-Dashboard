@@ -58,10 +58,57 @@ fld <- function(name, default = name, cfg = .TRIAL_CFG) {
   fields[[name]] %||% default
 }
 
+#' The mapped variable name for a role that the data actually carries.
+#' A role may map to several candidate names. REDCap projects rename variables
+#' between versions, and a study set up from another trial's data dictionary
+#' carries a mix — PANORAMA's export holds cae_age, base_sex and base_ethnic_gp
+#' where its own codebook says age, sex and ethnicity. Callers that need the
+#' column rather than the configured name resolve through this: the first
+#' candidate the export has, matched case-insensitively as a fallback because
+#' REDCap exports are lower-case and hand-edited configs are not always.
+#' Returns `default` when the export has none of them.
+fld_present <- function(name, data, default = NULL, cfg = .TRIAL_CFG) {
+  cand <- as.character(unlist(fld(name, default = NULL, cfg = cfg) %||% character(0)))
+  cand <- cand[!is.na(cand) & nzchar(cand)]
+  if (!length(cand) || is.null(data) || !length(names(data))) return(default)
+  hit <- cand[cand %in% names(data)]
+  if (length(hit)) return(hit[1])
+  lower <- tolower(names(data))
+  for (one in cand) {
+    i <- match(tolower(one), lower)
+    if (!is.na(i)) return(names(data)[i])
+  }
+  default
+}
+
+#' Parse a REDCap date or datetime column without assuming one layout.
+#' A raw REDCap export writes ISO; the same data routed through Excel comes
+#' back as dd/mm/yyyy. Each format is tried in turn and fills only what the
+#' previous ones could not parse. The formats are explicit on purpose: a bare
+#' as.Date() reads "20/04/2026" as the year 20 instead of failing, which turns
+#' a dd/mm/yyyy export into dates three decades out rather than an obvious
+#' error. Returns a Date vector, NA where nothing parsed.
+parse_redcap_date <- function(x) {
+  v   <- trimws(substr(as.character(x), 1, 10))
+  out <- rep(as.Date(NA), length(v))
+  for (f in c("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y")) {
+    todo <- is.na(out) & !is.na(v) & nzchar(v)
+    if (!any(todo)) break
+    out[todo] <- suppressWarnings(as.Date(v[todo], format = f))
+  }
+  out
+}
+
 #' Look up a REDCap event name by logical role.
-evt <- function(name, default = name, cfg = .TRIAL_CFG) {
+#' A role may map to several event names (a trial that registers under any of
+#' a few candidate events). Callers that compare against a single name — most
+#' of them — get the first; pass `all = TRUE` for the whole set, which is what
+#' row filtering wants.
+evt <- function(name, default = name, cfg = .TRIAL_CFG, all = FALSE) {
   if (is.null(cfg) || is.null(cfg$redcap_events)) return(default)
-  cfg$redcap_events[[name]] %||% default
+  v <- cfg$redcap_events[[name]] %||% default
+  if (all || is.null(v) || length(v) <= 1) return(v)
+  as.character(unlist(v))[1]
 }
 
 #' Get the active trial config (or NULL if none selected yet).
@@ -75,13 +122,106 @@ current_trial_config <- function() .TRIAL_CFG
 wp_effective_target <- function(cfg, active_wp = NULL) {
   if (is.null(cfg)) return(0L)
   base <- cfg$trial_target %||% 0L
-  if (is.null(active_wp)) return(base)
+  if (is.null(active_wp) || !length(active_wp) || is.na(active_wp)) return(base)
   wpt <- cfg$work_package_targets
   if (!is.null(wpt) && length(wpt) >= active_wp) {
-    v <- suppressWarnings(as.integer(wpt[[active_wp]]))
-    if (!is.na(v) && v > 0) return(v)
+    # A target may be unset for a work package — and comes back from
+    # overrides.json as NULL rather than NA — so length is checked before use.
+    v <- suppressWarnings(as.integer(wpt[[active_wp]] %||% NA))
+    if (length(v) == 1 && !is.na(v) && v > 0) return(v)
   }
   base
+}
+
+
+#' Does this trial run several work packages, each with its own REDCap export?
+#' Multi-WP trials upload one export per work package (Settings → Work
+#' packages), so the single whole-trial REDCap folder does not apply to them.
+trial_is_multi_wp <- function(cfg = current_trial_config()) {
+  length((cfg %||% list())$work_packages %||% character(0)) > 1
+}
+
+#' The folder each work package's REDCap export is read from, aligned to
+#' `work_packages`. An explicit `work_package_data_dirs` entry wins; otherwise
+#' the standard per-trial layout trials/<code>/data/wp<i>/. Deriving the
+#' default matters: `work_package_data_dirs` is only written once someone has
+#' uploaded through Settings, so a trial whose work packages are declared in
+#' config.R would otherwise have no WP upload locations at all.
+wp_data_dirs <- function(cfg = current_trial_config()) {
+  cfg <- cfg %||% list()
+  wps <- cfg$work_packages %||% character(0)
+  if (!length(wps)) return(character(0))
+  dirs <- as.character(unlist(cfg$work_package_data_dirs %||% character(0)))
+  base <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
+  vapply(seq_along(wps), function(i) {
+    d <- if (length(dirs) >= i && !is.na(dirs[i])) trimws(dirs[i]) else ""
+    if (nzchar(d)) d else file.path(base, "data", sprintf("wp%d", i))
+  }, character(1))
+}
+
+#' Does this trial randomise?
+#' Observational cohorts, registries and single-arm studies register or consent
+#' participants instead — PANORAMA WP4 is one — so the dashboard should not
+#' call them "randomised". Decided by `recruitment_model` if the config sets
+#' one, else `trial_type`, else by whether a randomisation field is mapped.
+is_randomised_trial <- function(cfg = .TRIAL_CFG) {
+  if (is.null(cfg)) return(TRUE)
+  model <- tolower(as.character(cfg$recruitment_model %||% ""))
+  if (nzchar(model)) return(model %in% c("randomised", "randomized", "random"))
+  tt <- tolower(as.character(cfg$trial_type %||% ""))
+  if (nzchar(tt)) return(grepl("random|blind|platform", tt))
+  rnd <- cfg$redcap_fields$randomisation_datetime
+  !is.null(rnd) && nzchar(as.character(rnd))
+}
+
+#' Recruitment vocabulary for the active trial.
+#' @param key "past" (randomised / registered), "noun" (randomisations /
+#'   registrations), "total_label" (Total randomised / Total registered) or
+#'   "event" (randomisation / registration).
+recruit_term <- function(key = "past", cfg = .TRIAL_CFG) {
+  rand <- is_randomised_trial(cfg)
+  switch(key,
+    past        = if (rand) "randomised"       else "recruited",
+    noun        = if (rand) "randomisations"   else "recruits",
+    event       = if (rand) "randomisation"    else "recruitment",
+    verb        = if (rand) "randomise"        else "recruit",
+    total_label = if (rand) "Total randomised" else "Total recruited",
+    per_month   = if (rand) "Randomisations / month" else "Recruits / month",
+    Noun        = if (rand) "Randomisations"   else "Recruitment",
+    Past        = if (rand) "Randomised"       else "Recruited",
+    tab_title   = if (rand) "Randomisations"   else "Recruitment",
+    no_data     = if (rand) "No randomisation data — upload a REDCap CSV"
+                  else      "No recruitment data — upload a REDCap CSV",
+    if (rand) "randomised" else "recruited")
+}
+
+#' Work-package context for reports and headers.
+#' Returns the active work package's index, label, target and — where the
+#' config defines `work_package_meta` — its design, outcome measures and
+#' interventions, which differ per WP in multi-WP studies. With no WP selected
+#' the whole-study values come back with a NULL index.
+wp_report_context <- function(cfg, active_wp = NULL) {
+  if (is.null(cfg)) return(NULL)
+  wps <- cfg$work_packages
+  idx <- suppressWarnings(as.integer(active_wp %||% NA))
+  if (length(idx) != 1 || is.na(idx) || idx < 1 || idx > length(wps %||% list()))
+    idx <- NA_integer_
+
+  label <- if (!is.na(idx))
+    sub("^WKP[0-9]+:\\s*", "", as.character(wps[[idx]])) else NULL
+  meta <- cfg$work_package_meta
+  m <- if (!is.na(idx) && !is.null(meta) && length(meta) >= idx)
+    meta[[idx]] else list()
+
+  list(
+    index            = if (is.na(idx)) NULL else idx,
+    code             = if (is.na(idx)) NULL else sprintf("WP%d", idx),
+    label            = m$label %||% label,
+    design           = m$design,
+    target           = wp_effective_target(cfg, if (is.na(idx)) NULL else idx),
+    outcomes         = m$outcomes,
+    interventions    = m$interventions,
+    follow_up_months = m$follow_up_months)
 }
 
 
@@ -103,6 +243,7 @@ discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
 
   # Fingerprint the on-disk state; return the cached result if nothing changed.
   fp_files <- c(file.path(trial_folders, "config.R"),
+                file.path(trial_folders, "trial.json"),
                 file.path(trial_folders, "overrides.json"))
   fp_files <- fp_files[file.exists(fp_files)]
   fp <- paste0(trials_dir, "::",
@@ -114,22 +255,50 @@ discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
 
   for (folder in trial_folders) {
     config_file <- file.path(folder, "config.R")
-    if (!file.exists(config_file)) next
+    json_file   <- file.path(folder, "trial.json")
+    if (!file.exists(config_file) && !file.exists(json_file)) next
 
     trial_code <- basename(folder)
-    cfg <- tryCatch({
-      env <- new.env(parent = globalenv())
-      source(config_file, local = env)
-      if (exists("trial_config", envir = env)) {
-        env$trial_config
-      } else {
-        message("Warning: ", config_file, " does not define 'trial_config'")
+    cfg <- if (file.exists(config_file)) {
+      tryCatch({
+        env <- new.env(parent = globalenv())
+        source(config_file, local = env)
+        if (exists("trial_config", envir = env)) {
+          env$trial_config
+        } else {
+          message("Warning: ", config_file, " does not define 'trial_config'")
+          NULL
+        }
+      }, error = function(e) {
+        message("Error loading trial config from ", config_file, ": ", e$message)
         NULL
+      })
+    } else {
+      list()  # trial defined entirely by trial.json — no R code required
+    }
+
+    # Declarative config overlays code config (deep merge, JSON wins per key).
+    # See functions/pipeline/trial_config_json.R for the format and migration
+    # model. A folder can carry only trial.json, only config.R, or both.
+    if (!is.null(cfg) && file.exists(json_file)) {
+      tj <- if (exists("apply_trial_json", mode = "function"))
+        load_trial_json(folder) else NULL
+      if (!is.null(tj)) {
+        problems <- validate_trial_json(tj)
+        if (length(problems) && !length(cfg)) {
+          message("Invalid trial.json for ", trial_code, ": ",
+                  paste(problems, collapse = "; "))
+          cfg <- NULL
+        } else {
+          if (length(problems))
+            message("trial.json issues for ", trial_code, " (using config.R values): ",
+                    paste(problems, collapse = "; "))
+          cfg <- apply_trial_json(cfg, tj)
+        }
+      } else if (!length(cfg)) {
+        cfg <- NULL   # json-only trial but trial.json unreadable
       }
-    }, error = function(e) {
-      message("Error loading trial config from ", config_file, ": ", e$message)
-      NULL
-    })
+    }
 
     if (!is.null(cfg)) {
       # Ensure required fields
@@ -267,13 +436,31 @@ trial_config <- list(
     ),
 
     # Change of status / withdrawals (optional)
-    cos_type                = "cos_type",
+    cos_type                  = "cos_type",
+    change_of_status_complete = "trial_exit_change_of_status_complete",
+    change_of_status_date     = "cos_dt",
+    change_of_status_reason      = "cos_withdraw_rsn_oth",  # free text (code 99 = Other)
+    change_of_status_reason_code = "cos_withdraw_rsn_pt",   # coded reason
+
+    # SAE detail log (optional — columns shown on the safety page).
+    # Coded values (soc/category/severity) render via the default TONIC
+    # label lists; override with sae_soc_labels / sae_category_labels /
+    # sae_severity_labels at the top level of this config if they differ.
+    sae_reported_date         = "sae_reported_dt",
+    sae_diagnosis             = "sae_diagnosis",
+    sae_soc                   = "sae_soc",
+    sae_category              = "sae_category",
+    sae_severity              = "sae_severity",
+    sae_expectedness          = "sae_expectedness",
+    sae_causality             = "sae_causality_cent",
+    sae_death                 = "sae_death_yn",
+    sae_death_date            = "sae_death_dt",
 
     # Intervention-specific (optional — enables crossover/adherence tracking)
     pn_start_datetime       = NULL,
-    pn_late_reason          = NULL,
+    pn_late_reason          = "nut_o_pn_late_rsn",
     pn_no_line_reason       = NULL,
-    pn_early_reason         = NULL,
+    pn_early_reason         = "nut_o_pn_early_rsn",
 
     # Postal tracking (optional)
     contact_preference      = NULL

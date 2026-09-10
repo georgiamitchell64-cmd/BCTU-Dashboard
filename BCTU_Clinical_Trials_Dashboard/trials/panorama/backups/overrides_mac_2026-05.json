@@ -1,0 +1,166 @@
+{
+  "theme": "custom",
+  "colors": {
+    "primary": "#00000",
+    "secondary": "#8B5CF6",
+    "accent": "#10B981"
+  },
+  "participant_breakdowns": [
+    "dem_age",
+    "dem_sex",
+    "dem_ethnicity",
+    "nela_score",
+    "event_type"
+  ],
+  "redcap_fields": {
+    "record_id": "record_id",
+    "site_name": "site_name",
+    "randomisation_datetime": "rand_dttm_s",
+    "operation_date": "surgery_date",
+    "operation_datetime": {},
+    "discharge_date": "discharge_dt",
+    "age": "dem_age",
+    "sex": "dem_sex",
+    "ethnicity": "dem_ethnicity",
+    "follow_up_instruments": {
+      "cci": "cci_complete",
+      "eq5d": "eq5d_complete",
+      "clavien": "clavien_complete"
+    },
+    "cos_type": "cos_type",
+    "nela_score": "nela_score"
+  },
+  "redcap_events": {
+    "baseline": "baseline_arm_1",
+    "discharge": "discharge_arm_1",
+    "day_30": {},
+    "day_90": {},
+    "sub_forms": [
+      "sub_forms_arm_1",
+      "ad_hoc_arm_1"
+    ]
+  },
+  "short_name": "Panorama",
+  "name": "Surgery",
+  "trial_target": 100,
+  "category": "Surgery",
+  "features": {
+    "postal_tracking": true,
+    "return_rates": true,
+    "projections": true,
+    "pilot_criteria": true,
+    "consort_flow": true,
+    "baseline_table": true,
+    "participant_questionnaires": true
+  },
+  "report_defaults": {
+    "ci": "Matthew Lee",
+    "sponsor": "University of Birmingham"
+  },
+  "logo_file": "/Users/georgiamitchell/Documents/Claude/Projects/TONIC Dashboard/BCTU_Clinical_Trials_Dashboard/trials/panorama/www/logo.jpg",
+  "data_dir": "/Users/georgiamitchell/Documents/Claude/Projects/TONIC Dashboard/BCTU_Clinical_Trials_Dashboard/trials/panorama/data",
+  "return_rates_dir": "/Users/georgiamitchell/Documents/Claude/Projects/TONIC Dashboard/BCTU_Clinical_Trials_Dashboard/trials/panorama/data",
+  "column_labels": {
+    "dem_sex": {
+      "1": "Male",
+      "2": "Female"
+    }
+  },
+  "report_content": {
+    "short_name": "Panorama"
+  },
+  "portfolio_review": {
+    "n_months": 27,
+    "start_month": "0025-03-07",
+    "excel_path": "",
+    "series": {
+      "proj_pts_monthly": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "proj_pts_cum": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "proj_sites_cum": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  }
+}

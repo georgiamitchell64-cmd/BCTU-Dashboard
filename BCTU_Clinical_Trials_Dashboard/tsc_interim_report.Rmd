@@ -1,5 +1,5 @@
 ---
-title: "TONIC TMG Progress Report"
+title: "TONIC Progress Report"
 output:
   html_document:
     theme: null
@@ -16,12 +16,24 @@ params:
   include_appendix: false
   report_date: !r format(Sys.Date(), "%d %B %Y")
   logo_path: NULL
+  nihr_logo_path: NULL
   crf_csv_path: NULL
   screening_xlsx_path: NULL
-  report_type: "TMG"
+  report_type: "TSC Interim"
   completeness_style: "heatmap"
   report_content: NULL
 ---
+
+<!--
+  TSC Interim v0.1 — derived from tonic_report.Rmd (the TMG/iTMG template).
+  Same layout, styling and section structure, with four differences:
+    * the header says "Progress Report", not "Trial Management Group";
+    * the site status and recruitment table lists recruiting sites only;
+    * three tables are added — monthly recruitment by site (06), protocol
+      deviations (09) and participant baseline characteristics (11);
+    * sections renumber accordingly and the report runs to nine pages.
+  Keep visual changes in step with tonic_report.Rmd so the two stay siblings.
+-->
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, results="asis")
@@ -44,6 +56,12 @@ kpi <- rd$kpis %||% list()
 pilot <- rd$pilot %||% list()
 demo  <- rd$demographics %||% list()
 wd    <- rd$withdrawals %||% list(n = 0, rate = 0, log = NULL)
+wd_log <- wd$log
+n_wd   <- if (!is.null(wd_log) && nrow(wd_log) > 0) nrow(wd_log) else safe(wd$n, 0)
+wd_reason_col <- intersect(
+  c("reason", "wd_reason", "withdrawal_reason", "reason_text", "cos_label"),
+  names(wd_log)
+)[1]
 
 # ── Trial identity / project meta ─────────────────────────────────────────────
 trial_short  <- safe(rc$short_name,    "TONIC")
@@ -55,7 +73,7 @@ funder_ref   <- safe(rc$funder_ref,    "NIHR155875")
 isrctn       <- safe(rc$isrctn,        "ISRCTN59200516")
 sample_size  <- safe(rc$sample_size,   safe(kpi$trial_target, 898))
 n_sites_plan <- safe(rc$sites_planned, 25)
-proj_start   <- safe(rc$project_start, "Jun 2024")
+proj_start   <- safe(rc$project_start, "Apr 2026")
 proj_end     <- safe(rc$project_end,   "Feb 2028")
 proj_months  <- safe(rc$project_months, 45)
 pilot_target <- safe(rc$pilot_target,  60)
@@ -90,6 +108,17 @@ logo_b64      <- encode_logo(params$logo_path)
 )
 .bctu_hit     <- .bctu_candidates[file.exists(.bctu_candidates)]
 bctu_logo_b64 <- if (length(.bctu_hit)) encode_logo(.bctu_hit[1]) else ""
+# NIHR "Funded by" logo — same staging logic as the BCTU mark, with an
+# optional explicit param override.
+.nihr_candidates <- c(
+  params$nihr_logo_path %||% "",
+  "NIHR_Acknowledgement_Funded by_Logo_RGB.png",
+  file.path("www", "NIHR_Acknowledgement_Funded by_Logo_RGB.png"),
+  file.path(dirname(knitr::current_input(dir = TRUE)), "NIHR_Acknowledgement_Funded by_Logo_RGB.png")
+)
+.nihr_candidates <- .nihr_candidates[nzchar(.nihr_candidates)]
+.nihr_hit     <- .nihr_candidates[file.exists(.nihr_candidates)]
+nihr_logo_b64 <- if (length(.nihr_hit)) encode_logo(.nihr_hit[1]) else ""
 
 # ── Snapshot KPIs ─────────────────────────────────────────────────────────────
 n_rand    <- safe(kpi$total_randomised, 0)
@@ -102,6 +131,12 @@ pilot_pct      <- if (!is.na(pilot_target) && pilot_target > 0)
                     round(n_rand / pilot_target * 100, 1) else NA
 pct_of_target  <- if (!is.na(n_target) && n_target > 0)
                     round(n_rand / n_target * 100, 1) else NA
+# Recruitment-rate pilot card: the percentage is derived from the exact
+# numbers shown inside the box (randomised ÷ expected to date), so the value
+# and its caption can never disagree.
+recruit_rate_box <- if (!is.na(exp_to_date) && exp_to_date > 0)
+                      round(n_rand / exp_to_date * 100, 1) else
+                      safe(pilot$recruit_rate, NA)
 
 # Site bucketing from pipeline / site_status
 pipeline <- rd$pipeline %||% data.frame()
@@ -155,6 +190,77 @@ next_ms_lbl <- if (length(ms_future) > 0) {
   sprintf("%d of %d complete", length(ms_complete), length(ms))
 }
 
+# CRF return rates — derive a tidy stage summary if crf_data is present
+crf <- rd$crf_data
+crf_overall_pct <- NA_real_
+crf_stage_rows  <- NULL
+if (!is.null(crf) && nrow(crf) > 0) {
+  # Use whatever columns exist; common shape: Forms, Expected, Due, Entered, Pct
+  guess <- function(pat) {
+    m <- grep(pat, names(crf), ignore.case = TRUE, value = TRUE)
+    if (length(m)) crf[[m[1]]] else NULL
+  }
+  st <- list(
+    event    = guess("^(event|timepoint|time.?point|visit)"),
+    stage    = guess("^(stage|form|instrument)"),
+    forms    = guess("^forms$|^count"),
+    expected = guess("expected"),
+    due      = guess("^due"),
+    entered  = guess("entered|received"),
+    pct      = guess("pct|%|percent")
+  )
+  if (!is.null(st$stage)) {
+    n_rows <- length(st$stage)
+    crf_stage_rows <- data.frame(
+      event    = if (!is.null(st$event)) as.character(st$event) else rep(NA_character_, n_rows),
+      stage    = as.character(st$stage),
+      forms    = if (!is.null(st$forms))    as.integer(st$forms)    else rep(NA_integer_, n_rows),
+      expected = if (!is.null(st$expected)) as.integer(st$expected) else rep(NA_integer_, n_rows),
+      due      = if (!is.null(st$due))      as.integer(st$due)      else rep(NA_integer_, n_rows),
+      entered  = if (!is.null(st$entered))  as.integer(st$entered)  else rep(NA_integer_, n_rows),
+      stringsAsFactors = FALSE)
+
+    # Return rate is entered ÷ DUE, never ÷ expected. TONIC is longitudinal
+    # (Baseline, Discharge, Day 30, Day 90); "expected" counts participants who
+    # will eventually reach a timepoint, so windows that have not yet opened
+    # (e.g. Day 90, 0 due) would otherwise deflate the figure. Rows with 0 due
+    # are "not yet due" and contribute nothing to the denominator.
+    #
+    # Numerator is capped at due (min(entered, due)) so that early entries —
+    # forms submitted before the formal due window fires — cannot inflate the
+    # rate above 100%. e.g. Barthel Discharge: 12 entered, 10 due → 100%, not 120%.
+    crf_stage_rows$pct <- ifelse(crf_stage_rows$due > 0,
+                                 pmin(crf_stage_rows$entered, crf_stage_rows$due) /
+                                   crf_stage_rows$due * 100,
+                                 NA_real_)
+
+    # Order timepoints chronologically when an event column is present
+    if (!all(is.na(crf_stage_rows$event))) {
+      tp_levels <- c("Baseline", "Discharge", "Day 30", "Day 90")
+      crf_stage_rows$event <- factor(crf_stage_rows$event,
+                                     levels = union(tp_levels, unique(crf_stage_rows$event)))
+      crf_stage_rows <- crf_stage_rows[order(crf_stage_rows$event), , drop = FALSE]
+    }
+
+    # Overall rate: cap entered at due per row before summing so aggregate
+    # cannot exceed 100% either.
+    tot_due <- sum(crf_stage_rows$due, na.rm = TRUE)
+    tot_ent <- sum(pmin(crf_stage_rows$entered, crf_stage_rows$due), na.rm = TRUE)
+    crf_overall_pct <- if (tot_due > 0) round(tot_ent / tot_due * 100, 1) else NA
+  }
+}
+
+# 90-day questionnaire return — same source and logic as the return-rates
+# table: denominator = forms due in the Day 90 window, numerator = forms
+# entered (capped at due so early entries cannot push the rate above 100%).
+d90_rows <- if (!is.null(crf_stage_rows) && !all(is.na(crf_stage_rows$event)))
+  crf_stage_rows[grepl("90", as.character(crf_stage_rows$event)) &
+                 !grepl("30", as.character(crf_stage_rows$event)), , drop = FALSE] else NULL
+fu90_due     <- if (!is.null(d90_rows) && nrow(d90_rows) > 0) sum(d90_rows$due, na.rm = TRUE) else 0
+fu90_entered <- if (!is.null(d90_rows) && nrow(d90_rows) > 0)
+  sum(pmin(d90_rows$entered, d90_rows$due), na.rm = TRUE) else 0
+fu90_rate_csv <- if (fu90_due > 0) round(fu90_entered / fu90_due * 100, 1) else NA_real_
+
 # ── Pilot thresholds (criteria text + bands) ──────────────────────────────────
 thr <- rc$pilot_thresholds %||% list(
   list(name = "Recruitment rate per open centre",
@@ -162,7 +268,7 @@ thr <- rc$pilot_thresholds %||% list(
        stop_lbl = "< 60% of sites at rate", mod_lbl = "60 – 99% of sites at rate",
        go_lbl   = "100% of sites at rate"),
   list(name = "Primary-outcome data completeness",
-       det  = "Discharge form (with operation date > 7 days ago) entered for every randomised participant.",
+       det  = "Discharge forms entered as a proportion of discharge forms due — same forms-due logic as the CRF return rates by timepoint & form.",
        stop_lbl = "< 90% complete", mod_lbl = "90 – 99% complete",
        go_lbl   = "100% complete"),
   list(name = "90-day questionnaire return rate",
@@ -186,10 +292,10 @@ thr <- rc$pilot_thresholds %||% list(
 # Map current values onto each threshold band (stop|mod|go|NA)
 band_for <- function(idx) {
   v <- switch(idx,
-    pilot$recruit_rate, # 1
+    recruit_rate_box,   # 1 — same figure as shown in the card (n randomised ÷ expected)
     NA,                  # 2 data completeness — we approximate below
-    pilot$fu_90_rate,    # 3
-    pilot$interv_rate,   # 4
+    fu90_rate_csv,       # 3 — from the return-rates CSV (entered ÷ due)
+    NA_real_,            # 4 — not derivable: REDCap export lacks the data (see pc_cards)
     pilot$contam_rate,   # 5
     pilot$crossover_rate # 6
   )
@@ -211,10 +317,15 @@ band_for <- function(idx) {
 
 # Pilot criteria — six cards on page 1
 pc_cards <- list(
-  list(title = "Recruitment rate",            val = pilot$recruit_rate,   sub = sprintf("%s / %s expected", fmt_int(n_rand), fmt_int(exp_to_date)), fmt = "pct"),
+  list(title = "Recruitment rate",            val = recruit_rate_box,     sub = sprintf("%s / %s expected", fmt_int(n_rand), fmt_int(exp_to_date)), fmt = "pct"),
   list(title = "Data completeness",           val = (rd$primary_outcome %||% list())$pct, sub = "primary outcome forms", fmt = "pct"),
-  list(title = "90-day questionnaire return", val = pilot$fu_90_rate,     sub = if (safe(pilot$fu_90_elig, 0) == 0) "not yet due" else sprintf("%s / %s eligible", fmt_int(pilot$fu_90_comp), fmt_int(pilot$fu_90_elig)), fmt = "pct"),
-  list(title = "Intervention delivery <48 h", val = pilot$interv_rate,    sub = "intervention arm", fmt = "pct"),
+  # Denominator and numerator come from the return-rates CSV (Day 90 rows),
+  # matching the CRF return-rates table: entered ÷ due.
+  list(title = "90-day questionnaire return", val = fu90_rate_csv,        sub = if (fu90_due == 0) "not yet due" else sprintf("%s / %s due", fmt_int(fu90_entered), fmt_int(fu90_due)), fmt = "pct"),
+  # The REDCap export does not carry the data needed to derive intervention
+  # delivery (no allocation field; PN timing incomplete), so this criterion is
+  # shown as pending with an explanatory caption rather than a misleading 0%.
+  list(title = "Intervention delivery <48 h", val = NA_real_,             sub = "cannot be calculated from the REDCap export", fmt = "pct"),
   list(title = "Contamination",               val = pilot$contam_rate,    sub = "target 0% in control", fmt = "pct"),
   list(title = "Crossover rate",              val = pilot$crossover_rate, sub = "target 0%", fmt = "pct")
 )
@@ -226,21 +337,6 @@ status_for_card <- function(i, v) {
   switch(b %||% "pending", stop = "red", mod = "amber", go = "green", "pending")
 }
 
-# ── Outlook (phases) — text content ───────────────────────────────────────────
-outlook_phases <- rc$outlook_phases %||% list(
-  list(k = "Phase 1 · now", t = paste("Pilot ·", "Apr – Sep 2026"),
-       d = "Open 2 → <b>8 sites</b>, ramp-up of pilot centres. End-pilot target <b>76 participants</b> (incl. 60 from the formal 6-month pilot window).",
-       s = "~12 / month at pilot end", cls = "now"),
-  list(k = "Phase 2", t = "Ramp-up · Oct 2026 – May 2027",
-       d = "Add the 17 remaining sites in waves. <b>10 → 24 sites open</b>; cumulative target reaches <b>300</b> by end May 2027.",
-       s = "~44 / month by May 2027", cls = "p2"),
-  list(k = "Phase 3", t = "Steady state · Jun 2027 – Feb 2028",
-       d = "All <b>25 sites</b> running at <b>~50 / month</b>. Cumulative target moves from <b>398 → 748</b>.",
-       s = "Peak recruitment phase", cls = "p3"),
-  list(k = "Phase 4", t = "Final push · Mar – Jun 2028",
-       d = "Target met on <b>Jun 2028</b> with <b>898 randomised</b>. Recruitment closes, trial moves to follow-up.",
-       s = "Wind-down to close-out", cls = "p4")
-)
 
 # ── Outlook chart data: from schedule_full + actuals ──────────────────────────
 sched <- rd$schedule_full %||% data.frame()
@@ -264,6 +360,15 @@ j <- function(x) {
   }
 }
 
+# Always an array, even for a single element — Chart.js datasets need a list.
+ja <- function(x) {
+  if (requireNamespace("jsonlite", quietly = TRUE)) {
+    jsonlite::toJSON(x, na = "null", null = "null", auto_unbox = FALSE)
+  } else {
+    paste0("[", paste(ifelse(is.na(x), "null", paste0('"', x, '"')), collapse = ","), "]")
+  }
+}
+
 # Ethnicity bar segments (top groups only, others combined)
 eth_tbl <- (demo$ethnicity %||% list())$table
 if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
@@ -276,44 +381,50 @@ if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
     eth_tbl <- rbind(eth_tbl[1:5, ], other)
   }
 }
-eth_colours <- c("var(--navy)","var(--teal)","#f3b860","#9bd07a","#9bc3da","#e587a8")
-
-# CRF return rates — derive a tidy stage summary if crf_data is present
-crf <- rd$crf_data
-crf_overall_pct <- NA_real_
-crf_stage_rows  <- NULL
-if (!is.null(crf) && nrow(crf) > 0) {
-  # Use whatever columns exist; common shape: Forms, Expected, Due, Entered, Pct
-  guess <- function(pat) {
-    m <- grep(pat, names(crf), ignore.case = TRUE, value = TRUE)
-    if (length(m)) crf[[m[1]]] else NULL
-  }
-  st <- list(
-    stage    = guess("^(stage|form|instrument)"),
-    forms    = guess("^forms$|^count"),
-    expected = guess("expected"),
-    due      = guess("^due"),
-    entered  = guess("entered|received"),
-    pct      = guess("pct|%|percent")
-  )
-  if (!is.null(st$stage)) {
-    n_rows <- length(st$stage)
-    crf_stage_rows <- data.frame(
-      stage    = as.character(st$stage),
-      forms    = if (!is.null(st$forms))    as.integer(st$forms)    else rep(NA_integer_, n_rows),
-      expected = if (!is.null(st$expected)) as.integer(st$expected) else rep(NA_integer_, n_rows),
-      due      = if (!is.null(st$due))      as.integer(st$due)      else rep(NA_integer_, n_rows),
-      entered  = if (!is.null(st$entered))  as.integer(st$entered)  else rep(NA_integer_, n_rows),
-      pct      = if (!is.null(st$pct))      as.numeric(st$pct)      else rep(NA_real_, n_rows),
-      stringsAsFactors = FALSE)
-    tot_exp <- sum(crf_stage_rows$expected, na.rm = TRUE)
-    tot_ent <- sum(crf_stage_rows$entered,  na.rm = TRUE)
-    crf_overall_pct <- if (tot_exp > 0) round(tot_ent / tot_exp * 100, 1) else NA
-  }
+# Shorten the REDCap ethnicity labels so they fit a chart legend, e.g.
+# "White - English, Welsh, Scottish, Northern Irish or British" -> "White — British".
+eth_short <- function(x) {
+  x <- as.character(x)
+  x <- sub("^Other ethnic group - Any other ethnic group$", "Other ethnic group", x)
+  x <- sub("^Asian or Asian British - ", "Asian \u2014 ", x)
+  x <- sub("^Black, Black British, Caribbean or African - ", "Black \u2014 ", x)
+  x <- sub("^Mixed or multiple ethnic groups - ", "Mixed \u2014 ", x)
+  x <- sub("^Other ethnic group - ", "Other \u2014 ", x)
+  x <- sub("^White - ", "White \u2014 ", x)
+  x <- sub("English, Welsh, Scottish, Northern Irish or British", "British", x)
+  x <- sub("Any other (Asian|Black|White|Mixed) background", "other background", x)
+  x <- sub("Any other ", "other ", x)
+  x
 }
 
-# Follow-up window summary for sw-grid (page 3)
-fu <- rd$fu_summary %||% data.frame()
+# Canvas cannot resolve CSS custom properties, so the donut needs literal hex.
+eth_hex <- c("#01344F", "#12A192", "#f3b860", "#9bd07a", "#9bc3da", "#e587a8")
+eth_labels_js <- character(0); eth_n_js <- numeric(0)
+if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
+  eth_labels_js <- eth_short(eth_tbl$ethnicity)
+  eth_n_js      <- as.numeric(eth_tbl$n)
+  eth_hex       <- eth_hex[((seq_len(nrow(eth_tbl)) - 1) %% length(eth_hex)) + 1]
+}
+# Headline for the middle of the donut: % from an ethnic-minority background.
+eth_min_pct <- local({
+  e <- demo$ethnicity
+  if (is.null(e) || safe(e$total, 0) == 0) NA else round(safe(e$minority, 0) / e$total * 100)
+})
+
+# Protocol deviations — one line for the section 09 heading, distinguishing
+# "none reported" from "this export has no deviation form".
+dev_count <- safe(rd$deviation_count, 0)
+# Braces, not a bare multi-line if/else: at top level R closes the expression at
+# the end of the first line and the dangling `else` is a parse error.
+dev_hint <- if (!isTRUE(rd$deviation_available)) {
+  "Deviation form not present in this export"
+} else if (dev_count == 0) {
+  "None reported since trial start"
+} else {
+  sprintf("%d deviation%s reported", dev_count, if (dev_count == 1) "" else "s")
+}
+
+
 ```
 
 <style>
@@ -333,11 +444,36 @@ html,body{margin:0;padding:0;font-family:'Inter',-apple-system,system-ui,sans-se
 body{padding:24px 0}
 .doc{max-width:210mm;margin:0 auto}
 .page{background:#fff;width:210mm;min-height:297mm;margin:0 auto 18px;padding:var(--pad-page);position:relative;box-shadow:0 1px 2px rgba(0,0,0,.08),0 8px 24px rgba(15,40,60,.08);border-radius:2px;display:flex;flex-direction:column}
-@page{size:A4;margin:0}
+@page{size:A4;margin:11mm 12mm 12mm}
 @media print{
+  /* Tighter section rhythm on paper — screens keep the roomier preview. */
+  :root{--gap-sec:10px}
   body{background:#fff;padding:0}
-  .page{box-shadow:none;margin:0;border-radius:0;page-break-after:always;width:210mm;min-height:297mm}
+  .doc{max-width:none}
+  /* Real @page margins frame every sheet — including table continuation
+     sheets — so the fixed 297mm canvas and its 14mm padding go. The flex
+     column with min-height keeps each footer at the base of a full page;
+     the printable area is ~274mm, and generous slack below it stops
+     sub-millimetre rounding from pushing just the footer onto the next
+     sheet (it sits a few mm above the bottom margin instead). */
+  .page{box-shadow:none;margin:0;border-radius:0;width:auto;min-height:266mm;padding:0;page-break-after:always}
   .page:last-child{page-break-after:auto}
+  /* Blocks never split mid-element: anything that will not fit in the space
+     left on the current page starts on the next one instead. */
+  .card,.row2,.row3,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
+  .ol-chart-wrap,.ol-status,.milestones,.ml-grp,.chart-wrap,
+  .demo,.note,.scale-key,.eth-split,.eth-legend,svg{
+    break-inside:avoid;page-break-inside:avoid}
+  /* Headings and table captions stay with the content they introduce. */
+  h2.sec,p.lab{break-after:avoid-page;page-break-after:avoid;break-inside:avoid}
+  /* Long tables may span pages: rows never split, and the header row is
+     re-printed at the top of every continuation sheet. Timepoint group rows
+     stay attached to their first form row. */
+  table.rt{break-inside:auto;page-break-inside:auto}
+  table.rt thead{display:table-header-group}
+  table.rt tr{break-inside:avoid;page-break-inside:avoid}
+  table.rt tr.grp{break-after:avoid-page;page-break-after:avoid}
+  .pf{break-inside:avoid;page-break-inside:avoid}
 }
 .ph{display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:2px solid var(--navy);margin-bottom:12px;gap:16px}
 .ph .brand{display:flex;align-items:center;gap:12px;min-width:0}
@@ -358,6 +494,7 @@ body{padding:24px 0}
 .meta-strip .mv small{font-weight:500;color:var(--muted);font-size:8.5pt}
 
 .pf{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:6px;margin-top:auto;font-size:8pt;color:var(--muted)}
+.pf .pf-nihr{height:14px;width:auto;display:block}
 .pf .pn{color:var(--navy);font-weight:600}
 
 h1.title{font-family:'Source Serif 4',serif;font-size:26pt;font-weight:700;color:var(--navy);margin:0 0 2px;letter-spacing:-.5px;line-height:1.05}
@@ -445,6 +582,7 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
 .card .ct{font-size:8.5pt;color:var(--navy);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .chart-wrap{position:relative;height:140px}
+.chart-wrap-lg{position:relative;height:360px}
 
 .demo{display:flex;gap:6px;margin-top:4px}
 .demo .chip{flex:1;text-align:center;padding:8px 6px;border-radius:6px;background:var(--navy-tint-2);border:1px solid var(--line)}
@@ -459,7 +597,7 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .scale-key{display:flex;gap:10px;font-size:8pt;color:var(--muted);margin-top:6px;flex-wrap:wrap}
 .scale-key b{font-weight:600}
 
-.sw-grid{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:12px;margin-top:4px}
+.sw-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:4px}
 .sw-cell{border:1px solid var(--line);border-radius:6px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:4px}
 .sw-cell .lab2{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 .sw-cell .big{font-size:30pt;font-weight:700;font-family:'Source Serif 4',serif;line-height:1;letter-spacing:-.02em}
@@ -471,11 +609,9 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .sw-cell .det{font-size:9pt;color:var(--ink-2);margin-top:4px;line-height:1.45}
 .sw-cell .det b{color:var(--navy);font-weight:600}
 
-.eth-bar{display:flex;width:100%;height:34px;border-radius:6px;overflow:hidden;border:1px solid var(--line);margin-top:6px}
-.eth-seg{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;line-height:1;padding:0 6px;position:relative;min-width:32px}
-.eth-seg b{font-size:13pt;font-weight:700;font-family:'Source Serif 4',serif;letter-spacing:-.02em}
-.eth-seg span{font-size:7.5pt;font-weight:600;opacity:.9;margin-top:2px}
-.eth-legend{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:8.5pt;color:var(--ink-2)}
+.eth-split{display:grid;grid-template-columns:180px 1fr;gap:16px;align-items:center;margin-top:6px}
+.eth-donut{position:relative;height:170px}
+.eth-legend{display:flex;flex-direction:column;gap:4px;margin-top:0;font-size:8.5pt;color:var(--ink-2)}
 .eth-legend .row{display:flex;align-items:center;gap:8px}
 .eth-legend .sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
 .eth-legend .nm{flex:1;color:var(--navy);font-weight:500}
@@ -510,24 +646,12 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .ol-chart{border:1px solid var(--line);border-radius:6px;background:#fff;padding:10px 12px}
 .ol-chart .h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;font-size:9pt;color:var(--muted)}
 .ol-chart .h b{color:var(--navy);font-weight:600}
-.ol-chart-wrap{position:relative;height:240px}
+.ol-chart-wrap{position:relative;height:300px}
 .ol-leg{display:flex;gap:18px;font-size:8.5pt;color:var(--muted);margin-top:6px;flex-wrap:wrap}
 .ol-leg .lg{display:inline-flex;align-items:center;gap:6px}
 .ol-leg .sw{width:14px;height:8px;border-radius:2px}
 .ol-leg .ln{width:14px;border-top:2px solid var(--navy);height:1px}
 
-.ol-phases{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
-.ol-ph{border:1px solid var(--line);border-radius:6px;padding:9px 11px;background:#fff;position:relative;overflow:hidden}
-.ol-ph::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
-.ol-ph.now::before{background:var(--teal)}
-.ol-ph.p2::before{background:var(--navy)}
-.ol-ph.p3::before{background:#f3b860}
-.ol-ph.p4::before{background:#9bd07a}
-.ol-ph .pk{font-size:7.5pt;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
-.ol-ph .pp{font-size:9.5pt;color:var(--navy);font-weight:700;margin-top:1px}
-.ol-ph .pd{font-size:8.5pt;color:var(--ink-2);margin-top:6px;line-height:1.45}
-.ol-ph .pd b{color:var(--navy)}
-.ol-ph .ps{font-size:7.5pt;color:var(--muted);margin-top:4px}
 </style>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -548,7 +672,7 @@ ph_header <- function(page_label) {
   cat(sprintf(
 '<header class="ph">
   <div class="brand">%s
-    <div class="tag"><b>%s</b>%s · Progress Report</div>
+    <div class="tag"><b>%s</b>Progress Report</div>
   </div>
   <div class="meta">
     %s
@@ -557,7 +681,6 @@ ph_header <- function(page_label) {
 </header>',
     trial_logo_html,
     esc(trial_title),
-    esc(sprintf(" %s", "Trial Management Group")),
     bctu_logo_html,
     esc(report_date_str),
     if (nzchar(page_label)) sprintf("<br>%s", esc(page_label)) else
@@ -565,10 +688,12 @@ ph_header <- function(page_label) {
               esc(rep_from), esc(rep_to))
   ))
 }
-pf_footer <- function(n_page, n_total = 4) {
-  rt <- safe(params$report_type, "TMG")
-  cat(sprintf('<footer class="pf"><span>%s %s Progress Report</span><span class="pn">Page %d / %d</span><span>Birmingham Clinical Trials Unit (BCTU)</span></footer>',
-              esc(trial_short), esc(rt), n_page, n_total))
+pf_footer <- function(n_page, n_total = 9) {
+  ver <- safe(rc$version, "0.1")
+  nihr_html <- if (nchar(nihr_logo_b64) > 0)
+    sprintf('<img class="pf-nihr" src="%s" alt="Funded by NIHR">', nihr_logo_b64) else "<span></span>"
+  cat(sprintf('<footer class="pf"><span>%s Progress Report v%s (%s)</span>%s<span class="pn">Page %d of %d</span></footer>',
+              esc(trial_short), esc(ver), format(Sys.Date(), "%d-%b-%Y"), nihr_html, n_page, n_total))
 }
 ```
 
@@ -614,7 +739,7 @@ pilot opened <b>`r esc(proj_start)`</b>, `r if (rec_band == "green") "on protoco
   <div class="cell `r if (sae_count == 0) "green" else "amber"`">
     <div class="k">SAEs to date</div>
     <div class="v">`r fmt_int(sae_count)`</div>
-    <div class="s">`r if (sae_count == 0) "No safety signals reported" else "See section 07 for detail"`</div>
+    <div class="s">`r if (sae_count == 0) "No safety signals reported" else "See section 08 for detail"`</div>
   </div>
 </div>
 
@@ -657,7 +782,21 @@ render_ms_group(ms_future2,   "p-a", "Upcoming", "Pilot · recruitment · close-
 
 </div>
 
-<h2 class="sec"><span class="num">02</span> Internal pilot progression <span class="hint">6-month pilot · review `r esc(pilot_end)`</span></h2>
+```{r page1-footer}
+pf_footer(1)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 2 — PILOT PROGRESSION · TIMELINE · RECRUITMENT VS TARGET
+============================================================== -->
+<section class="page">
+
+```{r page2-header}
+ph_header("Page 2 — Pilot, timeline & recruitment")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">02</span> Internal pilot progression <span class="hint">6-month pilot · review `r esc(pilot_end)`</span></h2>
 <div class="pilot-strip">
 ```{r pilot-cards}
 for (i in seq_along(pc_cards)) {
@@ -671,7 +810,7 @@ for (i in seq_along(pc_cards)) {
 }
 ```
 </div>
-<div class="note">Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on page 4.</div>
+<div class="note">Decision rule — <b style="color:var(--green)">GREEN</b> proceed · <b style="color:var(--amber)">AMBER</b> modify and review · <b style="color:var(--red)">RED</b> consider stopping. Full thresholds and recruitment outlook on pages 8–9.</div>
 
 <h2 class="sec"><span class="num">03</span> Project timeline <span class="hint">`r esc(proj_start)` → `r esc(safe(rc$timeline_end, "Feb 2029"))` · `r fmt_int(safe(rc$timeline_months, 57))` mo end-to-end</span></h2>
 <div class="timeline-wrap">
@@ -685,62 +824,64 @@ for (i in seq_along(pc_cards)) {
     <span class="lg"><span class="sw" style="background:#e587a8"></span>Close-out</span>
     <span class="lg" style="margin-left:auto"><span style="width:10px;border-left:1.5px dashed var(--red);height:10px;display:inline-block"></span>&nbsp;Now (`r format(Sys.Date(), "%b %y")`)</span>
   </div>
-  <svg viewBox="0 0 800 178" width="100%" style="display:block">
-    <g font-family="Inter" font-size="7.5" fill="#6a7d8a">
-      <text x="90"  y="10" text-anchor="middle">Jun 24</text>
-      <text x="162" y="10" text-anchor="middle">Dec 24</text>
-      <text x="234" y="10" text-anchor="middle">Jun 25</text>
-      <text x="306" y="10" text-anchor="middle">Dec 25</text>
-      <text x="378" y="10" text-anchor="middle">Jun 26</text>
-      <text x="450" y="10" text-anchor="middle">Dec 26</text>
-      <text x="522" y="10" text-anchor="middle">Jun 27</text>
-      <text x="594" y="10" text-anchor="middle">Dec 27</text>
-      <text x="666" y="10" text-anchor="middle">Jun 28</text>
-      <text x="738" y="10" text-anchor="middle">Dec 28</text>
+  <svg viewBox="0 0 816 258" width="100%" style="display:block">
+    <g fill="#f6f9fb">
+      <rect x="90" y="18" width="144" height="214"/>
+      <rect x="378" y="18" width="144" height="214"/>
+      <rect x="666" y="18" width="108" height="214"/>
     </g>
-    <line x1="90" y1="16" x2="774" y2="16" stroke="#dfe7ec" stroke-width="1"/>
-    <g font-family="Inter" font-size="8" fill="#3d5363" font-weight="500">
-      <text x="0" y="34">Study set-up</text>
-      <rect x="90"  y="24"  width="252" height="14" rx="3" fill="#9bc3da"/>
-      <text x="0" y="54">6-mo pilot</text>
-      <rect x="354" y="44"  width="72"  height="14" rx="3" fill="#01344F"/>
-      <text x="0" y="74">Full recruitment</text>
-      <rect x="426" y="64"  width="252" height="14" rx="3" fill="#12A192" opacity=".95"/>
-      <text x="0" y="94">Treatment &amp; follow-up</text>
-      <rect x="354" y="84"  width="360" height="14" rx="3" fill="#f3b860"/>
-      <text x="0" y="114">Data cleaning</text>
-      <rect x="714" y="104" width="24"  height="14" rx="3" fill="#9bd07a"/>
-      <text x="0" y="134">Analysis &amp; writeup</text>
-      <rect x="738" y="124" width="24"  height="14" rx="3" fill="#f29278"/>
-      <text x="0" y="154">Close-out</text>
-      <rect x="762" y="144" width="12"  height="14" rx="3" fill="#e587a8"/>
+    <g font-family="Inter" font-size="9" fill="#6a7d8a">
+      <text x="90" y="12" text-anchor="middle">Jun 24</text>
+      <text x="162" y="12" text-anchor="middle">Dec 24</text>
+      <text x="234" y="12" text-anchor="middle">Jun 25</text>
+      <text x="306" y="12" text-anchor="middle">Dec 25</text>
+      <text x="378" y="12" text-anchor="middle">Jun 26</text>
+      <text x="450" y="12" text-anchor="middle">Dec 26</text>
+      <text x="522" y="12" text-anchor="middle">Jun 27</text>
+      <text x="594" y="12" text-anchor="middle">Dec 27</text>
+      <text x="666" y="12" text-anchor="middle">Jun 28</text>
+      <text x="738" y="12" text-anchor="middle">Dec 28</text>
+    </g>
+    <line x1="90" y1="18" x2="774" y2="18" stroke="#dfe7ec" stroke-width="1"/>
+    <g font-family="Inter" font-size="10.5" fill="#3d5363" font-weight="500">
+      <text x="0" y="42">Study set-up</text>
+      <rect x="90" y="28" width="252" height="20" rx="3" fill="#9bc3da"/>
+      <text x="216" y="42" text-anchor="middle" font-size="8.5" font-weight="600" fill="#01344F">21 mo</text>
+      <text x="347" y="42" font-size="7" font-weight="500" fill="#6a7d8a">Feb 26</text>
+      <text x="0" y="72">6-mo pilot</text>
+      <rect x="354" y="58" width="72" height="20" rx="3" fill="#01344F"/>
+      <text x="390" y="72" text-anchor="middle" font-size="8.5" font-weight="600" fill="#ffffff">6 mo</text>
+      <text x="431" y="72" font-size="7" font-weight="500" fill="#6a7d8a">Sep 26</text>
+      <text x="0" y="102">Full recruitment</text>
+      <rect x="426" y="88" width="252" height="20" rx="3" fill="#12A192" opacity=".95"/>
+      <text x="552" y="102" text-anchor="middle" font-size="8.5" font-weight="600" fill="#ffffff">21 mo</text>
+      <text x="683" y="102" font-size="7" font-weight="500" fill="#6a7d8a">Jun 28</text>
+      <text x="0" y="132">Treatment &amp; follow-up</text>
+      <rect x="354" y="118" width="360" height="20" rx="3" fill="#f3b860"/>
+      <text x="534" y="132" text-anchor="middle" font-size="8.5" font-weight="600" fill="#01344F">30 mo</text>
+      <text x="719" y="132" font-size="7" font-weight="500" fill="#6a7d8a">Sep 28</text>
+      <text x="0" y="162">Data cleaning</text>
+      <rect x="714" y="148" width="24" height="20" rx="3" fill="#9bd07a"/>
+      <text x="743" y="162" font-size="7" font-weight="500" fill="#6a7d8a">Nov 28</text>
+      <text x="0" y="192">Analysis &amp; writeup</text>
+      <rect x="738" y="178" width="24" height="20" rx="3" fill="#f29278"/>
+      <text x="767" y="192" font-size="7" font-weight="500" fill="#6a7d8a">Jan 29</text>
+      <text x="0" y="222">Close-out</text>
+      <rect x="762" y="208" width="12" height="20" rx="3" fill="#e587a8"/>
+      <text x="779" y="222" font-size="7" font-weight="500" fill="#6a7d8a">Feb 29</text>
     </g>
 ```{r now-marker, results="asis"}
 # Compute x for "now" marker: months since Jun 2024 * 12, anchored at x=90
 mo_now <- as.integer(round(as.numeric(difftime(Sys.Date(), as.Date("2024-06-01"), units = "days")) / 30.44))
 mo_now <- max(0, min(57, mo_now))
 xn <- 90 + mo_now * 12
-cat(sprintf('<g><line x1="%d" y1="16" x2="%d" y2="162" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="172" font-family="Inter" font-size="7.5" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
+cat(sprintf('<g><line x1="%d" y1="18" x2="%d" y2="234" stroke="#B4321E" stroke-width="1.5" stroke-dasharray="4 3"/><text x="%d" y="246" font-family="Inter" font-size="9" font-weight="700" fill="#B4321E" text-anchor="middle">%s · NOW</text></g>',
             xn, xn, xn, format(Sys.Date(), "%b %y")))
 ```
   </svg>
 </div>
 
-```{r page1-footer}
-pf_footer(1)
-```
-</section>
-
-<!-- ============================================================
-     PAGE 2 — RECRUITMENT + SITE PERFORMANCE
-============================================================== -->
-<section class="page">
-
-```{r page2-header}
-ph_header("Page 2 — Recruitment & sites")
-```
-
-<h2 class="sec" style="margin-top:0"><span class="num">04</span> Recruitment vs. protocol target</h2>
+<h2 class="sec"><span class="num">04</span> Recruitment vs. protocol target</h2>
 
 <div class="keyline">
   <span>Total randomised: <b>`r fmt_int(n_rand)`</b></span>
@@ -750,18 +891,27 @@ ph_header("Page 2 — Recruitment & sites")
   <span>Full target: <b>`r fmt_int(n_target)` by `r esc(full_end)`</b></span>
 </div>
 
-<div class="row2" style="margin-top:8px">
-  <div class="card">
-    <div class="ct">Cumulative recruitment · actual vs. target</div>
-    <div class="chart-wrap"><canvas id="cumC"></canvas></div>
-  </div>
-  <div class="card">
-    <div class="ct">Monthly randomisations</div>
-    <div class="chart-wrap"><canvas id="monC"></canvas></div>
-  </div>
+<div class="card" style="margin-top:8px">
+  <div class="ct">Monthly randomisations · `r if (length(chart_labels)) paste(chart_labels[1], "\u2192", chart_labels[length(chart_labels)]) else "no schedule"`</div>
+  <div class="chart-wrap-lg"><canvas id="monC"></canvas></div>
+  <div class="note">Solid bars are participants randomised in each month, labelled with the count. Pale bars behind them are the protocol's target for that month.</div>
 </div>
 
-<h2 class="sec"><span class="num">05</span> Site performance <span class="hint">`r fmt_int(n_sites_total)` UK hospitals · `r fmt_int(n_open_sites)` recruiting · `r fmt_int(n_setup_sites)` in set-up · `r fmt_int(n_ident_sites)` identified</span></h2>
+```{r page2-footer}
+pf_footer(2)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 3 — SITE PERFORMANCE
+============================================================== -->
+<section class="page">
+
+```{r page3-header}
+ph_header("Page 3 — Site performance")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">05</span> Site performance <span class="hint">`r fmt_int(n_sites_total)` UK hospitals · `r fmt_int(n_open_sites)` recruiting · `r fmt_int(n_setup_sites)` in set-up · `r fmt_int(n_ident_sites)` identified</span></h2>
 
 <div class="row3" style="margin-top:2px">
   <div class="card" style="text-align:center;background:var(--green-tint);border-color:#bce6cf">
@@ -787,11 +937,11 @@ cat(esc(if (length(open_names)) paste(open_names, collapse = " · ") else "—")
   </div>
 </div>
 
-<p class="lab" style="margin-top:10px">All sites — status &amp; recruitment</p>
+<p class="lab" style="margin-top:10px">Recruiting sites — status &amp; recruitment</p>
 <table class="rt">
   <thead><tr>
     <th class="l">Site</th><th class="l">Status</th>
-    <th>Opened</th><th>Rand.</th><th>Target</th>
+    <th>Opened</th><th>Rand.</th><th>Avg / mo</th><th>Target</th>
     <th class="l" style="width:24%">Progress</th>
   </tr></thead>
   <tbody>
@@ -804,12 +954,13 @@ if (nrow(ss) > 0) {
   if (!"target"         %in% names(ss)) ss$target <- 42L
   if (!"open_date"      %in% names(ss)) ss$open_date <- NA
   if (!"stage"          %in% names(ss)) ss$stage <- "—"
-  # Sort: recruiting first, then set-up, then identified, then by name
-  rank_stage <- function(s) {
-    if (is_open(s))  1L else if (is_setup(s)) 2L else if (is_ident(s)) 3L else 4L
-  }
-  ss$.rank <- vapply(as.character(ss$stage), rank_stage, integer(1))
-  ss <- ss[order(ss$.rank, -ss$randomisations, ss$site_name), ]
+  # TSC Interim: recruiting sites only. Sites in set-up, identified, closed,
+  # suspended or withdrawn are left out of this table — the three cards above
+  # still carry the full site pipeline.
+  ss <- ss[is_open(as.character(ss$stage)) %in% TRUE, , drop = FALSE]
+  ss <- ss[order(-ss$randomisations, ss$site_name), ]
+}
+if (nrow(ss) > 0) {
   for (i in seq_len(nrow(ss))) {
     r <- ss[i, ]
     pill_cls <- if (is_open(r$stage)) "p-g" else
@@ -822,42 +973,119 @@ if (nrow(ss) > 0) {
                 fmt_date(r$open_date, "%b %Y") else "—"
     rand <- as.integer(r$randomisations %||% 0)
     tgt  <- as.integer(r$target %||% 42)
+    # Average randomisations per month since this site opened; denominator
+    # floored at one month so a newly opened site cannot report a rate
+    # extrapolated far above what it has actually achieved.
+    mo_open <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date))) {
+      d <- suppressWarnings(as.Date(r$open_date))
+      if (is.na(d)) NA_real_ else
+        max(1, as.numeric(difftime(Sys.Date(), d, units = "days")) / 30.44)
+    } else NA_real_
+    avg_mo   <- if (!is.na(mo_open)) rand / mo_open else NA_real_
+    avg_cell <- if (is.na(avg_mo)) "\u2014" else sprintf("%.1f", avg_mo)
     pct  <- if (tgt > 0) round(rand/tgt*100, 1) else 0
     progress_html <- if (is_open(r$stage))
       sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><span class="lbl">%d/%d</span></div>', pct, rand, tgt)
       else sprintf('<span class="note" style="margin:0">%s</span>', esc(r$stage))
-    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%d</td><td class="l">%s</td></tr>',
-                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, tgt, progress_html))
+    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%s</td><td>%d</td><td class="l">%s</td></tr>',
+                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, avg_cell, tgt, progress_html))
   }
 } else {
-  cat('<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:14px">No site data available.</td></tr>')
+  cat('<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px">No recruiting sites to report.</td></tr>')
 }
 ```
   </tbody>
 </table>
 
-```{r page2-footer}
-pf_footer(2)
+```{r page3-footer}
+pf_footer(3)
 ```
 </section>
 
 <!-- ============================================================
-     PAGE 3 — DATA · SAFETY & WITHDRAWALS · DEMOGRAPHICS
+     PAGE 4 — MONTHLY RECRUITMENT BY SITE
 ============================================================== -->
 <section class="page">
 
-```{r page3-header}
-ph_header("Page 3 — Data, safety & outcomes")
+```{r page4-header}
+ph_header("Page 4 — Monthly recruitment by site")
 ```
 
-<h2 class="sec" style="margin-top:0"><span class="num">06</span> CRF return rates <span class="hint">Forms entered ÷ forms expected · n = `r fmt_int(n_rand)` randomised</span></h2>
+<h2 class="sec" style="margin-top:0"><span class="num">06</span> Monthly recruitment by site <span class="hint">Participants randomised per calendar month · recruiting sites</span></h2>
+
+```{r monthly-by-site}
+hm <- rd$site_month_heatmap
+if (is.null(hm) || nrow(hm) == 0) {
+  cat('<p class="note">No monthly recruitment data available yet.</p>')
+} else {
+  months <- sort(unique(as.character(hm$month)))
+  # A portrait page carries about a year of month columns; when recruitment has
+  # run longer, show the most recent twelve and say so under the table. The
+  # Total column always covers every month, trimmed or not.
+  max_cols <- 12
+  trimmed  <- length(months) > max_cols
+  shown    <- if (trimmed) months[(length(months) - max_cols + 1):length(months)] else months
+  lab_of   <- function(m) format(as.Date(paste0(m, "-01")), "%b %y")
+
+  totals <- tapply(hm$actual, hm$site_name, function(x) sum(x, na.rm = TRUE))
+  sites  <- names(sort(totals, decreasing = TRUE))
+
+  cell <- function(site, m) {
+    v <- hm$actual[hm$site_name == site & as.character(hm$month) == m]
+    if (length(v) == 0) 0L else as.integer(v[1])
+  }
+  # A zero reads as clutter across a wide grid — show it greyed.
+  cell_html <- function(v) if (v == 0)
+    '<td style="color:var(--line)">·</td>' else sprintf('<td>%d</td>', v)
+
+  cat('<table class="rt"><thead><tr><th class="l">Site</th>')
+  for (m in shown) cat(sprintf('<th>%s</th>', esc(lab_of(m))))
+  cat('<th>Total</th></tr></thead><tbody>')
+
+  for (site in sites) {
+    cat(sprintf('<tr><td class="sn">%s</td>', esc(site)))
+    for (m in shown) cat(cell_html(cell(site, m)))
+    cat(sprintf('<td><b>%d</b></td></tr>', as.integer(totals[[site]])))
+  }
+
+  cat('<tr class="tot"><td class="l">All recruiting sites</td>')
+  for (m in shown) {
+    cat(sprintf('<td>%d</td>',
+                as.integer(sum(hm$actual[as.character(hm$month) == m], na.rm = TRUE))))
+  }
+  cat(sprintf('<td>%d</td></tr>', as.integer(sum(hm$actual, na.rm = TRUE))))
+  cat('</tbody></table>')
+
+  if (trimmed) {
+    cat(sprintf('<div class="note">Showing the most recent %d months of %d. The Total column covers the whole recruitment period.</div>',
+                max_cols, length(months)))
+  }
+  cat('<div class="note">A dot means no randomisations that month. Sites are ordered by total recruitment.</div>')
+}
+```
+
+```{r page4-footer}
+pf_footer(4)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 5 — DATA · SAFETY & WITHDRAWALS
+============================================================== -->
+<section class="page">
+
+```{r page5-header}
+ph_header("Page 5 — Data, safety & outcomes")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">07</span> CRF return rates <span class="hint">Forms entered ÷ forms due in each timepoint window · n = `r fmt_int(n_rand)` randomised</span></h2>
 
 <div class="row2">
   <div class="card" style="background:var(--teal-tint-2);border-color:#bfe2dd">
     <div class="ct" style="color:var(--teal)">Primary outcome completeness</div>
     <div style="display:flex;gap:18px;align-items:baseline;margin-top:4px">
       <div style="font-size:24pt;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;line-height:1">`r fmt_pct((rd$primary_outcome %||% list())$pct, 0)`</div>
-      <div class="note" style="margin:0">Eligible: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$eligible, 0))`</b> · Complete: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$complete, 0))`</b><br>Discharge form, ≥7&nbsp;d post-op</div>
+      <div class="note" style="margin:0">`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Due" else "Eligible"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$eligible, 0))`</b> · `r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Entered" else "Complete"`: <b>`r fmt_int(safe((rd$primary_outcome %||% list())$complete, 0))`</b><br>`r if (identical((rd$primary_outcome %||% list())$source, "crf_due")) "Discharge form · entered ÷ due, as per return rates below" else "Discharge form, ≥7&nbsp;d post-op"`</div>
     </div>
   </div>
   <div class="card" style="background:var(--navy-tint-2)">
@@ -878,29 +1106,60 @@ if (!is.null(crf_stage_rows)) {
   </div>
 </div>
 
-<p class="lab" style="margin-top:8px">Return rates by stage</p>
+<p class="lab" style="margin-top:8px">Return rates by timepoint &amp; form</p>
 <table class="rt">
-  <thead><tr><th class="l">Stage</th><th>Forms</th><th>Expected</th><th>Due</th><th>Entered</th><th>% Entered<small style="font-weight:400">&nbsp;(of expected)</small></th></tr></thead>
+  <thead><tr><th class="l">Timepoint / Form</th><th>Forms</th><th>Expected</th><th>Due</th><th>Entered</th><th>% Entered<small style="font-weight:400">&nbsp;(of due)</small></th></tr></thead>
   <tbody>
 ```{r crf-rows}
+# Render one row per form, grouped under a heading for each timepoint so it is
+# clear that a repeated form (e.g. EQ-5D) is a *separate* visit each time.
+# The % column is entered ÷ due; a window not yet open (0 due) reads "not due".
+pct_cell <- function(pct_v) {
+  col <- if (is.na(pct_v)) "var(--grey)" else if (pct_v >= 90) "var(--green)" else if (pct_v >= 70) "var(--amber)" else "var(--red)"
+  pct_s <- if (is.na(pct_v)) "—" else sprintf("%.1f%%", pct_v)
+  list(col = col, s = pct_s)
+}
+
 if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0) {
-  for (i in seq_len(nrow(crf_stage_rows))) {
-    r <- crf_stage_rows[i, ]
-    pct_v <- r$pct
-    col <- if (is.na(pct_v)) "var(--grey)" else if (pct_v >= 90) "var(--green)" else if (pct_v >= 70) "var(--amber)" else "var(--red)"
-    pct_s <- if (is.na(pct_v)) "—" else sprintf("%.1f%%", pct_v)
-    cat(sprintf('<tr><td class="sn">%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style="color:%s;font-weight:700">%s</td></tr>',
-                esc(r$stage),
-                if (is.na(r$forms)) "—" else r$forms,
-                if (is.na(r$expected)) "—" else r$expected,
-                if (is.na(r$due)) "—" else r$due,
-                if (is.na(r$entered)) "—" else r$entered,
-                col, pct_s))
+  has_event <- !all(is.na(crf_stage_rows$event))
+  groups <- if (has_event) split(crf_stage_rows, crf_stage_rows$event, drop = TRUE) else
+                           list(`All forms` = crf_stage_rows)
+
+  for (gname in names(groups)) {
+    g <- groups[[gname]]
+
+    # Timepoint heading row — anchors the forms beneath it to a visit
+    if (has_event) {
+      g_due <- sum(g$due, na.rm = TRUE)
+      g_ent <- sum(g$entered, na.rm = TRUE)
+      # Same capped numerator as the overall rate: early entries can't push
+      # a timepoint above 100%.
+      g_pct <- if (g_due > 0)
+        sum(pmin(g$entered, g$due), na.rm = TRUE) / g_due * 100 else NA_real_
+      g_note <- if (g_due == 0) " <span style=\"font-weight:400;color:var(--muted)\">— window not yet due</span>" else ""
+      cat(sprintf('<tr class="grp"><td class="l" colspan="5" style="font-weight:700;color:var(--navy);background:var(--navy-tint)">%s%s</td><td style="font-weight:700;background:var(--navy-tint)">%s</td></tr>',
+                  esc(gname), g_note, if (is.na(g_pct)) "—" else sprintf("%.1f%%", g_pct)))
+    }
+
+    for (i in seq_len(nrow(g))) {
+      r <- g[i, ]
+      pc <- pct_cell(r$pct)
+      cat(sprintf('<tr><td class="sn"%s>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td style="color:%s;font-weight:700">%s</td></tr>',
+                  if (has_event) ' style="padding-left:18px"' else "",
+                  esc(r$stage),
+                  if (is.na(r$forms)) "—" else r$forms,
+                  if (is.na(r$expected)) "—" else r$expected,
+                  if (is.na(r$due)) "—" else r$due,
+                  if (is.na(r$entered)) "—" else r$entered,
+                  pc$col, pc$s))
+    }
   }
-  e <- sum(crf_stage_rows$expected, na.rm = TRUE)
-  d <- sum(crf_stage_rows$due,      na.rm = TRUE)
-  en <- sum(crf_stage_rows$entered, na.rm = TRUE)
-  cat(sprintf('<tr class="tot"><td>Total — all stages</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%s</td></tr>',
+
+  e  <- sum(crf_stage_rows$expected, na.rm = TRUE)
+  d  <- sum(crf_stage_rows$due,      na.rm = TRUE)
+  en <- sum(crf_stage_rows$entered,  na.rm = TRUE)
+  # Show raw entered count in the table (transparent) but rate uses capped numerator
+  cat(sprintf('<tr class="tot"><td>Total — all timepoints</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td><td>%s</td></tr>',
               sum(crf_stage_rows$forms, na.rm = TRUE), e, d, en, fmt_pct(crf_overall_pct, 1)))
 } else {
   cat('<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:14px">No return-rate CSV loaded.</td></tr>')
@@ -915,59 +1174,159 @@ if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0) {
   <span><b style="color:var(--grey)">—</b> not yet due</span>
 </div>
 
-<h2 class="sec"><span class="num">07</span> Safety &amp; withdrawals <span class="hint">`r if (sae_count == 0) "No safety signals since trial start" else sprintf("%d SAE(s) reported", sae_count)`</span></h2>
+<h2 class="sec"><span class="num">08</span> Safety &amp; withdrawals <span class="hint">`r if (sae_count == 0) "No safety signals since trial start" else sprintf("%d SAE(s) reported", sae_count)`</span></h2>
 <div class="sw-grid">
-  <div class="sw-cell `r if (sae_count == 0) "safe" else ""`">
-    <div class="lab2">Serious adverse events (SAE)</div>
-    <div class="big">`r fmt_int(sae_count)`</div>
-    <div class="det">`r if (sae_count == 0) sprintf("SAEs reported since trial start.<br><b>No SUSARs · no urgent safety measures.</b>") else "See SAE log for detail."`</div>
-  </div>
   <div class="sw-cell wd">
     <div class="lab2">Participant withdrawals</div>
-    <div class="big">`r fmt_int(safe(wd$n, 0))`<small> / `r fmt_int(n_rand)`</small></div>
+    <div class="big">`r fmt_int(n_wd)`<small> / `r fmt_int(n_rand)`</small></div>
     <div class="det">
 ```{r wd-detail}
-if (!is.null(wd$log) && nrow(wd$log) > 0) {
-  log <- wd$log
-  lbls <- if ("cos_label" %in% names(log)) log$cos_label else rep("Withdrawal", nrow(log))
-  sites <- if ("site_name" %in% names(log)) log$site_name else rep("", nrow(log))
-  tbl <- table(paste0(lbls, if (any(nzchar(sites))) paste0(" · ", sites) else ""))
-  for (nm in names(tbl)) cat(sprintf("%s<br>", esc(nm)))
-  cat("<b>Full consent retained for outcome data collection.</b>")
+if (!is.null(wd_log) && nrow(wd_log) > 0) {
+  fmt_wd_date <- function(x) {
+    d <- suppressWarnings(as.Date(as.character(x)))
+    ifelse(is.na(d),
+           ifelse(is.na(x) | !nzchar(trimws(as.character(x))), "—",
+                  trimws(as.character(x))),
+           format(d, "%d %b %Y"))
+  }
+  dates   <- if ("cos_date" %in% names(wd_log)) fmt_wd_date(wd_log$cos_date)
+             else rep("—", nrow(wd_log))
+  types <- if (!is.na(wd_reason_col)) as.character(wd_log[[wd_reason_col]]) else rep("Withdrawal", nrow(wd_log))
+  types[is.na(types) | !nzchar(types)] <- "Type not recorded"
+  # Free-text withdrawal reason (REDCap cos_withdraw_rsn_oth via
+  # change_of_status_reason) — shown alongside the coded type.
+  reasons <- if ("cos_reason" %in% names(wd_log)) as.character(wd_log$cos_reason)
+             else rep(NA_character_, nrow(wd_log))
+  has_reason <- any(!is.na(reasons) & nzchar(trimws(reasons)))
+  reasons[is.na(reasons) | !nzchar(trimws(reasons))] <- "—"
+  sites <- if ("site_name" %in% names(wd_log)) as.character(wd_log$site_name) else rep("", nrow(wd_log))
+  has_site <- any(nzchar(sites) & !is.na(sites))
+  cat('<table class="rt" style="margin-top:2px"><thead><tr><th class="l">Date withdrawn</th><th class="l">Type</th>',
+      if (has_reason) '<th class="l">Reason</th>' else "",
+      if (has_site) '<th class="l">Site</th>' else "", '</tr></thead><tbody>', sep = "")
+  for (i in seq_len(nrow(wd_log))) {
+    cat(sprintf('<tr><td class="sn">%s</td><td class="l">%s</td>%s%s</tr>',
+                esc(dates[i]), esc(types[i]),
+                if (has_reason) sprintf('<td class="l">%s</td>', esc(reasons[i])) else "",
+                if (has_site) sprintf('<td class="l">%s</td>', esc(sites[i])) else ""))
+  }
+  cat("</tbody></table>")
+  cat('<div style="margin-top:6px"><b>Full consent retained for outcome data collection.</b></div>')
 } else cat("No withdrawals to date.")
 ```
     </div>
   </div>
-  <div class="sw-cell">
-    <div class="lab2">Follow-up window completion</div>
-    <table class="rt" style="margin-top:2px">
-      <thead><tr><th class="l">Visit</th><th>Eligible</th><th>Complete</th><th>%</th></tr></thead>
-      <tbody>
-```{r fu-rows}
-if (nrow(fu) > 0) {
-  for (i in seq_len(nrow(fu))) {
-    r <- fu[i, ]
-    pct_v <- r$pct
-    if (is.na(pct_v) || isFALSE(r$assessable)) {
-      col <- "var(--grey)"; pct_s <- "n/a"
-      comp_s <- "—"
-    } else {
-      col <- if (pct_v >= 90) "var(--green)" else if (pct_v >= 70) "var(--amber)" else "var(--red)"
-      pct_s <- sprintf("%.0f%%", pct_v)
-      comp_s <- as.character(r$complete)
+</div>
+
+```{r sae-log}
+sl <- rd$sae_log
+if (!is.null(sl) && nrow(sl) > 0) {
+  cols <- c(record_id = "Participant", site_name = "Site",
+            reported = "Reported", diagnosis = "Diagnosis",
+            soc = "System organ class", category = "Category",
+            severity = "Severity", outcome = "Outcome",
+            related = "Causality", expected = "Expectedness",
+            death_yn = "Death", death = "Death date")
+  # Columns carrying at least one value render (keeps the table narrow);
+  # if no detail column has data yet, show them all with "—" placeholders.
+  present  <- names(cols)[names(cols) %in% names(sl)]
+  has_data <- present[vapply(present, function(cc)
+    any(!is.na(sl[[cc]]) & nzchar(trimws(as.character(sl[[cc]])))), logical(1))]
+  if (length(setdiff(has_data, c("record_id", "site_name"))) > 0)
+    present <- has_data
+  if (length(present) > 0) {
+    fmt_cell <- function(x) {
+      x <- trimws(as.character(x))
+      ifelse(is.na(x) | !nzchar(x), "—", x)
     }
-    cat(sprintf('<tr><td class="sn">%s</td><td>%s</td><td>%s</td><td style="color:%s;font-weight:700">%s</td></tr>',
-                esc(r$timepoint), as.character(r$eligible), comp_s, col, pct_s))
+    cat('<p class="lab" style="margin-top:8px">SAE log — TMG export</p>')
+    cat('<table class="rt"><thead><tr>',
+        paste(sprintf('<th class="l">%s</th>', cols[present]), collapse = ""),
+        '</tr></thead><tbody>', sep = "")
+    for (i in seq_len(nrow(sl))) {
+      vals <- vapply(present, function(cc) esc(fmt_cell(sl[[cc]][i])), character(1))
+      cat(sprintf('<tr>%s</tr>',
+                  paste(sprintf('<td class="l">%s</td>', vals), collapse = "")))
+    }
+    cat("</tbody></table>")
   }
 }
 ```
-      </tbody>
-    </table>
-  </div>
-</div>
 
-<h2 class="sec"><span class="num">08</span> Demographics <span class="hint">n = `r fmt_int(n_rand)` participants randomised</span></h2>
-<div class="row3">
+```{r page5-footer}
+pf_footer(5)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 6 — PROTOCOL DEVIATIONS · DEMOGRAPHICS
+============================================================== -->
+<section class="page">
+
+```{r page6-header}
+ph_header("Page 6 — Deviations & demographics")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">09</span> Protocol deviations <span class="hint">`r dev_hint`</span></h2>
+
+```{r deviations}
+dl <- rd$deviation_log
+if (!isTRUE(rd$deviation_available)) {
+  cat('<p class="note">This export carries no protocol-deviation form, so deviations cannot be reported. Map the deviation fields in Trial Settings to include this table.</p>')
+} else if (is.null(dl) || nrow(dl) == 0) {
+  cat('<p class="note">No protocol deviations have been reported to date.</p>')
+} else {
+  fmt_dev_date <- function(x) {
+    d <- suppressWarnings(as.Date(x))
+    ifelse(is.na(d), "—", format(d, "%d %b %Y"))
+  }
+  # Only render a column that carries at least one value, so a trial that maps
+  # a subset of the deviation fields gets a narrow table rather than a wall of
+  # em-dashes.
+  has <- function(col) col %in% names(dl) &&
+    any(!is.na(dl[[col]]) & nzchar(trimws(as.character(dl[[col]]))))
+  cols <- list(
+    list(key = "record_id",  head = "Participant", align = "l",  fmt = as.character),
+    list(key = "site",       head = "Site",        align = "l",  fmt = as.character),
+    list(key = "term",       head = "Reference",   align = "l",  fmt = as.character),
+    list(key = "onset_date", head = "Date of deviation", align = "", fmt = fmt_dev_date),
+    list(key = "report_date",head = "Date team aware",   align = "", fmt = fmt_dev_date),
+    list(key = "severity",   head = "Severity",    align = "l",  fmt = as.character),
+    list(key = "status",     head = "Status",      align = "l",  fmt = as.character),
+    list(key = "narrative",  head = "Summary",     align = "l",  fmt = as.character)
+  )
+  cols <- Filter(function(x) has(x$key), cols)
+
+  cat('<table class="rt"><thead><tr>')
+  for (cc in cols)
+    cat(sprintf('<th class="%s">%s</th>', cc$align, esc(cc$head)))
+  cat('</tr></thead><tbody>')
+  for (i in seq_len(nrow(dl))) {
+    cat('<tr>')
+    for (j in seq_along(cols)) {
+      cc  <- cols[[j]]
+      val <- cc$fmt(dl[[cc$key]][i])
+      if (is.na(val) || !nzchar(trimws(as.character(val)))) val <- "—"
+      cls <- if (j == 1) "sn" else cc$align
+      cat(sprintf('<td class="%s">%s</td>', cls, esc(val)))
+    }
+    cat('</tr>')
+  }
+  cat('</tbody></table>')
+
+  by_site <- sort(table(dl$site[!is.na(dl$site) & nzchar(dl$site)]), decreasing = TRUE)
+  if (length(by_site) > 0) {
+    cat(sprintf('<div class="note">%s across %d site%s — %s.</div>',
+                if (nrow(dl) == 1) "1 deviation" else sprintf("%d deviations", nrow(dl)),
+                length(by_site), if (length(by_site) == 1) "" else "s",
+                paste(sprintf("%s (%d)", esc(names(by_site)), as.integer(by_site)),
+                      collapse = " · ")))
+  }
+}
+```
+
+<h2 class="sec"><span class="num">10</span> Demographics <span class="hint">n = `r fmt_int(n_rand)` participants randomised</span></h2>
+<div class="row2">
   <div class="card">
     <div class="ct">Age at operation</div>
     <div class="demo">
@@ -1000,52 +1359,99 @@ if (!is.null(nd)) {
     </div>
     <div class="note" style="margin-top:8px">Even split across the standard NELA risk stratum — monitoring for balance at randomisation.</div>
   </div>
-  <div class="card">
-    <div class="ct">Ethnicity</div>
-```{r eth-bar}
+</div>
+
+<div class="card" style="margin-top:14px">
+  <div class="ct">Ethnicity</div>
+  <div class="eth-split">
+    <div class="eth-donut"><canvas id="ethC"></canvas></div>
+    <div class="eth-legend">
+```{r eth-legend}
 if (!is.null(eth_tbl) && nrow(eth_tbl) > 0) {
-  total <- sum(eth_tbl$n)
-  cat('<div class="eth-bar">')
   for (i in seq_len(nrow(eth_tbl))) {
-    col <- eth_colours[((i-1) %% length(eth_colours)) + 1]
-    cat(sprintf('<div class="eth-seg" style="flex:%d;background:%s"><b>%d</b><span>%.0f%%</span></div>',
-                eth_tbl$n[i], col, eth_tbl$n[i], eth_tbl$pct[i]))
-  }
-  cat('</div><div class="eth-legend">')
-  for (i in seq_len(nrow(eth_tbl))) {
-    col <- eth_colours[((i-1) %% length(eth_colours)) + 1]
+    col <- eth_hex[((i-1) %% length(eth_hex)) + 1]
     cat(sprintf('<div class="row"><span class="sw" style="background:%s"></span><span class="nm">%s</span><span class="vl"><b>%d</b> · %.0f%%</span></div>',
-                col, esc(eth_tbl$ethnicity[i]), eth_tbl$n[i], eth_tbl$pct[i]))
-  }
-  cat('</div>')
-  eth <- demo$ethnicity
-  if (!is.null(eth)) {
-    w <- safe(eth$white, 0); m <- safe(eth$minority, 0)
-    if (m > 0) {
-      g <- round(w/m, 1)
-      cat(sprintf('<div class="note" style="margin-top:8px">White : ethnic-minority ratio <b style="color:var(--navy);font-style:normal">%g : 1</b> · representative spread will be re-reviewed at pilot end.</div>', g))
-    }
+                col, esc(eth_short(eth_tbl$ethnicity[i])), eth_tbl$n[i], eth_tbl$pct[i]))
   }
 } else cat('<div class="note">No ethnicity data available.</div>')
 ```
+    </div>
   </div>
+```{r eth-note}
+eth <- demo$ethnicity
+if (!is.null(eth)) {
+  w <- safe(eth$white, 0); m <- safe(eth$minority, 0)
+  if (m > 0) {
+    g <- round(w/m, 1)
+    cat(sprintf('<div class="note" style="margin-top:8px">White : ethnic-minority ratio <b style="color:var(--navy);font-style:normal">%g : 1</b> · representative spread will be re-reviewed at pilot end.</div>', g))
+  }
+}
+```
 </div>
 
-```{r page3-footer}
-pf_footer(3)
+```{r page6-footer}
+pf_footer(6)
 ```
 </section>
 
 <!-- ============================================================
-     PAGE 4 — PILOT THRESHOLDS · RECRUITMENT OUTLOOK
+     PAGE 7 — PARTICIPANT BASELINE CHARACTERISTICS
 ============================================================== -->
 <section class="page">
 
-```{r page4-header}
-ph_header("Page 4 — Thresholds & outlook")
+```{r page7-header}
+ph_header("Page 7 — Baseline characteristics")
 ```
 
-<h2 class="sec" style="margin-top:0"><span class="num">09</span> Pilot progression thresholds <span class="hint">Decisions reviewed at 6-month pilot end · `r esc(pilot_end)`</span></h2>
+<h2 class="sec" style="margin-top:0"><span class="num">11</span> Participant baseline characteristics <span class="hint">n = `r fmt_int(n_rand)` participants randomised</span></h2>
+
+```{r baseline-characteristics}
+# baseline_characteristics_df() is the shared builder the TSC Word report also
+# uses, so the two reports can never disagree on a number. Rendered here with
+# the report's own table styling rather than the helper's HTML, which carries
+# its own palette.
+bl <- if (exists("baseline_characteristics_df", mode = "function"))
+        tryCatch(baseline_characteristics_df(rd), error = function(e) NULL) else NULL
+
+if (is.null(bl) || nrow(bl) == 0) {
+  cat('<p class="note">No baseline characteristics available — the export carries none of the mapped baseline fields.</p>')
+} else {
+  total_n <- safe(bl$total_n[1], n_rand)
+  cat(sprintf('<table class="rt"><thead><tr><th class="l">Characteristic</th><th class="l">Category</th><th>n = %s</th></tr></thead><tbody>',
+              fmt_int(total_n)))
+  for (sec in unique(bl$section)) {
+    cat(sprintf('<tr class="grp"><td class="l" colspan="3" style="font-weight:700;color:var(--navy);background:var(--navy-tint)">%s</td></tr>',
+                esc(sec)))
+    rows <- bl[bl$section == sec, , drop = FALSE]
+    last_label <- ""
+    for (i in seq_len(nrow(rows))) {
+      # The characteristic name prints once per run of its categories.
+      lbl <- if (identical(rows$label[i], last_label)) "" else rows$label[i]
+      last_label <- rows$label[i]
+      cat(sprintf('<tr><td class="sn">%s</td><td class="l">%s</td><td>%s</td></tr>',
+                  esc(lbl), esc(rows$sublabel[i]), esc(rows$stat[i])))
+    }
+  }
+  cat('</tbody></table>')
+  cat('<div class="note">Percentages are of participants with the field recorded; a Missing row shows how many were not. Minimisation variables are the factors randomisation balances on.</div>')
+}
+```
+
+```{r page7-footer}
+pf_footer(7)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 8 — PILOT PROGRESSION THRESHOLDS
+============================================================== -->
+<section class="page">
+
+```{r page8-header}
+ph_header("Page 8 — Pilot thresholds")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">12</span> Pilot progression thresholds <span class="hint">Decisions reviewed at 6-month pilot end · `r esc(pilot_end)`</span></h2>
 <p class="note" style="font-style:normal;color:var(--ink-2);margin:2px 0 6px;font-size:9pt;line-height:1.5">
 Six pre-specified criteria. Performance against each lands in one of three bands — <b style="color:var(--red)">Stop</b>, <b style="color:var(--amber)">Modify</b>, or <b style="color:var(--green)">Proceed</b>. The TMG and oversight committee use this together to decide whether to continue, adapt, or stop the trial after the pilot phase.
 </p>
@@ -1075,27 +1481,33 @@ for (i in seq_along(thr)) {
 ```
 </div>
 
-<h2 class="sec"><span class="num">10</span> Recruitment outlook <span class="hint">Protocol projection · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)`</span></h2>
+```{r page8-footer}
+pf_footer(8)
+```
+</section>
+
+<!-- ============================================================
+     PAGE 9 — RECRUITMENT OUTLOOK
+============================================================== -->
+<section class="page">
+
+```{r page9-header}
+ph_header("Page 9 — Recruitment outlook")
+```
+
+<h2 class="sec" style="margin-top:0"><span class="num">13</span> Recruitment outlook <span class="hint">Protocol projection · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)`</span></h2>
 
 <div class="ol-status `r rec_band`"><div class="icon">`r if (rec_band == "green") "✓" else if (rec_band == "amber") "!" else "×"`</div><div class="txt"><div class="h">`r if (rec_band == "green") sprintf("On track — %.0f%% of protocol target at this point", safe(rec_pct, 0)) else if (rec_band == "amber") sprintf("Near track — %.0f%% of protocol target", safe(rec_pct, 0)) else sprintf("Behind track — %.0f%% of protocol target", safe(rec_pct, 0))`</div><div class="s"><b style="color:var(--navy)">`r fmt_int(n_rand)` randomised</b> against <b style="color:var(--navy)">`r fmt_int(exp_to_date)` expected</b> by `r esc(format(Sys.Date(), "%d %b %Y"))` · `r fmt_int(n_open_sites)` site`r if (n_open_sites == 1) "" else "s"` open.</div></div></div>
 
 <div class="ol-chart"><div class="h"><span>Cumulative recruitment · `r format(Sys.Date(), "%b %Y")` → `r esc(full_end)` <b>(`r fmt_int(n_target)` target)</b></span><span>Source: protocol schedule</span></div><div class="ol-chart-wrap"><canvas id="outlookC"></canvas></div><div class="ol-leg"><span class="lg"><span class="ln"></span>Cumulative target (protocol)</span><span class="lg"><span class="sw" style="background:var(--teal)"></span>Actual randomised</span></div></div>
 
-<div class="ol-phases">
-```{r outlook-phases}
-for (p in outlook_phases) {
-  cat(sprintf('<div class="ol-ph %s"><div class="pk">%s</div><div class="pp">%s</div><div class="pd">%s</div><div class="ps">%s</div></div>',
-              p$cls, esc(p$k), esc(p$t), p$d, esc(p$s)))
-}
-```
-</div>
 
 <p class="note" style="margin-top:8px">
 Projections from the original application. Project month re-baselined to the current timeline; monthly targets unchanged at this stage. Follow-up runs to Sep 2028, database lock Nov 2028, analysis Jan 2029, close-out Feb 2029 — see milestones on page 1.
 </p>
 
-```{r page4-footer}
-pf_footer(4)
+```{r page9-footer}
+pf_footer(9)
 ```
 </section>
 
@@ -1113,60 +1525,101 @@ pf_footer(4)
   const target = `r j(chart_target)`;
   const actual = `r j(chart_actual)`;
 
-  // Page 2: cumulative recruitment
-  const cumEl = document.getElementById('cumC');
-  if (cumEl) {
-    new Chart(cumEl, {
-      type:'line',
-      data:{
-        labels: labels,
-        datasets:[
-          {label:'Target (protocol)', data: target, borderColor:'#bcd2dc', borderDash:[5,4], borderWidth:1.5, pointRadius:0, fill:false, tension:.25},
-          {label:'Actual', data: actual, borderColor: navy, backgroundColor:'rgba(18,161,146,.18)', fill:true, borderWidth:2, pointBackgroundColor: navy, pointRadius:3, tension:.3, spanGaps:false}
-        ]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:true,labels:{boxWidth:10,boxHeight:10,padding:8,font:{size:9}}}},
-        scales:{
-          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{padding:4}}
-        }
-      }
-    });
-  }
+  // Value labels drawn above bars. chart.js ships no datalabels plugin and the
+  // report loads a single CDN bundle, so this is a local, per-chart plugin.
+  const valueLabels = (dsIndex) => ({
+    id: 'valueLabels',
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx, ds = chart.data.datasets[dsIndex];
+      const meta = chart.getDatasetMeta(dsIndex);
+      if (!ds || meta.hidden) return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined) return;
+        ctx.save();
+        ctx.font = '700 9.5px ' + Chart.defaults.font.family;
+        ctx.fillStyle = navy;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(v, el.x, el.y - 3);
+        ctx.restore();
+      });
+    }
+  });
 
-  // Page 2: monthly randomisations
+  // Headline figure in the middle of a doughnut.
+  const centreText = (big, small, colour) => ({
+    id: 'centreText',
+    afterDraw(chart) {
+      const ctx = chart.ctx, a = chart.chartArea;
+      const x = (a.left + a.right) / 2, y = (a.top + a.bottom) / 2;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = colour;
+      ctx.font = "700 22px 'Source Serif 4', Georgia, serif";
+      ctx.fillText(big, x, y - 4);
+      ctx.fillStyle = muted;
+      ctx.font = '600 8.5px ' + Chart.defaults.font.family;
+      ctx.fillText(small, x, y + 11);
+      ctx.restore();
+    }
+  });
+
+  // Page 2: monthly randomisations across the whole recruitment window.
+  // Cumulative recruitment is not repeated here — section 10 carries it.
   const monEl = document.getElementById('monC');
   if (monEl) {
-    // Derive monthly counts from actual diffs
-    const monthly = actual.map((v, i) => {
+    const diffs = (xs) => xs.map((v, i) => {
       if (v == null) return null;
-      const prev = i > 0 ? (actual[i-1] || 0) : 0;
+      const prev = i > 0 ? (xs[i-1] || 0) : 0;
       return v - prev;
     });
     new Chart(monEl, {
       type:'bar',
       data:{
         labels: labels,
-        datasets:[{
-          data: monthly,
-          backgroundColor: ctx => (ctx.parsed && ctx.parsed.y) ? navy : '#edf2f5',
-          borderRadius:4, maxBarThickness:24
-        }]
+        datasets:[
+          {label:'Randomised', data: diffs(actual), backgroundColor: teal, borderRadius:3, maxBarThickness:22, order:1},
+          {label:'Monthly target (protocol)', data: diffs(target), backgroundColor:'#eef2f5', borderRadius:3, maxBarThickness:22, order:2}
+        ]
       },
+      plugins:[valueLabels(0)],
       options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(c.parsed.y||0)+' randomised'}}},
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:18}},
+        plugins:{
+          legend:{display:true,labels:{boxWidth:12,boxHeight:12,padding:10,font:{size:9.5}}},
+          tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y||0)}}
+        },
         scales:{
-          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12}},
-          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},ticks:{stepSize:1,padding:4}}
+          x:{grid:{display:false},border:{display:false},ticks:{maxRotation:60,minRotation:60,autoSkip:false,font:{size:7.5}}},
+          y:{beginAtZero:true,grid:{color:'#eef2f5'},border:{display:false},title:{display:true,text:'Participants randomised',font:{size:9.5,weight:600}},ticks:{padding:4}}
         }
       }
     });
   }
 
-  // Page 4: outlook chart
+  // Page 4: ethnicity doughnut
+  const ethEl = document.getElementById('ethC');
+  if (ethEl) {
+    const ethLabels = `r ja(eth_labels_js)`;
+    const ethCounts = `r ja(eth_n_js)`;
+    const ethCols   = `r ja(eth_hex)`;
+    const ethMinPct = `r if (is.na(eth_min_pct)) "null" else eth_min_pct`;
+    if (ethCounts.length) {
+      new Chart(ethEl, {
+        type:'doughnut',
+        data:{labels: ethLabels, datasets:[{data: ethCounts, backgroundColor: ethCols, borderColor:'#fff', borderWidth:2}]},
+        plugins: ethMinPct === null ? [] : [centreText(ethMinPct + '%', 'ethnic minority', teal)],
+        options:{
+          responsive:true, maintainAspectRatio:false, cutout:'58%',
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.label+': '+c.parsed}}}
+        }
+      });
+    }
+  }
+
+  // Page 6: outlook chart
   const outlookEl = document.getElementById('outlookC');
   if (outlookEl) {
     new Chart(outlookEl, {

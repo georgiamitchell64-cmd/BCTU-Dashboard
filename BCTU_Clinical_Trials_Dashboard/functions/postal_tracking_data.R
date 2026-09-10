@@ -214,7 +214,8 @@ build_postal_tracking <- function(redcap_df,
 
   # Restrict to baseline event (all three fields live here)
   baseline <- redcap_df %>%
-    dplyr::filter(.data[[event_col]] == baseline_event)
+    dplyr::filter(as.character(.data[[event_col]]) %in%
+                    as.character(unlist(baseline_event)))
 
   message("POSTAL: baseline rows = ", nrow(baseline))
   message("POSTAL: unique pref values at baseline = ",

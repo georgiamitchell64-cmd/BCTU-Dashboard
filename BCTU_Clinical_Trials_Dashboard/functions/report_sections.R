@@ -85,10 +85,10 @@
 
   raw <- rv$raw_redcap
   n_baseline <- 0L
-  if (!is.null(raw) && nrow(raw) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
+  if (!is.null(raw) && nrow(raw)) {
     id_col <- cfg$redcap_fields$record_id %||% "record_id"
-    n_baseline <- length(unique(raw[[id_col]][raw$redcap_event_name == bevt]))
+    if (id_col %in% names(raw))
+      n_baseline <- length(unique(baseline_rows(raw, cfg)[[id_col]]))
   }
   pct <- if (target > 0) min(1, n_baseline / target) else 0
 
@@ -891,6 +891,13 @@ REPORT_TEMPLATES <- list(
   TSC = list(
     label = "TSC (Trial Steering Committee)",
     description = "External oversight — recruitment, demographics, safety, amendments.",
+    sections = c("header", "recruitment_summary", "demographics", "consort",
+                 "site_summary", "safety_summary", "complications", "amendments",
+                 "next_period", "custom_text")
+  ),
+  `TSC Interim` = list(
+    label = "TSC Interim v0.1",
+    description = "TSC interim progress report — the TMG layout plus baseline characteristics, protocol deviations and monthly recruitment by site; recruiting sites only.",
     sections = c("header", "recruitment_summary", "demographics", "consort",
                  "site_summary", "safety_summary", "complications", "amendments",
                  "next_period", "custom_text")

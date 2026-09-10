@@ -27,14 +27,12 @@ upload_server <- function(input, output, session, state) {
     for (r in .AUTODETECT_FIELD_ROLES) {
       cur <- cfg$redcap_fields[[r$role]]
       det <- .autodetect_field(detected, r$role)
-      if ((is.null(cur) || (is.character(cur) && !nzchar(cur))) &&
-          !is.null(det) && nzchar(det)) return(TRUE)
+      if (mapping_is_blank(cur) && !mapping_is_blank(det)) return(TRUE)
     }
     for (r in .AUTODETECT_EVENT_ROLES) {
       cur <- cfg$redcap_events[[r$role]]
       det <- .autodetect_event(detected, r$role)
-      if ((is.null(cur) || (is.character(cur) && !nzchar(cur))) &&
-          !is.null(det) && nzchar(det)) return(TRUE)
+      if (mapping_is_blank(cur) && !mapping_is_blank(det)) return(TRUE)
     }
     fu <- cfg$redcap_fields$follow_up_instruments
     if ((is.null(fu) || length(fu) == 0) &&
@@ -50,9 +48,19 @@ upload_server <- function(input, output, session, state) {
     }
 
     cfg     <- rv$trial_config
-    wp_dirs <- cfg$work_package_data_dirs
-    multi   <- !is.null(wp_dirs) && length(wp_dirs) > 0 &&
-               any(nzchar(trimws(wp_dirs)))
+    # A multi-work-package trial reads one export per WP folder. The folders
+    # are derived from the trial's work packages, not from whether anyone has
+    # uploaded through Settings yet — work_package_data_dirs is only written on
+    # the first WP upload, so keying off it left multi-WP trials silently
+    # loading the single whole-trial folder instead.
+    wp_dirs <- if (trial_is_multi_wp(cfg)) wp_data_dirs(cfg) else character(0)
+    multi   <- length(wp_dirs) > 0 && any(nzchar(trimws(wp_dirs)))
+    # Nothing uploaded against any work package yet: fall back to the single
+    # folder so a trial mid-migration still loads.
+    if (multi && !any(vapply(wp_dirs, function(d)
+          nzchar(d) && dir.exists(d) && !is.null(find_latest_csv(d)),
+          logical(1))))
+      multi <- FALSE
 
     filelabel <- NULL   # human label for the "currently loaded" status
 
@@ -206,6 +214,33 @@ upload_server <- function(input, output, session, state) {
     load_label      <- pending$filelabel %||% basename(pending$filepath %||% "")
     rv$loaded_file  <- load_label
 
+    # ── Canonical pipeline (docs/ARCHITECTURE.md) ─────────────────────────
+    # Build the source-independent canonical dataset alongside the legacy
+    # frames, validate it, persist to the trial DB, and compute module
+    # availability. Runs additively: failures never break the legacy load.
+    tryCatch({
+      cfg_now <- rv$trial_config %||% current_trial_config()
+      pkg     <- redcap_package_from_df(raw, files = load_label)
+      built   <- build_canonical(pkg, cfg_now %||% list())
+      issues  <- validate_canonical(built$dataset, extra = built$issues)
+      rv$canon             <- built$dataset
+      rv$validation_issues <- issues
+      rv$module_status     <- module_availability(cfg_now %||% list(),
+                                                  built$dataset)
+      if (!is.null(built$dataset) && validation_passed(issues) &&
+          exists("DB_PATH") && is.character(DB_PATH)) {
+        canon_save(built$dataset, issues, DB_PATH,
+                   username = rv$username, file_label = load_label)
+      }
+      n_warn <- sum(issues$severity %in% c("blocking", "warning"))
+      if (n_warn > 0) {
+        showNotification(
+          paste0(validation_summary(issues), " — see the Data tab for details."),
+          type = if (any(issues$severity == "blocking")) "error" else "warning",
+          duration = 10)
+      }
+    }, error = function(e) message("canonical pipeline: ", e$message))
+
     n_p <- length(unique(result$participants$record_id))
     n_s <- nrow(result$sites)
     showNotification(
@@ -266,6 +301,23 @@ upload_server <- function(input, output, session, state) {
       error = function(e) message("autodetect persist: ", e$message)
     )
 
+    # Feed the cross-trial synonym library: every confirmed role→field pair
+    # becomes a learned synonym for the corresponding concept, so the next
+    # trial's suggestions start from this one's answers.
+    tryCatch({
+      reg <- concept_registry()
+      by_role <- stats::setNames(names(reg),
+                                 vapply(reg, function(cc)
+                                   cc$legacy_role %||% NA_character_,
+                                   character(1)))
+      for (role in names(applied_fields)) {
+        f <- applied_fields[[role]]
+        cid <- by_role[[role]]
+        if (!is.null(cid) && !is.na(cid) && nzchar(f %||% ""))
+          record_confirmed_mapping(cid, f, trial_code = new_cfg$code)
+      }
+    }, error = function(e) message("synonym learn: ", e$message))
+
     n_filled <- sum(vapply(applied_fields, function(x) nzchar(x %||% ""), logical(1))) +
                 sum(vapply(applied_events, function(x) nzchar(x %||% ""), logical(1)))
     showNotification(
@@ -307,6 +359,8 @@ upload_server <- function(input, output, session, state) {
   # ── Status panels (unchanged from previous version) ───────────────────────
   output$data_folder_status <- renderUI({
     invalidateLater(30000)
+    cfg           <- rv$trial_config
+    multi         <- trial_is_multi_wp(cfg)
     folder_exists <- dir.exists(DATA_DIR)
     folder_path   <- normalizePath(DATA_DIR, mustWork = FALSE)
     loaded        <- rv$loaded_file
@@ -314,11 +368,32 @@ upload_server <- function(input, output, session, state) {
     ok  <- function(txt) div(span(style = "color:#007838;font-weight:600", HTML("&check; ")), txt)
     err <- function(txt) div(span(style = "color:#C20019;font-weight:600", HTML("&cross; ")), txt)
 
+    # Multi-WP trials read one export per work package, so name those folders
+    # rather than a single whole-trial one that is never used.
+    folder_card <- if (multi) {
+      dirs <- wp_data_dirs(cfg)
+      wps  <- cfg$work_packages %||% character(0)
+      div(class = "status-card",
+          div(class = "status-card-label", "Work-package folders"),
+          lapply(seq_along(dirs), function(i) {
+            has <- dir.exists(dirs[i]) && !is.null(find_latest_csv(dirs[i]))
+            div(style = "font-size:10px;margin-bottom:2px;",
+                span(style = if (has) "color:#007838;font-weight:600" else "color:var(--muted)",
+                     HTML(if (has) "&check; " else "&mdash; ")),
+                tags$code(style = "font-size:10px;color:var(--navy)",
+                          normalizePath(dirs[i], mustWork = FALSE)))
+          }),
+          div(class = "status-card-sub",
+              "Upload one export per work package in Settings \u2192 Work packages."))
+    } else {
+      div(class = "status-card",
+          div(class = "status-card-label", "Data folder"),
+          if (folder_exists) ok(tags$code(style = "font-size:10px;color:var(--navy)", folder_path))
+          else err(paste("Not found:", folder_path)))
+    }
+
     div(class = "status-grid",
-        div(class = "status-card",
-            div(class = "status-card-label", "Data folder"),
-            if (folder_exists) ok(tags$code(style = "font-size:10px;color:var(--navy)", folder_path))
-            else err(paste("Not found:", folder_path))),
+        folder_card,
         div(class = "status-card",
             div(class = "status-card-label", "Currently loaded"),
             if (!is.null(loaded))
@@ -339,8 +414,26 @@ upload_server <- function(input, output, session, state) {
 
   output$folder_files_ui <- renderUI({
     invalidateLater(30000)
-    files  <- list_csvs()
+    cfg    <- rv$trial_config
     loaded <- rv$loaded_file
+    if (trial_is_multi_wp(cfg)) {
+      dirs <- wp_data_dirs(cfg)
+      wps  <- cfg$work_packages %||% character(0)
+      return(tagList(lapply(seq_along(dirs), function(i) {
+        fp <- if (dir.exists(dirs[i])) find_latest_csv(dirs[i]) else NULL
+        div(class = "file-row",
+            span(class = "file-name",
+                 sub("^WKP[0-9]+:\\s*", "",
+                     as.character(if (length(wps) >= i) wps[[i]] else sprintf("WKP%d", i)))),
+            if (is.null(fp))
+              span(style = "color:var(--muted);font-size:11px", "No export uploaded")
+            else
+              span(class = "file-meta",
+                   paste0(basename(fp), " \u00b7 ",
+                          format(file.mtime(fp), "%d %b %Y %H:%M"))))
+      })))
+    }
+    files  <- list_csvs()
     if (nrow(files) == 0) {
       return(div(style = "padding:10px;color:var(--muted);font-size:12px",
                  paste0("No CSV files in: ", normalizePath(DATA_DIR, mustWork = FALSE))))

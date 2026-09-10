@@ -1,7 +1,7 @@
 # =============================================================================
 # High-fidelity HTML → editable DOCX conversion
 # =============================================================================
-# The TMG / iTMG report (tonic_report.Rmd) is an HTML-styled document: its
+# The TMG / iTMG report (tmg_report.Rmd) is an HTML-styled document: its
 # charts are drawn at runtime with Chart.js into <canvas> elements (plus an
 # inline <svg> timeline), and its layout uses CSS grid/flex with coloured
 # banners.

@@ -1,5 +1,10 @@
 randomisations_server <- function(input, output, session, state) {
   rv <- state$rv
+
+  # Headings follow the trial's recruitment model: a cohort study recruits,
+  # it does not randomise.
+  output$rand_when_title    <- renderText(sprintf("When %s happen", recruit_term("noun", rv$trial_config)))
+  output$rand_monthly_title <- renderText(sprintf("Monthly %s", recruit_term("noun", rv$trial_config)))
   # Everything on this tab reads the shared trial-health build (state$health),
   # so it follows the active work package and agrees with the Overview, Data
   # and Sites tabs. rv$log (manual activity log) stays trial-wide.

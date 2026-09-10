@@ -17,10 +17,10 @@
 
 return_rates_server <- function(id, rr_data) {
   # rr_data: reactive returning the loaded CSV as a data frame
-
+  
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-
+    
     # ── Colour helpers ───────────────────────────────────────────────────────
     TONIC_TEAL   <- "#00ACA9"
     TONIC_NAVY   <- "#1B1B1B"
@@ -28,18 +28,24 @@ return_rates_server <- function(id, rr_data) {
     TONIC_CORAL  <- "#e05c3a"
     TONIC_GREY   <- "#adb5bd"
     TONIC_LTGREY <- "#f4f6f8"
-
+    
+    # Recompute pct as min(entered, due) / due so early entries (entered before
+    # the due window officially opens) never produce rates above 100%.
+    # Once those participants' windows open, due increments and they count normally.
+    safe_pct_due <- function(entered, due) {
+      dplyr::if_else(due > 0, pmin(entered, due) / due * 100, NA_real_)
+    }
+    
     rate_colour <- function(pct) {
-      # pct: numeric 0-100 or NA
       dplyr::case_when(
         is.na(pct)   ~ TONIC_GREY,
         pct >= 90    ~ TONIC_TEAL,
         pct >= 70    ~ TONIC_AMBER,
         pct >= 1     ~ TONIC_CORAL,
-        TRUE         ~ TONIC_GREY   # 0 with expected = 0, or not yet due
+        TRUE         ~ TONIC_GREY
       )
     }
-
+    
     text_colour <- function(bg) {
       # readable text colour on each badge background
       dplyr::case_when(
@@ -49,52 +55,61 @@ return_rates_server <- function(id, rr_data) {
         TRUE              ~ "#5a5f65"
       )
     }
-
+    
     # ── Tidy the incoming data ───────────────────────────────────────────────
     tidy_rr <- reactive({
       req(rr_data())
       df <- rr_data()
-
+      
       # Robust column rename regardless of how the CSV arrives
       names(df) <- c("site", "event", "form",
                      "expected", "due", "entered",
                      "pct_due", "pct_expected")
-
+      
       df <- df %>%
         dplyr::mutate(
           expected     = as.integer(expected),
           due          = as.integer(due),
           entered      = as.integer(entered),
-          pct_due      = suppressWarnings(as.numeric(pct_due)),      # NA for "NA"
+          # Recompute from raw counts so early entries (entered before the due
+          # window opens) never inflate the rate above 100%.
+          # Formula: min(entered, due) / due — early entries are capped at due.
+          pct_due      = safe_pct_due(entered, due),
           pct_expected = suppressWarnings(as.numeric(pct_expected)),
           event        = factor(event,
                                 levels = c("Baseline", "Discharge", "Day 30", "Day 90"))
         )
       df
     })
-
-    # ── Active rate column (reactive on radio) ───────────────────────────────
+    
+    # ── Active rate column ────────────────────────────────────────────────────
+    # Return rates are ALWAYS calculated against forms *due* in the period, never
+    # against total *expected*. TONIC is a longitudinal study with four
+    # timepoints (Baseline, Discharge, Day 30, Day 90); "expected" counts every
+    # participant who will *eventually* reach a timepoint, including windows that
+    # have not yet opened (e.g. Day 90 with 0 due). Counting those in the
+    # denominator deflates the rate, so we only ever divide by forms due now.
     active_rate <- reactive({
-      if (input$rate_type == "pct_due") "pct_due" else "pct_expected"
+      "pct_due"
     })
-
+    
     # ── Filter timepoints ────────────────────────────────────────────────────
     filtered_data <- reactive({
       req(input$selected_timepoints)
       tidy_rr() %>%
         dplyr::filter(event %in% input$selected_timepoints)
     })
-
+    
     # ────────────────────────────────────────────────────────────────────────
     # Helper: build one heatmap table for a given site (character string)
     # Returns a reactable widget
     # ────────────────────────────────────────────────────────────────────────
     build_heatmap <- function(site_name, df, rate_col) {
-
+      
       site_df <- df %>%
         dplyr::filter(site == site_name) %>%
         dplyr::select(form, event, all_of(rate_col), expected, due, entered)
-
+      
       # Pivot: rows = forms, cols = timepoints
       wide <- site_df %>%
         dplyr::select(form, event, rate = all_of(rate_col),
@@ -104,20 +119,20 @@ return_rates_server <- function(id, rr_data) {
           values_from = c(rate, expected, due, entered),
           names_glue  = "{event}__{.value}"
         )
-
+      
       timepoints <- intersect(
         c("Baseline", "Discharge", "Day 30", "Day 90"),
         input$selected_timepoints
       )
-
+      
       # Build reactable column definitions dynamically
       tp_cols <- purrr::map(timepoints, function(tp) {
-
+        
         rate_col_name <- paste0(tp, "__rate")
         exp_col_name  <- paste0(tp, "__expected")
         due_col_name  <- paste0(tp, "__due")
         ent_col_name  <- paste0(tp, "__entered")
-
+        
         reactable::colDef(
           name   = tp,
           width  = 110,
@@ -127,7 +142,7 @@ return_rates_server <- function(id, rr_data) {
             exp_val   <- row[[exp_col_name]]
             due_val   <- row[[due_col_name]]
             ent_val   <- row[[ent_col_name]]
-
+            
             # Fallback for missing cells (timepoint not in this site's data)
             if (is.null(exp_val) || length(exp_val) == 0 ||
                 is.na(exp_val)   || exp_val == 0) {
@@ -142,13 +157,13 @@ return_rates_server <- function(id, rr_data) {
                 )
               )
             }
-
+            
             pct   <- if (is.null(value) || is.na(value)) NA_real_ else value
             bg    <- rate_colour(pct)
             fg    <- text_colour(bg)
             label <- if (is.na(pct)) "—" else paste0(round(pct, 0), "%")
-            sub   <- paste0(ent_val, " / ", if (input$rate_type == "pct_due") due_val else exp_val)
-
+            sub   <- paste0(ent_val, " / ", due_val, " due")
+            
             tags$div(
               style = paste0(
                 "background:", bg, "; color:", fg, ";",
@@ -162,7 +177,7 @@ return_rates_server <- function(id, rr_data) {
           style = function(value) list(padding = "4px")
         )
       }) %>% purrr::set_names(purrr::map_chr(timepoints, ~ paste0(.x, "__rate")))
-
+      
       col_list <- c(
         list(
           form = reactable::colDef(
@@ -173,7 +188,7 @@ return_rates_server <- function(id, rr_data) {
         ),
         tp_cols
       )
-
+      
       # Keep only columns that exist in wide
       wide_display <- wide %>%
         dplyr::select(form, dplyr::any_of(names(col_list) %>% setdiff("form")),
@@ -181,9 +196,9 @@ return_rates_server <- function(id, rr_data) {
         dplyr::select(form, dplyr::any_of(
           c("Baseline__rate", "Discharge__rate", "Day 30__rate", "Day 90__rate")
         ))
-
+      
       col_list <- col_list[names(col_list) %in% c("form", names(wide_display))]
-
+      
       reactable::reactable(
         wide_display,
         columns          = col_list,
@@ -206,13 +221,13 @@ return_rates_server <- function(id, rr_data) {
         )
       )
     }
-
+    
     # ────────────────────────────────────────────────────────────────────────
     # Top summary cards — one per timepoint, showing overall % entered
     # ────────────────────────────────────────────────────────────────────────
     output$summary_cards <- renderUI({
       req(filtered_data())
-
+      
       overall <- filtered_data() %>%
         dplyr::filter(site == ".Overall") %>%
         dplyr::group_by(event) %>%
@@ -223,70 +238,70 @@ return_rates_server <- function(id, rr_data) {
           .groups        = "drop"
         ) %>%
         dplyr::mutate(
-          pct_due      = dplyr::if_else(total_due      > 0,
-                                        total_entered / total_due      * 100, NA_real_),
+          # Denominator is forms DUE. Numerator is capped at total_due so that
+          # early entries (entered before window opens) cannot exceed 100%.
+          pct_due      = dplyr::if_else(total_due > 0,
+                                        pmin(total_entered, total_due) / total_due * 100,
+                                        NA_real_),
           pct_expected = dplyr::if_else(total_expected > 0,
                                         total_entered / total_expected * 100, NA_real_),
-          rate         = if (input$rate_type == "pct_due") pct_due else pct_expected
+          rate         = pct_due
         )
-
+      
       timepoints <- c("Baseline", "Discharge", "Day 30", "Day 90")
-
+      
       cards <- purrr::map(timepoints, function(tp) {
         row <- dplyr::filter(overall, event == tp)
-
+        
         if (nrow(row) == 0 || !(tp %in% input$selected_timepoints)) {
           return(column(3,
-            tags$div(
-              class = "card",
-              style = paste0(
-                "border-left: 4px solid ", TONIC_GREY, ";",
-                "padding: 12px 16px; margin-bottom: 8px;",
-                "background: #f9fafb;"
-              ),
-              tags$div(style = paste0("font-size:0.78rem; color:#868e96;",
-                                      "text-transform:uppercase; letter-spacing:.04em;"),
-                       tp),
-              tags$div(style = "font-size:1.5rem; font-weight:700; color:#adb5bd;", "—")
-            )
+                        tags$div(
+                          class = "card",
+                          style = paste0(
+                            "border-left: 4px solid ", TONIC_GREY, ";",
+                            "padding: 12px 16px; margin-bottom: 8px;",
+                            "background: #f9fafb;"
+                          ),
+                          tags$div(style = paste0("font-size:0.78rem; color:#868e96;",
+                                                  "text-transform:uppercase; letter-spacing:.04em;"),
+                                   tp),
+                          tags$div(style = "font-size:1.5rem; font-weight:700; color:#adb5bd;", "—")
+                        )
           ))
         }
-
+        
         pct  <- row$rate
         bg   <- rate_colour(pct)
         pct_label <- if (is.na(pct)) "Not yet due" else paste0(round(pct, 1), "%")
-        sub_label <- paste0(row$total_entered, " / ",
-                            if (input$rate_type == "pct_due") row$total_due
-                            else row$total_expected,
-                            if (input$rate_type == "pct_due") " due" else " expected")
-
+        sub_label <- paste0(row$total_entered, " / ", row$total_due, " due")
+        
         column(3,
-          tags$div(
-            style = paste0(
-              "border-left: 4px solid ", bg, ";",
-              "padding: 12px 16px; margin-bottom: 8px;",
-              "background: #f9fafb; border-radius: 4px;"
-            ),
-            tags$div(
-              style = paste0("font-size:0.78rem; color:#6c757d;",
-                             "text-transform:uppercase; letter-spacing:.04em;"),
-              tp
-            ),
-            tags$div(
-              style = paste0("font-size:1.6rem; font-weight:700; color:", bg, ";"),
-              pct_label
-            ),
-            tags$div(
-              style = "font-size:0.8rem; color:#6c757d; margin-top:2px;",
-              sub_label
-            )
-          )
+               tags$div(
+                 style = paste0(
+                   "border-left: 4px solid ", bg, ";",
+                   "padding: 12px 16px; margin-bottom: 8px;",
+                   "background: #f9fafb; border-radius: 4px;"
+                 ),
+                 tags$div(
+                   style = paste0("font-size:0.78rem; color:#6c757d;",
+                                  "text-transform:uppercase; letter-spacing:.04em;"),
+                   tp
+                 ),
+                 tags$div(
+                   style = paste0("font-size:1.6rem; font-weight:700; color:", bg, ";"),
+                   pct_label
+                 ),
+                 tags$div(
+                   style = "font-size:0.8rem; color:#6c757d; margin-top:2px;",
+                   sub_label
+                 )
+               )
         )
       })
-
+      
       fluidRow(cards)
     })
-
+    
     # ────────────────────────────────────────────────────────────────────────
     # Overall heatmap (all sites combined)
     # ────────────────────────────────────────────────────────────────────────
@@ -294,7 +309,7 @@ return_rates_server <- function(id, rr_data) {
       req(filtered_data())
       build_heatmap(".Overall", filtered_data(), active_rate())
     })
-
+    
     # ────────────────────────────────────────────────────────────────────────
     # Per-site accordion panels
     # ────────────────────────────────────────────────────────────────────────
@@ -306,10 +321,10 @@ return_rates_server <- function(id, rr_data) {
         unique() %>%
         sort()
     })
-
+    
     # Track open/closed state for each site
     open_sites <- reactiveVal(character(0))
-
+    
     observeEvent(input$expand_all, {
       if (length(open_sites()) == length(sites_list())) {
         open_sites(character(0))          # collapse all
@@ -319,7 +334,7 @@ return_rates_server <- function(id, rr_data) {
         updateActionButton(session, "expand_all", label = "Collapse all sites")
       }
     })
-
+    
     # Individual site toggle
     observe({
       purrr::walk(sites_list(), function(s) {
@@ -334,14 +349,14 @@ return_rates_server <- function(id, rr_data) {
         }, ignoreInit = TRUE)
       })
     })
-
+    
     output$site_panels <- renderUI({
       req(sites_list(), filtered_data())
-
+      
       panels <- purrr::map(sites_list(), function(s) {
         btn_id   <- paste0("toggle_", gsub("[^A-Za-z0-9]", "_", s))
         is_open  <- s %in% open_sites()
-
+        
         # Quick summary for the header: overall % for this site
         site_summary <- filtered_data() %>%
           dplyr::filter(site == s) %>%
@@ -352,20 +367,22 @@ return_rates_server <- function(id, rr_data) {
             .groups    = "drop"
           ) %>%
           dplyr::mutate(
+            # Site headline: min(entered, due) / due — capped so early entries
+            # cannot push the rate above 100%.
             pct = dplyr::if_else(
-              if (input$rate_type == "pct_due") total_due > 0 else total_exp > 0,
-              total_ent / (if (input$rate_type == "pct_due") total_due else total_exp) * 100,
+              total_due > 0,
+              pmin(total_ent, total_due) / total_due * 100,
               NA_real_
             )
           )
-
+        
         pct_val   <- site_summary$pct
         bg_col    <- rate_colour(pct_val)
         pct_label <- if (is.na(pct_val)) "—" else paste0(round(pct_val, 0), "%")
-
+        
         tags$div(
           style = "margin-bottom: 8px;",
-
+          
           # Header row -------------------------------------------------------
           tags$div(
             style = paste0(
@@ -380,7 +397,7 @@ return_rates_server <- function(id, rr_data) {
               "Shiny.setInputValue('%s', Math.random())",
               ns(btn_id)
             ),
-
+            
             tags$span(
               style = paste0("font-weight:600; color:", TONIC_NAVY, ";"),
               s
@@ -402,7 +419,7 @@ return_rates_server <- function(id, rr_data) {
               )
             )
           ),
-
+          
           # Body (heatmap) — only rendered when open --------------------------
           if (is_open) {
             tags$div(
@@ -412,28 +429,28 @@ return_rates_server <- function(id, rr_data) {
           }
         )
       })
-
+      
       tagList(panels)
     })
-
+    
     # ────────────────────────────────────────────────────────────────────────
     # Source footer — shows which CSV file the dashboard is currently using
     # ────────────────────────────────────────────────────────────────────────
     output$source_info <- renderUI({
       df <- rr_data()
       req(df)
-
+      
       src   <- attr(df, "source_file")
       mtime <- attr(df, "file_mtime")
-
+      
       if (is.null(src)) return(NULL)
-
+      
       mtime_txt <- if (!is.null(mtime)) {
         format(mtime, "%d %b %Y, %H:%M")
       } else {
         "unknown"
       }
-
+      
       tags$span(
         tags$span(style = "font-weight:500;", "Source: "),
         src,
@@ -441,6 +458,6 @@ return_rates_server <- function(id, rr_data) {
         tags$span(style = "margin-left: 12px;", paste0("Exported: ", mtime_txt))
       )
     })
-
+    
   })
 }

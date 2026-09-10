@@ -187,8 +187,8 @@ trial_config <- list(
   logo_file = NULL,
   colors = list(
     primary   = "#312E81",
-    secondary = "#8B5CF6",
-    accent    = "#F59E0B"
+    secondary = "#C59A00",
+    accent    = "#F07F3C"
   ),
 
   # -- Data paths --

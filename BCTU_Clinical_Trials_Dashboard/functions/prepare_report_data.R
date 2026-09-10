@@ -13,7 +13,8 @@ prepare_report_data <- function(df,
                                 date_to           = NULL,
                                 include_withdrawn = FALSE,
                                 pipeline_df       = NULL,
-                                crf_csv_path      = NULL) {
+                                crf_csv_path      = NULL,
+                                target_override   = NULL) {
 
   cfg <- current_trial_config()
 
@@ -47,6 +48,9 @@ prepare_report_data <- function(df,
     nrs_v            = "nrs_group",
     must_v           = "must_score",
     cos_v            = "cos_type",
+    cos_done         = "change_of_status_complete",
+    cos_dt           = "change_of_status_date",
+    cos_rsn          = "change_of_status_reason",
     sae_done         = "sae_complete",
     rand_done        = "randomisation_complete",
     consent_done     = "consent_complete",
@@ -55,15 +59,45 @@ prepare_report_data <- function(df,
     record_v         = "record_id",
     event_v          = "redcap_event_name"
   )
+  # fld_present() picks whichever of a role's candidate names the export
+  # actually has. It also keeps this loop safe: a role mapped to several names
+  # made `src %in% names(df)` return a vector, and `&&` on that is an error in
+  # R 4.3+ rather than the intended test.
   for (canon in names(alias_map)) {
-    src <- fld(alias_map[[canon]], default = NULL, cfg = cfg)
-    if (!is.null(src) && src %in% names(df) && !(canon %in% names(df)))
-      df[[canon]] <- df[[src]]
+    src <- fld_present(alias_map[[canon]], df, cfg = cfg)
+    if (!is.null(src) && !(canon %in% names(df))) df[[canon]] <- df[[src]]
   }
 
+  # PN timing reasons (TONIC: nut_o_pn_late_rsn / nut_o_pn_early_rsn) —
+  # autodetect when the config doesn't map pn_late_reason / pn_early_reason.
+  if (!"pn_late" %in% names(df)) {
+    cand <- grep("pn_late.*(rsn|reason)|pn_late_rsn", names(df),
+                 ignore.case = TRUE, value = TRUE)
+    if (length(cand) > 0) df$pn_late <- df[[cand[1]]]
+  }
+  if (!"pn_early" %in% names(df)) {
+    cand <- grep("pn_early.*(rsn|reason)|pn_early_rsn", names(df),
+                 ignore.case = TRUE, value = TRUE)
+    if (length(cand) > 0) df$pn_early <- df[[cand[1]]]
+  }
+
+  # REDCap CSV exports encode missing as "" (not NA) — a field only counts
+  # as completed when it holds something.
+  filled <- function(x) !is.na(x) & nzchar(trimws(as.character(x)))
+
   # ── 3. Parse datetime / date columns ───────────────────────────────────────
-  parse_dt <- function(x) as.POSIXct(x, format = "%Y-%m-%d %H:%M", tz = "Europe/London")
-  parse_d  <- function(x) as.Date(x, format = "%Y-%m-%d")
+  # Registration-style trials (no randomisation) often map a plain date — e.g.
+  # PANORAMA's screen_created_date — to the recruitment datetime role, so fall
+  # back to a date-only parse when the datetime format yields nothing.
+  parse_dt <- function(x) {
+    out <- as.POSIXct(x, format = "%Y-%m-%d %H:%M", tz = "Europe/London")
+    todo <- is.na(out) & !is.na(x) & nzchar(trimws(as.character(x)))
+    if (any(todo))
+      out[todo] <- as.POSIXct(as.character(parse_redcap_date(x[todo])),
+                              format = "%Y-%m-%d", tz = "Europe/London")
+    out
+  }
+  parse_d  <- function(x) parse_redcap_date(x)
   for (c in c("op_dttm", "rand_dttm", "pn_start"))
     if (c %in% names(df)) df[[c]] <- parse_dt(df[[c]])
   for (c in c("dis_day", "op_dt"))
@@ -72,9 +106,33 @@ prepare_report_data <- function(df,
   # ── 4. Split by event ──────────────────────────────────────────────────────
   evcol <- if ("event_v" %in% names(df)) "event_v" else "redcap_event_name"
   ev    <- function(name) {
-    actual <- evt(name, default = NULL, cfg = cfg)
-    if (is.null(actual) || !(evcol %in% names(df))) return(df[0, ])
-    df[df[[evcol]] %in% actual, ]
+    actual <- evt(name, default = NULL, cfg = cfg, all = TRUE)
+    # A flat (non-longitudinal) export has no event column: everything is the
+    # baseline record, so return the whole frame for that role rather than
+    # nothing, which would leave the participant table empty.
+    if (!(evcol %in% names(df)))
+      return(if (identical(name, "baseline")) df else df[0, ])
+    if (is.null(actual)) return(df[0, ])
+    out <- df[df[[evcol]] %in% actual, ]
+    # A baseline event that matches nothing means the mapping names an event
+    # the export does not have — renamed in REDCap, or a per-work-package
+    # export that labels its events differently. Every participant view is
+    # built from these rows, so returning none leaves a zero-row frame that
+    # fails later with base R's "replacement has 1 row, data has 0" rather
+    # than saying what is wrong. Fall back to one row per participant, which
+    # is what baseline_rows() already does everywhere else.
+    if (!nrow(out) && identical(name, "baseline") && nrow(df)) {
+      message("Report data: no rows at the mapped baseline event (",
+              paste(actual, collapse = ", "), "); the export has ",
+              paste(utils::head(sort(unique(as.character(df[[evcol]]))), 6),
+                    collapse = ", "),
+              ". Falling back to the first row per participant \u2014 remap the ",
+              "baseline event in Trial Settings \u2192 Follow-up schedule.")
+      idc <- intersect(c("record_v", "record_id"), names(df))[1]
+      out <- if (!is.na(idc) && !is.null(idc))
+        df[!duplicated(as.character(df[[idc]])), , drop = FALSE] else df
+    }
+    out
   }
   baseline  <- ev("baseline")
   discharge <- ev("discharge")
@@ -116,10 +174,16 @@ prepare_report_data <- function(df,
   complete_cols <- grep("_complete$", names(ptcp), value = TRUE)
   for (cc in complete_cols) ptcp[[cc]] <- as.numeric(ptcp[[cc]])
 
+  # Base R raises "replacement has 1 row, data has 0" when a length-1 default is
+  # assigned into a zero-row data frame, which is what an export with no
+  # participants produces. Size every default to the frame so an empty report
+  # renders as empty rather than dying with that message.
+  fill <- function(x) rep(x, length.out = nrow(ptcp))
+
   # ── 7. Trial arm (only meaningful when PN fields are mapped) ───────────────
-  has_late   <- if ("pn_late"  %in% names(ptcp)) !is.na(ptcp$pn_late)   else rep(FALSE, nrow(ptcp))
-  has_noline <- if ("pn_noline" %in% names(ptcp)) !is.na(ptcp$pn_noline) else rep(FALSE, nrow(ptcp))
-  has_early  <- if ("pn_early" %in% names(ptcp)) !is.na(ptcp$pn_early)  else rep(FALSE, nrow(ptcp))
+  has_late   <- if ("pn_late"  %in% names(ptcp)) filled(ptcp$pn_late)   else rep(FALSE, nrow(ptcp))
+  has_noline <- if ("pn_noline" %in% names(ptcp)) filled(ptcp$pn_noline) else rep(FALSE, nrow(ptcp))
+  has_early  <- if ("pn_early" %in% names(ptcp)) filled(ptcp$pn_early)  else rep(FALSE, nrow(ptcp))
   if (all(c("pn_start","op_dttm") %in% names(ptcp))) {
     hd   <- as.numeric(difftime(ptcp$pn_start, ptcp$op_dttm, units = "hours"))
     pn48 <- !is.na(hd) & hd >= 0 & hd <= 48
@@ -129,35 +193,99 @@ prepare_report_data <- function(df,
 
   # ── 8. Dates (formatted to avoid UTC shift) ────────────────────────────────
   ptcp$op_date <- if ("op_dt" %in% names(ptcp)) ptcp$op_dt else
-    if ("op_dttm" %in% names(ptcp)) as.Date(format(ptcp$op_dttm, "%Y-%m-%d")) else NA_Date_
+    if ("op_dttm" %in% names(ptcp)) as.Date(format(ptcp$op_dttm, "%Y-%m-%d")) else fill(NA_Date_)
   ptcp$rand_date <- if ("rand_dttm" %in% names(ptcp))
-    as.Date(format(ptcp$rand_dttm, "%Y-%m-%d")) else NA_Date_
+    as.Date(format(ptcp$rand_dttm, "%Y-%m-%d")) else fill(NA_Date_)
 
   # ── 9. Follow-up flags ────────────────────────────────────────────────────
   d30q <- intersect(paste0("d30_", fu_cols), names(ptcp))
   d90q <- intersect(paste0("d90_", fu_cols), names(ptcp))
   ptcp$fu_30_complete <- if (length(d30q) > 0)
     as.integer(rowSums(ptcp[, d30q, drop = FALSE] == 2, na.rm = FALSE) == length(d30q))
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_90_complete <- if (length(d90q) > 0)
     as.integer(rowSums(ptcp[, d90q, drop = FALSE] == 2, na.rm = FALSE) == length(d90q))
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_30_any <- if (length(d30q) > 0)
     as.integer(rowSums(ptcp[, d30q, drop = FALSE] == 2, na.rm = TRUE) >= 1)
-    else NA_integer_
+    else fill(NA_integer_)
   ptcp$fu_90_any <- if (length(d90q) > 0)
     as.integer(rowSums(ptcp[, d90q, drop = FALSE] == 2, na.rm = TRUE) >= 1)
-    else NA_integer_
+    else fill(NA_integer_)
 
   # ── 10. COS / Withdrawals ─────────────────────────────────────────────────
   cos_label <- cfg$cos_type_labels %||% c(
     "1"="Death","2"="No operation","3"="Part withdrawal",
     "4"="Complete withdrawal","5"="Lost to follow-up")
   withdrawal_events <- data.frame()
-  if ("cos_v" %in% names(sub_forms) && nrow(sub_forms) > 0) {
-    sub_cos <- sub_forms[!is.na(sub_forms$cos_v), ]
+  # The count of change-of-status events is driven by the instrument's REDCap
+  # completion flag (<instrument>_complete == 2), not by cos_type alone:
+  # a completed form whose type code is blank or non-standard (e.g. "WDR")
+  # must still be counted. cos_type then supplies the type/label.
+  if (!"cos_done" %in% names(sub_forms)) {
+    cand <- grep("change_of_status_complete$", names(sub_forms), value = TRUE)
+    if (length(cand) > 0) sub_forms$cos_done <- sub_forms[[cand[1]]]
+  }
+  # Date the change of status was recorded (withdrawal date). Config role
+  # change_of_status_date first; otherwise autodetect a cos_* date column.
+  if (!"cos_dt" %in% names(sub_forms)) {
+    cand <- grep("^cos_.*(date|dt)$|change_of_status.*(date|dt)$",
+                 names(sub_forms), ignore.case = TRUE, value = TRUE)
+    cand <- setdiff(cand, "cos_done")
+    if (length(cand) > 0) sub_forms$cos_dt <- sub_forms[[cand[1]]]
+  }
+  # Withdrawal reason. REDCap pairs a coded reason (TONIC:
+  # cos_withdraw_rsn_pt, where 99 = "Other") with a free-text field
+  # (cos_withdraw_rsn_oth) completed when the code is 99. Per row: the free
+  # text when present, otherwise the coded value mapped through
+  # cfg$cos_reason_labels (99 → "Other" by default). Columns resolve via the
+  # config roles change_of_status_reason / change_of_status_reason_code,
+  # falling back to cos_* reason column autodetection.
+  if (!"cos_rsn" %in% names(sub_forms)) {
+    cand  <- grep("^cos_.*(rsn|reason)|change_of_status.*(rsn|reason)",
+                  names(sub_forms), ignore.case = TRUE, value = TRUE)
+    texty <- grep("oth|text|spec", cand, ignore.case = TRUE, value = TRUE)
+    txt_col <- fld("change_of_status_reason", default = NULL, cfg = cfg)
+    if (is.null(txt_col) || !(txt_col %in% names(sub_forms)))
+      txt_col <- if (length(texty) > 0) texty[1] else NULL
+    code_col <- fld("change_of_status_reason_code", default = NULL, cfg = cfg)
+    if (is.null(code_col) || !(code_col %in% names(sub_forms))) {
+      coded    <- setdiff(cand, c(texty, txt_col))
+      code_col <- if (length(coded) > 0) coded[1] else NULL
+    }
+    if (!is.null(txt_col) || !is.null(code_col)) {
+      rsn_labels <- cfg$cos_reason_labels %||% c("99" = "Other")
+      val <- rep(NA_character_, nrow(sub_forms))
+      if (!is.null(code_col)) {
+        code <- trimws(as.character(sub_forms[[code_col]]))
+        lab  <- unname(rsn_labels[code])
+        has  <- !is.na(code) & nzchar(code)
+        val[has] <- ifelse(is.na(lab[has]), code[has], lab[has])
+      }
+      if (!is.null(txt_col)) {
+        txt <- trimws(as.character(sub_forms[[txt_col]]))
+        has <- !is.na(txt) & nzchar(txt)
+        val[has] <- txt[has]
+      }
+      sub_forms$cos_rsn <- val
+    }
+  }
+  if (nrow(sub_forms) > 0 && any(c("cos_v", "cos_done") %in% names(sub_forms))) {
+    typed <- if ("cos_v" %in% names(sub_forms))
+      !is.na(sub_forms$cos_v) & nzchar(trimws(as.character(sub_forms$cos_v)))
+      else rep(FALSE, nrow(sub_forms))
+    done <- if ("cos_done" %in% names(sub_forms))
+      !is.na(suppressWarnings(as.integer(sub_forms$cos_done))) &
+        suppressWarnings(as.integer(sub_forms$cos_done)) == 2
+      else rep(FALSE, nrow(sub_forms))
+    sub_cos <- sub_forms[typed | done, ]
     if (nrow(sub_cos) > 0) {
-      sub_cos$cos_label <- cos_label[as.character(sub_cos$cos_v)]
+      if (!"cos_v" %in% names(sub_cos)) sub_cos$cos_v <- NA_character_
+      raw <- trimws(as.character(sub_cos$cos_v))
+      sub_cos$cos_label <- unname(cos_label[raw])
+      no_lab <- is.na(sub_cos$cos_label)
+      sub_cos$cos_label[no_lab] <- ifelse(!is.na(raw[no_lab]) & nzchar(raw[no_lab]),
+                                          raw[no_lab], "Type not recorded")
       # Non-numeric / blank cos codes coerce to NA (they sort last). Wrap so a
       # legitimately mixed column doesn't spam the log on every report build.
       sub_cos <- sub_cos[order(sub_cos$record_v,
@@ -167,15 +295,22 @@ prepare_report_data <- function(df,
         record_id = sub_cos$record_v,
         cos_type  = sub_cos$cos_v,
         cos_label = sub_cos$cos_label,
+        cos_date  = if ("cos_dt" %in% names(sub_cos))
+          as.character(sub_cos$cos_dt) else NA_character_,
+        cos_reason = if ("cos_rsn" %in% names(sub_cos))
+          as.character(sub_cos$cos_rsn) else NA_character_,
+        has_cos   = TRUE,
         stringsAsFactors = FALSE)
     }
   }
   if (nrow(withdrawal_events) > 0)
     ptcp <- merge(ptcp, withdrawal_events, by = "record_id", all.x = TRUE)
-  else { ptcp$cos_type <- NA_integer_; ptcp$cos_label <- NA_character_ }
-  ptcp$is_withdrawn    <- !is.na(ptcp$cos_type) & ptcp$cos_type %in% c(3,4,5)
+  else { ptcp$cos_type <- fill(NA_integer_); ptcp$cos_label <- fill(NA_character_)
+         ptcp$has_cos <- fill(FALSE) }
+  ptcp$has_cos         <- !is.na(ptcp$has_cos) & ptcp$has_cos
   ptcp$is_death        <- !is.na(ptcp$cos_type) & ptcp$cos_type == 1
   ptcp$is_no_operation <- !is.na(ptcp$cos_type) & ptcp$cos_type == 2
+  ptcp$is_withdrawn    <- ptcp$has_cos & !ptcp$is_death & !ptcp$is_no_operation
   ptcp$participant_status <- dplyr::case_when(
     ptcp$is_death        ~ "Death",
     ptcp$is_no_operation ~ "No operation",
@@ -195,14 +330,100 @@ prepare_report_data <- function(df,
   }
   sae_count <- nrow(sae_rows)
 
+  # SAE detail log for the report (from the TMG REDCap export). Each detail
+  # column resolves via a config role first, then autodetects a sae_* column.
+  sae_log <- NULL
+  if (sae_count > 0) {
+    sae_roles <- list(
+      reported  = list(role = "sae_reported_date", pat = "^sae_.*(report|onset|start).*(dt|date)"),
+      diagnosis = list(role = "sae_diagnosis",     pat = "^sae_.*(diag|term|desc|title)"),
+      soc       = list(role = "sae_soc",           pat = "^sae_.*soc"),
+      category  = list(role = "sae_category",      pat = "^sae_.*categ"),
+      severity  = list(role = "sae_severity",      pat = "^sae_.*(sever|grade)"),
+      outcome   = list(role = "sae_outcome",       pat = "^sae_.*outcome"),
+      related   = list(role = "sae_causality",     pat = "^sae_.*(caus|relat)"),
+      expected  = list(role = "sae_expectedness",  pat = "^sae_.*expect"),
+      death_yn  = list(role = "sae_death",         pat = "^sae_.*death.*yn"),
+      death     = list(role = "sae_death_date",    pat = "^sae_.*death.*(dt|date)"))
+    # Coded values render as their labels. Defaults are the TONIC code
+    # lists; a trial config can override via sae_*_labels.
+    sae_label_sets <- list(
+      soc = cfg$sae_soc_labels %||% c(
+        "1"="Infections and infestations","2"="Blood and lymphatic system disorders",
+        "3"="Endocrine disorders","4"="Psychiatric disorders","5"="Eye disorders",
+        "6"="Cardiac disorders","7"="Respiratory, thoracic and mediastinal disorders",
+        "8"="Hepatobiliary disorders","9"="Musculoskeletal and connective tissue disorders",
+        "10"="Pregnancy, puerperium and perinatal conditions",
+        "11"="Congenital, familial and genetic disorders","12"="Investigations",
+        "13"="Surgical and medical procedures",
+        "14"="Neoplasms benign, malignant and unspecified","15"="Immune system disorders",
+        "16"="Metabolism and nutrition disorders","17"="Nervous system disorders",
+        "18"="Ear and labyrinth disorders","19"="Vascular disorders",
+        "20"="Gastrointestinal disorders","21"="Skin and subcutaneous tissue disorders",
+        "22"="Renal and urinary disorders","23"="Reproductive system and breast disorders",
+        "24"="General disorders and administration site conditions",
+        "25"="Injury, poisoning and procedural complications","26"="Social circumstances",
+        "99"="Other"),
+      category = cfg$sae_category_labels %||% c(
+        "1"="Expedited SAE — related and unexpected","2"="Expedited SAE",
+        "3"="Non-expedited SAE","4"="Non-SAE (downgraded to AE)",
+        "5"="Non-SAE (reported in error)","6"="SAE exempt from reporting"),
+      severity = cfg$sae_severity_labels %||% c(
+        "1"="Mild","2"="Moderate","3"="Severe"),
+      death_yn = c("1"="Yes","0"="No"))
+    sae_log <- data.frame(
+      record_id = sae_rows$record_id %||% sae_rows$record_v,
+      site_name = if ("site_name" %in% names(sae_rows))
+        as.character(sae_rows$site_name) else NA_character_,
+      stringsAsFactors = FALSE)
+    # Only columns actually present in the export make it into the log.
+    for (nm in names(sae_roles)) {
+      src <- fld(sae_roles[[nm]]$role, default = NULL, cfg = cfg)
+      if (is.null(src) || !src %in% names(sae_rows)) {
+        cand <- grep(sae_roles[[nm]]$pat, names(sae_rows),
+                     ignore.case = TRUE, value = TRUE)
+        src <- if (length(cand) > 0) cand[1] else NULL
+      }
+      if (!is.null(src)) {
+        v <- trimws(as.character(sae_rows[[src]]))
+        labs <- sae_label_sets[[nm]]
+        if (!is.null(labs)) {
+          m <- unname(labs[v])
+          v <- ifelse(is.na(m), v, m)
+        }
+        sae_log[[nm]] <- v
+      }
+    }
+    if ("reported" %in% names(sae_log))
+      sae_log <- sae_log[order(suppressWarnings(as.Date(sae_log$reported)),
+                               na.last = TRUE), ]
+  }
+
   # site_name canonicalisation in ptcp
   if ("site_v" %in% names(ptcp) && !"site_name" %in% names(ptcp))
     ptcp$site_name <- ptcp$site_v
 
   # ── 12. Total randomised (unfiltered) ─────────────────────────────────────
-  ptcp_randomised <- ptcp[!is.na(ptcp$rand_dttm), ]
-  if (is.null(ptcp_randomised) || nrow(ptcp_randomised) == 0)
-    stop("No randomised data available after preprocessing")
+  # Trials that register rather than randomise (observational cohorts such as
+  # PANORAMA WP4) have no randomisation datetime: every participant record
+  # counts. Only stop when there are no participants at all.
+  # Where the trial defines a recruitment model (config `recruitment`) that
+  # decides who counts — PANORAMA needs the screening AND consent forms both
+  # complete, and everyone screened carries a registration date, so the date
+  # alone would count the whole screening log as recruited.
+  rec_ids <- tryCatch(recruited_ids(df, cfg), error = function(e) NULL)
+  ptcp_randomised <- if (!is.null(rec_ids)) {
+    keep <- ptcp[as.character(ptcp$record_id) %in% rec_ids, ]
+    if (nrow(keep) > 0) keep else ptcp[0, ]
+  } else if ("rand_dttm" %in% names(ptcp) && any(!is.na(ptcp$rand_dttm))) {
+    ptcp[!is.na(ptcp$rand_dttm), ]
+  } else ptcp
+  # Nobody meeting the recruitment definition yet is a real answer (a trial
+  # still screening), not a failure — the report should render and show 0.
+  # Only an export with no participants at all is unusable.
+  if (is.null(ptcp) || nrow(ptcp) == 0)
+    stop("No participant data available after preprocessing")
+  if (is.null(ptcp_randomised)) ptcp_randomised <- ptcp[0, ]
   total_randomised <- nrow(ptcp_randomised)
   n_sites_active   <- if ("site_name" %in% names(ptcp_randomised))
     length(unique(ptcp_randomised$site_name)) else NA
@@ -213,13 +434,28 @@ prepare_report_data <- function(df,
     month_date = as.Date(character(0)),
     cumulative_target = integer(0),
     stringsAsFactors = FALSE)
-  trial_target <- cfg$trial_target %||% if (nrow(target_schedule) > 0)
-    max(target_schedule$cumulative_target, na.rm = TRUE) else NA_integer_
+  # A report scoped to one work package is measured against that work
+  # package's own target, not the whole trial's.
+  trial_target <- if (!is.null(target_override) && !is.na(target_override) &&
+                      target_override > 0) as.integer(target_override) else
+    cfg$trial_target %||% if (nrow(target_schedule) > 0)
+      max(target_schedule$cumulative_target, na.rm = TRUE) else NA_integer_
   today <- Sys.Date()
 
   past_targets <- target_schedule[target_schedule$month_date <= today, , drop = FALSE]
-  expected_to_date <- if (nrow(past_targets) > 0)
-    past_targets$cumulative_target[nrow(past_targets)] else 0
+  # cumulative_target is the figure to reach by the END of its month, so a
+  # report pulled mid-month must not demand the whole month's target. Expected
+  # to date = last completed month's cumulative target + a pro-rata share of
+  # the current month's increment (days elapsed ÷ days in the month).
+  expected_to_date <- if (nrow(past_targets) > 0) {
+    cur_cum   <- past_targets$cumulative_target[nrow(past_targets)]
+    prev_cum  <- if (nrow(past_targets) > 1)
+      past_targets$cumulative_target[nrow(past_targets) - 1] else 0
+    m_start   <- past_targets$month_date[nrow(past_targets)]
+    m_days    <- as.numeric(seq(m_start, by = "1 month", length.out = 2)[2] - m_start)
+    frac      <- min(1, max(0, (as.numeric(today - m_start) + 1) / m_days))
+    round(prev_cum + frac * (cur_cum - prev_cum))
+  } else 0
   recruitment_start <- if (nrow(target_schedule) > 0) min(target_schedule$month_date) else today
   months_elapsed <- max(0, as.numeric(difftime(today, recruitment_start, units = "weeks")) / 4.33)
   recruitment_pct <- if (expected_to_date > 0)
@@ -262,6 +498,17 @@ prepare_report_data <- function(df,
   if (!is.null(date_to) && "rand_date" %in% names(filtered))
     filtered <- filtered[!is.na(filtered$rand_date) & filtered$rand_date <= as.Date(date_to), ]
   withdrawn_df <- ptcp_randomised[ptcp_randomised$is_withdrawn, ]
+
+  # Some sections of the report are lifetime views, not period views: the site
+  # performance table sets its counts beside all-time targets, and the
+  # demographics breakdown is captioned with the all-time randomised total. Both
+  # read this set — the same site selection as `filtered`, but without the date
+  # window — so their figures track the trial rather than freezing at whatever
+  # fell inside the reporting period.
+  unwindowed <- ptcp_randomised
+  if (!is.null(selected_sites) && length(selected_sites) > 0 &&
+      !("All sites" %in% selected_sites) && "site_name" %in% names(unwindowed))
+    unwindowed <- unwindowed[unwindowed$site_name %in% selected_sites, ]
 
   # ── 15. Monthly recruitment ────────────────────────────────────────────────
   monthly_recruit <- if ("rand_date" %in% names(filtered) && nrow(filtered) > 0 &&
@@ -358,10 +605,13 @@ prepare_report_data <- function(df,
       pipeline_df$site_name <- pipeline_df$site_id
   }
 
-  recruiting_sites <- if ("site_name" %in% names(filtered) && nrow(filtered) > 0) {
-    sites <- unique(filtered$site_name)
+  # Lifetime counts: the Target column and progress bar beside them are all-time
+  # figures, so a date-windowed count would be a period numerator over a
+  # lifetime denominator (and read zero whenever the window caught nothing).
+  recruiting_sites <- if ("site_name" %in% names(unwindowed) && nrow(unwindowed) > 0) {
+    sites <- unique(unwindowed$site_name)
     data.frame(site_name = sites, stage = "Open — Recruiting",
-      randomisations = sapply(sites, function(s) sum(filtered$site_name == s)),
+      randomisations = sapply(sites, function(s) sum(unwindowed$site_name == s)),
       source = "redcap", stringsAsFactors = FALSE)
   } else data.frame(site_name=character(0), stage=character(0),
                     randomisations=integer(0), source=character(0),
@@ -374,9 +624,12 @@ prepare_report_data <- function(df,
       recruiting_sites <- merge(recruiting_sites, lk, by = "site_name", all.x = TRUE)
     }
   }
-  if (!"target"          %in% names(recruiting_sites)) recruiting_sites$target          <- 42
-  if (!"monthly_target"  %in% names(recruiting_sites)) recruiting_sites$monthly_target  <- 2
-  if (!"open_date"       %in% names(recruiting_sites)) recruiting_sites$open_date       <- NA_character_
+  # Sized to the frame: with nobody recruited yet there are no recruiting
+  # sites, and a length-1 default into that zero-row frame is an error.
+  rs_fill <- function(x) rep(x, length.out = nrow(recruiting_sites))
+  if (!"target"          %in% names(recruiting_sites)) recruiting_sites$target          <- rs_fill(42)
+  if (!"monthly_target"  %in% names(recruiting_sites)) recruiting_sites$monthly_target  <- rs_fill(2)
+  if (!"open_date"       %in% names(recruiting_sites)) recruiting_sites$open_date       <- rs_fill(NA_character_)
   recruiting_sites$target[is.na(recruiting_sites$target)]                 <- 42
   recruiting_sites$monthly_target[is.na(recruiting_sites$monthly_target)] <- 2
 
@@ -496,8 +749,44 @@ prepare_report_data <- function(df,
     }, error = function(e) { message("CRF: error reading ", crf_csv_path, ": ", e$message); NULL })
   } else NULL
 
+  # Primary-outcome completeness follows the same logic as the CRF return
+  # rates by timepoint & form — entered ÷ due for the Discharge form, capped
+  # at 100% — whenever a return-rate CSV is loaded. The REDCap disc_done
+  # approximation above (which saturates at 100% once every entered form is
+  # complete) is only the fallback when no CSV is available.
+  if (!is.null(crf_data) && nrow(crf_data) > 0) {
+    gcol <- function(pat) {
+      m <- grep(pat, names(crf_data), ignore.case = TRUE, value = TRUE)
+      if (length(m)) crf_data[[m[1]]] else NULL
+    }
+    ev_col   <- gcol("^(event|timepoint|time.?point|visit)")
+    form_col <- gcol("^(stage|form|instrument)")
+    due_v    <- suppressWarnings(as.numeric(gcol("^due")))
+    ent_v    <- suppressWarnings(as.numeric(gcol("entered|received")))
+    if (!is.null(form_col) && !is.null(due_v) && !is.null(ent_v)) {
+      sel_form <- grepl("discharge", as.character(form_col), ignore.case = TRUE)
+      sel_ev   <- if (!is.null(ev_col))
+        grepl("^discharge", trimws(as.character(ev_col)), ignore.case = TRUE)
+        else rep(FALSE, length(form_col))
+      sel <- if (any(sel_form & sel_ev)) sel_form & sel_ev
+             else if (any(sel_form)) sel_form else sel_ev
+      if (any(sel)) {
+        d_due <- sum(due_v[sel], na.rm = TRUE)
+        d_ent <- sum(ent_v[sel], na.rm = TRUE)
+        primary_outcome <- list(
+          eligible = d_due, complete = d_ent,
+          pct = if (d_due > 0) round(min(d_ent, d_due) / d_due * 100, 1)
+                else NA_real_,
+          source = "crf_due")
+      }
+    }
+  }
+
   # ── 24. Demographics ──────────────────────────────────────────────────────
-  dem_df   <- baseline[baseline$record_v %in% filtered$record_id, , drop = FALSE]
+  # Captioned "n = <all-time randomised>" in the report, so the breakdown has to
+  # cover the same participants; `filtered` would count only the reporting
+  # window and disagree with its own heading.
+  dem_df   <- baseline[baseline$record_v %in% unwindowed$record_id, , drop = FALSE]
   age_data <- if ("age_v" %in% names(dem_df)) list(
     under_70 = sum(dem_df$age_v < 70, na.rm = TRUE),
     over_70  = sum(dem_df$age_v >= 70, na.rm = TRUE)) else NULL
@@ -528,7 +817,9 @@ prepare_report_data <- function(df,
       !("All sites" %in% selected_sites) && "site_name" %in% names(w))
     w <- w[w$site_name %in% selected_sites, ]
   withdrawal_summary <- if (nrow(w) > 0) {
-    log_tbl <- w[, intersect(c("site_name","cos_label"), names(w)), drop = FALSE]
+    if ("cos_date" %in% names(w))
+      w <- w[order(suppressWarnings(as.Date(w$cos_date)), na.last = TRUE), ]
+    log_tbl <- w[, intersect(c("cos_date","cos_label","cos_reason","site_name"), names(w)), drop = FALSE]
     list(n = nrow(w), rate = round(nrow(w)/total_randomised*100, 1), log = log_tbl)
   } else list(n = 0, rate = 0, log = NULL)
 
@@ -548,10 +839,16 @@ prepare_report_data <- function(df,
     round(mean(w48) * 100, 1)
   } else NA
 
+  # Contamination cannot be derived from allocation (the export carries no
+  # randomisation-arm field). Per TMG guidance a participant counts as
+  # contaminated when either PN-timing reason is completed
+  # (nut_o_pn_late_rsn / nut_o_pn_early_rsn), out of all randomised.
+  # NA — "not determinable" — when neither field is in the export.
   sc_df <- filtered[!is.na(filtered$trial_arm) & filtered$trial_arm == "Standard care", ]
-  contam_rate <- if (nrow(sc_df) > 0 && "pn_start" %in% names(sc_df)) {
-    he <- if (has_pn_early) !is.na(sc_df$pn_early) else rep(FALSE, nrow(sc_df))
-    round(mean(!is.na(sc_df$pn_start) & !he) * 100, 1)
+  contam_rate <- if ((has_pn_late || has_pn_early) && nrow(filtered) > 0) {
+    late  <- if (has_pn_late)  filled(filtered$pn_late)  else rep(FALSE, nrow(filtered))
+    early <- if (has_pn_early) filled(filtered$pn_early) else rep(FALSE, nrow(filtered))
+    round(mean(late | early) * 100, 1)
   } else NA
 
   crossover_rate <- if (nrow(sc_df) > 0 && has_pn_fields) {
@@ -564,8 +861,54 @@ prepare_report_data <- function(df,
     fu_90_elig = elig_90, fu_90_comp = comp_90,
     interv_rate = interv_rate, contam_rate = contam_rate, crossover_rate = crossover_rate)
 
+  # ── 27. Protocol deviations ───────────────────────────────────────────────
+  # Reuses the Data-tab extractor so the report and the drill-down never
+  # disagree. NULL when the trial maps no deviation form or none is recorded —
+  # the report then omits the section rather than printing an empty table.
+  deviation_log <- NULL
+  if (exists("deviation_events", mode = "function")) {
+    deviation_log <- tryCatch({
+      d <- deviation_events(df)
+      if (is.null(d) || nrow(d) == 0) NULL else d
+    }, error = function(e) NULL)
+  }
+  if (!is.null(deviation_log)) {
+    # Scope to the participants this report covers, and label the site from the
+    # resolved participant record rather than the raw DAG column.
+    deviation_log <- deviation_log[
+      as.character(deviation_log$record_id) %in% as.character(filtered$record_id), ,
+      drop = FALSE]
+    if (nrow(deviation_log) == 0) {
+      deviation_log <- NULL
+    } else if ("site_name" %in% names(filtered)) {
+      lk <- data.frame(record_id = as.character(filtered$record_id),
+                       .site     = as.character(filtered$site_name),
+                       stringsAsFactors = FALSE)
+      lk <- lk[!duplicated(lk$record_id), , drop = FALSE]
+      deviation_log$record_id <- as.character(deviation_log$record_id)
+      deviation_log <- merge(deviation_log, lk, by = "record_id", all.x = TRUE)
+      has_site <- !is.na(deviation_log$.site) & nzchar(deviation_log$.site)
+      deviation_log$site[has_site] <- deviation_log$.site[has_site]
+      deviation_log$.site <- NULL
+      deviation_log <- deviation_log[order(deviation_log$onset_date,
+                                           deviation_log$record_id,
+                                           na.last = TRUE), , drop = FALSE]
+    }
+  }
+  deviation_count <- if (is.null(deviation_log)) 0L else nrow(deviation_log)
+  # Distinguishes "no deviations reported" from "this export carries no
+  # deviation form", so the report can say which.
+  deviation_available <- {
+    dc <- fld("deviation_complete", default = "deviation_complete", cfg = cfg)
+    !is.null(dc) && dc %in% names(df)
+  }
+
   # ── Return ────────────────────────────────────────────────────────────────
+  # raw_df is the cleaned, aliased export exactly as loaded. Templates whose
+  # metrics are not randomisation-based (screening funnels, PROM windows,
+  # form-status completeness) read it directly instead of the summaries below.
   list(
+    raw_df      = df,
     filtered_df = filtered,
     kpis = list(total_randomised = total_randomised, trial_target = trial_target,
       n_sites_active = n_sites_active, expected_to_date = expected_to_date,
@@ -577,6 +920,9 @@ prepare_report_data <- function(df,
                   fu_30_count = fu_30_kpi, fu_30_elig = elig_30,
                   fu_90_count = fu_90_kpi, fu_90_elig = elig_90),
     safety_summary = safety_summary, site_summary = site_summary,
+    sae_log = sae_log,
+    deviation_log = deviation_log, deviation_count = deviation_count,
+    deviation_available = deviation_available,
     site_status = site_status_table, monthly_achievement = monthly_achievement,
     open_sites = open_sites_table, site_month_heatmap = site_month_heatmap,
     crf_data = crf_data, pipeline = pipeline_combined,

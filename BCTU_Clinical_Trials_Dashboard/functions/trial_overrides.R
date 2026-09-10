@@ -45,7 +45,11 @@ clear_overrides <- function(cfg) {
 # controls (e.g. the follow-up schedule), so they fully replace rather than
 # deep-merge. Otherwise a timepoint removed in the editor would survive because
 # the original config.R key would merge back in.
-.override_replace_keys <- c("redcap_events", "crf_schedule", "target_schedule", "cos_type_labels")
+# Work-package settings are likewise edited as a whole — a work package
+# removed in the editor must not merge back in from config.R.
+.override_replace_keys <- c("redcap_events", "crf_schedule", "target_schedule", "cos_type_labels",
+                            "work_packages", "work_package_targets", "work_package_meta",
+                            "work_package_data_dirs")
 
 apply_overrides <- function(cfg, overrides = NULL) {
   if (is.null(overrides)) overrides <- load_overrides(cfg)
@@ -53,8 +57,11 @@ apply_overrides <- function(cfg, overrides = NULL) {
   for (k in names(overrides)) {
     v <- overrides[[k]]
     if (identical(k, "cos_type_labels")) v <- unlist(v)   # named character vector, as in config.R
+    # Deep-merge only makes sense for a keyed list; an unnamed one (a plain
+    # sequence, e.g. a list of work packages) has nothing to merge by, and
+    # merging it key-by-key would silently drop the override entirely.
     if (!(k %in% .override_replace_keys) &&
-        is.list(v) && !is.null(cfg[[k]]) && is.list(cfg[[k]])) {
+        is.list(v) && length(names(v)) && !is.null(cfg[[k]]) && is.list(cfg[[k]])) {
       for (kk in names(v)) cfg[[k]][[kk]] <- v[[kk]]
     } else {
       cfg[[k]] <- v

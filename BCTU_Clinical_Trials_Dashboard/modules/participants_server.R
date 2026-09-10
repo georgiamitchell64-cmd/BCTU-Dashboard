@@ -116,12 +116,16 @@ participants_server <- function(input, output, session, state) {
 
   # Number randomised — denominator for all four timepoint donuts. A record is
   # randomised when its randomisation-datetime field is non-empty (matches
-  # reports_server's recruitment logic). Falls back to total participants only
-  # if the randomisation column can't be found.
+  # reports_server's recruitment logic). A trial that defines a recruitment
+  # model uses that instead, so the denominator is the recruited count rather
+  # than everyone with a registration date. Falls back to total participants
+  # only if the randomisation column can't be found.
   n_randomised <- function() {
     raw <- redcap_wp()
     if (is.null(raw) || nrow(raw) == 0 || !"record_id" %in% names(raw))
       return(0L)
+    rec <- tryCatch(recruited_ids(raw, rv$trial_config), error = function(e) NULL)
+    if (!is.null(rec)) return(length(rec))
     rc <- fld("randomisation_datetime", "rand_dttm_s")
     if (!rc %in% names(raw)) return(total_p())
     v <- trimws(as.character(raw[[rc]]))
@@ -177,7 +181,18 @@ participants_server <- function(input, output, session, state) {
       ring, fill, dash, circ, round(pct)))
   }
 
-  donut_card_ui <- function(n, n_total, label, ring, fill, sub_extra = "") {
+  donut_card_ui <- function(n, n_total, label, ring, fill, sub_extra = "",
+                            not_due = FALSE) {
+    # A timepoint whose window has not opened for anyone is not 0% complete —
+    # there is nothing to complete yet. Say so instead of showing a bare zero.
+    if (isTRUE(not_due)) {
+      return(div(class = "donut-card",
+        div(class = "donut", donut_svg(0, ring, "#CFCFCF", toupper(label))),
+        div(class = "donut-info",
+            div(class = "lbl", label),
+            div(class = "vv", style = "font-size:15px;color:#58595B;", "Not yet due"),
+            div(class = "sub", sub_extra))))
+    }
     pct <- if (n_total > 0) 100 * n / n_total else 0
     div(class = "donut-card",
       div(class = "donut", donut_svg(pct, ring, fill, toupper(label))),
@@ -189,6 +204,33 @@ participants_server <- function(input, output, session, state) {
           div(class = "sub", sub_extra)
       )
     )
+  }
+
+  # Per-participant anchor dates for the follow-up schedule: the recruitment
+  # date every offset counts from, plus discharge dates for trials whose
+  # follow-up runs from discharge instead.
+  .timepoint_anchors <- function() {
+    raw <- redcap_wp()
+    empty <- list(ids = character(0), recruitment = character(0),
+                  discharge = character(0))
+    if (is.null(raw) || !nrow(raw) || !"record_id" %in% names(raw)) return(empty)
+    spec <- recruitment_spec(rv$trial_config)
+    ids  <- recruitment_counts(raw, rv$trial_config)$recruited
+    if (!length(ids)) return(empty)
+
+    pick <- function(field) {
+      field <- as.character(unlist(field %||% character(0)))
+      field <- field[!is.na(field) & nzchar(field) & field %in% names(raw)]
+      if (!length(field))
+        return(stats::setNames(rep(NA, length(ids)), ids))
+      v <- .rec_values(raw, field[1])
+      out <- stats::setNames(rep(NA_character_, length(ids)), ids)
+      hit <- intersect(names(v), ids)
+      out[hit] <- v[hit]
+      suppressWarnings(stats::setNames(as.Date(substr(out, 1, 10)), ids))
+    }
+    list(ids = ids, recruitment = pick(spec$date_candidates %||% spec$date_field),
+         discharge = pick(rv$trial_config$redcap_fields$discharge_date))
   }
 
   # Turn a redcap_events role key into a readable label: "day_30" -> "Day 30",
@@ -219,15 +261,35 @@ participants_server <- function(input, output, session, state) {
     # Completion donuts are trial charts: one ring colour, the trial's primary
     palette <- list(c("#EFEFEF", trial_palette()[["primary"]]))
 
+    # How many participants each timepoint has actually fallen due for. A
+    # trial three months old has no 6-month follow-ups: its event is not in the
+    # export at all, and counting it against everyone recruited would report a
+    # failure that has not happened. Trials with no schedule configured keep
+    # the old denominator (everyone recruited).
+    tp_meta <- timepoint_spec(rv$trial_config)
+    anchors <- .timepoint_anchors()
+    due_for <- function(role) {
+      m <- tp_meta[[role]]
+      if (is.null(m) || is.na(m$offset_days) || !length(anchors$ids)) return(den)
+      a <- if (identical(m$anchor, "discharge")) anchors$discharge else anchors$recruitment
+      length(timepoint_due_ids(anchors$ids, a, m$offset_days, m$window_days))
+    }
+
     for (i in seq_along(roles)) {
       role <- roles[i]
-      lbl  <- .pretty_role(role)
+      m    <- tp_meta[[role]]
+      lbl  <- (m$label %||% .pretty_role(role))
       fr   <- known_fields[[role]] %||% paste0(role, "_complete")
       num  <- n_complete(fr, role, lbl)
+      dn   <- due_for(role)
       pal  <- palette[[((i - 1) %% length(palette)) + 1]]
-      cards[[length(cards) + 1]] <- donut_card_ui(num, den, lbl,
+      cards[[length(cards) + 1]] <- donut_card_ui(num, dn, lbl,
                     ring = pal[1], fill = pal[2],
-                    sub_extra = sprintf("%d outstanding", max(0L, den - num)))
+                    not_due = dn == 0 && !is.null(m) && !is.na(m$offset_days),
+                    sub_extra = if (dn == 0 && !is.null(m) && !is.na(m$offset_days))
+                      sprintf("due %d days after %s", m$offset_days,
+                              if (identical(m$anchor, "discharge")) "discharge" else "recruitment")
+                    else sprintf("%d outstanding", max(0L, dn - num)))
     }
     div(class = "data-hero", cards)
   })

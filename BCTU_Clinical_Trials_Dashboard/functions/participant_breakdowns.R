@@ -20,11 +20,7 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
   if (is.null(raw) || !nrow(raw)) return(data.frame())
 
   # Filter to baseline rows (most demographics live there)
-  base <- raw
-  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
-  }
+  base <- baseline_rows(raw, cfg)
 
   cols <- names(base)
   is_skip <- vapply(cols, function(c)
@@ -139,11 +135,7 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
 # Returns a list of lists: col, label, values, suggested (named char vec or NULL).
 find_unmapped_code_cols <- function(raw, cfg, det) {
   if (is.null(raw) || !nrow(raw) || !nrow(det)) return(list())
-  base <- raw
-  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
-  }
+  base <- baseline_rows(raw, cfg)
   results <- list()
   for (i in seq_len(nrow(det))) {
     r <- det[i, ]
@@ -176,11 +168,7 @@ find_unmapped_code_cols <- function(raw, cfg, det) {
 # the "edit / rename groupings" view so saved labels can be changed later.
 find_editable_code_cols <- function(raw, cfg, det) {
   if (is.null(raw) || !nrow(raw) || is.null(det) || !nrow(det)) return(list())
-  base <- raw
-  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
-  }
+  base <- baseline_rows(raw, cfg)
   has <- function(x, k) !is.null(x) && k %in% names(x)
   results <- list()
   for (i in seq_len(nrow(det))) {
@@ -215,6 +203,66 @@ find_editable_code_cols <- function(raw, cfg, det) {
       suggested = as.list(prefill))
   }
   results
+}
+
+# ── Codebook ─────────────────────────────────────────────────────────────────
+# Every coded column in the export, whether or not it was picked up as a
+# demographic breakdown. A REDCap export carries the numbers but not what they
+# mean, so this is the surface a trial manager labels once (aetiology,
+# severity, withdrawal level, yes/no fields) and every view then reads through
+# cfg$column_labels.
+.CODEBOOK_SKIP_PATTERNS <- c(
+  "^record_id$", "^redcap_", "_complete$", "_timestamp$",
+  "_dt$", "_date$", "_dttm", "^site_id$", "_id$", "_instance$"
+)
+
+detect_coded_columns <- function(raw, cfg = NULL, max_codes = 25) {
+  if (is.null(raw) || !is.data.frame(raw) || !nrow(raw)) return(list())
+  base <- baseline_rows(raw, cfg)
+  if (!nrow(base)) base <- raw
+
+  cols <- names(base)
+  skip <- vapply(cols, function(c)
+    any(vapply(.CODEBOOK_SKIP_PATTERNS, function(p)
+      grepl(p, c, ignore.case = TRUE), logical(1))), logical(1))
+  cols <- cols[!skip]
+
+  has <- function(x, k) !is.null(x) && k %in% names(x)
+  out <- list()
+  for (col in cols) {
+    v <- as.character(base[[col]]); v[v == ""] <- NA
+    vals <- v[!is.na(v)]
+    if (!length(vals)) next
+    v_int <- suppressWarnings(as.integer(vals))
+    if (any(is.na(v_int))) next                       # not a coded field
+    uniq <- sort(unique(v_int))
+    if (!length(uniq) || length(uniq) > max_codes) next
+    if (length(uniq) == length(vals) && length(vals) > 3) next   # looks like an id
+
+    existing  <- cfg$column_labels[[col]]
+    if (is.null(existing)) existing <- list()
+    suggested <- .suggest_code_labels(col, as.character(uniq))
+    if (is.null(suggested) && grepl("ethnic", col, ignore.case = TRUE))
+      suggested <- .NHS_ETHNICITY_LABELS
+    if (is.null(suggested)) suggested <- character(0)
+
+    prefill <- setNames(vapply(as.character(uniq), function(val) {
+      e <- if (has(existing, val)) existing[[val]] else NULL
+      if (!is.null(e) && nzchar(as.character(e))) return(as.character(e))
+      sg <- if (has(suggested, val)) suggested[[val]] else NULL
+      if (!is.null(sg) && nzchar(as.character(sg))) return(as.character(sg)) 
+      ""
+    }, character(1)), as.character(uniq))
+
+    out[[length(out) + 1]] <- list(
+      col       = col,
+      label     = .pretty_label(col),
+      values    = as.character(uniq),
+      n         = length(vals),
+      labelled  = length(existing) > 0,
+      suggested = as.list(prefill))
+  }
+  out
 }
 
 # Default NHS 19-code ethnicity scheme (used when no trial-level mapping set).
@@ -295,11 +343,7 @@ compute_breakdown <- function(raw, col, cfg = NULL,
                               max_segments = 8) {
   if (is.null(raw) || !nrow(raw) || !col %in% names(raw)) return(NULL)
 
-  base <- raw
-  if (!is.null(cfg) && "redcap_event_name" %in% names(raw)) {
-    bevt <- cfg$redcap_events$baseline %||% "baseline_arm_1"
-    base <- raw[raw$redcap_event_name == bevt, , drop = FALSE]
-  }
+  base <- baseline_rows(raw, cfg)
 
   v <- base[[col]]
   if (is.character(v) || is.factor(v)) v[v == ""] <- NA

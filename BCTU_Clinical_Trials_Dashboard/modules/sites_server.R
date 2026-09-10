@@ -47,7 +47,7 @@ sites_server <- function(input, output, session, state) {
         make_stat(n_setup,       "In set-up",   "#8A8A8C"),
         make_stat(n_paused,      "Paused",      "#F07F3C"),
         make_stat(n_closed,      "Closed",      "#58595B"),
-        make_stat(total_rand,    "Randomised",  "#1B1B1B"),
+        make_stat(total_rand, recruit_term("Past", rv$trial_config), "#1B1B1B"),
         if (n_flagged > 0) make_stat(n_flagged, "Incomplete", "#C20019"))
   })
 

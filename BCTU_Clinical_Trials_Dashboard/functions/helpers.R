@@ -13,7 +13,7 @@ ensure_pandoc <- function() {
       file.exists(file.path(Sys.getenv("RSTUDIO_PANDOC"),
                             if (.Platform$OS.type == "windows") "pandoc.exe" else "pandoc")))
     return(TRUE)
-
+  
   # rmarkdown carries its own copy in newer versions. pandoc_exec() returns
   # character(0) when no pandoc is available, so guard length/NA before
   # file.exists() — otherwise the `if` errors instead of falling through.
@@ -22,7 +22,7 @@ ensure_pandoc <- function() {
       file.exists(rm_path)) {
     Sys.setenv(RSTUDIO_PANDOC = dirname(rm_path)); return(TRUE)
   }
-
+  
   # Common install locations across the three OSes
   candidates <- c(
     # macOS — RStudio + Quarto
@@ -33,7 +33,7 @@ ensure_pandoc <- function() {
     "/Applications/RStudio.app/Contents/MacOS/pandoc",
     "/usr/local/bin",
     "/opt/homebrew/bin",
-
+    
     # Windows — RStudio + standalone + Quarto
     "C:/Program Files/RStudio/resources/app/quarto/bin/tools",
     "C:/Program Files/RStudio/bin/quarto/bin/tools",
@@ -44,7 +44,7 @@ ensure_pandoc <- function() {
     file.path(Sys.getenv("APPDATA"),      "local", "Pandoc"),
     "C:/Program Files/Quarto/bin/tools",
     "C:/Program Files/Quarto/bin",
-
+    
     # Linux
     "/usr/bin", "/usr/local/bin"
   )
@@ -54,14 +54,66 @@ ensure_pandoc <- function() {
       Sys.setenv(RSTUDIO_PANDOC = pp); return(TRUE)
     }
   }
-
+  
   # Last resort: maybe it's already on PATH but RSTUDIO_PANDOC isn't set
   found <- tryCatch(Sys.which(bin), error = function(e) "")
   if (nzchar(found) && file.exists(found)) {
     Sys.setenv(RSTUDIO_PANDOC = dirname(found)); return(TRUE)
   }
-
+  
   FALSE
+}
+
+# A config mapping (a redcap_fields / redcap_events entry) may hold one name or
+# several — a trial that registers under any of a few candidate events maps them
+# all. Test emptiness with this rather than `nzchar(x)`, which returns a vector
+# for a multi-value mapping and makes `&&` / `if` raise
+# "'length = n' in coercion to 'logical(1)'".
+mapping_is_blank <- function(x) {
+  is.null(x) || length(x) == 0 ||
+    (is.character(x) && !any(nzchar(trimws(x))))
+}
+
+# First name in a mapping, for the call sites that can only use one.
+mapping_first <- function(x, default = NA_character_) {
+  if (mapping_is_blank(x)) return(default)
+  as.character(unlist(x))[1]
+}
+
+# =============================================================================
+# Baseline rows
+# =============================================================================
+# Most participant-level views (demographic breakdowns, the codebook, CONSORT
+# counts, insights) want one row per participant, which in a longitudinal
+# REDCap export means the baseline/registration event's rows.
+#
+# Two things this handles that a plain `raw$redcap_event_name == bevt` did not:
+#   * a config may map several candidate event names (PANORAMA registers
+#     participants under a screening event), so matching is %in%, not ==;
+#   * when the mapped event matches nothing — a renamed event, or a trial
+#     configured before its first export — falling back to an empty frame
+#     silently blanks every demographic view. We fall back to the first row
+#     per participant instead, so views populate and counts stay per-person.
+baseline_rows <- function(raw, cfg = NULL, event_col = "redcap_event_name",
+                          id_col = NULL) {
+  if (is.null(raw) || !is.data.frame(raw) || !nrow(raw)) return(raw)
+  if (!(event_col %in% names(raw))) return(raw)   # flat export: every row is baseline
+
+  bevt <- (cfg$redcap_events$baseline %||% "baseline_arm_1")
+  out  <- raw[as.character(raw[[event_col]]) %in% as.character(unlist(bevt)), ,
+              drop = FALSE]
+  if (nrow(out)) return(out)
+
+  id <- id_col
+  if (is.null(id)) {
+    cand <- c(fld("record_id", default = NULL, cfg = cfg),
+              "record_id", "participant_id", "study_id", "record_v")
+    cand <- cand[!vapply(cand, is.null, logical(1))]
+    id <- intersect(unlist(cand), names(raw))[1]
+  }
+  if (!is.null(id) && !is.na(id) && id %in% names(raw))
+    raw[!duplicated(as.character(raw[[id]])), , drop = FALSE]
+  else raw
 }
 
 # =============================================================================
@@ -74,7 +126,15 @@ ensure_pandoc <- function() {
 # affecting other trials.
 # =============================================================================
 
-REPORT_TEMPLATE_KINDS <- c("tonic", "tsc")  # tonic_report.Rmd = TMG/iTMG, tsc_report.Rmd = TSC
+# "tonic" is the TMG/iTMG kind. Its file is tmg_report.Rmd; the original name,
+# tonic_report.Rmd, still resolves so trials set up before the rename keep
+# working — nothing needs renaming on disk. "tsc" is the TSC Word report and
+# "tsc_interim" the TSC Interim v0.1 HTML report, derived from the TMG layout;
+# neither was ever stored under another name, so tsc_interim resolves through
+# report_template_filename()'s <kind>_report.Rmd default.
+REPORT_TEMPLATE_KINDS <- c("tonic", "tsc", "tsc_interim")
+.REPORT_TEMPLATE_FILES <- list(tonic = "tmg_report.Rmd", tsc = "tsc_report.Rmd")
+.REPORT_TEMPLATE_LEGACY <- list(tonic = "tonic_report.Rmd")
 
 # Resolve the URL path (relative to Shiny's www/) for a trial's logo, if one
 # was copied to www/trial_logos/<code>.<ext> at startup. Returns NULL when
@@ -101,24 +161,24 @@ rmd_declared_params <- function(rmd_path) {
   lines <- tryCatch(readLines(rmd_path, warn = FALSE, n = 400),
                     error = function(e) character(0))
   if (!length(lines) || !grepl("^---\\s*$", lines[1])) return(character(0))
-
+  
   # Find the closing `---` of the YAML block
   close_idx <- which(grepl("^---\\s*$", lines))[2]
   if (is.na(close_idx)) return(character(0))
   yaml_lines <- lines[2:(close_idx - 1)]
-
+  
   # Find the `params:` key and read its indented children
   pidx <- grep("^params:\\s*$", yaml_lines)
   if (!length(pidx)) return(character(0))
   remaining <- yaml_lines[(pidx[1] + 1):length(yaml_lines)]
-
+  
   # Stop at the first non-indented line (next top-level key)
   stop_at <- which(grepl("^[^[:space:]#]", remaining))
   if (length(stop_at)) remaining <- remaining[seq_len(stop_at[1] - 1)]
-
+  
   # Pick out lines like "  short_name: ..." or "  report_content: NULL"
   m <- regmatches(remaining,
-    regexec("^\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:", remaining))
+                  regexec("^\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*:", remaining))
   out <- vapply(m, function(x) if (length(x) >= 2) x[[2]] else NA_character_,
                 character(1))
   unique(out[!is.na(out)])
@@ -137,42 +197,77 @@ filter_params_for_rmd <- function(params, rmd_path) {
   params[intersect(names(params), decl)]
 }
 
-# Filename for a given template kind, e.g. "tonic" → "tonic_report.Rmd"
+# Filename for a given template kind, e.g. "tonic" → "tmg_report.Rmd"
 report_template_filename <- function(kind) {
   if (!kind %in% REPORT_TEMPLATE_KINDS)
     stop("Unknown report template kind: ", kind)
-  paste0(kind, "_report.Rmd")
+  .REPORT_TEMPLATE_FILES[[kind]] %||% paste0(kind, "_report.Rmd")
+}
+
+# Every filename a kind may be stored under, current name first.
+report_template_filenames <- function(kind) {
+  c(report_template_filename(kind), .REPORT_TEMPLATE_LEGACY[[kind]])
 }
 
 # Path to the trial's own copy (may not exist yet).
-trial_report_template_path <- function(cfg, kind) {
+trial_report_template_path <- function(cfg, kind, existing = FALSE) {
   trial_dir <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
-  file.path(trial_dir, "reports", report_template_filename(kind))
+  paths <- file.path(trial_dir, "reports", report_template_filenames(kind))
+  # `existing` picks whichever name is actually on disk (a trial set up before
+  # the rename still has tonic_report.Rmd); otherwise the current name, which
+  # is where a save writes.
+  if (existing) {
+    hit <- paths[file.exists(paths)]
+    if (length(hit)) return(hit[1])
+  }
+  paths[1]
 }
 
 # Path to the project-level fallback template (the "factory default").
-default_report_template_path <- function(kind) {
-  file.path(getwd(), report_template_filename(kind))
+default_report_template_path <- function(kind, existing = FALSE) {
+  paths <- file.path(getwd(), report_template_filenames(kind))
+  if (existing) {
+    hit <- paths[file.exists(paths)]
+    if (length(hit)) return(hit[1])
+  }
+  paths[1]
 }
 
 # Resolve which file to use at render time. Order of precedence:
 #   1. cfg$report_template_paths[[kind]] — explicit override path set in
 #      Trial Settings → Report templates (lets a user point at an existing Rmd
 #      they already maintain elsewhere, e.g. on a network drive).
-#   2. trials/<code>/reports/<kind>_report.Rmd — the per-trial copy (default).
+#   2. trials/<code>/reports/<kind>_report.Rmd — the per-trial copy — unless
+#      the canonical template is newer. Per-trial copies are seeded once and
+#      then go stale when the canonical Rmd is updated (e.g. via git pull),
+#      which used to silently keep rendering old layouts/figures; whichever
+#      of the two files was modified most recently wins, so in-app edits to
+#      the trial copy still take precedence until the canonical next changes.
 #   3. <project root>/<kind>_report.Rmd — the canonical fallback.
 # Returns NULL if none exist.
 resolve_report_template <- function(cfg, kind) {
   override <- cfg$report_template_paths[[kind]]
   if (!is.null(override) && nzchar(override) && file.exists(override))
     return(override)
-
-  trial_path <- trial_report_template_path(cfg, kind)
-  if (file.exists(trial_path)) return(trial_path)
-
-  default_path <- default_report_template_path(kind)
-  if (file.exists(default_path)) return(default_path)
-
+  
+  trial_path   <- trial_report_template_path(cfg, kind, existing = TRUE)
+  default_path <- default_report_template_path(kind, existing = TRUE)
+  has_trial    <- file.exists(trial_path)
+  has_default  <- file.exists(default_path)
+  
+  if (has_trial && has_default) {
+    t_trial   <- suppressWarnings(file.info(trial_path)$mtime)
+    t_default <- suppressWarnings(file.info(default_path)$mtime)
+    if (!is.na(t_trial) && !is.na(t_default) && t_default > t_trial) {
+      message("Report template: canonical ", basename(default_path),
+              " is newer than the per-trial copy — rendering the canonical. ",
+              "Save or reset the template in Trial Settings to refresh the copy.")
+      return(default_path)
+    }
+  }
+  if (has_trial)   return(trial_path)
+  if (has_default) return(default_path)
+  
   NULL
 }
 
@@ -205,8 +300,8 @@ seed_trial_report_templates <- function(cfg, overwrite = FALSE) {
   if (!dir.exists(reports_dir))
     dir.create(reports_dir, recursive = TRUE, showWarnings = FALSE)
   for (kind in REPORT_TEMPLATE_KINDS) {
-    src <- default_report_template_path(kind)
-    dst <- trial_report_template_path(cfg, kind)
+    src <- default_report_template_path(kind, existing = TRUE)
+    dst <- trial_report_template_path(cfg, kind, existing = TRUE)
     if (!file.exists(src)) next
     if (file.exists(dst) && !overwrite) next
     if (file.exists(dst)) backup_trial_report_template(cfg, kind, incoming = src)
@@ -449,8 +544,8 @@ seed_trial_report_templates <- function(cfg, overwrite = FALSE) {
     -1.1862,  # Nottingham
     -1.1270,  # Leicester Royal Infirmary
     -1.1270,  # Leicester
-     0.1408,  # Addenbrooke's Hospital
-     0.1408,  # Cambridge
+    0.1408,  # Addenbrooke's Hospital
+    0.1408,  # Cambridge
     -1.3965,  # Southampton General Hospital
     -1.3965,  # Southampton
     -0.1057,  # King's College Hospital
@@ -600,9 +695,29 @@ get_hospital_names <- function() sort(unique(.uk_hospital_coords$name))
 # ── Other helpers ─────────────────────────────────────────────────────────────
 clean_df_names <- function(x) {
   names(x) <- iconv(names(x), from = "UTF-8", to = "ASCII", sub = "")
-  names(x) <- tolower(gsub("[^a-z0-9]+", "_", trimws(names(x))))
+  # Lower-case BEFORE substituting: the class is [a-z0-9], so running it first
+  # deleted every capital letter rather than folding it — "Record ID" came out
+  # as "ecord". Raw REDCap exports are already lower-case, which is why it went
+  # unnoticed; anything hand-edited or exported with labels did not survive.
+  names(x) <- gsub("[^a-z0-9]+", "_", tolower(trimws(names(x))))
   names(x) <- gsub("^_+|_+$", "", names(x))
   x
+}
+
+#' TRUE when a file looks like a REDCap "Labels" export rather than raw data.
+#' A labels export replaces every variable name with its form question, so the
+#' four completion flags all arrive as "Complete?" and nothing the dashboard
+#' reads can be told apart. It has to be rejected outright — loading it would
+#' fill the dashboard with columns nothing can map.
+looks_like_labels_export <- function(cols) {
+  cols <- trimws(as.character(cols %||% character(0)))
+  if (!length(cols)) return(FALSE)
+  # Raw exports are lower-case, underscore-separated, and always carry
+  # record_id (plus redcap_event_name when the project is longitudinal).
+  if (any(tolower(cols) == "redcap_event_name")) return(FALSE)
+  if (sum(grepl("^Complete[?]$", cols, ignore.case = TRUE)) > 1) return(TRUE)
+  wordy <- grepl("[ ?]", cols)
+  !any(tolower(cols) == "record_id") && mean(wordy) >= 0.25
 }
 
 next_site_id <- function(sites_df) {
@@ -710,11 +825,18 @@ process_redcap <- function(raw_df, current_sites) {
   diag <- list(ncol = ncol(df), nrow = nrow(df), all_cols = paste(orig, collapse = ", "),
                rec_col = rec_col %||% "NOT FOUND", evt_col = evt_col %||% "NOT FOUND",
                dag_col = dag_col %||% "NOT FOUND", rand_col = rand_col %||% "NOT FOUND")
+  if (looks_like_labels_export(orig))
+    stop("This export has REDCap's question text as column headings (for ",
+         "example several columns all called \"Complete?\"), which is what a ",
+         "Labels export produces. The dashboard needs the variable names. In ",
+         "REDCap: Data Exports, Reports, and Stats -> All data -> Export Data ",
+         "-> CSV / Microsoft Excel (raw data), NOT the labels option. Then ",
+         "upload that file.")
   if (is.na(rec_col) || is.na(evt_col))
     stop(sprintf("Could not find required columns. Found: %s",
                  paste(orig[1:min(8, length(orig))], collapse = ", ")))
   if (rec_col != "record_id") df <- df %>% rename(record_id = all_of(rec_col))
-
+  
   # Build event_type from the active trial's redcap_events mapping.
   # For each logical role (baseline, discharge, day_30, day_90, ...) we accept
   # an exact match against the configured event name(s), then fall back to a
@@ -740,7 +862,7 @@ process_redcap <- function(raw_df, current_sites) {
     if (grepl("day.?90",   raw_t, ignore.case = TRUE)) return("Day 90")
     raw_t
   }
-
+  
   df <- df %>%
     mutate(
       record_id  = trimws(as.character(record_id)),
@@ -763,11 +885,21 @@ process_redcap <- function(raw_df, current_sites) {
     ) %>%
     ungroup()
   participants <- df %>% select(record_id, event_type, site_dag, work_package) %>% distinct()
+
+  # Who counts towards the target. A trial that defines a recruitment model
+  # (config `recruitment`) decides it there — PANORAMA needs the screening AND
+  # consent forms both complete, so a screened-only participant must not be
+  # counted at a site. NULL means no model is configured, and the per-site
+  # count falls back to "has a registration/randomisation date", which is what
+  # this did before.
+  rec_ids <- tryCatch(recruited_ids(df, current_trial_config()),
+                      error = function(e) NULL)
   dag_summary  <- df %>%
     filter(!is.na(site_dag), nchar(trimws(site_dag)) > 0) %>%
     group_by(site_dag) %>%
     summarise(
-      rand_count = if (!is.na(rand_col))
+      rand_count = if (!is.null(rec_ids)) n_distinct(record_id[record_id %in% rec_ids])
+      else if (!is.na(rand_col))
         n_distinct(record_id[!is.na(.rand_dttm) & nchar(trimws(.rand_dttm)) > 0])
       else n_distinct(record_id[event_type == "Baseline"]),
       .groups = "drop")
@@ -778,7 +910,7 @@ process_redcap <- function(raw_df, current_sites) {
   # status set at all). Once a user picks a real status on the Sites tab,
   # re-uploading a CSV preserves it.
   auto_override_allowed <- c("Identified", NA_character_, "")
-
+  
   for (i in seq_len(nrow(dag_summary))) {
     dag_name   <- dag_summary$site_dag[i]
     rand_n     <- as.integer(dag_summary$rand_count[i])
@@ -815,13 +947,13 @@ parse_safety <- function(raw_df) {
   if (is.null(raw_df) || nrow(raw_df) == 0) return(NULL)
   df <- raw_df
   gc <- function(col) if (col %in% names(df)) df[[col]] else rep(NA, nrow(df))
-
+  
   sae_col <- fld("sae_complete")
   cos_col <- fld("cos_type")
   pn_col  <- fld("pregnancy_notification_complete")
   po_col  <- fld("pregnancy_outcome_complete")
   dev_col <- fld("deviation_complete")
-
+  
   sae_vals    <- suppressWarnings(as.integer(gc(sae_col)))
   cos_vals    <- as.character(gc(cos_col))
   preg_n_vals <- suppressWarnings(as.integer(gc(pn_col)))
@@ -839,17 +971,33 @@ parse_safety <- function(raw_df) {
   )
 }
 
+# Parse a REDCap date/datetime column without assuming one layout. The
+# randomisation log writes "%d/%m/%Y %H:%M"; a REDCap export writes ISO, with
+# or without a time. Each format fills only the values the previous ones could
+# not parse.
+.parse_dt <- function(x) {
+  x   <- trimws(as.character(x))
+  out <- as.POSIXct(rep(NA_real_, length(x)), origin = "1970-01-01", tz = "UTC")
+  for (f in c("%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M")) {
+    todo <- is.na(out) & !is.na(x) & nzchar(x)
+    if (!any(todo)) break
+    out[todo] <- suppressWarnings(as.POSIXct(x[todo], format = f, tz = "UTC"))
+  }
+  todo <- is.na(out) & !is.na(x) & nzchar(x)
+  if (any(todo))
+    out[todo] <- as.POSIXct(as.character(parse_redcap_date(x[todo])), tz = "UTC")
+  out
+}
+
 make_monthly_df <- function(log_df, sites_df, site_filter = NULL) {
   
   # --- Standardise input formats (handles BOTH log + REDCap import) ---
-  rand_field <- fld("randomisation_datetime", "rand_dttm_s")
-  if (rand_field %in% names(log_df)) {
+  rand_field <- fld_present("randomisation_datetime", log_df, default = NA_character_)
+  if (!is.na(rand_field)) {
     rands <- log_df %>%
       dplyr::mutate(
         site_id   = dplyr::coalesce(site_id, site_name),
-        timestamp = as.POSIXct(trimws(.data[[rand_field]]),
-                               format = "%d/%m/%Y %H:%M",
-                               tz = "UTC"),
+        timestamp = .parse_dt(.data[[rand_field]]),
         action    = "+1",
         month     = lubridate::floor_date(timestamp, "month")
       )
@@ -1016,7 +1164,7 @@ build_participant_table <- function(df, layout = NULL) {
   cfg    <- current_trial_config()
   layout <- layout %||% cfg$participant_table_layout
   tps    <- layout$timepoints
-
+  
   icon <- function(v) {
     dplyr::case_when(
       is.na(v)  ~ '<span class="c-none">&mdash;</span>',
@@ -1026,7 +1174,7 @@ build_participant_table <- function(df, layout = NULL) {
       TRUE      ~ '<span class="c-none">&mdash;</span>'
     )
   }
-
+  
   # No layout configured: minimal Record ID + Site table.
   if (is.null(tps) || length(tps) == 0) {
     rows <- vapply(seq_len(nrow(df)), function(i) sprintf(
@@ -1038,21 +1186,21 @@ build_participant_table <- function(df, layout = NULL) {
       '<table><thead><tr><th style="text-align:left">Record ID</th><th style="text-align:left">Site</th></tr></thead><tbody>',
       paste(rows, collapse = "\n"), '</tbody></table>')))
   }
-
+  
   cell_col <- function(tp, ins) {
     ins$col %||% sprintf("%s_%s", tp$event %||% tolower(tp$name),
                          sub("_complete$", "", ins$field %||% ""))
   }
-
+  
   hdr1 <- paste(vapply(tps, function(tp) sprintf(
     '<th colspan="%d" style="text-align:center">%s</th>',
     length(tp$instruments), htmltools::htmlEscape(tp$name %||% "")
   ), character(1)), collapse = "")
-
+  
   hdr2 <- paste(vapply(tps, function(tp) paste(vapply(tp$instruments, function(ins)
     sprintf('<th>%s</th>', htmltools::htmlEscape(ins$label %||% "")),
     character(1)), collapse = ""), character(1)), collapse = "")
-
+  
   header <- sprintf('
   <table>
   <thead>
@@ -1064,10 +1212,10 @@ build_participant_table <- function(df, layout = NULL) {
     <tr>%s</tr>
   </thead>
   <tbody>', hdr1, hdr2)
-
+  
   cell_lookup <- unlist(lapply(tps, function(tp)
     vapply(tp$instruments, function(ins) cell_col(tp, ins), character(1))))
-
+  
   rows <- vapply(seq_len(nrow(df)), function(i) {
     cells <- paste(vapply(cell_lookup, function(c) sprintf(
       '<td>%s</td>',
@@ -1078,7 +1226,7 @@ build_participant_table <- function(df, layout = NULL) {
             htmltools::htmlEscape((df$site_dag %||% rep("", nrow(df)))[i]),
             cells)
   }, character(1))
-
+  
   HTML(paste0(header, paste(rows, collapse = "\n"), "</tbody></table>"))
 }
 

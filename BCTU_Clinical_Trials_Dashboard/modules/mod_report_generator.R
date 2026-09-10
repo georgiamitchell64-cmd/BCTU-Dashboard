@@ -2,7 +2,7 @@
 # TONIC Dashboard — Report Generator Module
 # =============================================================================
 # Handles TMG, iTMG and TSC report generation from a single UI.
-# TMG/iTMG use tonic_report.Rmd (HTML); TSC uses tsc_report.Rmd (Word .docx).
+# TMG/iTMG use tmg_report.Rmd (HTML); TSC uses tsc_report.Rmd (Word .docx).
 #
 # Usage in app:
 #   # UI:
@@ -342,7 +342,7 @@ mod_report_generator_server <- function(id,
           )
         } else {
           # TMG / iTMG share the same Rmd, just a label difference
-          rmd_file <- file.path(rmd_dir, "tonic_report.Rmd")
+          rmd_file <- file.path(rmd_dir, "tmg_report.Rmd")
           rmarkdown::render(
             input  = rmd_file,
             output_file = file,

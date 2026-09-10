@@ -1,5 +1,29 @@
 reports_server <- function(input, output, session, state) {
   rv <- state$rv
+
+  # Reports follow the work-package picker. With a WP selected, every generated
+  # report covers that work package's records and its own target; with
+  # "Overview · all WPs" they cover the whole trial, as before. Work packages
+  # have different designs, targets and outcomes, so a report that mixed them
+  # would be describing something nobody ran.
+  .report_df <- function() {
+    d  <- rv$raw_redcap
+    wp <- rv$active_wp
+    if (is.null(wp) || is.null(d) || !"work_package" %in% names(d)) return(d)
+    keep <- !is.na(d$work_package) &
+      suppressWarnings(as.integer(d$work_package)) == as.integer(wp)
+    d[keep, , drop = FALSE]
+  }
+
+  # Label for the work package a report covers, or NULL for the whole trial.
+  .report_wp_label <- function() {
+    wp  <- rv$active_wp
+    cfg <- rv$trial_config
+    if (is.null(wp) || is.null(cfg)) return(NULL)
+    ctx <- wp_report_context(cfg, wp)
+    if (is.null(ctx$label) || !nzchar(ctx$label)) ctx$code else
+      sprintf("%s \u00b7 %s", ctx$code, ctx$label)
+  }
   # WP-scoped views drive the Charts tab (rpt_monthly). Generated reports
   # (TMG / TSC documents) deliberately stay on the full rv$ stores — a report
   # is a whole-trial artefact, not a per-WP view.
@@ -25,11 +49,20 @@ reports_server <- function(input, output, session, state) {
   rpt_monthly <- reactive({
     raw   <- redcap_wp()
     dates <- input$rpt_dates
-    rand_col <- fld("randomisation_datetime", default = "rand_dttm_s")
-    site_col <- fld("site_name",              default = "site_name")
     if (is.null(raw) || nrow(raw) == 0)          return(NULL)
     if (is.null(dates) || length(dates) != 2)     return(NULL)
-    if (!rand_col %in% names(raw))                return(NULL)
+    rand_col <- fld_present("randomisation_datetime", raw, default = NULL)
+    site_col <- fld_present("site_name", raw, default = "site_name")
+    if (is.null(rand_col))                        return(NULL)
+
+    # Restrict to participants who count towards the target where the trial
+    # defines a recruitment model, so the recruitment curve does not plot
+    # everyone with a registration date (PANORAMA: everyone screened).
+    rec <- tryCatch(recruited_ids(raw, rv$trial_config), error = function(e) NULL)
+    if (!is.null(rec)) {
+      raw <- raw[as.character(raw$record_id) %in% rec, , drop = FALSE]
+      if (nrow(raw) == 0) return(NULL)
+    }
 
     rands <- raw %>%
       mutate(.rand_raw = trimws(as.character(.data[[rand_col]]))) %>%
@@ -123,7 +156,10 @@ reports_server <- function(input, output, session, state) {
     tags$span(paste(v, "recruitment vs target", b))
   })
   
-  empty_e <- function(msg = "No data \u2014 load REDCap CSV or add randomisations") {
+  empty_e <- function(msg = NULL) {
+    if (is.null(msg))
+      msg <- sprintf("No data \u2014 load a REDCap CSV or add %s",
+                     recruit_term("noun", rv$trial_config))
     empty_echart(msg)
   }
   
@@ -145,7 +181,9 @@ reports_server <- function(input, output, session, state) {
                lineStyle = list(type = "dashed", width = 2.5),
                symbol = "circle", symbolSize = 5) %>%
         e_tonic() %>%
-        e_y_axis(name = if (isCum) "Cumulative randomisations" else "Randomisations / month",
+        e_y_axis(name = if (isCum)
+                   sprintf("Cumulative %s", recruit_term("noun", rv$trial_config))
+                 else recruit_term("per_month", rv$trial_config),
                  nameTextStyle = list(fontFamily = "Outfit", fontSize = 11,
                                       color = col_muted)) %>%
         e_toolbox(feature = list(saveAsImage = list(title = "Save PNG")))
@@ -496,13 +534,14 @@ reports_server <- function(input, output, session, state) {
       )
 
       report_data <- prepare_report_data(
-        df                = rv$raw_redcap,
+        df                = .report_df(),
         selected_sites    = sites_for_prep,
         date_from         = from_for_prep,
         date_to           = to_for_prep,
         include_withdrawn = isTRUE(input$include_withdrawn),
         pipeline_df       = rv$sites,
-        crf_csv_path      = latest_crf_path
+        crf_csv_path      = latest_crf_path,
+        target_override   = wp_effective_target(rv$trial_config, rv$active_wp)
       )
       
       site_label <- if (is.null(sites_for_prep) || length(sites_for_prep) == 0) {
@@ -572,6 +611,8 @@ reports_server <- function(input, output, session, state) {
               custom_sections = collect_custom_sections(),
               completeness_style = input$completeness_style %||% "heatmap",
               report_content  = rv$trial_config$report_content,
+              column_labels   = rv$trial_config$column_labels,
+              work_package    = wp_report_context(rv$trial_config, rv$active_wp),
               logo_path       = resolve_logo_path(rv$trial_config)
             ), rmd_dest),
             envir             = new.env(parent = globalenv()),
@@ -587,7 +628,7 @@ reports_server <- function(input, output, session, state) {
                  trial_report_template_path(rv$trial_config, "tonic"),
                  " (or top-level fallback ",
                  default_report_template_path("tonic"), ")")
-          rmd_dest <- file.path(tmp_dir, "tonic_report.Rmd")
+          rmd_dest <- file.path(tmp_dir, basename(rmd_src))
           file.copy(rmd_src, rmd_dest, overwrite = TRUE)
           file.copy("functions/consort_flow.R", file.path(tmp_dir, "consort_flow.R"), overwrite = TRUE)
           file.copy("functions/flat_completeness.R", file.path(tmp_dir, "flat_completeness.R"), overwrite = TRUE)
@@ -614,7 +655,9 @@ reports_server <- function(input, output, session, state) {
               screening_xlsx_path = "screening/TONIC_screening.xlsx",
               report_type       = rt,   # "TMG" or "iTMG"
               completeness_style = input$completeness_style %||% "heatmap",
-              report_content    = rv$trial_config$report_content
+              report_content    = rv$trial_config$report_content,
+              column_labels     = rv$trial_config$column_labels,
+              work_package      = wp_report_context(rv$trial_config, rv$active_wp)
             ), rmd_dest),
             envir             = new.env(parent = globalenv()),
             intermediates_dir = tmp_dir,
@@ -1042,9 +1085,10 @@ reports_server <- function(input, output, session, state) {
   # Report builder — set up (period, sites, people, options), readiness,
   # output format and generation history
   # ════════════════════════════════════════════════════════════════════════
-  RB_RMD      <- c("TMG", "iTMG", "TSC")        # built from the trial's Rmd templates
+  RB_RMD      <- c("TMG", "iTMG", "TSC", "TSC Interim")   # built from the trial's Rmd templates
   RB_FORMATS  <- list(TMG = c("pdf", "docx", "html"), iTMG = c("pdf", "docx", "html"),
-                      TSC = "docx", NIHR = c("docx", "pdf", "html"),
+                      TSC = "docx", "TSC Interim" = c("pdf", "docx", "html"),
+                      NIHR = c("docx", "pdf", "html"),
                       Portfolio = c("docx", "pdf", "html"))
   RB_FMT_DESC <- c(pdf = "Print-ready", docx = "Editable Word", html = "Web archive")
 
@@ -1120,10 +1164,12 @@ reports_server <- function(input, output, session, state) {
 
   rb_report_data <- function(crf_path = rb_crf_path()) {
     f <- rb_filters()
-    prepare_report_data(df = rv$raw_redcap, selected_sites = f$sites,
+    # Reports follow the work-package picker: a selected WP's records and target
+    prepare_report_data(df = .report_df(), selected_sites = f$sites,
                         date_from = f$from, date_to = f$to,
                         include_withdrawn = isTRUE(input$include_withdrawn),
-                        pipeline_df = rv$sites, crf_csv_path = crf_path)
+                        pipeline_df = rv$sites, crf_csv_path = crf_path,
+                        target_override = wp_effective_target(rv$trial_config, rv$active_wp))
   }
 
   # Amendments register → the date / description / status table the TSC template expects
@@ -1155,6 +1201,8 @@ reports_server <- function(input, output, session, state) {
       include_withdrawn  = isTRUE(input$include_withdrawn),
       completeness_style = input$completeness_style %||% "heatmap",
       report_content     = cfg$report_content,
+      column_labels      = cfg$column_labels,
+      work_package       = wp_report_context(cfg, rv$active_wp),
       logo_path          = resolve_logo_path(cfg))
     if (identical(kind, "tsc"))
       c(common, list(prepared_by = input$prepared_by %||% rv$username %||% "",
@@ -1163,7 +1211,8 @@ reports_server <- function(input, output, session, state) {
                      amendments_non_substantial = rb_amendments_df("Non-substantial")))
     else
       c(common, list(include_appendix = isTRUE(input$report_appendix),
-                     report_type = if (identical(tmpl_choice, "iTMG")) "iTMG" else "TMG"))
+                     report_type = switch(tmpl_choice, "iTMG" = "iTMG",
+                                          "TSC Interim" = "TSC Interim", "TMG")))
   }
 
   # Copy a template and the helper files it sources into a render folder
@@ -1172,7 +1221,8 @@ reports_server <- function(input, output, session, state) {
     file.copy(rmd_src, dest, overwrite = TRUE)
     for (h in c("functions/flat_completeness.R", "functions/baseline_table.R",
                 "functions/consort_flow.R", "functions/tsc_charts.R",
-                "www/BlackText-landscape.png"))          # BCTU header logo
+                "www/BlackText-landscape.png",                          # BCTU header logo
+                "www/NIHR_Acknowledgement_Funded by_Logo_RGB.png"))   # NIHR footer logo
       if (file.exists(h)) file.copy(h, file.path(dir, basename(h)), overwrite = TRUE)
     dest
   }
@@ -1338,7 +1388,7 @@ reports_server <- function(input, output, session, state) {
     if (identical(t, "TSC") && !nzchar(trimws(input$reviewed_by %||% "")))
       items <- c(items, list(chk("warn", "No reviewer named", "TSC reports list who reviewed them.")))
     if (t %in% RB_RMD) {
-      kind  <- if (identical(t, "TSC")) "tsc" else "tonic"
+      kind  <- switch(t, "TSC" = "tsc", "TSC Interim" = "tsc_interim", "tonic")
       src   <- resolve_report_template(cfg, kind)
       std   <- default_report_template_path(kind)
       own   <- trial_report_template_path(cfg, kind)
@@ -1347,7 +1397,7 @@ reports_server <- function(input, output, session, state) {
         identical(unname(tools::md5sum(a)), unname(tools::md5sum(b)))
       items <- c(items, list(
         if (is.null(src)) chk("bad", "Template missing", "Check Settings → Reports & admin.")
-        else if (np(src) == np(own))
+        else if (np(dirname(src)) == np(dirname(own)))   # any name in the trial's reports/ folder
           chk("info", "Using this trial's template",
               if (same(src, std)) "Identical to the standard template" else "Customised for this trial")
         else if (np(src) == np(std))
@@ -1417,7 +1467,7 @@ reports_server <- function(input, output, session, state) {
   output$rb_gen_note <- renderUI({
     div(class = "rb-gen-note", switch(rb_template_choice(),
       TSC  = "TSC reports are Word documents, built from the trial's TSC template.",
-      TMG  = , iTMG = "PDF matches the preview exactly. Word keeps the text, tables and charts editable.",
+      TMG  = , iTMG = , "TSC Interim" = "PDF matches the preview exactly. Word keeps the text, tables and charts editable.",
       "Built from the pages shown in the preview."))
   })
 
@@ -1450,8 +1500,10 @@ reports_server <- function(input, output, session, state) {
       # TSC always emits docx (template is word-native)
       if (template_choice == "TSC") fmt <- "docx"
       ext <- switch(fmt, "docx" = "docx", "pdf" = "pdf", "html")
+      # Template keys can carry spaces ("TSC Interim"), so slug them too.
+      tslug <- gsub("[^A-Za-z0-9]+", "_", template_choice)
       sprintf("%s_%s_%s.%s",
-              slug, template_choice, format(Sys.Date(), "%Y-%m-%d"), ext)
+              slug, tslug, format(Sys.Date(), "%Y-%m-%d"), ext)
     },
     content = function(file) {
       cfg <- rv$trial_config
@@ -1637,9 +1689,12 @@ reports_server <- function(input, output, session, state) {
         return(invisible())
       }
 
-      # Resolve which Rmd to use. TMG and iTMG share tonic_report.Rmd
-      # (the Rmd reads `report_type` to switch headers). TSC has its own.
-      rmd_kind <- if (template_choice == "TSC") "tsc" else "tonic"
+      # Resolve which Rmd to use. TMG and iTMG share tmg_report.Rmd
+      # (the Rmd reads `report_type` to switch headers). TSC has its own
+      # word-native template; TSC Interim v0.1 is its own HTML template,
+      # derived from the TMG layout, so it renders down the HTML branch.
+      rmd_kind <- if (template_choice == "TSC") "tsc" else
+                  if (template_choice == "TSC Interim") "tsc_interim" else "tonic"
       if (template_choice == "TSC") fmt <- "docx"   # TSC is always docx
 
       rmd_src <- resolve_report_template(cfg, rmd_kind)
@@ -1709,7 +1764,7 @@ reports_server <- function(input, output, session, state) {
           output_file       = html_out,
           output_format     = "html_document",
           params            = filter_params_for_rmd(
-            rb_rmd_params("tonic", report_data, latest_crf_path, template_choice), rmd_dest),
+            rb_rmd_params(rmd_kind, report_data, latest_crf_path, template_choice), rmd_dest),
           envir             = new.env(parent = globalenv()),
           intermediates_dir = tmp_dir,
           clean             = TRUE,
@@ -1805,7 +1860,8 @@ reports_server <- function(input, output, session, state) {
             div(class = "rb-trial-meta-k", "Current trial"),
             div(class = "rb-trial-meta-name", cfg$short_name %||% toupper(cfg$code)),
             div(class = "rb-trial-meta-sub",
-                sprintf("%d / %d randomised · %d%%", n, target, pct))))
+                sprintf("%d / %d %s · %d%%", n, target,
+                        recruit_term("past", cfg), pct))))
   })
 
   output$rb_canvas_title <- renderText({
@@ -1831,7 +1887,7 @@ reports_server <- function(input, output, session, state) {
     if (is.null(cfg)) return(NULL)
     tmpl_choice <- rb_template_choice()
     if (!tmpl_choice %in% RB_RMD) return(NULL)
-    kind <- if (identical(tmpl_choice, "TSC")) "tsc" else "tonic"
+    kind <- switch(tmpl_choice, "TSC" = "tsc", "TSC Interim" = "tsc_interim", "tonic")
 
     rmd_src <- resolve_report_template(cfg, kind)
     if (is.null(rmd_src)) {

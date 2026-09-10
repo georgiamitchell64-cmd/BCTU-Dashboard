@@ -49,10 +49,11 @@ overview_tab_ui <- function() {
                 span(class = "pov-delta-label", "this period"))),
           div(class = "pov-kpi-spark", uiOutput("kpi_spark_sites"))
         ),
-        # Total randomised
+        # Total randomised / registered — the label follows the trial's
+        # recruitment model, so cohort studies do not read "randomised".
         div(class = "pov-kpi",
           div(class = "pov-kpi-body",
-            div(class = "pov-kpi-label", "Total randomised"),
+            div(class = "pov-kpi-label", textOutput("kpi_rand_label", inline = TRUE)),
             div(class = "pov-kpi-value", textOutput("n_rand", inline = TRUE)),
             div(class = "pov-kpi-sub", textOutput("n_rand_sub", inline = TRUE)),
             div(class = "pov-kpi-delta-row",
@@ -190,7 +191,7 @@ overview_tab_ui <- function() {
           div(class = "pov-card-head",
               tags$h3("UK site map"),
               span(class = "pov-card-tool-note",
-                   "Bubble size = randomisations")),
+                   textOutput("sites_bubble_note", inline = TRUE))),
           leafletOutput("site_map", height = 380)
         ),
         div(class = "pov-map-col-right",

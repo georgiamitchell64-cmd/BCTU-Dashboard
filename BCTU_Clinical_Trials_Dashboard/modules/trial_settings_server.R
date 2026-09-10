@@ -1,6 +1,6 @@
 trial_settings_server <- function(input, output, session, state) {
   rv <- state$rv
-
+  
   # ── Settings nav: trial mark (colour initial) ───────────────────────────
   output$settings_trial_mark <- renderUI({
     cfg <- rv$trial_config
@@ -14,7 +14,7 @@ trial_settings_server <- function(input, output, session, state) {
                          flex-shrink:0;", col),
         initial)
   })
-
+  
   # ── Settings nav: trial name ────────────────────────────────────────────
   output$settings_trial_name <- renderUI({
     cfg <- rv$trial_config
@@ -23,7 +23,7 @@ trial_settings_server <- function(input, output, session, state) {
                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;",
         cfg$short_name %||% toupper(cfg$code %||% ""))
   })
-
+  
   # ── Breadcrumb for active section ───────────────────────────────────────
   output$settings_breadcrumb <- renderText({
     sec <- input$settings_active_section %||% "profile"
@@ -41,10 +41,10 @@ trial_settings_server <- function(input, output, session, state) {
     out <- unname(labels[sec])
     if (is.na(out) || !nzchar(out)) sec else out
   })
-
+  
   # ── Theme picker ──────────────────────────────────────────────────────────
   selected_theme <- reactiveVal("custom")
-
+  
   output$theme_picker_ui <- renderUI({
     active <- selected_theme()
     cards <- lapply(names(TRIAL_THEMES), function(key) {
@@ -53,20 +53,20 @@ trial_settings_server <- function(input, output, session, state) {
       border_col <- if (is_active) th$secondary else "#EEF2F7"
       shadow <- if (is_active)
         sprintf("box-shadow: 0 0 0 2px %s;", th$secondary) else ""
-
+      
       div(
         onclick = sprintf("Shiny.setInputValue('pick_theme', '%s', {priority:'event'})", key),
         style = sprintf("border:1px solid %s; %s
                          border-radius:12px; padding:12px; cursor:pointer;
                          background:#FFFFFF; transition: all .15s;",
                         border_col, shadow),
-
+        
         # Swatch row
         div(style = "display:flex;gap:4px;margin-bottom:10px;",
             div(style = sprintf("flex:2;height:24px;border-radius:5px;background:%s;", th$primary)),
             div(style = sprintf("flex:1;height:24px;border-radius:5px;background:%s;", th$secondary)),
             div(style = sprintf("flex:1;height:24px;border-radius:5px;background:%s;", th$accent))),
-
+        
         div(style = "display:flex;justify-content:space-between;align-items:center;",
             div(style = "font-size:13px;font-weight:600;color:#1B1B1B;", th$label),
             if (is_active)
@@ -80,7 +80,7 @@ trial_settings_server <- function(input, output, session, state) {
             sprintf("Sidebar: %s", th$sidebar))
       )
     })
-
+    
     custom_card <- div(
       onclick = "Shiny.setInputValue('pick_theme', 'custom', {priority:'event'})",
       style = sprintf("border:1px dashed %s;border-radius:12px;padding:12px;cursor:pointer;
@@ -98,11 +98,11 @@ trial_settings_server <- function(input, output, session, state) {
       div(style = "font-size:11px;color:#58595B;margin-top:2px;",
           "Set your own colours")
     )
-
+    
     div(style = "display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;",
         cards, custom_card)
   })
-
+  
   observeEvent(input$pick_theme, {
     key <- input$pick_theme
     selected_theme(key)
@@ -118,7 +118,7 @@ trial_settings_server <- function(input, output, session, state) {
       }
     }
   })
-
+  
   # ── Live preview ──────────────────────────────────────────────────────────
   output$color_preview_bar <- renderUI({
     p <- .valid_hex(input$set_col_primary,   "#1B1B1B")
@@ -142,14 +142,14 @@ trial_settings_server <- function(input, output, session, state) {
           '<polyline points="124,48 150,36 176,40 202,18 226,10" fill="none" stroke="%3$s" ',
           'stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'), p, s, a)))
   })
-
+  
   # ── Follow-up schedule editor ───────────────────────────────────────────
   # Each timepoint is a row {uid, label, event}. Stable per-row uids let the
   # render preserve typed values across add/remove without index shuffling.
   tp_seq  <- reactiveVal(0L)
   tp_rows <- reactiveVal(list())
   .tp_next_uid <- function() { n <- tp_seq() + 1L; tp_seq(n); n }
-
+  
   .tp_init_from_cfg <- function(cfg) {
     ev    <- cfg$redcap_events %||% list()
     roles <- setdiff(names(ev), c("baseline", "sub_forms"))
@@ -160,7 +160,7 @@ trial_settings_server <- function(input, output, session, state) {
            event = if (is.null(val)) "" else as.character(val)[1])
     }))
   }
-
+  
   # Read current input values back into tp_rows before any structural change.
   .tp_sync <- function() {
     lapply(tp_rows(), function(r) {
@@ -171,7 +171,7 @@ trial_settings_server <- function(input, output, session, state) {
            event = if (is.null(evt)) r$event else evt)
     })
   }
-
+  
   output$settings_timepoints_ui <- renderUI({
     rows <- tp_rows()
     if (!length(rows))
@@ -189,7 +189,7 @@ trial_settings_server <- function(input, output, session, state) {
     })
   })
   outputOptions(output, "settings_timepoints_ui", suspendWhenHidden = FALSE)
-
+  
   observeEvent(input$settings_tp_add, {
     rows <- .tp_sync()
     rows[[length(rows) + 1]] <- list(uid = .tp_next_uid(), label = "", event = "")
@@ -199,14 +199,14 @@ trial_settings_server <- function(input, output, session, state) {
     rid <- suppressWarnings(as.integer(input$settings_tp_remove))
     tp_rows(Filter(function(r) !identical(r$uid, rid), .tp_sync()))
   })
-
+  
   observeEvent(input$settings_save_schedule, {
     cfg <- rv$trial_config; req(cfg)
     .slug <- function(s) { s <- tolower(trimws(s)); s <- gsub("[^a-z0-9]+", "_", s); gsub("^_+|_+$", "", s) }
-
+    
     base_ev <- trimws(input$set_ev_baseline %||% "")
     events  <- list(baseline = if (nzchar(base_ev)) base_ev
-                               else (cfg$redcap_events$baseline %||% "baseline_arm_1"))
+                    else (cfg$redcap_events$baseline %||% "baseline_arm_1"))
     used <- "baseline"
     for (r in .tp_sync()) {
       lbl <- trimws(r$label); if (!nzchar(lbl)) next
@@ -219,7 +219,7 @@ trial_settings_server <- function(input, output, session, state) {
       parts <- trimws(strsplit(sf_raw, ",")[[1]]); parts <- parts[nzchar(parts)]
       if (length(parts)) events$sub_forms <- as.list(parts)
     }
-
+    
     ok <- tryCatch({ update_overrides(cfg, redcap_events = events); TRUE },
                    error = function(e) {
                      showNotification(paste("Save failed:", e$message), type = "error", duration = 8)
@@ -234,7 +234,7 @@ trial_settings_server <- function(input, output, session, state) {
                              n_tp, if (n_tp == 1) "" else "s"),
                      type = "message", duration = 5)
   })
-
+  
   # ── Demographic groupings editor (mirrors the Data-tab Configure modal) ──
   # Uses set_bd_choice / setlbl_* input IDs so it never collides with the
   # Data-tab modal (breakdowns_choice / codelbl_*); both write the same overrides.
@@ -243,12 +243,12 @@ trial_settings_server <- function(input, output, session, state) {
     cfg <- rv$trial_config
     if (is.null(cfg)) return(div(class = "sch-empty", "No trial selected."))
     raw <- rv$raw_redcap
-
+    
     if (is.null(raw) || !nrow(raw)) {
       cl <- cfg$column_labels %||% list()
       if (!length(cl))
         return(div(class = "sch-empty",
-          "Load a REDCap CSV on the Data tab to detect demographic columns. Group names you've already saved will appear here to rename."))
+                   "Load a REDCap CSV on the Data tab to detect demographic columns. Group names you've already saved will appear here to rename."))
       cards <- lapply(names(cl), function(col) {
         vals <- cl[[col]]
         div(class = "dg-col",
@@ -267,11 +267,11 @@ trial_settings_server <- function(input, output, session, state) {
             "Showing saved group names — load a CSV on the Data tab to add new breakdowns."),
         cards))
     }
-
+    
     det <- tryCatch(detect_breakdown_columns(raw, cfg), error = function(e) data.frame())
     if (!nrow(det))
       return(div(class = "sch-empty", "No demographic columns detected in the current export."))
-
+    
     sel <- as.character(unlist(cfg$participant_breakdowns %||% default_breakdown_cols(det)))
     choice_names <- lapply(seq_len(nrow(det)), function(i) {
       r <- det[i, ]
@@ -279,7 +279,7 @@ trial_settings_server <- function(input, output, session, state) {
               span(style = "font-size:11px;color:var(--ov-muted);margin-left:6px;",
                    sprintf("· %s · %d unique", r$column, r$n_unique)))
     })
-
+    
     editable <- find_editable_code_cols(raw, cfg, det)
     label_cards <- if (length(editable)) lapply(editable, function(ci) {
       div(class = "dg-col",
@@ -296,6 +296,29 @@ trial_settings_server <- function(input, output, session, state) {
                           placeholder = paste0("Name for code ", v), width = "100%"))
           }))
     }) else list(div(class = "sch-hint", "No coded columns need labels."))
+    
+    # Codebook: every other coded column in the export. The demographic cards
+    # above already cover the columns shown as breakdowns, so those are
+    # excluded here — two text inputs with the same id would collide.
+    coded <- tryCatch(detect_coded_columns(raw, cfg), error = function(e) list())
+    shown <- vapply(editable, function(ci) ci$col, character(1))
+    coded <- Filter(function(ci) !(ci$col %in% shown), coded)
+    codebook_cards <- if (length(coded)) lapply(coded, function(ci) {
+      div(class = "dg-col",
+          div(class = "dg-col-head",
+              span(class = "dg-col-title", ci$label),
+              span(class = "dg-col-var", paste0("(", ci$col, ")")),
+              if (isTRUE(ci$labelled))
+                span(class = "mu-pill mu-pill-ok", style = "margin-left:auto;", "Labelled")),
+          lapply(ci$values, function(v) {
+            div(class = "dg-row",
+                span(class = "dg-code", paste0(v, " =")),
+                textInput(paste0("setlbl_", ci$col, "___", v), label = NULL,
+                          value = ci$suggested[[v]] %||% "",
+                          placeholder = paste0("Meaning of code ", v), width = "100%"))
+          }))
+    }) else list(div(class = "sch-hint",
+                     "No other coded fields found in the current export."))
 
     tagList(
       div(class = "dg-section-label", "Show these breakdowns"),
@@ -306,10 +329,280 @@ trial_settings_server <- function(input, output, session, state) {
           div(class = "dg-section-label", "Group names"),
           div(class = "sch-hint", style = "margin-bottom:10px;",
               "Rename the groups shown for each coded value. Existing names are pre-filled."),
-          label_cards)
+          label_cards),
+      div(class = "sch-subforms",
+          div(class = "dg-section-label", "Codebook — other coded fields"),
+          div(class = "sch-hint", style = "margin-bottom:10px;",
+              "What each number means in the rest of the export (aetiology, severity, withdrawal level, yes/no fields). Saved names are used by the participant views and the TMG report."),
+          codebook_cards)
     )
   })
   outputOptions(output, "settings_demographics_ui", suspendWhenHidden = FALSE)
+  
+  # ── Work packages ─────────────────────────────────────────────────────────
+  # Each work package recruits to its own target and keeps its own REDCap
+  # export. Uploads land in trials/<code>/data/wp<i>/ and the folder list is
+  # written back to work_package_data_dirs, which is what the loader reads to
+  # tag each row with its work package.
+  # Same folders the loader reads (globals/trial_config.R), so an export
+  # uploaded here is the one the Data tab picks up.
+  .wp_dir <- function(cfg, i) {
+    dirs <- wp_data_dirs(cfg)
+    if (length(dirs) >= i && nzchar(dirs[i])) return(dirs[i])
+    file.path(cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code),
+              "data", sprintf("wp%d", i))
+  }
+
+  .wp_latest <- function(cfg, i) {
+    d <- .wp_dir(cfg, i)
+    if (!dir.exists(d)) return(NULL)
+    f <- list.files(d, pattern = "\\.(csv|CSV)$", full.names = TRUE)
+    if (!length(f)) return(NULL)
+    f <- f[order(file.mtime(f), decreasing = TRUE)]
+    list(path = f[1], name = basename(f[1]),
+         when = format(file.mtime(f[1]), "%d %b %Y %H:%M"))
+  }
+
+  observeEvent(rv$trial_config, {
+    cfg <- rv$trial_config
+    shinyjs::toggle("settings_nav_workpackages",
+                    condition = !is.null(cfg) &&
+                      length(cfg$work_packages %||% character(0)) > 0)
+    # A trial with several work packages uploads one export per WP, so the
+    # single whole-trial REDCap folder does not apply — hide it and point at
+    # the work-package locations instead.
+    multi <- !is.null(cfg) && trial_is_multi_wp(cfg)
+    shinyjs::toggle("settings_data_dir_wrap",    condition = !multi)
+    shinyjs::toggle("settings_data_dir_wp_note", condition =  multi)
+  }, ignoreNULL = FALSE)
+
+  output$settings_wp_ui <- renderUI({
+    rv$settings_changed
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(div(class = "sch-empty", "No trial selected."))
+    wps <- cfg$work_packages %||% character(0)
+    if (!length(wps))
+      return(div(class = "sch-empty",
+                 "This trial has no work packages. Add them in the trial's config.R (work_packages) and they will appear here."))
+
+    tgts <- cfg$work_package_targets
+    meta <- cfg$work_package_meta %||% list()
+    cards <- lapply(seq_along(wps), function(i) {
+      nm  <- sub("^WKP[0-9]+:\\s*", "", as.character(wps[[i]]))
+      m   <- if (length(meta) >= i) meta[[i]] else list()
+      tgt <- if (!is.null(tgts) && length(tgts) >= i)
+        suppressWarnings(as.integer(tgts[[i]])) else NA_integer_
+      cur <- .wp_latest(cfg, i)
+      outs <- m$outcomes %||% character(0)
+
+      div(class = "dg-col",
+          div(class = "dg-col-head",
+              span(class = "dg-col-title", sprintf("WKP%d", i)),
+              span(class = "dg-col-var", nm),
+              if (!is.null(cur))
+                span(class = "mu-pill mu-pill-ok", style = "margin-left:auto;",
+                     "Export loaded")),
+          div(class = "nt-grid-2", style = "margin-top:8px;",
+              div(class = "s-field",
+                  tags$label("Name"),
+                  textInput(paste0("wp_name_", i), label = NULL, value = nm,
+                            width = "100%")),
+              div(class = "s-field",
+                  tags$label("Recruitment target"),
+                  numericInput(paste0("wp_target_", i), label = NULL,
+                               value = if (is.na(tgt)) NA else tgt,
+                               min = 0, width = "100%"))),
+          div(class = "s-field",
+              tags$label("Outcome measures (one per line)"),
+              textAreaInput(paste0("wp_outcomes_", i), label = NULL, rows = 2,
+                            value = paste(unlist(outs), collapse = "\n"),
+                            width = "100%")),
+          div(class = "s-field",
+              tags$label(sprintf("REDCap export for WKP%d", i)),
+              fileInput(paste0("wp_file_", i), label = NULL, accept = ".csv",
+                        width = "100%"),
+              div(class = "sch-hint",
+                  if (is.null(cur)) "No export uploaded for this work package yet."
+                  else sprintf("Current: %s (uploaded %s)", cur$name, cur$when))))
+    })
+    tagList(
+      div(class = "sch-hint", style = "margin-bottom:10px;",
+          "After uploading, reload the data from the Data tab to bring the new export in."),
+      cards)
+  })
+  outputOptions(output, "settings_wp_ui", suspendWhenHidden = FALSE)
+
+  # One upload observer per possible work package (the config caps them at 10).
+  # Created once at startup; each is a no-op until that WP exists.
+  for (.i in seq_len(10)) local({
+    i <- .i
+    observeEvent(input[[paste0("wp_file_", i)]], {
+      if (!require_role(rv, "manager")) return()
+      cfg <- rv$trial_config; req(cfg)
+      up  <- input[[paste0("wp_file_", i)]]
+      req(up, nrow(up) > 0)
+
+      dest_dir <- .wp_dir(cfg, i)
+      dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
+      dest <- file.path(dest_dir, up$name[1])
+      ok <- tryCatch({ file.copy(up$datapath[1], dest, overwrite = TRUE); TRUE },
+                     error = function(e) {
+                       showNotification(paste("Upload failed:", e$message),
+                                        type = "error", duration = 8); FALSE })
+      if (!ok) return()
+
+      # Point work_package_data_dirs at every WP folder that now holds an
+      # export, so the loader reads one export per work package.
+      wps  <- cfg$work_packages %||% character(0)
+      dirs <- vapply(seq_along(wps), function(k) {
+        d <- .wp_dir(cfg, k)
+        if (dir.exists(d) && length(list.files(d, pattern = "\\.(csv|CSV)$"))) d else ""
+      }, character(1))
+      tryCatch({
+        update_overrides(cfg, work_package_data_dirs = as.list(dirs))
+        new_cfg <- cfg; new_cfg$work_package_data_dirs <- dirs
+        rv$trial_config <- new_cfg
+        apply_trial_globals(new_cfg)
+      }, error = function(e)
+        showNotification(paste("Saved the file but could not update the config:",
+                               e$message), type = "warning", duration = 8))
+
+      rv$settings_changed <- Sys.time()
+      log_activity("wp_export_uploaded",
+                   sprintf("Uploaded REDCap export <strong>%s</strong> for WKP%d",
+                           htmltools::htmlEscape(up$name[1]), i),
+                   username = rv$username, trial_code = cfg$code)
+      showNotification(sprintf("Export saved for WKP%d — reload the data on the Data tab to bring it in.", i),
+                       type = "message", duration = 6)
+    }, ignoreInit = TRUE)
+  })
+
+  observeEvent(input$settings_save_wps, {
+    if (!require_role(rv, "manager")) return()
+    cfg <- rv$trial_config; req(cfg)
+    wps <- cfg$work_packages %||% character(0)
+    if (!length(wps)) return()
+
+    names_new <- vapply(seq_along(wps), function(i) {
+      v <- trimws(input[[paste0("wp_name_", i)]] %||% "")
+      if (nzchar(v)) sprintf("WKP%d: %s", i, v) else sprintf("WKP%d", i)
+    }, character(1))
+    targets <- vapply(seq_along(wps), function(i) {
+      v <- suppressWarnings(as.integer(input[[paste0("wp_target_", i)]]))
+      if (is.na(v) || v < 0) NA_integer_ else v
+    }, integer(1))
+    meta <- cfg$work_package_meta %||% vector("list", length(wps))
+    for (i in seq_along(wps)) {
+      m <- if (length(meta) >= i && !is.null(meta[[i]])) meta[[i]] else list()
+      m$label <- trimws(input[[paste0("wp_name_", i)]] %||% (m$label %||% ""))
+      outs <- trimws(unlist(strsplit(input[[paste0("wp_outcomes_", i)]] %||% "", "\n")))
+      m$outcomes <- as.list(outs[nzchar(outs)])
+      meta[[i]] <- m
+    }
+
+    ok <- tryCatch({
+      update_overrides(cfg, work_packages = as.list(names_new),
+                       work_package_targets = as.list(targets),
+                       work_package_meta = meta)
+      TRUE
+    }, error = function(e) {
+      showNotification(paste("Save failed:", e$message), type = "error", duration = 8)
+      FALSE })
+    if (!ok) return()
+
+    new_cfg <- cfg
+    new_cfg$work_packages        <- names_new
+    new_cfg$work_package_targets <- targets
+    new_cfg$work_package_meta    <- meta
+    rv$trial_config <- new_cfg
+    apply_trial_globals(new_cfg)
+    rv$settings_changed <- Sys.time()
+    showNotification("Saved work packages.", type = "message", duration = 4)
+  })
+
+  # ── Codebook import ───────────────────────────────────────────────────────
+  # A REDCap data dictionary, a PDF codebook or pasted text all end up in the
+  # same place: cfg$column_labels, which the participant views and the reports
+  # read. Labels already typed by hand are kept unless the user asks otherwise.
+  cb_status <- reactiveVal(NULL)
+  output$settings_cb_status <- renderUI({
+    st <- cb_status()
+    if (is.null(st)) return(NULL)
+    div(class = if (isTRUE(st$ok)) "sch-hint" else "sch-empty",
+        style = if (isTRUE(st$ok)) "color:#166534;" else "color:#C20019;",
+        st$msg)
+  })
+
+  observeEvent(input$settings_cb_import, {
+    if (!require_role(rv, "manager")) return()
+    cfg <- rv$trial_config; req(cfg)
+
+    up   <- input$settings_cb_file
+    txt  <- trimws(input$settings_cb_text %||% "")
+    if ((is.null(up) || !nrow(up)) && !nzchar(txt)) {
+      cb_status(list(ok = FALSE,
+                     msg = "Choose a codebook file or paste some code lists first."))
+      return()
+    }
+
+    parsed <- tryCatch({
+      if (!is.null(up) && nrow(up)) {
+        # Shiny stores the upload under a temp name; keep the real extension so
+        # the importer can tell a dictionary from a PDF.
+        ext  <- tolower(tools::file_ext(up$name[1]))
+        dest <- file.path(tempdir(), paste0("codebook_", Sys.getpid(), ".", ext))
+        file.copy(up$datapath[1], dest, overwrite = TRUE)
+        import_codebook_file(dest)
+      } else {
+        parse_codebook_text(txt)
+      }
+    }, error = function(e) e)
+
+    if (inherits(parsed, "error")) {
+      cb_status(list(ok = FALSE, msg = conditionMessage(parsed)))
+      return()
+    }
+    if (!length(parsed$labels)) {
+      cb_status(list(ok = FALSE, msg = paste(
+        "No coded values found in that codebook. Expected lines like",
+        "\"1, Gallstones | 2, Alcohol\" against a variable name.")))
+      return()
+    }
+
+    # A dictionary usually covers far more fields than this export has; keep
+    # the ones that appear in the loaded data so the editor below stays useful,
+    # but fall back to everything when no CSV is loaded yet.
+    raw  <- rv$raw_redcap
+    subs <- if (!is.null(raw) && nrow(raw))
+      codebook_for_columns(parsed$labels, names(raw)) else parsed$labels
+    if (!length(subs)) subs <- parsed$labels
+
+    merged <- merge_codebook_labels(cfg$column_labels, subs,
+                                    overwrite = isTRUE(input$settings_cb_overwrite))
+    ok <- tryCatch({
+      update_overrides(cfg, column_labels = merged$labels); TRUE
+    }, error = function(e) {
+      cb_status(list(ok = FALSE, msg = paste("Save failed:", e$message))); FALSE })
+    if (!ok) return()
+
+    new_cfg <- cfg; new_cfg$column_labels <- merged$labels
+    rv$trial_config <- new_cfg
+    apply_trial_globals(new_cfg)
+    rv$settings_changed <- Sys.time()
+    cb_status(list(ok = TRUE, msg = sprintf(
+      "Imported %d label%s across %d field%s from %s.%s",
+      merged$n_added, if (merged$n_added == 1) "" else "s",
+      merged$n_columns, if (merged$n_columns == 1) "" else "s",
+      parsed$source %||% "the codebook",
+      if (merged$n_kept > 0) sprintf(" %d name%s you had already typed were kept.",
+                                     merged$n_kept,
+                                     if (merged$n_kept == 1) "" else "s") else "")))
+    log_activity("codebook_imported",
+                 sprintf("Imported <strong>%d</strong> codebook labels from %s",
+                         merged$n_added,
+                         htmltools::htmlEscape(parsed$source %||% "a codebook")),
+                 username = rv$username, trial_code = cfg$code)
+  })
 
   observeEvent(input$settings_save_demographics, {
     cfg <- rv$trial_config; req(cfg)
@@ -340,7 +633,7 @@ trial_settings_server <- function(input, output, session, state) {
     rv$settings_changed <- Sys.time()
     showNotification("Saved demographic settings.", type = "message", duration = 4)
   })
-
+  
   # ── Detail-fields editor (extra import columns for SAE / withdrawal /
   #    complications, with custom headings) ─────────────────────────────────
   DET_SECTIONS <- list(
@@ -354,7 +647,7 @@ trial_settings_server <- function(input, output, session, state) {
   det_seq  <- reactiveVal(0L)
   det_rows <- reactiveVal(list())   # flat: list(uid, section, col, header)
   .det_next_uid <- function() { n <- det_seq() + 1L; det_seq(n); n }
-
+  
   .det_init_from_cfg <- function(cfg) {
     rows <- list()
     dfl  <- cfg$detail_fields %||% list()
@@ -368,7 +661,7 @@ trial_settings_server <- function(input, output, session, state) {
     }
     det_rows(rows)
   }
-
+  
   .det_sync <- function() {
     lapply(det_rows(), function(r) {
       cv <- input[[paste0("det_col_", r$uid)]]
@@ -378,7 +671,7 @@ trial_settings_server <- function(input, output, session, state) {
            header = if (is.null(hv)) r$header else hv)
     })
   }
-
+  
   output$settings_detail_ui <- renderUI({
     rows <- det_rows()
     cols <- names(rv$raw_redcap %||% list())
@@ -417,7 +710,7 @@ trial_settings_server <- function(input, output, session, state) {
     tagList(head_note, lapply(DET_SECTIONS, grp))
   })
   outputOptions(output, "settings_detail_ui", suspendWhenHidden = FALSE)
-
+  
   # One add-handler per section.
   lapply(DET_SECTIONS, function(s) {
     local({
@@ -429,12 +722,12 @@ trial_settings_server <- function(input, output, session, state) {
       })
     })
   })
-
+  
   observeEvent(input$settings_det_remove, {
     rid <- suppressWarnings(as.integer(input$settings_det_remove))
     det_rows(Filter(function(r) !identical(r$uid, rid), .det_sync()))
   })
-
+  
   observeEvent(input$settings_save_detail, {
     cfg <- rv$trial_config; req(cfg)
     rows <- .det_sync()
@@ -459,7 +752,7 @@ trial_settings_server <- function(input, output, session, state) {
     showNotification(sprintf("Saved %d detail field%s.", n, if (n == 1) "" else "s"),
                      type = "message", duration = 4)
   })
-
+  
   # ── Populate fields when trial is loaded ──────────────────────────────────
   observeEvent(rv$trial_config, {
     cfg <- rv$trial_config
@@ -469,14 +762,14 @@ trial_settings_server <- function(input, output, session, state) {
     updateTextInput(session, "set_col_primary",   value = cols$primary)
     updateTextInput(session, "set_col_secondary", value = cols$secondary)
     updateTextInput(session, "set_col_accent",    value = cols$accent)
-
+    
     # Theme: if cfg has one, use it; otherwise fall back to "custom".
     saved_theme <- cfg$theme %||% "custom"
     if (!saved_theme %in% c(names(TRIAL_THEMES), "custom")) saved_theme <- "custom"
     selected_theme(saved_theme)
     if (saved_theme == "custom") shinyjs::show("custom_colors_panel")
     else                          shinyjs::hide("custom_colors_panel")
-
+    
     feat <- cfg$features %||% list()
     updateCheckboxInput(session, "set_feat_projections",    value = isTRUE(feat$projections))
     updateCheckboxInput(session, "set_feat_pilot",          value = isTRUE(feat$pilot_criteria))
@@ -488,12 +781,12 @@ trial_settings_server <- function(input, output, session, state) {
     # Default questionnaires flag to TRUE for legacy configs that pre-date this toggle
     updateCheckboxInput(session, "set_feat_questionnaires",
                         value = isTRUE(feat$participant_questionnaires %||% TRUE))
-
+    
     # Data paths
     updateTextInput(session, "set_data_dir",   value = cfg$data_dir %||% "")
     updateTextInput(session, "set_rr_dir",     value = cfg$return_rates_dir %||% "")
     updateTextInput(session, "set_logo_path",  value = cfg$logo_file %||% "")
-
+    
     updateTextInput(session,    "set_short_name", value = cfg$short_name %||% "")
     updateTextInput(session,    "set_full_name",  value = cfg$name %||% "")
     updateNumericInput(session, "set_target",     value = cfg$trial_target %||% 100)
@@ -501,17 +794,18 @@ trial_settings_server <- function(input, output, session, state) {
     rd <- cfg$report_defaults %||% list()
     updateTextInput(session, "set_ci",      value = rd$ci %||% "")
     updateTextInput(session, "set_sponsor", value = rd$sponsor %||% "")
-
+    
     # Follow-up schedule
     ev <- cfg$redcap_events %||% list()
-    updateTextInput(session, "set_ev_baseline", value = ev$baseline %||% "")
+    updateTextInput(session, "set_ev_baseline",
+                    value = mapping_first(ev$baseline, ""))
     sf <- ev$sub_forms
     updateTextInput(session, "set_ev_subforms",
                     value = if (is.null(sf)) "" else paste(unlist(sf), collapse = ", "))
     .tp_init_from_cfg(cfg)
     .det_init_from_cfg(cfg)
   })
-
+  
   # ── Config file path + override status ───────────────────────────────────
   output$settings_config_path <- renderUI({
     cfg <- rv$trial_config
@@ -519,7 +813,7 @@ trial_settings_server <- function(input, output, session, state) {
     div(class = "sm-line", span("Base config"),
         span(class = "sm-file", title = file.path(cfg$trial_dir, "config.R"), "config.R"))
   })
-
+  
   output$settings_overrides_status <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg)) return(NULL)
@@ -534,7 +828,7 @@ trial_settings_server <- function(input, output, session, state) {
       div(class = "sm-line", span("Your changes"), span("None yet"))
     }
   })
-
+  
   # ── Apply features live (called after save / reset) ──────────────────────
   apply_features_live <- function(feat) {
     if (isTRUE(feat$postal_tracking)) shinyjs::show("go_postal_wrap")
@@ -552,13 +846,13 @@ trial_settings_server <- function(input, output, session, state) {
       shinyjs::hide("participant_questionnaire_grid")
     }
   }
-
+  
   # ── Save theme + colours ─────────────────────────────────────────────────
   observeEvent(input$settings_save_colors, {
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
-
+    
     theme_key <- selected_theme()
     if (theme_key %in% names(TRIAL_THEMES)) {
       th <- TRIAL_THEMES[[theme_key]]
@@ -579,18 +873,18 @@ trial_settings_server <- function(input, output, session, state) {
       )
       sidebar_variant <- "dark"
     }
-
+    
     update_overrides(cfg, theme = theme_key, colors = new_colors)
     rv$trial_config$theme  <- theme_key
     rv$trial_config$colors <- new_colors
     apply_trial_colours(new_colors, sidebar = sidebar_variant)
     rv$settings_changed <- Sys.time()
-
+    
     msg <- if (theme_key == "custom") "Custom colours applied."
-           else sprintf("%s theme applied.", TRIAL_THEMES[[theme_key]]$label)
+    else sprintf("%s theme applied.", TRIAL_THEMES[[theme_key]]$label)
     showNotification(HTML(paste0("&#x2714; ", msg)), type = "message", duration = 4)
   })
-
+  
   # ── Save identity + features ─────────────────────────────────────────────
   # One save for both cards (Trial profile → Names & target, and Appearance &
   # modules → Dashboard modules), so neither can overwrite the other's fields.
@@ -598,12 +892,12 @@ trial_settings_server <- function(input, output, session, state) {
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
-
+    
     new_target   <- as.integer(input$set_target %||% cfg$trial_target %||% 100L)
     new_short    <- input$set_short_name %||% cfg$short_name %||% ""
     new_full     <- input$set_full_name  %||% cfg$name       %||% ""
     new_category <- input$set_category   %||% trial_category(cfg)
-
+    
     new_features <- list(
       postal_tracking            = isTRUE(input$set_feat_postal),
       return_rates               = isTRUE(input$set_feat_returns),
@@ -614,21 +908,21 @@ trial_settings_server <- function(input, output, session, state) {
       trial_replay               = isTRUE(input$set_feat_replay),
       participant_questionnaires = isTRUE(input$set_feat_questionnaires)
     )
-
+    
     new_report_defaults <- list(
       ci      = input$set_ci      %||% (cfg$report_defaults$ci      %||% ""),
       sponsor = input$set_sponsor %||% (cfg$report_defaults$sponsor %||% "")
     )
-
+    
     update_overrides(cfg,
-      short_name       = new_short,
-      name             = new_full,
-      trial_target     = new_target,
-      category         = new_category,
-      features         = new_features,
-      report_defaults  = new_report_defaults
+                     short_name       = new_short,
+                     name             = new_full,
+                     trial_target     = new_target,
+                     category         = new_category,
+                     features         = new_features,
+                     report_defaults  = new_report_defaults
     )
-
+    
     # Update in-memory config so the rest of the app sees changes immediately.
     rv$trial_config$short_name       <- new_short
     rv$trial_config$name             <- new_full
@@ -636,20 +930,20 @@ trial_settings_server <- function(input, output, session, state) {
     rv$trial_config$category         <- new_category
     rv$trial_config$features         <- new_features
     rv$trial_config$report_defaults  <- new_report_defaults
-
+    
     # Re-apply globals so TRIAL_TARGET etc. refresh.
     apply_trial_globals(rv$trial_config)
     apply_features_live(new_features)
-
+    
     # Update topbar title in case short_name changed.
     runjs(sprintf("$('.topbar-title').text('%s')",
                   gsub("'", "\\\\'", new_short)))
     runjs(sprintf("document.title = '%s Dashboard'",
                   gsub("'", "\\\\'", new_short)))
-
+    
     rv$settings_changed <- Sys.time()
     rv$home_membership_changed <- Sys.time()  # refresh home cards too
-
+    
     log_activity("settings_saved",
                  sprintf("Updated trial settings for <strong>%s</strong>",
                          htmltools::htmlEscape(new_short)),
@@ -664,26 +958,28 @@ trial_settings_server <- function(input, output, session, state) {
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
-
-    new_data_dir <- trimws(input$set_data_dir %||% "")
+    
+    # The field is hidden for multi-WP trials; ignore whatever it still holds
+    # so saving other paths cannot re-point a multi-WP trial at one folder.
+    new_data_dir <- if (trial_is_multi_wp(cfg)) "" else trimws(input$set_data_dir %||% "")
     new_rr_dir   <- trimws(input$set_rr_dir %||% "")
     new_logo     <- trimws(input$set_logo_path %||% "")
-
+    
     # Normalise slashes
     new_data_dir <- gsub("\\\\", "/", new_data_dir)
     new_rr_dir   <- gsub("\\\\", "/", new_rr_dir)
     new_logo     <- gsub("\\\\", "/", new_logo)
-
+    
     update_overrides(cfg,
-      data_dir         = if (nzchar(new_data_dir)) new_data_dir else NULL,
-      return_rates_dir = if (nzchar(new_rr_dir))   new_rr_dir   else NULL,
-      logo_file        = if (nzchar(new_logo))      new_logo     else NULL
+                     data_dir         = if (nzchar(new_data_dir)) new_data_dir else NULL,
+                     return_rates_dir = if (nzchar(new_rr_dir))   new_rr_dir   else NULL,
+                     logo_file        = if (nzchar(new_logo))      new_logo     else NULL
     )
-
+    
     rv$trial_config$data_dir         <- if (nzchar(new_data_dir)) new_data_dir else NULL
     rv$trial_config$return_rates_dir <- if (nzchar(new_rr_dir))   new_rr_dir   else NULL
     rv$trial_config$logo_file        <- if (nzchar(new_logo))      new_logo     else NULL
-
+    
     # Copy logo to www/trial_logos/ if valid
     if (nzchar(new_logo) && file.exists(new_logo)) {
       logos_dir <- file.path(getwd(), "www", "trial_logos")
@@ -694,7 +990,7 @@ trial_settings_server <- function(input, output, session, state) {
       tryCatch(file.copy(new_logo, dest, overwrite = TRUE),
                error = function(e) message("Logo copy: ", e$message))
     }
-
+    
     rv$settings_changed <- Sys.time()
     log_activity("settings_paths_saved",
                  sprintf("Updated data paths for <strong>%s</strong>",
@@ -702,12 +998,12 @@ trial_settings_server <- function(input, output, session, state) {
                  username = rv$username, trial_code = cfg$code)
     showNotification(HTML("&#x2714; Data paths saved."), type = "message", duration = 4)
   })
-
+  
   # ── Reset to defaults (delete overrides.json) ────────────────────────────
   observeEvent(input$settings_reset_overrides, {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
-
+    
     showModal(modalDialog(
       title = div(style = "color:#C20019;",
                   HTML("&#x26A0; Reset to defaults?")),
@@ -724,7 +1020,7 @@ trial_settings_server <- function(input, output, session, state) {
                 The original config file is not touched."))
     ))
   })
-
+  
   # ── Danger zone (admin only) ─────────────────────────────────────────────
   output$settings_danger_zone_ui <- renderUI({
     if (!isTRUE(rv$portfolio_role == "admin")) return(NULL)
@@ -743,7 +1039,7 @@ trial_settings_server <- function(input, output, session, state) {
                      style = "background:#FFFFFF;color:#C20019;border:1px solid #FECACA;
                               font-weight:600;"))
   })
-
+  
   observeEvent(input$settings_delete_trial, {
     if (!isTRUE(rv$portfolio_role == "admin")) return()
     cfg <- rv$trial_config
@@ -768,25 +1064,25 @@ trial_settings_server <- function(input, output, session, state) {
                        cfg$code)))
     ))
   })
-
+  
   observeEvent(input$settings_delete_trial_confirm, {
     if (!isTRUE(rv$portfolio_role == "admin")) return()
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
     code <- cfg$code
-
+    
     trial_dir <- file.path(getwd(), "trials", code)
     success <- tryCatch({
       unlink(trial_dir, recursive = TRUE, force = TRUE)
       TRUE
     }, error = function(e) FALSE)
-
+    
     logo_path <- file.path(getwd(), "www", "trial_logos", paste0(code, ".jpg"))
     if (file.exists(logo_path)) file.remove(logo_path)
-
+    
     removeModal()
-
+    
     if (success) {
       log_activity("trial_deleted",
                    sprintf("Deleted trial <strong>%s</strong>",
@@ -811,14 +1107,14 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "error", duration = 8)
     }
   })
-
+  
   observeEvent(input$settings_reset_confirm, {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
-
+    
     clear_overrides(cfg)
     removeModal()
-
+    
     # Reload original config from disk (without overrides) and refresh.
     fresh <- discover_trials()[[cfg$code]]
     if (!is.null(fresh)) {
@@ -831,19 +1127,19 @@ trial_settings_server <- function(input, output, session, state) {
         sidebar = .sv)
       apply_features_live(fresh$features %||% list())
     }
-
+    
     rv$settings_changed <- Sys.time()
     rv$home_membership_changed <- Sys.time()
     showNotification(HTML("&#x2714; Overrides cleared."),
                      type = "message", duration = 4)
   })
-
+  
   # ── Report content editor (per-trial text fields in reports) ────────────
   # Persisted under cfg$report_content in overrides.json. Both render paths
   # (the legacy download_report and the new rb_download) pass the same
   # dictionary as the `report_content` Rmd param, so TMG/iTMG and TSC pick up
   # whichever fields they reference.
-
+  
   .rc_load <- function() {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
@@ -869,15 +1165,15 @@ trial_settings_server <- function(input, output, session, state) {
     } else ""
     updateTextAreaInput(session, "rc_general_info", value = gi_text)
   }
-
+  
   observeEvent(input$settings_active_section, {
     if (identical(input$settings_active_section, "reports")) .rc_load()
   })
-
+  
   # Lazy-load when the trial changes too, so the form stays in sync with the
   # active trial without waiting for the user to click the section.
   observeEvent(rv$trial_config, { .rc_load() }, ignoreInit = TRUE)
-
+  
   # Parse a "Label: Value" textarea into a list of named pairs, preserving
   # entry order. Lines without a colon are kept as label-only rows so the user
   # gets exactly what they typed.
@@ -895,12 +1191,12 @@ trial_settings_server <- function(input, output, session, state) {
     })
     Filter(Negate(is.null), rows)
   }
-
+  
   observeEvent(input$rc_save, {
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
-
+    
     rc <- list(
       short_name        = trimws(input$rc_short_name %||% ""),
       trial_title       = trimws(input$rc_trial_title %||% ""),
@@ -912,7 +1208,7 @@ trial_settings_server <- function(input, output, session, state) {
     rc <- rc[vapply(rc, function(x) {
       if (is.list(x)) length(x) > 0 else nzchar(as.character(x))
     }, logical(1))]
-
+    
     tryCatch({
       update_overrides(cfg, report_content = rc)
       rv$trial_config$report_content <- rc
@@ -927,25 +1223,25 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "error", duration = 8)
     })
   })
-
+  
   # ── Portfolio review (fixed fields persisted in overrides) ──────────────
   # Stored under cfg$portfolio_review. Read by report_sections.R portfolio
   # render functions (.rs_render_pr_*). Variable per-report meeting dates
   # and RAG live on the Reports tab, not here.
-
+  
   .pr_text_fields <- c("team_leader", "ci", "funder", "trial_type",
-                        "intervention", "sponsor", "coordinator",
-                        "sample_size", "stage", "pilot_phase_ended",
-                        "brief_summary",
-                        "ms_approvals", "ms_recruitment",
-                        "ms_data_capture", "ms_other",
-                        "db_crf_signoff", "db_func_spec", "db_req_spec",
-                        "db_release_test", "db_final_release",
-                        "fin_staffing_awarded", "fin_staffing_status",
-                        "fin_status")
+                       "intervention", "sponsor", "coordinator",
+                       "sample_size", "stage", "pilot_phase_ended",
+                       "brief_summary",
+                       "ms_approvals", "ms_recruitment",
+                       "ms_data_capture", "ms_other",
+                       "db_crf_signoff", "db_func_spec", "db_req_spec",
+                       "db_release_test", "db_final_release",
+                       "fin_staffing_awarded", "fin_staffing_status",
+                       "fin_status")
   .pr_date_fields <- c("grant_start", "grant_end", "first_patient_date",
-                        "approvals_date", "open_recruitment_date")
-
+                       "approvals_date", "open_recruitment_date")
+  
   .pr_load <- function() {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
@@ -965,7 +1261,7 @@ trial_settings_server <- function(input, output, session, state) {
       d <- NA
       if (!is.null(val) && length(val) == 1 && nzchar(as.character(val))) {
         d <- tryCatch(as.Date(val, tryFormats = c("%Y-%m-%d", "%d %b %Y",
-                                                   "%d/%m/%Y", "%d-%m-%Y")),
+                                                  "%d/%m/%Y", "%d-%m-%Y")),
                       error = function(e) NA)
       }
       # NA clears the field but Shiny warns while coercing it — suppress.
@@ -974,12 +1270,12 @@ trial_settings_server <- function(input, output, session, state) {
                         value = if (length(d) == 1 && !is.na(d)) d else NA))
     }
   }
-
+  
   observeEvent(input$settings_active_section, {
     if (identical(input$settings_active_section, "profile")) .pr_load()
   })
   observeEvent(rv$trial_config, { .pr_load() }, ignoreInit = TRUE)
-
+  
   observeEvent(input$pr_save, {
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
@@ -1008,21 +1304,21 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "error", duration = 8)
     })
   })
-
+  
   # ── Report templates editor ──────────────────────────────────────────────
   # Lets the trial manager edit the per-trial Rmd templates (TMG/iTMG and TSC)
   # in-app. Saves write to trials/<code>/reports/<kind>_report.Rmd; "Reset to
   # default" re-copies from the canonical template at the project root.
-
+  
   rt_kind <- reactiveVal("tonic")
   rt_modified_marker <- reactiveVal(0L)
-
+  
   observeEvent(input$rt_pick, {
     rt_kind(input$rt_pick %||% "tonic")
     .rt_load_into_editor()
     .rt_sync_override_field()
   })
-
+  
   # Re-load the editor when entering the section, so the textarea reflects
   # what's actually on disk.
   observeEvent(input$settings_active_section, {
@@ -1031,39 +1327,39 @@ trial_settings_server <- function(input, output, session, state) {
       .rt_sync_override_field()
     }
   })
-
+  
   .rt_load_into_editor <- function() {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
     # Make sure the trial has its own copy on disk before editing.
     seed_trial_report_templates(cfg, overwrite = FALSE)
-
-    path <- trial_report_template_path(cfg, rt_kind())
+    
+    path <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     content <- if (file.exists(path)) {
       tryCatch(paste(readLines(path, warn = FALSE), collapse = "\n"),
                error = function(e) "")
     } else ""
     updateTextAreaInput(session, "rt_content", value = content)
   }
-
+  
   .rt_sync_override_field <- function() {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
     val <- cfg$report_template_paths[[rt_kind()]] %||% ""
     updateTextInput(session, "rt_override_path", value = val)
   }
-
+  
   # Status line: shows which file the renderer will actually use, given the
   # current override / per-trial / fallback resolution order.
   output$rt_status_line <- renderUI({
     rt_modified_marker()
     cfg <- rv$trial_config
     if (is.null(cfg)) return("No trial selected.")
-
+    
     active_path <- resolve_report_template(cfg, rt_kind())
     override    <- cfg$report_template_paths[[rt_kind()]] %||% ""
-    trial_path  <- trial_report_template_path(cfg, rt_kind())
-
+    trial_path  <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
+    
     src_label <- if (!is.null(active_path) && nzchar(override) &&
                      normalizePath(active_path, mustWork = FALSE) ==
                      normalizePath(override,    mustWork = FALSE)) {
@@ -1077,22 +1373,22 @@ trial_settings_server <- function(input, output, session, state) {
     } else {
       "missing"
     }
-
+    
     if (is.null(active_path))
       return(HTML(paste0("<em>No file resolved for <code>",
                          rt_kind(), "</code>. Set a path or save the editor below to create one.</em>")))
-
+    
     info <- tryCatch(file.info(active_path), error = function(e) NULL)
     mtime <- if (!is.null(info) && !is.na(info$mtime))
       format(info$mtime, "%d %b %Y %H:%M") else "?"
     nlines <- tryCatch(length(readLines(active_path, warn = FALSE)),
                        error = function(e) NA_integer_)
-
+    
     HTML(sprintf("Active source (<strong>%s</strong>): <code>%s</code> · Last modified %s%s",
                  src_label, htmltools::htmlEscape(active_path), mtime,
                  if (!is.na(nlines)) sprintf(" · %d lines", nlines) else ""))
   })
-
+  
   # Save the override path. Refuses to set a path that doesn't exist so we
   # never silently render from a stale value.
   observeEvent(input$rt_override_save, {
@@ -1125,7 +1421,7 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "error", duration = 8)
     })
   })
-
+  
   observeEvent(input$rt_override_clear, {
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
@@ -1145,7 +1441,7 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "error", duration = 8)
     })
   })
-
+  
   # Save the textarea contents back to disk. We pull the value from the
   # browser via Shiny's input pipe — `rt_content` is bound by the textarea id
   # and Shiny serialises it on every keystroke.
@@ -1159,11 +1455,12 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "warning", duration = 5)
       return()
     }
-    path <- trial_report_template_path(cfg, rt_kind())
+    path <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     tryCatch({
       backup_trial_report_template(cfg, rt_kind(), incoming = body)
       writeLines(body, path, useBytes = TRUE)
+      mark_trial_template_edited(cfg, rt_kind())
       rt_modified_marker(rt_modified_marker() + 1L)
       log_activity("report_template_saved",
                    sprintf("Edited <strong>%s</strong> template",
@@ -1177,7 +1474,7 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "error", duration = 8)
     })
   })
-
+  
   observeEvent(input$rt_reset, {
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
@@ -1198,7 +1495,7 @@ trial_settings_server <- function(input, output, session, state) {
                        toupper(rt_kind()))))
     ))
   })
-
+  
   # Re-seed BOTH templates from the canonical project-root copies. Useful
   # when the trial's per-trial Rmd files predate generic templates and still
   # contain TONIC-specific text — one click pulls the latest from the root.
@@ -1222,7 +1519,7 @@ trial_settings_server <- function(input, output, session, state) {
                 <code>reports/backups</code> folder."))
     ))
   })
-
+  
   observeEvent(input$rt_reseed_all_confirm, {
     cfg <- rv$trial_config
     if (is.null(cfg)) { removeModal(); return() }
@@ -1241,12 +1538,12 @@ trial_settings_server <- function(input, output, session, state) {
                        type = "error", duration = 8)
     })
   })
-
+  
   observeEvent(input$rt_reset_confirm, {
     cfg <- rv$trial_config
     if (is.null(cfg)) { removeModal(); return() }
-    src <- default_report_template_path(rt_kind())
-    dst <- trial_report_template_path(cfg, rt_kind())
+    src <- default_report_template_path(rt_kind(), existing = TRUE)
+    dst <- trial_report_template_path(cfg, rt_kind(), existing = TRUE)
     removeModal()
     if (!file.exists(src)) {
       showNotification(paste("Default template missing:", src),
@@ -1257,6 +1554,7 @@ trial_settings_server <- function(input, output, session, state) {
     tryCatch({
       backup_trial_report_template(cfg, rt_kind(), incoming = src)
       file.copy(src, dst, overwrite = TRUE)
+      clear_trial_template_edited(cfg, rt_kind())
       rt_modified_marker(rt_modified_marker() + 1L)
       .rt_load_into_editor()
       showNotification(HTML(sprintf("&check; %s template reset to default.",
