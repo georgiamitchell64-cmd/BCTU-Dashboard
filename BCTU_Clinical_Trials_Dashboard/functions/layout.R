@@ -1,3 +1,10 @@
+# Versioned asset URL: the file's modification time busts browser caches, so a
+# changed stylesheet or script is always fetched fresh instead of an old copy.
+.asset <- function(f) {
+  mt <- suppressWarnings(file.mtime(file.path("www", f)))
+  if (is.na(mt)) f else paste0(f, "?v=", as.integer(mt))
+}
+
 build_app_ui <- function() {
   fluidPage(
     theme = tonic_theme,
@@ -10,16 +17,16 @@ build_app_ui <- function() {
                 crossorigin = ""),
       tags$link(rel = "stylesheet",
                 href = "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "tonic_core.css"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "home_redesign.css"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "modules_redesign.css"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "panorama_overview.css"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "trial_replay.css"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "trial_health.css"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "settings.css"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "reports.css"),
-      tags$script(src = "trial_replay.js", defer = NA),
-      tags$script(src = "trial_health.js", defer = NA),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("tonic_core.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("home_redesign.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("modules_redesign.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("panorama_overview.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("trial_replay.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("trial_health.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("settings.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("reports.css")),
+      tags$script(src = .asset("trial_replay.js"), defer = NA),
+      tags$script(src = .asset("trial_health.js"), defer = NA),
       tags$script(HTML("
         (function() {
           try {

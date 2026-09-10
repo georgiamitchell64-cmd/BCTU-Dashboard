@@ -275,7 +275,7 @@ resolve_report_template <- function(cfg, kind) {
 # so Reset, Re-seed and Save can always be undone from reports/backups/.
 # `incoming` (a file path or the new text) skips the backup when nothing changes.
 backup_trial_report_template <- function(cfg, kind, incoming = NULL) {
-  path <- trial_report_template_path(cfg, kind)
+  path <- trial_report_template_path(cfg, kind, existing = TRUE)   # the file in use, whatever its name
   if (!file.exists(path)) return(invisible(NULL))
   current <- tryCatch(paste(readLines(path, warn = FALSE), collapse = "\n"), error = function(e) NULL)
   if (!is.null(incoming)) {
