@@ -75,16 +75,16 @@ trial_selector_ui <- function() {
               onclick = "document.body.classList.remove('notif-open')"),
           div(class = "notif-drawer",
               div(class = "notif-drawer-head",
-                  div(div(style = "font-weight:600;color:#0F172A;font-size:15px;",
+                  div(div(style = "font-weight:600;color:#1B1B1B;font-size:15px;",
                           "Smart Notifications"),
-                      div(style = "font-size:11.5px;color:#64748B;",
+                      div(style = "font-size:11.5px;color:#58595B;",
                           "Auto-generated from trial data")),
                   div(
                       actionLink("notif_clear_all", "Clear all",
-                                 style = "font-size:11.5px;color:#64748B;
+                                 style = "font-size:11.5px;color:#58595B;
                                           text-decoration:none;margin-right:14px;"),
                       tags$button(onclick = "document.body.classList.remove('notif-open')",
-                                  style = "background:transparent;border:none;color:#94A3B8;
+                                  style = "background:transparent;border:none;color:#8A8A8C;
                                            font-size:18px;cursor:pointer;line-height:1;",
                                   HTML("&times;")))
               ),
@@ -260,13 +260,13 @@ trial_selector_ui <- function() {
 # ── Smart Insights drill-down modals ────────────────────────────────────────
 .insight_modal_header <- function(emoji, title, subtitle = NULL) {
   div(style = "display:flex;align-items:center;gap:12px;",
-      div(style = "width:38px;height:38px;border-radius:10px;background:#F5F3FF;
-                   color:#6366F1;display:flex;align-items:center;justify-content:center;
+      div(style = "width:38px;height:38px;border-radius:10px;background:#F4F4F4;
+                   color:#1B1B1B;display:flex;align-items:center;justify-content:center;
                    font-size:18px;",
           HTML(emoji)),
-      div(div(style = "font-weight:600;color:#0F172A;font-size:16px;", title),
+      div(div(style = "font-weight:600;color:#1B1B1B;font-size:16px;", title),
           if (!is.null(subtitle))
-            div(style = "font-size:11.5px;color:#64748B;", subtitle))
+            div(style = "font-size:11.5px;color:#58595B;", subtitle))
   )
 }
 
@@ -274,7 +274,7 @@ trial_selector_ui <- function() {
   if (is.null(summary)) {
     return(modalDialog(title = paste(category, "— no data"), easyClose = TRUE,
                        footer = modalButton("Close"),
-                       div(style = "padding:14px;color:#64748B;",
+                       div(style = "padding:14px;color:#58595B;",
                            "No trials in this category yet.")))
   }
   modalDialog(
@@ -287,7 +287,7 @@ trial_selector_ui <- function() {
 
     # Smart summary paragraph
     div(style = "background:#F8FAFD;border:1px solid #EEF2F7;border-radius:10px;
-                 padding:14px 18px;font-size:13px;color:#0F172A;line-height:1.7;
+                 padding:14px 18px;font-size:13px;color:#1B1B1B;line-height:1.7;
                  margin-bottom:16px;",
         summary$summary),
 
@@ -296,10 +296,10 @@ trial_selector_ui <- function() {
                  margin-bottom:18px;",
         div(style = "background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;
                      padding:12px 14px;",
-            div(style = "font-size:10px;font-weight:600;color:#64748B;
+            div(style = "font-size:10px;font-weight:600;color:#58595B;
                          text-transform:uppercase;letter-spacing:.5px;",
                 "Active sites"),
-            div(style = "font-size:22px;font-weight:700;color:#0F172A;",
+            div(style = "font-size:22px;font-weight:700;color:#1B1B1B;",
                 summary$n_sites)),
         div(style = "background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;
                      padding:12px 14px;",
@@ -310,14 +310,14 @@ trial_selector_ui <- function() {
                 summary$n_warnings)),
         div(style = "background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;
                      padding:12px 14px;",
-            div(style = "font-size:10px;font-weight:600;color:#B91C1C;
+            div(style = "font-size:10px;font-weight:600;color:#C20019;
                          text-transform:uppercase;letter-spacing:.5px;",
                 "Alerts"),
             div(style = "font-size:22px;font-weight:700;color:#7F1D1D;",
                 summary$n_alerts))),
 
     # Per-trial cards
-    div(style = "font-size:11px;font-weight:600;color:#64748B;
+    div(style = "font-size:11px;font-weight:600;color:#58595B;
                  text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;",
         "Trials in this category"),
     div(lapply(summary$per_trial, function(s) {
@@ -325,15 +325,15 @@ trial_selector_ui <- function() {
                    border-radius:10px;margin-bottom:10px;",
           div(style = "display:flex;justify-content:space-between;align-items:baseline;
                        margin-bottom:8px;",
-              div(style = "font-weight:600;color:#0F172A;font-size:14px;", s$short),
-              div(style = "font-size:11px;color:#64748B;",
+              div(style = "font-weight:600;color:#1B1B1B;font-size:14px;", s$short),
+              div(style = "font-size:11px;color:#58595B;",
                   sprintf("%d %s",
                           length(s$insights),
                           if (length(s$insights) == 1) "insight" else "insights"))),
           if (length(s$insights) > 0)
             render_insights_panel(s$insights)
           else
-            div(style = "font-size:12px;color:#94A3B8;font-style:italic;",
+            div(style = "font-size:12px;color:#8A8A8C;font-style:italic;",
                 "No insights — upload a REDCap export to populate.")
       )
     }))
@@ -349,7 +349,7 @@ trial_selector_ui <- function() {
     if (length(s$insights) > 0)
       render_insights_panel(s$insights)
     else
-      div(style = "padding:18px;color:#94A3B8;font-style:italic;",
+      div(style = "padding:18px;color:#8A8A8C;font-style:italic;",
           "No insights yet — upload a REDCap export.")
   )
 }
@@ -376,8 +376,8 @@ trial_selector_ui <- function() {
                      border-radius:10px;margin-bottom:10px;",
             div(style = "display:flex;justify-content:space-between;align-items:baseline;
                          margin-bottom:8px;",
-                div(style = "font-weight:600;color:#0F172A;font-size:14px;", s$short),
-                div(style = "font-size:11px;color:#64748B;", s$category)),
+                div(style = "font-weight:600;color:#1B1B1B;font-size:14px;", s$short),
+                div(style = "font-size:11px;color:#58595B;", s$category)),
             render_insights_panel(s$insights))
       }))
   )
@@ -388,7 +388,7 @@ trial_selector_ui <- function() {
     size = "m", easyClose = TRUE, footer = modalButton("Close"),
     title = .insight_modal_header("&#x2728;",
               "Portfolio is healthy", "No critical issues detected"),
-    div(style = "padding:14px;font-size:13px;color:#0F172A;line-height:1.7;",
+    div(style = "padding:14px;font-size:13px;color:#1B1B1B;line-height:1.7;",
         sprintf("All %d %s in your portfolio are recruiting actively without
                  critical alerts. Latest insights surface no stalled trials.",
                 summary$n_total,
@@ -419,7 +419,7 @@ trial_selector_ui <- function() {
       div(lapply(rows, function(r) {
         div(style = "padding:14px 16px;background:#FFFFFF;border:1px solid #EEF2F7;
                      border-radius:10px;margin-bottom:10px;",
-            div(style = "font-weight:600;color:#0F172A;font-size:14px;margin-bottom:6px;",
+            div(style = "font-weight:600;color:#1B1B1B;font-size:14px;margin-bottom:6px;",
                 sprintf("%s · %s", r$short, r$category)),
             render_insights_panel(list(r$insight)))
       }))
@@ -443,7 +443,7 @@ trial_selector_ui <- function() {
       modalButton("Cancel"),
       actionButton("home_insight_compare_go", "Compare",
                    class = "btn btn-primary",
-                   style = "background:#6366F1;border-color:#6366F1;font-weight:600;")
+                   style = "background:#1B1B1B;border-color:#1B1B1B;font-weight:600;")
     ),
     div(style = "display:grid;grid-template-columns:1fr 1fr;gap:14px;",
         selectInput("home_insight_compare_a", "Trial A", choices = choices,
@@ -459,10 +459,10 @@ trial_selector_ui <- function() {
                          padding:14px 16px;border-top:3px solid %s;", accent),
         div(style = "display:flex;justify-content:space-between;align-items:baseline;
                      margin-bottom:8px;",
-            div(style = "font-weight:600;color:#0F172A;font-size:15px;", s$short),
-            div(style = "font-size:11px;color:#64748B;", s$category)),
+            div(style = "font-weight:600;color:#1B1B1B;font-size:15px;", s$short),
+            div(style = "font-size:11px;color:#58595B;", s$category)),
         div(style = "display:flex;gap:8px;margin-bottom:10px;font-size:11px;",
-            span(style = "background:#FEF2F2;color:#B91C1C;padding:3px 8px;border-radius:999px;
+            span(style = "background:#FEF2F2;color:#C20019;padding:3px 8px;border-radius:999px;
                           font-weight:600;",
                  sprintf("%d alerts", s$n_alert)),
             span(style = "background:#FFFBEB;color:#B45309;padding:3px 8px;border-radius:999px;
@@ -472,7 +472,7 @@ trial_selector_ui <- function() {
                           font-weight:600;",
                  sprintf("%d info", s$n_info))),
         if (length(s$insights) > 0) render_insights_panel(s$insights)
-        else div(style = "font-size:12px;color:#94A3B8;font-style:italic;",
+        else div(style = "font-size:12px;color:#8A8A8C;font-style:italic;",
                  "No insights yet."))
   }
   modalDialog(
@@ -480,8 +480,8 @@ trial_selector_ui <- function() {
     title = .insight_modal_header("&#x1F50D;",
               sprintf("%s vs %s", sa$short, sb$short)),
     div(style = "display:grid;grid-template-columns:1fr 1fr;gap:14px;",
-        side(sa, "#6366F1"),
-        side(sb, "#8B5CF6"))
+        side(sa, "#1B1B1B"),
+        side(sb, "#C59A00"))
   )
 }
 

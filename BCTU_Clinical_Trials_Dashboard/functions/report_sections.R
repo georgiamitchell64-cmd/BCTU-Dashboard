@@ -16,15 +16,15 @@
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 .rs_h <- function(level, text)
-  sprintf("<h%d style='font-family:Inter,sans-serif;color:#0F172A;
+  sprintf("<h%d style='font-family:Inter,sans-serif;color:#1B1B1B;
                        letter-spacing:-0.3px;margin:18px 0 10px;'>%s</h%d>",
           level, htmltools::htmlEscape(text), level)
 
 .rs_subtle <- function(text)
-  sprintf("<p style='color:#64748B;font-size:12.5px;margin:4px 0 14px;'>%s</p>",
+  sprintf("<p style='color:#58595B;font-size:12.5px;margin:4px 0 14px;'>%s</p>",
           htmltools::htmlEscape(text))
 
-.rs_box <- function(content, accent = "#6366F1")
+.rs_box <- function(content, accent = "#0057BF")
   sprintf("<div style='background:#FFFFFF;border:1px solid #EEF2F7;border-left:3px solid %s;
                        border-radius:10px;padding:14px 18px;margin-bottom:12px;'>%s</div>",
           accent, content)
@@ -32,9 +32,9 @@
 .rs_kv_grid <- function(pairs) {
   cells <- vapply(seq_along(pairs), function(i) {
     sprintf("<div style='padding:8px 0;border-bottom:1px solid #EEF2F7;'>
-              <div style='font-size:10.5px;color:#64748B;font-weight:600;
+              <div style='font-size:10.5px;color:#58595B;font-weight:600;
                           text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;'>%s</div>
-              <div style='font-size:14px;color:#0F172A;font-weight:500;'>%s</div>
+              <div style='font-size:14px;color:#1B1B1B;font-weight:500;'>%s</div>
             </div>",
             htmltools::htmlEscape(names(pairs)[i]),
             htmltools::htmlEscape(as.character(pairs[[i]])))
@@ -57,15 +57,15 @@
                             object-fit:contain;display:block;margin-bottom:12px;'/>", uri)
   }
   paste0(
-    "<div style='border-bottom:2px solid #6366F1;padding-bottom:14px;margin-bottom:18px;'>",
+    "<div style='border-bottom:2px solid #0057BF;padding-bottom:14px;margin-bottom:18px;'>",
     logo_html,
-    sprintf("<div style='font-size:11px;font-weight:600;color:#6366F1;
+    sprintf("<div style='font-size:11px;font-weight:600;color:#0057BF;
                          text-transform:uppercase;letter-spacing:.6px;'>%s Report</div>",
             htmltools::htmlEscape(ctx$template_label %||% "Trial")),
-    sprintf("<h1 style='font-size:26px;color:#0F172A;margin:6px 0 10px;
+    sprintf("<h1 style='font-size:26px;color:#1B1B1B;margin:6px 0 10px;
                         letter-spacing:-0.5px;'>%s</h1>",
             htmltools::htmlEscape(cfg$short_name %||% "Trial")),
-    sprintf("<div style='font-size:13px;color:#475569;margin-bottom:6px;'>%s</div>",
+    sprintf("<div style='font-size:13px;color:#4A4A4A;margin-bottom:6px;'>%s</div>",
             htmltools::htmlEscape(cfg$name %||% "")),
     .rs_kv_grid(list(
       "Reporting period"   = ctx$period_label %||% "—",
@@ -97,19 +97,19 @@
     sprintf("<div style='display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;
                          margin-bottom:14px;'>
               <div style='background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;padding:14px;'>
-                <div style='font-size:10.5px;color:#64748B;text-transform:uppercase;
+                <div style='font-size:10.5px;color:#58595B;text-transform:uppercase;
                             letter-spacing:.5px;font-weight:600;'>Recruited</div>
-                <div style='font-size:26px;color:#0F172A;font-weight:700;'>%d</div>
+                <div style='font-size:26px;color:#1B1B1B;font-weight:700;'>%d</div>
               </div>
               <div style='background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;padding:14px;'>
-                <div style='font-size:10.5px;color:#64748B;text-transform:uppercase;
+                <div style='font-size:10.5px;color:#58595B;text-transform:uppercase;
                             letter-spacing:.5px;font-weight:600;'>Target</div>
-                <div style='font-size:26px;color:#0F172A;font-weight:700;'>%d</div>
+                <div style='font-size:26px;color:#1B1B1B;font-weight:700;'>%d</div>
               </div>
               <div style='background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;padding:14px;'>
-                <div style='font-size:10.5px;color:#64748B;text-transform:uppercase;
+                <div style='font-size:10.5px;color:#58595B;text-transform:uppercase;
                             letter-spacing:.5px;font-weight:600;'>Progress</div>
-                <div style='font-size:26px;color:#6366F1;font-weight:700;'>%.0f%%</div>
+                <div style='font-size:26px;color:#0057BF;font-weight:700;'>%.0f%%</div>
               </div>
             </div>",
             n_baseline, target, pct * 100)
@@ -139,7 +139,7 @@
     s <- sites[i, ]
     sprintf("<tr>
               <td style='padding:8px 12px;'>%s</td>
-              <td style='padding:8px 12px;color:#475569;'>%s</td>
+              <td style='padding:8px 12px;color:#4A4A4A;'>%s</td>
               <td style='padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;'>%s / %s</td>
             </tr>",
             htmltools::htmlEscape(as.character(s$site_name %||% "—")),
@@ -153,11 +153,11 @@
                     background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;
                     overflow:hidden;'>",
     "<thead><tr style='background:#FAFBFD;'>
-       <th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#64748B;
+       <th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#58595B;
                   text-transform:uppercase;letter-spacing:.5px;'>Site</th>
-       <th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#64748B;
+       <th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#58595B;
                   text-transform:uppercase;letter-spacing:.5px;'>Status</th>
-       <th style='text-align:right;padding:10px 12px;font-size:10.5px;color:#64748B;
+       <th style='text-align:right;padding:10px 12px;font-size:10.5px;color:#58595B;
                   text-transform:uppercase;letter-spacing:.5px;'>Randomised</th>
      </tr></thead>",
     "<tbody>", paste(rows, collapse = ""), "</tbody></table>"
@@ -184,14 +184,14 @@
       sprintf("<tr>
                 <td style='padding:5px 0;font-size:12px;'>%s</td>
                 <td style='padding:5px 0;text-align:right;font-size:12px;
-                           color:#475569;font-variant-numeric:tabular-nums;'>%d (%.0f%%)</td>
+                           color:#4A4A4A;font-variant-numeric:tabular-nums;'>%d (%.0f%%)</td>
               </tr>",
               htmltools::htmlEscape(s$label), s$n, pct_w)
     }, character(1))
     sprintf("<div style='background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;
                          padding:14px 16px;'>
-              <div style='font-weight:600;color:#0F172A;font-size:13.5px;margin-bottom:4px;'>%s</div>
-              <div style='font-size:11.5px;color:#64748B;margin-bottom:10px;'>%s</div>
+              <div style='font-weight:600;color:#1B1B1B;font-size:13.5px;margin-bottom:4px;'>%s</div>
+              <div style='font-size:11.5px;color:#58595B;margin-bottom:10px;'>%s</div>
               <table style='width:100%%;border-collapse:collapse;'><tbody>%s</tbody></table>
             </div>",
             htmltools::htmlEscape(bd$label),
@@ -218,12 +218,12 @@
 
   blocks <- vapply(insights, function(i) {
     accent <- switch(i$severity,
-                     alert   = "#B91C1C",
+                     alert   = "#C20019",
                      warning = "#B45309",
                      info    = "#15803D")
-    .rs_box(sprintf("<div style='font-weight:600;color:#0F172A;font-size:13.5px;
+    .rs_box(sprintf("<div style='font-weight:600;color:#1B1B1B;font-size:13.5px;
                                   margin-bottom:4px;'>%s</div>
-                      <div style='font-size:12.5px;color:#475569;line-height:1.5;'>%s</div>%s",
+                      <div style='font-size:12.5px;color:#4A4A4A;line-height:1.5;'>%s</div>%s",
                     htmltools::htmlEscape(i$title),
                     htmltools::htmlEscape(i$body),
                     if (!is.null(i$value))
@@ -310,7 +310,7 @@
                       error = function(e) "")
 
   paste0(.rs_h(2, "Safety & regulatory"),
-         .rs_box(.rs_kv_grid(pairs), accent = "#F59E0B"),
+         .rs_box(.rs_kv_grid(pairs), accent = "#F07F3C"),
          sae_tbl, wd_tbl)
 }
 
@@ -324,14 +324,14 @@
   }
 
   rows <- vapply(items, function(a) {
-    accent <- if (identical(a$type, "Substantial")) "#B91C1C" else "#6366F1"
+    accent <- if (identical(a$type, "Substantial")) "#C20019" else "#0057BF"
     sprintf("<tr>
               <td style='padding:9px 12px;font-weight:500;'>%s</td>
               <td style='padding:9px 12px;color:%s;font-size:11.5px;
                           font-weight:600;text-transform:uppercase;letter-spacing:.4px;'>%s</td>
-              <td style='padding:9px 12px;color:#475569;'>%s</td>
-              <td style='padding:9px 12px;color:#475569;'>%s</td>
-              <td style='padding:9px 12px;color:#0F172A;line-height:1.5;'>%s</td>
+              <td style='padding:9px 12px;color:#4A4A4A;'>%s</td>
+              <td style='padding:9px 12px;color:#4A4A4A;'>%s</td>
+              <td style='padding:9px 12px;color:#1B1B1B;line-height:1.5;'>%s</td>
             </tr>",
             htmltools::htmlEscape(as.character(a$ref %||% "—")),
             accent,
@@ -347,15 +347,15 @@
                     background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;
                     overflow:hidden;'>",
     "<thead><tr style='background:#FAFBFD;'>",
-    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#64748B;
+    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#58595B;
                 text-transform:uppercase;letter-spacing:.5px;'>Reference</th>",
-    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#64748B;
+    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#58595B;
                 text-transform:uppercase;letter-spacing:.5px;'>Type</th>",
-    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#64748B;
+    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#58595B;
                 text-transform:uppercase;letter-spacing:.5px;'>Date</th>",
-    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#64748B;
+    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#58595B;
                 text-transform:uppercase;letter-spacing:.5px;'>Status</th>",
-    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#64748B;
+    "<th style='text-align:left;padding:10px 12px;font-size:10.5px;color:#58595B;
                 text-transform:uppercase;letter-spacing:.5px;'>Description</th>",
     "</tr></thead>",
     "<tbody>", paste(rows, collapse = ""), "</tbody></table>"
@@ -367,18 +367,18 @@
     .rs_h(2, "Plans for next reporting period"),
     .rs_box(
       if (!is.null(ctx$next_period_text) && nzchar(ctx$next_period_text))
-        sprintf("<p style='margin:0;font-size:13px;line-height:1.7;color:#0F172A;'>%s</p>",
+        sprintf("<p style='margin:0;font-size:13px;line-height:1.7;color:#1B1B1B;'>%s</p>",
                 htmltools::htmlEscape(ctx$next_period_text))
       else
-        "<em style='color:#94A3B8;'>Add plans via the report builder before generating.</em>",
-      "#10B981"))
+        "<em style='color:#8A8A8C;'>Add plans via the report builder before generating.</em>",
+      "#3AAA35"))
 }
 
 .rs_render_custom_text <- function(ctx) {
   txt <- ctx$custom_text
   if (is.null(txt) || !nzchar(txt)) return("")
   paste0(.rs_h(2, "Notes"),
-         .rs_box(sprintf("<p style='margin:0;font-size:13px;line-height:1.7;color:#0F172A;
+         .rs_box(sprintf("<p style='margin:0;font-size:13px;line-height:1.7;color:#1B1B1B;
                                      white-space:pre-wrap;'>%s</p>",
                           htmltools::htmlEscape(txt))))
 }
@@ -402,10 +402,10 @@
 .pr_table <- function(rows) {
   cells <- vapply(rows, function(r) {
     sprintf("<tr>
-              <td style='padding:8px 12px;background:#F8FAFC;width:42%%;
-                         font-size:11.5px;font-weight:600;color:#0F172A;
+              <td style='padding:8px 12px;background:#F8F8F8;width:42%%;
+                         font-size:11.5px;font-weight:600;color:#1B1B1B;
                          border:1px solid #E2E8EE;'>%s</td>
-              <td style='padding:8px 12px;font-size:12px;color:#0F172A;
+              <td style='padding:8px 12px;font-size:12px;color:#1B1B1B;
                          border:1px solid #E2E8EE;'>%s</td>
             </tr>",
             htmltools::htmlEscape(r[[1]]),
@@ -478,7 +478,7 @@
   summary_html <- if (nzchar(summary_txt) && summary_txt != "—")
     htmltools::htmlEscape(summary_txt)
   else
-    "<em style='color:#94A3B8;'>Add a brief summary on Settings &rarr; Portfolio review.</em>"
+    "<em style='color:#8A8A8C;'>Add a brief summary on Settings &rarr; Portfolio review.</em>"
   summary_block <- sprintf(
     "<div class='pf-summary'>
        <div class='pf-summary-label'>Brief summary of trial:</div>
@@ -579,11 +579,11 @@
 .rs_render_pr_rag_status <- function(ctx) {
   rag <- tolower(.pr_var(ctx, "rag_status", ""))
   rag_defs <- list(
-    list(key = "red",   bg = "#FEE2E2", border = "#EF4444", text = "#991B1B",
+    list(key = "red",   bg = "#FEE2E2", border = "#E30513", text = "#991B1B",
          label = "Red — Significantly behind schedule; delivery at risk"),
-    list(key = "amber", bg = "#FEF3C7", border = "#F59E0B", text = "#92400E",
+    list(key = "amber", bg = "#FEF3C7", border = "#F07F3C", text = "#92400E",
          label = "Amber — Behind schedule; areas of concern identified"),
-    list(key = "green", bg = "#D1FAE5", border = "#10B981", text = "#065F46",
+    list(key = "green", bg = "#D1FAE5", border = "#3AAA35", text = "#065F46",
          label = "Green — On track; no major problems identified"))
 
   items <- vapply(rag_defs, function(d) {
@@ -607,7 +607,7 @@
   note_html <- if (nzchar(note) && note != "—")
     sprintf("<div style='margin-top:8px;padding:8px 10px;border:1px solid #E2E8EE;
                           border-radius:4px;background:#FFFFFF;font-size:10.5px;
-                          color:#27384A;line-height:1.5;'>%s</div>",
+                          color:#3C3C3B;line-height:1.5;'>%s</div>",
             htmltools::htmlEscape(note)) else ""
 
   sprintf(
@@ -805,7 +805,7 @@
 .rs_render_pr_issues <- function(ctx) {
   concerns <- .pr_to_bullets(.pr_var(ctx, "issues_concerns", ""))
   remedial <- .pr_to_bullets(.pr_var(ctx, "issues_remedial", ""))
-  empty_state <- "<em style='color:#94A3B8;font-size:10.5px;'>None recorded.</em>"
+  empty_state <- "<em style='color:#8A8A8C;font-size:10.5px;'>None recorded.</em>"
   if (!nzchar(concerns)) concerns <- empty_state
   if (!nzchar(remedial)) remedial <- empty_state
 

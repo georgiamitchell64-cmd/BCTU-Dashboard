@@ -9,13 +9,16 @@ build_app_ui <- function() {
       tags$link(rel = "preconnect", href = "https://fonts.gstatic.com",
                 crossorigin = ""),
       tags$link(rel = "stylesheet",
-                href = "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"),
+                href = "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"),
       tags$link(rel = "stylesheet", type = "text/css", href = "tonic_core.css"),
       tags$link(rel = "stylesheet", type = "text/css", href = "home_redesign.css"),
       tags$link(rel = "stylesheet", type = "text/css", href = "modules_redesign.css"),
       tags$link(rel = "stylesheet", type = "text/css", href = "panorama_overview.css"),
       tags$link(rel = "stylesheet", type = "text/css", href = "trial_replay.css"),
+      tags$link(rel = "stylesheet", type = "text/css", href = "trial_health.css"),
+      tags$link(rel = "stylesheet", type = "text/css", href = "settings.css"),
       tags$script(src = "trial_replay.js", defer = NA),
+      tags$script(src = "trial_health.js", defer = NA),
       tags$script(HTML("
         (function() {
           try {
@@ -65,19 +68,19 @@ build_app_ui <- function() {
           overflow-x:auto;
         }
         .wp-picker-bar .wp-eye {
-          font-size:10.5px; font-weight:600; color:#64748B;
+          font-size:10.5px; font-weight:600; color:#58595B;
           text-transform:uppercase; letter-spacing:.6px; margin-right:6px;
           flex-shrink:0;
         }
         .wp-pill {
           padding:5px 14px; border-radius:999px;
-          border:1px solid #DDE5EE; background:#fff;
-          color:#475569; font-size:12px; font-weight:500;
+          border:1px solid #E3E3E3; background:#fff;
+          color:#4A4A4A; font-size:12px; font-weight:500;
           font-family:inherit; cursor:pointer; white-space:nowrap;
         }
-        .wp-pill:hover { border-color:#1B4F6B; color:#1B4F6B; }
+        .wp-pill:hover { border-color:#1B1B1B; color:#1B1B1B; }
         .wp-pill.on {
-          background:#1B4F6B; color:#fff; border-color:#1B4F6B;
+          background:#1B1B1B; color:#fff; border-color:#1B1B1B;
           font-weight:600;
         }
       "))

@@ -57,15 +57,7 @@ trial_selector_server <- function(input, output, session, state) {
 
   # Pick a stable colour pair for a trial mark (logo tile)
   .trial_mark_colors <- function(cfg) {
-    pal <- list(
-      list("#1B4F6B", "#2EC4A5"),
-      list("#0E7490", "#67E8F9"),
-      list("#7C2D12", "#FED7AA"),
-      list("#BE185D", "#FBCFE8"),
-      list("#0F766E", "#5EEAD4"),
-      list("#4338CA", "#A78BFA"),
-      list("#B45309", "#FBBF24")
-    )
+    pal <- list(list("#1B1B1B", "#58595B"))
     code <- cfg$short_name %||% cfg$code %||% "X"
     idx  <- (sum(utf8ToInt(toupper(code))) %% length(pal)) + 1
     pal[[idx]]
@@ -389,7 +381,7 @@ trial_selector_server <- function(input, output, session, state) {
                   s_total <- cfg$sites_total %||% 0L
                   s_pct <- if (s_total > 0) min(1, s_open / s_total) else 0
                   bar_col <- .trial_mark_colors(cfg)[[1]]
-                  dot_col <- if (pct >= 0.5) "#10B981" else if (pct >= 0.25) "#F59E0B" else "#EF4444"
+                  dot_col <- if (pct >= 0.5) "#3AAA35" else if (pct >= 0.25) "#F07F3C" else "#E30513"
                   div(class = "psum-trow",
                       div(class = "psum-trow-id",
                           tags$span(class = "psum-trow-dot",
@@ -416,7 +408,7 @@ trial_selector_server <- function(input, output, session, state) {
                                         sprintf(" / %d", s_total))),
                           div(class = "psum-trow-bar",
                               div(class = "psum-trow-bar-f",
-                                  style = sprintf("width:%d%%;background:#27384A;opacity:.55;",
+                                  style = sprintf("width:%d%%;background:#3C3C3B;opacity:.55;",
                                                   round(s_pct * 100)))),
                           div(class = "psum-trow-met-s",
                               sprintf("%d pending open", max(0L, s_total - s_open))))
@@ -430,7 +422,7 @@ trial_selector_server <- function(input, output, session, state) {
     feed <- tryCatch(activity_feed(), error = function(e) NULL)
     if (is.null(feed) || nrow(feed) == 0) {
       return(div(class = "act-list",
-                 div(style = "padding:20px;text-align:center;color:#64748B;font-size:12.5px;",
+                 div(style = "padding:20px;text-align:center;color:#58595B;font-size:12.5px;",
                      "No recent activity yet.")))
     }
     trials <- discover_trials()
@@ -440,19 +432,19 @@ trial_selector_server <- function(input, output, session, state) {
           r <- rows[i, ]
           ev <- as.character(r$event_type %||% "info")
           map <- list(
-            trial_created    = list(c = "#10B981", l = "TRIAL"),
-            trial_deleted    = list(c = "#EF4444", l = "TRIAL"),
-            site_added       = list(c = "#3B82F6", l = "SITE"),
-            sites_bulk_added = list(c = "#3B82F6", l = "SITE"),
-            site_deleted     = list(c = "#EF4444", l = "SITE"),
-            csv_uploaded     = list(c = "#0EA5E9", l = "DATA"),
-            amendment_added  = list(c = "#A855F7", l = "AMEND"),
-            amendment_edited = list(c = "#A855F7", l = "AMEND"),
-            settings_saved   = list(c = "#64748B", l = "SET"),
-            membership_changed = list(c = "#F59E0B", l = "USER"),
-            portfolio_role_changed = list(c = "#F59E0B", l = "ROLE")
+            trial_created    = list(c = "#3AAA35", l = "TRIAL"),
+            trial_deleted    = list(c = "#E30513", l = "TRIAL"),
+            site_added       = list(c = "#2581C4", l = "SITE"),
+            sites_bulk_added = list(c = "#2581C4", l = "SITE"),
+            site_deleted     = list(c = "#E30513", l = "SITE"),
+            csv_uploaded     = list(c = "#2581C4", l = "DATA"),
+            amendment_added  = list(c = "#C59A00", l = "AMEND"),
+            amendment_edited = list(c = "#C59A00", l = "AMEND"),
+            settings_saved   = list(c = "#58595B", l = "SET"),
+            membership_changed = list(c = "#F07F3C", l = "USER"),
+            portfolio_role_changed = list(c = "#F07F3C", l = "ROLE")
           )
-          k <- map[[ev]] %||% list(c = "#10B981", l = "INFO")
+          k <- map[[ev]] %||% list(c = "#3AAA35", l = "INFO")
           tcode <- as.character(r$trial_code %||% "—")
           tshort <- if (!is.null(trials[[tcode]]))
             (trials[[tcode]]$short_name %||% toupper(tcode)) else tcode
@@ -502,14 +494,14 @@ trial_selector_server <- function(input, output, session, state) {
         modalButton("Cancel"),
         actionButton("qa_run_report_go", "Open report builder",
                      class = "btn btn-primary",
-                     style = "background:#1B4F6B;border-color:#1B4F6B;")),
+                     style = "background:#1B1B1B;border-color:#1B1B1B;")),
       div(style = "padding:6px 0;",
-          tags$label(style = "font-size:11px;font-weight:600;color:#64748B;
+          tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
                               text-transform:uppercase;letter-spacing:.5px;",
                      "Trial"),
           selectInput("qa_run_report_trial", label = NULL,
                       choices = choices, width = "100%"),
-          div(style = "font-size:12px;color:#64748B;margin-top:8px;",
+          div(style = "font-size:12px;color:#58595B;margin-top:8px;",
               "Opens the report builder where you'll choose format
                (Word / PDF / HTML) and sections."))
     ))
@@ -584,7 +576,7 @@ trial_selector_server <- function(input, output, session, state) {
     showModal(modalDialog(
       title = "Help",
       size = "m", easyClose = TRUE, footer = modalButton("Close"),
-      div(style = "font-size:13px;line-height:1.6;color:#27384A;",
+      div(style = "font-size:13px;line-height:1.6;color:#3C3C3B;",
           tags$p(tags$strong("BCTU Clinical Trials Dashboard")),
           tags$p("Click any trial card to open its dashboard. Use the tabs at the top
                   to switch between My Trials, Portfolio, All Trials, Sites and Activity."),
@@ -594,7 +586,7 @@ trial_selector_server <- function(input, output, session, state) {
             tags$li(tags$strong("Run a report"), " — pick a trial and open the report builder."),
             tags$li(tags$strong("Switch theme"), " — light, dark, or system."),
             tags$li(tags$strong("Portfolio settings"), " — manage users, roles and access (admin).")),
-          tags$p(style = "color:#64748B;font-size:12px;",
+          tags$p(style = "color:#58595B;font-size:12px;",
                  "Need more help? Contact the BCTU support team."))
     ))
   })
@@ -638,7 +630,7 @@ trial_selector_server <- function(input, output, session, state) {
       summary <- compute_portfolio_summary(discover_trials())
       if (is.null(summary) || !length(summary$per_trial)) NULL
       else {
-        suggestion <- function(emoji, title_html, hint, key, accent = "#6366F1") {
+        suggestion <- function(emoji, title_html, hint, key, accent = "#0057BF") {
           div(class = "home-insight-card",
               onclick = sprintf("Shiny.setInputValue('home_insight_query', '%s', {priority:'event'})", key),
               style = sprintf("background:#FFFFFF;border:1px solid #EEF2F7;border-radius:14px;
@@ -648,9 +640,9 @@ trial_selector_server <- function(input, output, session, state) {
                   div(style = sprintf("font-size:18px;color:%s;line-height:1;
                                        margin-top:2px;", accent), HTML(emoji)),
                   div(style = "flex:1;min-width:0;",
-                      div(style = "font-size:13px;font-weight:600;color:#0F172A;
+                      div(style = "font-size:13px;font-weight:600;color:#1B1B1B;
                                    line-height:1.4;", HTML(title_html)),
-                      div(style = "font-size:11px;color:#64748B;margin-top:4px;",
+                      div(style = "font-size:11px;color:#58595B;margin-top:4px;",
                           hint))))
         }
         cards <- list()
@@ -659,7 +651,7 @@ trial_selector_server <- function(input, output, session, state) {
           cards[[length(cards)+1]] <- suggestion("&#x1F4CA;",
             sprintf("How are <strong>%s</strong> trials recruiting?", cats[1]),
             "See breakdown of trials in this category",
-            paste0("category::", cats[1]), "#6366F1")
+            paste0("category::", cats[1]), "#0057BF")
         }
         if (summary$n_below + summary$n_stalled > 0) {
           n_attn <- summary$n_below + summary$n_stalled
@@ -667,12 +659,12 @@ trial_selector_server <- function(input, output, session, state) {
             sprintf("<strong>%d %s</strong> need attention", n_attn,
                     if (n_attn == 1) "trial" else "trials"),
             "View trials below pace or stalled",
-            "needs_attention", "#F59E0B")
+            "needs_attention", "#F07F3C")
         } else {
           cards[[length(cards)+1]] <- suggestion("&#x2728;",
             "Portfolio is <strong>healthy</strong>",
             "No stalled or critically lagging trials",
-            "healthy", "#10B981")
+            "healthy", "#3AAA35")
         }
         if (summary$n_lagging > 0) {
           cards[[length(cards)+1]] <- suggestion("&#x1F4CD;",
@@ -680,18 +672,18 @@ trial_selector_server <- function(input, output, session, state) {
                     summary$n_lagging,
                     if (summary$n_lagging == 1) "site" else "sites"),
             "Across all trials in your portfolio",
-            "lagging_sites", "#F43F5E")
+            "lagging_sites", "#C20019")
         }
         if (length(summary$per_trial) >= 2) {
           cards[[length(cards)+1]] <- suggestion("&#x1F50D;",
             "<strong>Compare</strong> two trials side by side",
             "Pick any two trials to compare",
-            "compare", "#8B5CF6")
+            "compare", "#1B1B1B")
         }
         div(
           tags$style(HTML(".home-insight-card:hover{transform:translateY(-1px);
-                          box-shadow:0 6px 18px rgba(99,102,241,0.10);}")),
-          div(style = "font-size:11px;font-weight:600;color:#64748B;
+                          box-shadow:0 6px 18px rgba(0,0,0,0.08);}")),
+          div(style = "font-size:11px;font-weight:600;color:#58595B;
                        text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;",
               "Smart Insights"),
           div(style = "display:grid;grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));
@@ -760,11 +752,11 @@ trial_selector_server <- function(input, output, session, state) {
     # ── Status donut (server-rendered SVG) ────────────────────────────────
     donut_svg <- local({
       slices <- list(
-        list(n = n_on,    col = "#10B981", lbl = "On track"),
-        list(n = n_warn,  col = "#F59E0B", lbl = "Behind"),
-        list(n = n_risk,  col = "#EF4444", lbl = "Stalled"),
-        list(n = n_setup, col = "#3B82F6", lbl = "Set-up"),
-        list(n = n_closed,col = "#A693AF", lbl = "Closed"))
+        list(n = n_on,    col = "#3AAA35", lbl = "On track"),
+        list(n = n_warn,  col = "#F07F3C", lbl = "Behind"),
+        list(n = n_risk,  col = "#E30513", lbl = "Stalled"),
+        list(n = n_setup, col = "#2581C4", lbl = "Set-up"),
+        list(n = n_closed,col = "#8A8A8C", lbl = "Closed"))
       slices <- Filter(function(s) s$n > 0, slices)
       circ <- 377  # 2 * pi * 60
       offset <- 0
@@ -787,11 +779,11 @@ trial_selector_server <- function(input, output, session, state) {
     })
 
     donut_legend <- div(class = "pf-donut-legend",
-      .pf_leg_row("On track", n_on,    n_trials, "#10B981"),
-      .pf_leg_row("Behind",   n_warn,  n_trials, "#F59E0B"),
-      .pf_leg_row("Stalled",  n_risk,  n_trials, "#EF4444"),
-      .pf_leg_row("Set-up",   n_setup, n_trials, "#3B82F6"),
-      .pf_leg_row("Closed",   n_closed,n_trials, "#A693AF"))
+      .pf_leg_row("On track", n_on,    n_trials, "#3AAA35"),
+      .pf_leg_row("Behind",   n_warn,  n_trials, "#F07F3C"),
+      .pf_leg_row("Stalled",  n_risk,  n_trials, "#E30513"),
+      .pf_leg_row("Set-up",   n_setup, n_trials, "#2581C4"),
+      .pf_leg_row("Closed",   n_closed,n_trials, "#8A8A8C"))
 
     # ── By-category panel — average progress + status mix per category ───
     cat_rows_html <- lapply(.ordered_categories(cats_seen), function(cat) {
@@ -874,7 +866,7 @@ trial_selector_server <- function(input, output, session, state) {
     if (is.null(summary) || length(summary$per_trial) == 0) return(NULL)
 
     # Build natural-language suggestion cards
-    suggestion <- function(emoji, title_html, hint, key, accent = "#6366F1") {
+    suggestion <- function(emoji, title_html, hint, key, accent = "#0057BF") {
       div(class = "home-insight-card",
           onclick = sprintf("Shiny.setInputValue('home_insight_query', '%s', {priority:'event'})", key),
           style = sprintf("background:#FFFFFF;border:1px solid #EEF2F7;border-radius:14px;
@@ -885,10 +877,10 @@ trial_selector_server <- function(input, output, session, state) {
                                    margin-top:2px;", accent),
                   HTML(emoji)),
               div(style = "flex:1;min-width:0;",
-                  div(style = "font-size:13px;font-weight:600;color:#0F172A;
+                  div(style = "font-size:13px;font-weight:600;color:#1B1B1B;
                                line-height:1.4;",
                       HTML(title_html)),
-                  div(style = "font-size:11px;color:#64748B;margin-top:4px;",
+                  div(style = "font-size:11px;color:#58595B;margin-top:4px;",
                       hint))))
     }
 
@@ -903,7 +895,7 @@ trial_selector_server <- function(input, output, session, state) {
           sprintf("How are <strong>%s</strong> trials recruiting?", cat_first),
           "See breakdown of trials in this category",
           paste0("category::", cat_first),
-          "#6366F1")
+          "#0057BF")
       ))
     }
 
@@ -916,7 +908,7 @@ trial_selector_server <- function(input, output, session, state) {
                   n_attn, if (n_attn == 1) "trial" else "trials"),
           "View trials below pace or stalled",
           "needs_attention",
-          "#F59E0B")
+          "#F07F3C")
       ))
     } else {
       cards <- c(cards, list(
@@ -924,7 +916,7 @@ trial_selector_server <- function(input, output, session, state) {
           "Portfolio is <strong>healthy</strong>",
           "No stalled or critically lagging trials",
           "healthy",
-          "#10B981")
+          "#3AAA35")
       ))
     }
 
@@ -937,7 +929,7 @@ trial_selector_server <- function(input, output, session, state) {
                   if (summary$n_lagging == 1) "site" else "sites"),
           "Across all trials in your portfolio",
           "lagging_sites",
-          "#F43F5E")
+          "#C20019")
       ))
     }
 
@@ -948,7 +940,7 @@ trial_selector_server <- function(input, output, session, state) {
           "<strong>Compare</strong> two trials side by side",
           "Pick any two trials to compare",
           "compare",
-          "#8B5CF6")
+          "#1B1B1B")
       ))
     }
 
@@ -956,10 +948,10 @@ trial_selector_server <- function(input, output, session, state) {
       tags$style(HTML("
         .home-insight-card:hover {
           transform: translateY(-1px);
-          box-shadow: 0 6px 18px rgba(99,102,241,0.10);
+          box-shadow: 0 6px 18px rgba(0,0,0,0.08);
         }
       ")),
-      div(style = "font-size:11px;font-weight:600;color:#64748B;
+      div(style = "font-size:11px;font-weight:600;color:#58595B;
                    text-transform:uppercase;letter-spacing:.6px;
                    margin-bottom:10px;",
           "Smart Insights"),
@@ -983,7 +975,7 @@ trial_selector_server <- function(input, output, session, state) {
       rows_list <- summary$per_trial
     }
     if (!length(rows_list) || !length(rdata)) {
-      return(div(style = "padding:14px 0;color:#94A3B8;font-style:italic;
+      return(div(style = "padding:14px 0;color:#8A8A8C;font-style:italic;
                           font-size:12.5px;",
                  "No trials yet."))
     }
@@ -997,7 +989,7 @@ trial_selector_server <- function(input, output, session, state) {
       sev_chip <- if (!is.null(s$top)) {
         sev <- s$top$severity
         col <- switch(sev,
-                      alert   = list(bg = "#FEF2F2", fg = "#B91C1C"),
+                      alert   = list(bg = "#FEF2F2", fg = "#C20019"),
                       warning = list(bg = "#FFFBEB", fg = "#B45309"),
                       info    = list(bg = "#F0FDF4", fg = "#15803D"))
         span(style = sprintf("display:inline-flex;align-items:center;gap:5px;
@@ -1012,11 +1004,11 @@ trial_selector_server <- function(input, output, session, state) {
                             s$code),
           div(style = "display:grid;grid-template-columns:1.4fr 1fr 0.5fr;gap:14px;
                        align-items:center;",
-              div(div(style = "font-weight:600;color:#0F172A;font-size:14px;", s$short),
-                  div(style = "font-size:11px;color:#64748B;", s$category)),
+              div(div(style = "font-weight:600;color:#1B1B1B;font-size:14px;", s$short),
+                  div(style = "font-size:11px;color:#58595B;", s$category)),
               div(class = "home-progress", style = "margin:0;width:100%;",
                   div(class = "home-progress-fill", style = sprintf("width:%s;", pct_w))),
-              div(style = "font-size:13px;color:#475569;text-align:right;",
+              div(style = "font-size:13px;color:#4A4A4A;text-align:right;",
                   sprintf("%d / %d", r$n, r$target))),
           if (!is.null(sev_chip))
             div(style = "margin-top:8px;", sev_chip))
@@ -1037,7 +1029,7 @@ trial_selector_server <- function(input, output, session, state) {
           onclick = sprintf("Shiny.setInputValue('home_insight_query','category::%s',{priority:'event'})",
                             cat),
           div(class = "home-category-icon", HTML(icon)),
-          div(style = "font-weight:600;color:#0F172A;font-size:13.5px;", cat),
+          div(style = "font-weight:600;color:#1B1B1B;font-size:13.5px;", cat),
           div(style = "font-size:13px;color:var(--accent);font-weight:600;",
               paste(length(group),
                     if (length(group) == 1) "trial" else "trials")))
@@ -1309,7 +1301,7 @@ trial_selector_server <- function(input, output, session, state) {
     rows <- if (is.null(feed) || !nrow(feed)) {
       div(class = "home-empty",
           div(class = "icon", HTML("&#x1F514;")),
-          div(style = "font-size:15px;color:#0F172A;font-weight:500;margin-bottom:6px;",
+          div(style = "font-size:15px;color:#1B1B1B;font-weight:500;margin-bottom:6px;",
               "No activity yet"),
           div("Trial creations, site changes, uploads and amendments will show up here."))
     } else {
@@ -1320,13 +1312,13 @@ trial_selector_server <- function(input, output, session, state) {
     div(
       div(style = "display:grid;grid-template-columns:1fr 1fr;gap:14px;
                    margin-bottom:16px;",
-          div(tags$label(style = "font-size:11px;font-weight:600;color:#64748B;
+          div(tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
                                   text-transform:uppercase;letter-spacing:.5px;",
                          "Trial"),
               selectInput("activity_trial_filter", label = NULL,
                           choices = trial_choices,
                           selected = "__all__", width = "100%")),
-          div(tags$label(style = "font-size:11px;font-weight:600;color:#64748B;
+          div(tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
                                   text-transform:uppercase;letter-spacing:.5px;",
                          "Event type"),
               selectInput("activity_event_filter", label = NULL,
@@ -1364,13 +1356,13 @@ trial_selector_server <- function(input, output, session, state) {
       # Filter row
       div(style = "display:grid;grid-template-columns:1.2fr 2fr;gap:14px;
                    margin-bottom:18px;align-items:end;",
-          div(tags$label(style = "font-size:11px;font-weight:600;color:#64748B;
+          div(tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
                                   text-transform:uppercase;letter-spacing:.5px;",
                          "Filter by category"),
               selectInput("sites_category", label = NULL,
                           choices = cat_choices,
                           selected = "__all__", width = "100%")),
-          div(tags$label(style = "font-size:11px;font-weight:600;color:#64748B;
+          div(tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
                                   text-transform:uppercase;letter-spacing:.5px;",
                          "Look up a site"),
               selectizeInput("sites_lookup", label = NULL,
@@ -1397,7 +1389,7 @@ trial_selector_server <- function(input, output, session, state) {
     if (!nrow(in_scope)) {
       return(div(style = "background:#FFFFFF;border:1px solid #EEF2F7;border-radius:14px;
                           padding:24px;",
-                 div(style = "font-size:13px;color:#64748B;",
+                 div(style = "font-size:13px;color:#58595B;",
                      "No sites in this category yet.")))
     }
 
@@ -1416,12 +1408,12 @@ trial_selector_server <- function(input, output, session, state) {
                              $('#sites_lookup').val('%s').trigger('change');",
                             gsub("'", "\\\\'", r$site_name),
                             gsub("'", "\\\\'", r$site_name)),
-          div(style = "width:30px;height:30px;border-radius:9px;background:#F5F3FF;
-                       color:#6366F1;display:flex;align-items:center;justify-content:center;
+          div(style = "width:30px;height:30px;border-radius:9px;background:#F4F4F4;
+                       color:#1B1B1B;display:flex;align-items:center;justify-content:center;
                        font-weight:700;font-size:13px;", i),
-          div(div(style = "font-weight:600;color:#0F172A;font-size:13.5px;",
+          div(div(style = "font-weight:600;color:#1B1B1B;font-size:13.5px;",
                   r$site_name),
-              div(style = "font-size:11px;color:#64748B;",
+              div(style = "font-size:11px;color:#58595B;",
                   sprintf("%d %s · %d recruited",
                           r$n_trials,
                           if (r$n_trials == 1) "trial" else "trials",
@@ -1447,8 +1439,8 @@ trial_selector_server <- function(input, output, session, state) {
     long <- cross_sites_long()
     site <- input$sites_lookup
     if (is.null(site) || !nzchar(site)) {
-      return(div(style = "background:#FFFFFF;border:1px dashed #DDE5EE;border-radius:14px;
-                          padding:32px;text-align:center;color:#64748B;font-size:13px;",
+      return(div(style = "background:#FFFFFF;border:1px dashed #E3E3E3;border-radius:14px;
+                          padding:32px;text-align:center;color:#58595B;font-size:13px;",
                  div(style = "font-size:30px;margin-bottom:10px;opacity:.4;",
                      HTML("&#x1F50D;")),
                  div("Pick a site from the list, top-5 panel, or search above to see how
@@ -1470,9 +1462,9 @@ trial_selector_server <- function(input, output, session, state) {
       div(style = "padding:14px 0;border-bottom:1px solid #EEF2F7;",
           div(style = "display:flex;justify-content:space-between;align-items:center;
                        margin-bottom:8px;",
-              div(div(style = "font-weight:600;color:#0F172A;font-size:14px;",
+              div(div(style = "font-weight:600;color:#1B1B1B;font-size:14px;",
                       r$trial_short),
-                  div(style = "font-size:11px;color:#64748B;",
+                  div(style = "font-size:11px;color:#58595B;",
                       sprintf("%s · status: %s", r$category,
                               r$status %||% "—"))),
               .status_pill(pct)),
@@ -1480,7 +1472,7 @@ trial_selector_server <- function(input, output, session, state) {
               div(class = "home-progress-fill",
                   style = sprintf("width:%s;", pct_w))),
           div(style = "display:flex;justify-content:space-between;
-                       font-size:12px;color:#475569;",
+                       font-size:12px;color:#4A4A4A;",
               span(sprintf("%d / %d recruited", r$randomised, r$target)),
               span(sprintf("Monthly target: %s", mt)),
               span(style = "font-weight:600;color:var(--accent);", pct_w))
@@ -1490,12 +1482,12 @@ trial_selector_server <- function(input, output, session, state) {
     div(style = "background:#FFFFFF;border:1px solid #EEF2F7;border-radius:14px;
                  padding:18px 24px 10px;",
         div(style = "display:flex;align-items:center;gap:10px;margin-bottom:6px;",
-            div(style = "width:34px;height:34px;border-radius:10px;background:#F5F3FF;
-                         color:#6366F1;display:flex;align-items:center;justify-content:center;
+            div(style = "width:34px;height:34px;border-radius:10px;background:#F4F4F4;
+                         color:#1B1B1B;display:flex;align-items:center;justify-content:center;
                          font-size:14px;", HTML("&#x1F3E5;")),
-            div(div(style = "font-weight:600;color:#0F172A;font-size:15px;letter-spacing:-.2px;",
+            div(div(style = "font-weight:600;color:#1B1B1B;font-size:15px;letter-spacing:-.2px;",
                     site),
-                div(style = "font-size:11.5px;color:#64748B;",
+                div(style = "font-size:11.5px;color:#58595B;",
                     sprintf("Active in %d %s",
                             nrow(site_rows),
                             if (nrow(site_rows) == 1) "trial" else "trials")))),
@@ -1543,9 +1535,9 @@ trial_selector_server <- function(input, output, session, state) {
         modalButton("Cancel"),
         actionButton("change_password_go", "Update password",
                      class = "btn btn-primary",
-                     style = "background:#6366F1;border-color:#6366F1;font-weight:600;")
+                     style = "background:#1B1B1B;border-color:#1B1B1B;font-weight:600;")
       ),
-      div(style = "padding:6px 0;font-size:12.5px;color:#475569;line-height:1.6;
+      div(style = "padding:6px 0;font-size:12.5px;color:#4A4A4A;line-height:1.6;
                    margin-bottom:12px;",
           sprintf("Updating password for %s", rv$username)),
       passwordInput("change_pw_current", "Current password",
@@ -1594,13 +1586,13 @@ trial_selector_server <- function(input, output, session, state) {
     if (!isTRUE(rv$portfolio_role == "admin")) return()
     showModal(modalDialog(
       title = div(style = "display:flex;align-items:center;gap:10px;",
-                  span(style = "font-size:18px;color:#6366F1;", HTML("&#x1F4E6;")),
+                  span(style = "font-size:18px;color:#0057BF;", HTML("&#x1F4E6;")),
                   span("Backup & Restore")),
       size = "m", easyClose = TRUE, footer = modalButton("Close"),
 
       div(style = "background:#F8FAFD;border:1px solid #EEF2F7;border-radius:10px;
                    padding:14px 16px;margin-bottom:18px;font-size:12.5px;
-                   color:#475569;line-height:1.7;",
+                   color:#4A4A4A;line-height:1.7;",
           HTML("Bundles every trial's <code>config.R</code>, <code>overrides.json</code>,
                 and per-trial SQLite, plus the shared user database. <strong>REDCap CSV
                 exports are not included</strong> \u2014 keep those local."),
@@ -1611,27 +1603,27 @@ trial_selector_server <- function(input, output, session, state) {
           # Backup
           div(style = "background:#FFFFFF;border:1px solid #EEF2F7;border-radius:10px;
                        padding:16px;",
-              div(style = "font-size:13px;font-weight:600;color:#0F172A;margin-bottom:6px;",
+              div(style = "font-size:13px;font-weight:600;color:#1B1B1B;margin-bottom:6px;",
                   HTML("&#x2B07; Backup")),
-              div(style = "font-size:11.5px;color:#64748B;margin-bottom:14px;",
+              div(style = "font-size:11.5px;color:#58595B;margin-bottom:14px;",
                   "Download the current portfolio as a single zip."),
               downloadButton("portfolio_backup_dl", "Download backup (.zip)",
                              class = "btn btn-sm",
-                             style = "background:#6366F1;color:#fff;border:none;
+                             style = "background:#1B1B1B;color:#fff;border:none;
                                       width:100%;padding:8px;font-weight:500;")),
           # Restore
           div(style = "background:#FFFFFF;border:1px solid #FECACA;border-radius:10px;
                        padding:16px;",
-              div(style = "font-size:13px;font-weight:600;color:#0F172A;margin-bottom:6px;",
+              div(style = "font-size:13px;font-weight:600;color:#1B1B1B;margin-bottom:6px;",
                   HTML("&#x21BB; Restore")),
-              div(style = "font-size:11.5px;color:#64748B;margin-bottom:10px;",
+              div(style = "font-size:11.5px;color:#58595B;margin-bottom:10px;",
                   "Pick a previous backup. ", tags$strong("Will overwrite current data."), ""),
               fileInput("portfolio_backup_file", label = NULL,
                         buttonLabel = "Choose .zip", accept = ".zip",
                         placeholder = "No file selected"),
               actionButton("portfolio_restore_go", "Restore from selected zip",
                            class = "btn btn-sm",
-                           style = "background:#FFFFFF;color:#B91C1C;
+                           style = "background:#FFFFFF;color:#C20019;
                                     border:1px solid #FECACA;width:100%;
                                     padding:8px;font-weight:500;")
           ))
@@ -1659,14 +1651,14 @@ trial_selector_server <- function(input, output, session, state) {
       return()
     }
     showModal(modalDialog(
-      title = div(style = "color:#B91C1C;",
+      title = div(style = "color:#C20019;",
                   HTML("&#x26A0; Confirm restore")),
       size = "s", easyClose = FALSE,
       footer = tagList(
         modalButton("Cancel"),
         actionButton("portfolio_restore_confirm", "Yes, restore",
                      class = "btn btn-danger",
-                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")
+                     style = "background:#C20019;border-color:#C20019;font-weight:600;")
       ),
       div(style = "padding:6px 0;font-size:13px;line-height:1.7;",
           HTML(sprintf("Restoring <strong>%s</strong> will overwrite every
@@ -2090,7 +2082,7 @@ trial_selector_server <- function(input, output, session, state) {
     .sidebar_variant <- if (.theme_key %in% names(TRIAL_THEMES))
       TRIAL_THEMES[[.theme_key]]$sidebar else "dark"
     apply_trial_colours(
-      cfg$colors %||% list(primary = "#1B4F6B", secondary = "#2EC4A5", accent = "#F59E0B"),
+      cfg$colors %||% list(primary = "#1B1B1B", secondary = "#00ACA9", accent = "#F07F3C"),
       sidebar = .sidebar_variant
     )
   })
@@ -2202,8 +2194,8 @@ trial_selector_server <- function(input, output, session, state) {
       div(style = "display:grid;grid-template-columns:80px 1fr;gap:10px;
                    align-items:center;margin-bottom:6px;",
           tags$label(paste0("WKP", i),
-                     style = "font-size:12px;font-weight:600;color:#1B4F6B;
-                              background:#EEF3F8;border-radius:6px;
+                     style = "font-size:12px;font-weight:600;color:#1B1B1B;
+                              background:#F4F4F4;border-radius:6px;
                               padding:6px 10px;text-align:center;margin:0;"),
           textInput(id, label = NULL,
                     value = isolate(input[[id]]) %||% "",
@@ -2305,9 +2297,9 @@ trial_selector_server <- function(input, output, session, state) {
 
     row <- function(label, value) {
       div(style = "display:flex;justify-content:space-between;padding:5px 0;
-                    border-bottom:1px solid rgba(46,196,165,.15);font-size:13px;",
-          span(style = "color:#64748B;font-weight:500;", label),
-          span(style = "color:#1B4F6B;font-weight:600;", value))
+                    border-bottom:1px solid rgba(0,172,169,.15);font-size:13px;",
+          span(style = "color:#58595B;font-weight:500;", label),
+          span(style = "color:#1B1B1B;font-weight:600;", value))
     }
 
     multi_export <- isTRUE(input$wiz_is_multi_wp) && isTRUE(input$wiz_multi_export)
@@ -2393,14 +2385,14 @@ trial_selector_server <- function(input, output, session, state) {
     if (is.null(cfg)) return()
 
     showModal(modalDialog(
-      title = div(style = "display:flex;align-items:center;gap:10px;color:#DC2626;",
+      title = div(style = "display:flex;align-items:center;gap:10px;color:#C20019;",
                   span(style = "font-size:22px;", HTML("&#x26A0;")),
                   span("Delete trial?")),
       div(style = "padding:8px 0;",
           HTML(sprintf("Are you sure you want to delete <strong>%s</strong>?",
                        cfg$short_name %||% toupper(code))),
           tags$br(), tags$br(),
-          div(style = "background:#FEF2F2;border-left:3px solid #DC2626;padding:12px 14px;
+          div(style = "background:#FEF2F2;border-left:3px solid #C20019;padding:12px 14px;
                        border-radius:6px;font-size:13px;color:#7F1D1D;line-height:1.6;",
               HTML("This will permanently delete:"),
               tags$ul(style = "margin:6px 0 0 16px;",
@@ -2415,7 +2407,7 @@ trial_selector_server <- function(input, output, session, state) {
         modalButton("Cancel"),
         actionButton("confirm_delete_trial", "Yes, delete trial",
                      class = "btn btn-danger",
-                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")
+                     style = "background:#C20019;border-color:#C20019;font-weight:600;")
       ),
       easyClose = TRUE,
       size = "m"
@@ -2683,9 +2675,9 @@ trial_config <- list(
       trial_type_val,
       wp_line,
       logo_line,
-      input$wiz_col_primary %||% "#1B4F6B",
-      input$wiz_col_secondary %||% "#2EC4A5",
-      input$wiz_col_accent %||% "#F59E0B",
+      input$wiz_col_primary %||% "#1B1B1B",
+      input$wiz_col_secondary %||% "#00ACA9",
+      input$wiz_col_accent %||% "#F07F3C",
       data_block,
       events_block,
       input$wiz_fld_record_id %||% "record_id",
@@ -2769,10 +2761,10 @@ trial_config <- list(
   output$notif_drawer_ui <- renderUI({
     notes <- notifications()
     if (!length(notes)) {
-      return(div(style = "padding:40px 20px;text-align:center;color:#94A3B8;",
+      return(div(style = "padding:40px 20px;text-align:center;color:#8A8A8C;",
                  div(style = "font-size:32px;margin-bottom:10px;opacity:.4;",
                      HTML("&#x2728;")),
-                 div(style = "font-size:13.5px;color:#0F172A;font-weight:500;
+                 div(style = "font-size:13.5px;color:#1B1B1B;font-weight:500;
                               margin-bottom:5px;", "All clear"),
                  div(style = "font-size:12px;",
                      "No active notifications. Anything flagged in

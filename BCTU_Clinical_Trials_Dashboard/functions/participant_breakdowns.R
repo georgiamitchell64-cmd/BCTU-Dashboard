@@ -367,8 +367,8 @@ default_breakdown_cols <- function(detected) {
 }
 
 # ── Rendering ──────────────────────────────────────────────────────────────
-.bd_palette <- c("#6366F1", "#8B5CF6", "#06B6D4", "#10B981",
-                 "#F59E0B", "#F43F5E", "#0EA5E9", "#84CC16")
+.bd_palette <- c("#0057BF", "#1B1B1B", "#00ACA9", "#3AAA35",
+                 "#F07F3C", "#C59A00", "#2581C4", "#84CC16")
 
 render_breakdown_card <- function(bd) {
   if (is.null(bd)) return(NULL)
@@ -381,29 +381,29 @@ render_breakdown_card <- function(bd) {
     pct <- max(0, min(1, s$pct))
     div(style = "margin-bottom:8px;",
         div(style = "display:flex;justify-content:space-between;font-size:11.5px;
-                     color:#475569;margin-bottom:3px;",
-            span(style = "font-weight:500;color:#0F172A;", s$label),
+                     color:#4A4A4A;margin-bottom:3px;",
+            span(style = "font-weight:500;color:#1B1B1B;", s$label),
             span(sprintf("%d  ·  %.0f%%", s$n, pct * 100))),
-        div(style = "height:7px;background:#F1F5F9;border-radius:999px;
+        div(style = "height:7px;background:#F2F2F2;border-radius:999px;
                      overflow:hidden;",
             div(style = sprintf("height:100%%;width:%.1f%%;background:%s;
                                  border-radius:999px;transition:width .3s;",
                                 pct * 100, col))))
   })
 
-  div(style = "background:#FFFFFF;border:1px solid #EEF3F8;border-radius:12px;
+  div(style = "background:#FFFFFF;border:1px solid #F4F4F4;border-radius:12px;
                padding:16px 18px;",
       div(style = "display:flex;justify-content:space-between;align-items:baseline;
                    margin-bottom:4px;",
-          div(style = "font-weight:600;color:#0F172A;font-size:14px;
+          div(style = "font-weight:600;color:#1B1B1B;font-size:14px;
                        letter-spacing:-0.1px;",
               bd$label),
           span(style = "font-size:10px;text-transform:uppercase;letter-spacing:.5px;
-                        color:#94A3B8;font-weight:600;", bd$type)),
-      div(style = "font-size:11.5px;color:#64748B;margin-bottom:14px;",
+                        color:#8A8A8C;font-weight:600;", bd$type)),
+      div(style = "font-size:11.5px;color:#58595B;margin-bottom:14px;",
           bd$headline,
           if (bd$missing > 0)
-            span(style = "color:#94A3B8;",
+            span(style = "color:#8A8A8C;",
                  sprintf("  ·  %d missing", bd$missing))),
       div(bar_rows))
 }
@@ -411,7 +411,7 @@ render_breakdown_card <- function(bd) {
 render_breakdowns_grid <- function(breakdowns) {
   breakdowns <- Filter(Negate(is.null), breakdowns)
   if (!length(breakdowns)) {
-    return(div(style = "padding:30px 20px;text-align:center;color:#94A3B8;
+    return(div(style = "padding:30px 20px;text-align:center;color:#8A8A8C;
                         font-size:13px;font-style:italic;",
                div(style = "font-size:24px;margin-bottom:8px;opacity:.4;",
                    HTML("&#x1F4CA;")),

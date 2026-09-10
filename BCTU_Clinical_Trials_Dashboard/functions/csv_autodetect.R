@@ -242,7 +242,7 @@ build_config_from_detection <- function(detected, trial_code, trial_name, trial_
     short_name   = toupper(trial_code),
     trial_target = as.integer(trial_target),
     colors       = if (!is.null(template)) template$colors
-                   else list(primary = "#1B4F6B", secondary = "#2EC4A5", accent = "#F59E0B"),
+                   else list(primary = "#1B1B1B", secondary = "#00ACA9", accent = "#F07F3C"),
     data_dir     = NULL,
     redcap_events = events,
     redcap_fields = list(

@@ -146,10 +146,10 @@ upload_server <- function(input, output, session, state) {
       removeModal()
       showModal(modalDialog(
         title = div(style = "display:flex;align-items:center;gap:10px;",
-                    span(style = "font-size:22px;color:#2EC4A5;", HTML("&#9733;")),
+                    span(style = "font-size:22px;color:#00ACA9;", HTML("&#9733;")),
                     span("Auto-detected REDCap mappings"),
-                    span(style = "font-size:11px;color:#64748B;font-weight:400;
-                                  background:#EEF3F8;padding:3px 8px;border-radius:4px;
+                    span(style = "font-size:11px;color:#58595B;font-weight:400;
+                                  background:#F4F4F4;padding:3px 8px;border-radius:4px;
                                   margin-left:auto;",
                          basename(filepath))),
         size = "l",
@@ -173,7 +173,7 @@ upload_server <- function(input, output, session, state) {
                          style = "margin-right:8px;"),
             actionButton("autodetect_apply", HTML("&#10003; Apply"),
                          class = "btn btn-primary",
-                         style = "background:#1B4F6B;border-color:#1B4F6B;font-weight:600;")
+                         style = "background:#1B1B1B;border-color:#1B1B1B;font-weight:600;")
           )
         ),
         autodetect_modal_ui(detected, cfg)
@@ -311,8 +311,8 @@ upload_server <- function(input, output, session, state) {
     folder_path   <- normalizePath(DATA_DIR, mustWork = FALSE)
     loaded        <- rv$loaded_file
 
-    ok  <- function(txt) div(span(style = "color:#059669;font-weight:600", HTML("&check; ")), txt)
-    err <- function(txt) div(span(style = "color:#DC2626;font-weight:600", HTML("&cross; ")), txt)
+    ok  <- function(txt) div(span(style = "color:#007838;font-weight:600", HTML("&check; ")), txt)
+    err <- function(txt) div(span(style = "color:#C20019;font-weight:600", HTML("&cross; ")), txt)
 
     div(class = "status-grid",
         div(class = "status-card",
@@ -322,7 +322,7 @@ upload_server <- function(input, output, session, state) {
         div(class = "status-card",
             div(class = "status-card-label", "Currently loaded"),
             if (!is.null(loaded))
-              div(span(style = "color:#059669;font-weight:600", HTML("&check; ")),
+              div(span(style = "color:#007838;font-weight:600", HTML("&check; ")),
                   span(style = "font-size:11px;word-break:break-all", loaded))
             else span(style = "color:var(--muted);font-size:11px", "None yet")),
         div(class = "status-card",

@@ -25,21 +25,21 @@ welcome_screen_ui <- function() {
           font-size:14px !important;
         }
         .login-stage .form-control:focus {
-          border-color:#0FA88E !important;
-          box-shadow:0 0 0 3px rgba(46,196,165,.18) !important;
+          border-color:#00788E !important;
+          box-shadow:0 0 0 3px rgba(0,172,169,.18) !important;
         }
         .login-role-btn {
           padding:10px 12px !important; border-radius:8px !important;
           border:1px solid #E2E8EE !important; background:#fff !important;
-          color:#27384A !important; font-size:12px !important; font-weight:500 !important;
+          color:#3C3C3B !important; font-size:12px !important; font-weight:500 !important;
           font-family:'Inter',sans-serif !important; transition:all .15s !important;
           width:100% !important;
         }
-        .login-role-btn:hover { border-color:#1B4F6B !important; color:#1B4F6B !important; }
+        .login-role-btn:hover { border-color:#1B1B1B !important; color:#1B1B1B !important; }
         .login-role-btn.active-role {
-          border-color:#2EC4A5 !important; background:rgba(46,196,165,.06) !important;
-          color:#1B4F6B !important; font-weight:600 !important;
-          box-shadow:0 0 0 2px rgba(46,196,165,.15) !important;
+          border-color:#00ACA9 !important; background:rgba(0,172,169,.06) !important;
+          color:#1B1B1B !important; font-weight:600 !important;
+          box-shadow:0 0 0 2px rgba(0,172,169,.15) !important;
         }
 
         /* Inline error / status messages under form fields */
@@ -64,9 +64,9 @@ welcome_screen_ui <- function() {
           color: #78350F;
         }
         .login-inline-msg.info {
-          background: #EEF2FF;
-          border: 1px solid #C7D2FE;
-          color: #3730A3;
+          background: #F4F4F4;
+          border: 1px solid #E3E3E3;
+          color: #1B1B1B;
         }
         .login-inline-msg.ok {
           background: #ECFDF5;
@@ -82,31 +82,31 @@ welcome_screen_ui <- function() {
 
         /* Small help text under field labels */
         .login-help {
-          font-size: 11px; color: #64748B; margin-top: 4px; line-height: 1.4;
+          font-size: 11px; color: #58595B; margin-top: 4px; line-height: 1.4;
         }
 
         /* Inline 'Forgot password?' link next to label */
         .login-link-inline {
-          font-size: 11.5px; font-weight: 500; color: #2EC4A5 !important;
+          font-size: 11.5px; font-weight: 500; color: #00ACA9 !important;
           text-decoration: none; padding: 0; background: transparent;
           border: none; cursor: pointer;
         }
-        .login-link-inline:hover { color: #1B4F6B !important; text-decoration: underline; }
+        .login-link-inline:hover { color: #1B1B1B !important; text-decoration: underline; }
 
         /* The OTC code displayed in-app as the email-fallback */
         .login-otc-display {
           margin: 12px 0; padding: 14px 16px;
-          background: #F0FDF9; border: 1.5px dashed #2EC4A5;
+          background: #F0FDF9; border: 1.5px dashed #00ACA9;
           border-radius: 10px; text-align: center;
         }
         .login-otc-display-eye {
-          font-size: 10.5px; font-weight: 600; color: #1B4F6B;
+          font-size: 10.5px; font-weight: 600; color: #1B1B1B;
           text-transform: uppercase; letter-spacing: .6px;
           margin-bottom: 6px;
         }
         .login-otc-display-code {
           font-family: 'JetBrains Mono', 'Menlo', monospace;
-          font-size: 28px; font-weight: 700; color: #1B4F6B;
+          font-size: 28px; font-weight: 700; color: #1B1B1B;
           letter-spacing: 6px;
         }
       ")),
@@ -117,7 +117,7 @@ welcome_screen_ui <- function() {
         # Top right env badge (logo now lives in the centered hero block below)
         div(style = "display:flex;align-items:flex-start;justify-content:flex-end;",
             div(class = "login-env-badge",
-                span(style = "width:6px;height:6px;background:#F59E0B;border-radius:50%;"),
+                span(style = "width:6px;height:6px;background:#F07F3C;border-radius:50%;"),
                 "Local")
         ),
 
@@ -207,7 +207,7 @@ welcome_screen_ui <- function() {
                     # No email-based reset on this install — contact an admin
                     # who can issue a temporary password from the Accounts tab.
                     div(class = "login-help",
-                        style = "font-size:11px;color:#64748B;margin-top:6px;",
+                        style = "font-size:11px;color:#58595B;margin-top:6px;",
                         HTML("Forgotten your password? Ask a Trial Manager to issue you a temporary one from the <em>Accounts</em> tab."))),
                 uiOutput("login_error_msg"),
                 uiOutput("login_set_password_panel"),

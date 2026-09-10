@@ -43,10 +43,10 @@
 #' Pretty cell for a detected value (or em-dash if NULL/empty).
 .autodetect_value_cell <- function(v) {
   if (is.null(v) || !nzchar(v)) {
-    span(style = "color:#94A3B8;font-style:italic;", HTML("&mdash; not found"))
+    span(style = "color:#8A8A8C;font-style:italic;", HTML("&mdash; not found"))
   } else {
-    tags$code(style = "background:#EEF3F8;padding:2px 8px;border-radius:4px;
-                       color:#1B4F6B;font-size:12px;", v)
+    tags$code(style = "background:#F4F4F4;padding:2px 8px;border-radius:4px;
+                       color:#1B1B1B;font-size:12px;", v)
   }
 }
 
@@ -72,8 +72,8 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
   n_instruments  <- length(detected$instruments %||% character(0))
 
   summary_pill <- function(n, label) {
-    div(style = "display:inline-flex;align-items:center;gap:6px;background:#F1F5F9;
-                 padding:6px 12px;border-radius:8px;font-size:12px;color:#1B4F6B;
+    div(style = "display:inline-flex;align-items:center;gap:6px;background:#F2F2F2;
+                 padding:6px 12px;border-radius:8px;font-size:12px;color:#1B1B1B;
                  font-weight:600;margin-right:8px;",
         span(style = "font-size:16px;font-weight:700;", n),
         span(label))
@@ -86,7 +86,7 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
         summary_pill(n_fields_found, "fields"),
         summary_pill(n_instruments,  "instruments")),
 
-    div(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+    div(style = "font-size:11px;font-weight:600;color:#1B1B1B;
                  text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px;",
         "REDCap events"),
     .autodetect_review_table(
@@ -95,7 +95,7 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
         required = r$required,
         value    = .autodetect_event(detected, r$role)))),
 
-    div(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+    div(style = "font-size:11px;font-weight:600;color:#1B1B1B;
                  text-transform:uppercase;letter-spacing:.5px;margin:18px 0 6px;",
         "Field mappings"),
     .autodetect_review_table(
@@ -105,13 +105,13 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
         value    = .autodetect_field(detected, r$role)))),
 
     if (n_instruments > 0) tagList(
-      div(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+      div(style = "font-size:11px;font-weight:600;color:#1B1B1B;
                    text-transform:uppercase;letter-spacing:.5px;margin:18px 0 6px;",
           "Detected instruments"),
       div(style = "display:flex;flex-wrap:wrap;gap:6px;",
           lapply(detected$instruments, function(i)
-            tags$code(style = "background:#EEF3F8;padding:2px 8px;border-radius:4px;
-                               color:#1B4F6B;font-size:12px;", i)))
+            tags$code(style = "background:#F4F4F4;padding:2px 8px;border-radius:4px;
+                               color:#1B1B1B;font-size:12px;", i)))
     )
   )
 
@@ -121,7 +121,7 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
                  padding:10px 12px;font-size:12px;color:#7C2D12;margin-bottom:14px;",
         HTML("&#9998; Pick the correct column for each role. Leave on “(not used)” to skip.")),
 
-    div(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+    div(style = "font-size:11px;font-weight:600;color:#1B1B1B;
                  text-transform:uppercase;letter-spacing:.5px;margin:0 0 6px;",
         "REDCap events"),
     .autodetect_amend_grid(.AUTODETECT_EVENT_ROLES,
@@ -130,7 +130,7 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
       choices_pool = event_vals,
       ns = ns, id_prefix = "autodetect_evt_"),
 
-    div(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+    div(style = "font-size:11px;font-weight:600;color:#1B1B1B;
                  text-transform:uppercase;letter-spacing:.5px;margin:18px 0 6px;",
         "Field mappings"),
     .autodetect_amend_grid(.AUTODETECT_FIELD_ROLES,
@@ -149,11 +149,11 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
 .autodetect_review_table <- function(rows) {
   tags$table(style = "width:100%;border-collapse:collapse;font-size:13px;",
     tags$tbody(lapply(rows, function(r) {
-      tags$tr(style = "border-bottom:1px solid #EEF3F8;",
-        tags$td(style = "padding:7px 0;width:40%;color:#475569;",
+      tags$tr(style = "border-bottom:1px solid #F4F4F4;",
+        tags$td(style = "padding:7px 0;width:40%;color:#4A4A4A;",
                 r$label,
                 if (isTRUE(r$required))
-                  span(style = "color:#DC2626;margin-left:4px;font-weight:700;", "*")),
+                  span(style = "color:#C20019;margin-left:4px;font-weight:700;", "*")),
         tags$td(style = "padding:7px 0;",
                 .autodetect_value_cell(r$value)))
     }))
@@ -171,11 +171,11 @@ autodetect_modal_ui <- function(detected, cfg, ns = identity) {
         sel_choices <- c(setNames(v, v), sel_choices)
       }
       div(
-        tags$label(style = "font-size:11px;color:#475569;font-weight:600;
+        tags$label(style = "font-size:11px;color:#4A4A4A;font-weight:600;
                             display:block;margin-bottom:3px;",
                    r$label,
                    if (isTRUE(r$required))
-                     span(style = "color:#DC2626;margin-left:3px;", "*")),
+                     span(style = "color:#C20019;margin-left:3px;", "*")),
         selectInput(ns(paste0(id_prefix, r$role)),
                     label    = NULL,
                     choices  = sel_choices,

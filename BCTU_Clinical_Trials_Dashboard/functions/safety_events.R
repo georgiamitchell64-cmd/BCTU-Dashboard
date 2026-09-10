@@ -306,7 +306,7 @@ build_severity_palette <- function(values) {
   vals <- unique(stats::na.omit(as.character(values)))
   vals <- vals[nchar(trimws(vals)) > 0]
   if (length(vals) == 0) {
-    return(function(v) list(bg = "#F1F5F9", fg = "#475569"))
+    return(function(v) list(bg = "#F2F2F2", fg = "#4A4A4A"))
   }
   # Sort: numeric if all parse, else by a learned ranking of common words,
   # else alphabetical.
@@ -334,7 +334,7 @@ build_severity_palette <- function(values) {
   function(v) {
     v_chr <- as.character(v)
     i <- lookup[[v_chr]]
-    if (is.null(i)) return(list(bg = "#F1F5F9", fg = "#475569"))
+    if (is.null(i)) return(list(bg = "#F2F2F2", fg = "#4A4A4A"))
     list(bg = .severity_palette$bg[[i]], fg = .severity_palette$fg[[i]])
   }
 }
@@ -344,7 +344,7 @@ build_severity_palette <- function(values) {
 severity_pill <- function(value, palette_fn) {
   v <- value
   if (is.na(v) || !nzchar(trimws(as.character(v)))) {
-    return('<span style="color:#94A3B8">—</span>')
+    return('<span style="color:#8A8A8C">—</span>')
   }
   pal <- palette_fn(v)
   sprintf(
@@ -357,14 +357,14 @@ severity_pill <- function(value, palette_fn) {
 #' "open" / "pending" → amber, "review" → blue, "closed" / "resolved" → green.
 status_dot <- function(value) {
   if (is.na(value) || !nzchar(trimws(as.character(value)))) {
-    return('<span style="color:#94A3B8">—</span>')
+    return('<span style="color:#8A8A8C">—</span>')
   }
   v <- tolower(trimws(as.character(value)))
-  col <- if (grepl("fatal|death|died|deceased", v))     "#DC2626"
-         else if (grepl("open|pending|new|ongoing|active", v)) "#F59E0B"
-         else if (grepl("review|investig", v))          "#3B82F6"
-         else if (grepl("closed|resolv|complete", v))   "#10B981"
-         else "#94A3B8"
+  col <- if (grepl("fatal|death|died|deceased", v))     "#C20019"
+         else if (grepl("open|pending|new|ongoing|active", v)) "#F07F3C"
+         else if (grepl("review|investig", v))          "#2581C4"
+         else if (grepl("closed|resolv|complete", v))   "#3AAA35"
+         else "#8A8A8C"
   sprintf(
     '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600"><span style="width:8px;height:8px;border-radius:50%%;background:%s"></span>%s</span>',
     col, htmltools::htmlEscape(as.character(value))
@@ -373,8 +373,8 @@ status_dot <- function(value) {
 
 #' Render a reporting-lag in days with red highlight when > threshold.
 lag_html <- function(days, threshold = 5) {
-  if (is.na(days)) return('<span style="color:#94A3B8">—</span>')
-  cls <- if (days > threshold) "color:#DC2626;font-weight:600" else "color:#64748B"
+  if (is.na(days)) return('<span style="color:#8A8A8C">—</span>')
+  cls <- if (days > threshold) "color:#C20019;font-weight:600" else "color:#58595B"
   sprintf('<span style="font-size:11px;%s">%d day%s</span>',
           cls, as.integer(days), if (abs(days) == 1) "" else "s")
 }

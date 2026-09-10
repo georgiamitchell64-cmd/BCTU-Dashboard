@@ -56,36 +56,36 @@ welcome_server <- function(input, output, session, state) {
       p <- profiles[i, ]
       div(
         style = "display:flex;align-items:center;gap:12px;padding:12px 14px;
-                 background:#F8FAFD;border:1.5px solid #DDE5EE;border-radius:12px;
+                 background:#F8FAFD;border:1.5px solid #E3E3E3;border-radius:12px;
                  cursor:pointer;transition:all .15s;margin-bottom:8px;text-align:left;",
         onclick = sprintf("Shiny.setInputValue('returning_user', %d, {priority:'event'})", i),
-        onmouseover = "this.style.borderColor='#2EC4A5';this.style.background='#F0FDF9';",
-        onmouseout  = "this.style.borderColor='#DDE5EE';this.style.background='#F8FAFD';",
+        onmouseover = "this.style.borderColor='#00ACA9';this.style.background='#F0FDF9';",
+        onmouseout  = "this.style.borderColor='#E3E3E3';this.style.background='#F8FAFD';",
 
         # Avatar circle
         div(style = sprintf("width:38px;height:38px;border-radius:50%%;flex-shrink:0;
                              background:linear-gradient(135deg,%s,%s);
                              display:flex;align-items:center;justify-content:center;
                              color:#fff;font-weight:700;font-size:14px;",
-                            if (isTRUE(p$portfolio_role == "admin")) "#6366F1" else "#94A3B8",
-                            if (isTRUE(p$portfolio_role == "admin")) "#8B5CF6" else "#CBD5E1"),
+                            if (isTRUE(p$portfolio_role == "admin")) "#1B1B1B" else "#8A8A8C",
+                            if (isTRUE(p$portfolio_role == "admin")) "#58595B" else "#CFCFCF"),
             toupper(substr(p$fullname, 1, 1))),
 
         div(
-          div(style = "font-size:14px;font-weight:600;color:#1B4F6B;", p$fullname),
-          div(style = "font-size:11px;color:#64748B;", p$role)
+          div(style = "font-size:14px;font-weight:600;color:#1B1B1B;", p$fullname),
+          div(style = "font-size:11px;color:#58595B;", p$role)
         )
       )
     })
 
     tagList(
-      div(style = "font-size:13px;font-weight:600;color:#1B4F6B;margin-bottom:10px;",
+      div(style = "font-size:13px;font-weight:600;color:#1B1B1B;margin-bottom:10px;",
           "Welcome back"),
       btns,
-      tags$hr(style = "border:none;border-top:1px solid #EEF3F8;margin:16px 0;"),
+      tags$hr(style = "border:none;border-top:1px solid #F4F4F4;margin:16px 0;"),
       actionButton("show_new_user", "New user? Create a profile",
                    class = "btn btn-link",
-                   style = "color:#2EC4A5;font-weight:500;font-size:13px;padding:0;
+                   style = "color:#00ACA9;font-weight:500;font-size:13px;padding:0;
                             text-decoration:none;")
     )
   })

@@ -166,9 +166,9 @@ flat_completeness_html <- function(df, rate_type = "pct_due") {
   # Styling: group rows by form — show name only in first row of each group,
   # thicker top border when the form changes.
   pct_style <- function(p) {
-    if (is.na(p))        "color:#94A3B8"
+    if (is.na(p))        "color:#8A8A8C"
     else if (p >= 90)    "color:#0F6E56;font-weight:700"
-    else if (p >= 70)    "color:#D97706;font-weight:700"
+    else if (p >= 70)    "color:#CF4527;font-weight:700"
     else                 "color:#C0392B;font-weight:700"
   }
 
@@ -181,7 +181,7 @@ flat_completeness_html <- function(df, rate_type = "pct_due") {
       ""
     }
     border_top <- if (i > 1 && df$form_display[i] != df$form_display[i - 1]) {
-      "border-top:2px solid #DDE5EE;"
+      "border-top:2px solid #E3E3E3;"
     } else ""
 
     exp_txt <- if (is.na(df$n_expected[i])) "\u2014" else format(df$n_expected[i], big.mark = ",")
@@ -191,8 +191,8 @@ flat_completeness_html <- function(df, rate_type = "pct_due") {
     sprintf(
       paste0(
         '<tr style="%s">',
-        '<td style="font-weight:600;color:#1B4F6B">%s</td>',
-        '<td style="color:#334155">%s</td>',
+        '<td style="font-weight:600;color:#1B1B1B">%s</td>',
+        '<td style="color:#3C3C3B">%s</td>',
         '<td style="text-align:center">%s</td>',
         '<td style="text-align:center">%s</td>',
         '<td style="text-align:center;%s">%s</td>',
@@ -210,7 +210,7 @@ flat_completeness_html <- function(df, rate_type = "pct_due") {
 
   paste0(
     '<table class="rt" style="width:100%;border-collapse:collapse;font-size:11px">',
-    '<thead><tr style="background:#F4F6F8;border-bottom:2px solid #1B4F6B;color:#1B4F6B">',
+    '<thead><tr style="background:#F4F6F8;border-bottom:2px solid #1B1B1B;color:#1B1B1B">',
     '<th style="text-align:left;padding:8px 10px">Form name</th>',
     '<th style="text-align:left;padding:8px 10px">Time-point</th>',
     '<th style="text-align:center;padding:8px 10px">', expected_header, '</th>',
@@ -222,7 +222,7 @@ flat_completeness_html <- function(df, rate_type = "pct_due") {
     '<div style="margin-top:10px;font-size:9px;color:#6b7c8d">',
     'Rows marked \u2014 are forms listed in the protocol that are not yet in the current data export. ',
     '<span style="color:#0F6E56;font-weight:600">\u226590%</span> on track &middot; ',
-    '<span style="color:#D97706;font-weight:600">70\u201389%</span> attention needed &middot; ',
+    '<span style="color:#CF4527;font-weight:600">70\u201389%</span> attention needed &middot; ',
     '<span style="color:#C0392B;font-weight:600">&lt;70%</span> action required',
     '</div>'
   )
@@ -264,7 +264,7 @@ flat_completeness_flextable <- function(df, rate_type = "pct_due") {
   )
   names(tbl)[3:5] <- c(expected_header, "Forms received", "% Return rate")
 
-  tonic_navy <- "#1B4F6B"
+  tonic_navy <- "#1B1B1B"
 
   ft <- flextable::flextable(tbl)
   ft <- flextable::bg(ft,     part = "header", bg = tonic_navy)
@@ -281,12 +281,12 @@ flat_completeness_flextable <- function(df, rate_type = "pct_due") {
   for (i in seq_len(nrow(df))) {
     p <- df$pct[i]
     if (is.na(p)) {
-      ft <- flextable::color(ft, i = i, j = 5, color = "#94A3B8")
+      ft <- flextable::color(ft, i = i, j = 5, color = "#8A8A8C")
     } else if (p >= 90) {
       ft <- flextable::color(ft, i = i, j = 5, color = "#0F6E56")
       ft <- flextable::bold(ft,  i = i, j = 5, bold = TRUE)
     } else if (p >= 70) {
-      ft <- flextable::color(ft, i = i, j = 5, color = "#D97706")
+      ft <- flextable::color(ft, i = i, j = 5, color = "#CF4527")
       ft <- flextable::bold(ft,  i = i, j = 5, bold = TRUE)
     } else {
       ft <- flextable::color(ft, i = i, j = 5, color = "#C0392B")
@@ -299,12 +299,12 @@ flat_completeness_flextable <- function(df, rate_type = "pct_due") {
   for (gs in group_starts) {
     if (gs > 1) {
       ft <- flextable::hline(ft, i = gs - 1,
-                              border = officer::fp_border(color = "#CBD5E1", width = 1))
+                              border = officer::fp_border(color = "#CFCFCF", width = 1))
     }
   }
 
   ft <- flextable::border_outer(ft,
-          border = officer::fp_border(color = "#CBD5E1", width = 0.5))
+          border = officer::fp_border(color = "#CFCFCF", width = 0.5))
   ft <- flextable::width(ft, j = 1, width = 1.8)
   ft <- flextable::width(ft, j = 2, width = 1.4)
   ft <- flextable::width(ft, j = 3, width = 0.9)

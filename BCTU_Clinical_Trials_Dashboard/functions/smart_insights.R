@@ -208,7 +208,7 @@ render_insight_card <- function(ins) {
                    icon_bg = "#FEF3C7", icon_fg = "#B45309",
                    title = "#78350F"),
     alert   = list(bg = "#FEF2F2", border = "#FECACA",
-                   icon_bg = "#FEE2E2", icon_fg = "#B91C1C",
+                   icon_bg = "#FEE2E2", icon_fg = "#C20019",
                    title = "#7F1D1D")
   )
 
@@ -230,14 +230,14 @@ render_insight_card <- function(ins) {
                 span(style = sprintf("font-size:13px;font-weight:700;color:%s;
                                       flex-shrink:0;", colours$icon_fg),
                      ins$value)),
-          div(style = "font-size:12px;color:#475569;line-height:1.5;",
+          div(style = "font-size:12px;color:#4A4A4A;line-height:1.5;",
               ins$body))
   )
 }
 
 render_insights_panel <- function(insights) {
   if (length(insights) == 0) {
-    return(div(style = "padding:18px;font-size:12.5px;color:#64748B;
+    return(div(style = "padding:18px;font-size:12.5px;color:#58595B;
                         font-style:italic;",
                "No insights yet — upload a REDCap export to populate the trial."))
   }

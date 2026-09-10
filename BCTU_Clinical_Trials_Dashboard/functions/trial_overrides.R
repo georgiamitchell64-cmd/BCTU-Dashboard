@@ -45,13 +45,14 @@ clear_overrides <- function(cfg) {
 # controls (e.g. the follow-up schedule), so they fully replace rather than
 # deep-merge. Otherwise a timepoint removed in the editor would survive because
 # the original config.R key would merge back in.
-.override_replace_keys <- c("redcap_events")
+.override_replace_keys <- c("redcap_events", "crf_schedule", "target_schedule", "cos_type_labels")
 
 apply_overrides <- function(cfg, overrides = NULL) {
   if (is.null(overrides)) overrides <- load_overrides(cfg)
   if (length(overrides) == 0) return(cfg)
   for (k in names(overrides)) {
     v <- overrides[[k]]
+    if (identical(k, "cos_type_labels")) v <- unlist(v)   # named character vector, as in config.R
     if (!(k %in% .override_replace_keys) &&
         is.list(v) && !is.null(cfg[[k]]) && is.list(cfg[[k]])) {
       for (kk in names(v)) cfg[[k]][[kk]] <- v[[kk]]

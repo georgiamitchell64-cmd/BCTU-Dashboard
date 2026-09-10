@@ -117,9 +117,9 @@ trial_status_label <- function(code) {
     "risk"   = list(text = "Stalled",  cls = "risk",
                     bg = "#FEE2E2", fg = "#991B1B",  bar = "var(--red)"),
     "setup"  = list(text = "Set-up",   cls = "setup",
-                    bg = "#DBEAFE", fg = "#1D4ED8",  bar = "#3B82F6"),
+                    bg = "#DBEAFE", fg = "#1D4ED8",  bar = "#2581C4"),
     "closed" = list(text = "Closed",   cls = "closed",
-                    bg = "#F1F5F9", fg = "#475569",  bar = "#A693AF")
+                    bg = "#F2F2F2", fg = "#4A4A4A",  bar = "#8A8A8C")
   )
 }
 

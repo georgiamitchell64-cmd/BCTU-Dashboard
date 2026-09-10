@@ -215,9 +215,9 @@ trial_config <- list(
   # ── Branding (optional — falls back to app defaults) ───────────────────────
   logo_file  = NULL,                          # Path to logo image, or NULL
   colors = list(
-    primary   = "#1B4F6B",                    # Navy
-    secondary = "#2EC4A5",                    # Teal
-    accent    = "#F59E0B"                     # Amber
+    primary   = "#1B1B1B",                    # Navy
+    secondary = "#00ACA9",                    # Teal
+    accent    = "#F07F3C"                     # Amber
   ),
 
   # ── Data source ────────────────────────────────────────────────────────────

@@ -11,8 +11,8 @@
 
   const DAY = 864e5;
   const RACE_TOP = 10;
-  const SITE_COLS = ['#1B4F6B', '#2EC4A5', '#F59E0B', '#7C3AED', '#3B82F6', '#DB2777',
-                     '#65A30D', '#0891B2', '#B45309', '#6366F1', '#0F766E', '#BE123C'];
+  const SITE_COLS = ['#1B1B1B', '#00ACA9', '#F07F3C', '#C59A00', '#2581C4', '#CF4527',
+                     '#65A30D', '#00788E', '#B45309', '#0057BF', '#0F766E', '#8A8A8C'];
   const ICON_PLAY  = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
   const ICON_PAUSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 
@@ -129,15 +129,15 @@
 
     // ── Events for the ticker ───────────────────────────────────────────────
     const EV = [];
-    SITES.forEach(s => { if (isFinite(s.openD)) EV.push({ t: s.openD, col: '#7C3AED', txt: `<b>${esc(s.name)}</b> opened to recruitment` }); });
+    SITES.forEach(s => { if (isFinite(s.openD)) EV.push({ t: s.openD, col: '#C59A00', txt: `<b>${esc(s.name)}</b> opened to recruitment` }); });
     const marks = new Set([10, 25, 50]);
     for (let k = 100; k <= Math.max(TRIAL_TARGET, P.length); k += 100) marks.add(k);
     if (PILOT) marks.add(+PILOT.target);
     if (TRIAL_TARGET) marks.add(TRIAL_TARGET);
     P.forEach((p, i) => {
       const k = i + 1;
-      EV.push({ t: p.m[0], col: '#2EC4A5', txt: `<b>${esc(p.id)}</b> randomised at ${esc(p.site.name)}` });
-      if (marks.has(k)) EV.push({ t: p.m[0] + 1e-4, col: '#1B4F6B',
+      EV.push({ t: p.m[0], col: '#00ACA9', txt: `<b>${esc(p.id)}</b> randomised at ${esc(p.site.name)}` });
+      if (marks.has(k)) EV.push({ t: p.m[0] + 1e-4, col: '#1B1B1B',
         txt: k === TRIAL_TARGET ? `Milestone: <b>recruitment target of ${k}</b> reached`
            : PILOT && k === +PILOT.target ? `Milestone: <b>${k} participants</b>, the internal pilot target`
            : `Milestone: <b>${k} participants</b> randomised` });
@@ -146,8 +146,8 @@
         EV.push({ t: p.xa, col: e.col, txt: `<b>${esc(p.id)}</b> discontinued (${esc(e.label)})` });
       }
       if (NS > 1 && isFinite(p.m[LAST]) && !(p.x >= 0 && p.xa < p.m[LAST]))
-        EV.push({ t: p.m[LAST], col: '#0FA88E', txt: `<b>${esc(p.id)}</b> ${esc(STAGES[LAST].done || 'completed follow-up')}` });
-      if (isFinite(p.pa)) EV.push({ t: p.pa, col: '#F59E0B', txt: `<b>${esc(p.id)}</b> part withdrawal, still in some follow-up` });
+        EV.push({ t: p.m[LAST], col: '#00788E', txt: `<b>${esc(p.id)}</b> ${esc(STAGES[LAST].done || 'completed follow-up')}` });
+      if (isFinite(p.pa)) EV.push({ t: p.pa, col: '#F07F3C', txt: `<b>${esc(p.id)}</b> part withdrawal, still in some follow-up` });
     });
     EV.sort((a, b) => a.t - b.t);
 

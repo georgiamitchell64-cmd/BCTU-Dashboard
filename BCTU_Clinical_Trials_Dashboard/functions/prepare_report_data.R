@@ -208,7 +208,8 @@ prepare_report_data <- function(df,
     length(unique(ptcp_randomised$site_name)) else NA
 
   # ── 13. Protocol target schedule (from cfg) ───────────────────────────────
-  target_schedule <- cfg$target_schedule %||% data.frame(
+  # th_target_schedule() also reads schedules saved from Settings (stored as lists)
+  target_schedule <- (if (exists("th_target_schedule")) th_target_schedule(cfg) else cfg$target_schedule) %||% data.frame(
     month_date = as.Date(character(0)),
     cumulative_target = integer(0),
     stringsAsFactors = FALSE)

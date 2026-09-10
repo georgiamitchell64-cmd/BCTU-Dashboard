@@ -266,7 +266,7 @@ baseline_characteristics_df <- function(rd) {
 baseline_characteristics_html <- function(df, total_n = NULL) {
 
   if (nrow(df) == 0) {
-    return('<div style="padding:12px;color:#64748B;font-style:italic">No baseline data available.</div>')
+    return('<div style="padding:12px;color:#58595B;font-style:italic">No baseline data available.</div>')
   }
 
   if (is.null(total_n)) total_n <- df$total_n[1]
@@ -287,13 +287,13 @@ baseline_characteristics_html <- function(df, total_n = NULL) {
 
     rows_html <- vapply(seq_len(nrow(sec_rows)), function(i) {
       border_top <- if (i > 1 && nzchar(sec_rows$label_show[i])) {
-        "border-top:1px solid #E2E8F0;"
+        "border-top:1px solid #E3E3E3;"
       } else ""
       sprintf(
         paste0('<tr style="%s">',
-               '<td style="padding:6px 10px;font-weight:600;color:#1B4F6B;width:32%%;">%s</td>',
-               '<td style="padding:6px 10px;color:#475569;width:38%%;">%s</td>',
-               '<td style="padding:6px 10px;text-align:right;color:#334155;font-weight:500;width:30%%;">%s</td>',
+               '<td style="padding:6px 10px;font-weight:600;color:#1B1B1B;width:32%%;">%s</td>',
+               '<td style="padding:6px 10px;color:#4A4A4A;width:38%%;">%s</td>',
+               '<td style="padding:6px 10px;text-align:right;color:#3C3C3B;font-weight:500;width:30%%;">%s</td>',
                '</tr>'),
         border_top, sec_rows$label_show[i], sec_rows$sublabel[i], sec_rows$stat[i]
       )
@@ -301,16 +301,16 @@ baseline_characteristics_html <- function(df, total_n = NULL) {
 
     paste0(
       '<tr style="background:#F4F6F8;">',
-      '<td colspan="3" style="padding:8px 10px;font-weight:700;color:#1B4F6B;',
+      '<td colspan="3" style="padding:8px 10px;font-weight:700;color:#1B1B1B;',
       'text-transform:uppercase;letter-spacing:0.5px;font-size:10px;',
-      'border-top:2px solid #1B4F6B;">', sec, '</td></tr>',
+      'border-top:2px solid #1B1B1B;">', sec, '</td></tr>',
       paste(rows_html, collapse = "")
     )
   }, character(1))
 
   paste0(
     '<table class="rt" style="width:100%;border-collapse:collapse;font-size:11px;">',
-    '<thead><tr style="background:#1B4F6B;color:#FFFFFF;">',
+    '<thead><tr style="background:#1B1B1B;color:#FFFFFF;">',
     '<th colspan="2" style="padding:8px 10px;text-align:left;">Characteristic</th>',
     '<th style="padding:8px 10px;text-align:right;">n = ', total_n, '</th>',
     '</tr></thead><tbody>',
@@ -369,7 +369,7 @@ baseline_characteristics_flextable <- function(df, total_n = NULL) {
   names(tbl)[3] <- paste0("n = ", total_n)
 
   ft <- flextable::flextable(tbl[, 1:3])
-  ft <- flextable::bg(ft,     part = "header", bg = "#1B4F6B")
+  ft <- flextable::bg(ft,     part = "header", bg = "#1B1B1B")
   ft <- flextable::color(ft,  part = "header", color = "white")
   ft <- flextable::bold(ft,   part = "header")
   ft <- flextable::fontsize(ft, part = "header", size = 10)
@@ -377,21 +377,21 @@ baseline_characteristics_flextable <- function(df, total_n = NULL) {
   ft <- flextable::padding(ft, padding = 4)
   ft <- flextable::align(ft,  j = 3,  align = "right", part = "all")
   ft <- flextable::bold(ft,   j = 1,  part = "body")
-  ft <- flextable::color(ft,  j = 1,  color = "#1B4F6B", part = "body")
+  ft <- flextable::color(ft,  j = 1,  color = "#1B1B1B", part = "body")
 
   # Style the section-header rows
   for (i in section_idx) {
     ft <- flextable::bg(ft,   i = i, bg = "#F4F6F8")
     ft <- flextable::bold(ft, i = i, bold = TRUE)
-    ft <- flextable::color(ft, i = i, color = "#1B4F6B")
+    ft <- flextable::color(ft, i = i, color = "#1B1B1B")
     # Merge the three cells into one
     ft <- flextable::merge_at(ft, i = i, j = 1:3)
   }
 
   ft <- flextable::border_outer(ft,
-          border = officer::fp_border(color = "#CBD5E1", width = 0.5))
+          border = officer::fp_border(color = "#CFCFCF", width = 0.5))
   ft <- flextable::border_inner_h(ft,
-          border = officer::fp_border(color = "#E2E8F0", width = 0.5))
+          border = officer::fp_border(color = "#E3E3E3", width = 0.5))
 
   ft <- flextable::width(ft, j = 1, width = 2.1)
   ft <- flextable::width(ft, j = 2, width = 2.4)

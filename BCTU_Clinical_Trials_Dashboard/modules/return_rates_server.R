@@ -8,7 +8,7 @@
 # All other Site rows drive the per-site accordion panels.
 #
 # Colour thresholds (% rate):
-#   >= 90  → teal  (#2EC4A5)  — on target
+#   >= 90  → teal  (#00ACA9)  — on target
 #   >= 70  → amber (#f0a500)  — caution
 #   >= 1   → coral (#e05c3a)  — below target
 #   NA / 0 expected → grey   (#adb5bd)  — not yet due / not applicable
@@ -22,8 +22,8 @@ return_rates_server <- function(id, rr_data) {
     ns <- session$ns
 
     # ── Colour helpers ───────────────────────────────────────────────────────
-    TONIC_TEAL   <- "#2EC4A5"
-    TONIC_NAVY   <- "#1B4F6B"
+    TONIC_TEAL   <- "#00ACA9"
+    TONIC_NAVY   <- "#1B1B1B"
     TONIC_AMBER  <- "#f0a500"
     TONIC_CORAL  <- "#e05c3a"
     TONIC_GREY   <- "#adb5bd"

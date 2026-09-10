@@ -14,16 +14,16 @@ tooltip_styles <- function() {
     .htip {
       display: inline-flex; align-items: center; justify-content: center;
       width: 14px; height: 14px; margin-left: 6px;
-      border-radius: 50%; background: #E2E8F0; color: #475569;
+      border-radius: 50%; background: #E3E3E3; color: #4A4A4A;
       font-size: 9.5px; font-weight: 700; cursor: help;
       position: relative; vertical-align: middle;
       font-family: system-ui, sans-serif;
     }
-    .htip:hover { background: #CBD5E1; color: #0F172A; }
+    .htip:hover { background: #CFCFCF; color: #1B1B1B; }
     .htip .htip-body {
       display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
       transform: translateX(-50%);
-      background: #0F172A; color: #FFFFFF;
+      background: #1B1B1B; color: #FFFFFF;
       font-size: 11.5px; font-weight: 400; line-height: 1.5;
       padding: 8px 11px; border-radius: 6px;
       width: 240px; max-width: 80vw; white-space: normal; text-align: left;
@@ -35,7 +35,7 @@ tooltip_styles <- function() {
     .htip .htip-body::after {
       content: ''; position: absolute; top: 100%; left: 50%;
       transform: translateX(-50%);
-      border: 5px solid transparent; border-top-color: #0F172A;
+      border: 5px solid transparent; border-top-color: #1B1B1B;
     }
   "))
 }

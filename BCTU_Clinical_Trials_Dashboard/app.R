@@ -38,6 +38,8 @@ source("functions/tsc_charts.R",        local = TRUE)
 source("functions/geocoding.R",         local = TRUE)
 source("functions/consort_flow.R",      local = TRUE)
 source("functions/trial_replay.R",      local = TRUE)
+source("functions/trial_health.R",      local = TRUE)
+source("functions/trial_health_ui.R",   local = TRUE)
 source("functions/flat_completeness.R", local = TRUE)
 source("functions/baseline_table.R",    local = TRUE)
 source("functions/return_rates_data.R", local = TRUE)
@@ -72,6 +74,7 @@ source("modules/postal_tracking_ui.R",      local = TRUE)
 source("modules/postal_tracking_server.R",  local = TRUE)
 source("modules/trial_settings.R",          local = TRUE)
 source("modules/trial_settings_server.R",   local = TRUE)
+source("modules/settings_monitoring_server.R", local = TRUE)
 source("modules/modifications.R",           local = TRUE)
 source("modules/modifications_server.R",    local = TRUE)
 
@@ -127,6 +130,8 @@ server <- function(input, output, session) {
            error = function(e) message("ACCOUNTS: ", e$message))
   tryCatch(trial_settings_server(input, output, session, state),
            error = function(e) message("SETTINGS: ", e$message))
+  tryCatch(settings_monitoring_server(input, output, session, state),
+           error = function(e) message("SETTINGS (monitoring): ", e$message))
   tryCatch(modifications_tab_server(input, output, session, state),
            error = function(e) message("MODIFICATIONS: ", e$message))
 

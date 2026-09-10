@@ -778,7 +778,7 @@ process_redcap <- function(raw_df, current_sites) {
         region        = NA_character_,
         status        = new_status,
         site_open_date = NA_Date_,
-        monthly_target = 2L,
+        monthly_target = .th_num1((current_trial_config() %||% list())$site_defaults$monthly_target, 2),
         target        = 42L,
         randomised    = rand_n,
         lat           = ll$lat,
@@ -906,8 +906,8 @@ make_overall_df <- function(md) {
 }
 
 make_map_icon <- function(count, status) {
-  col <- switch(status, Recruiting = "#2EC4A5", Open = "#3B82F6",
-                "Set-up" = "#F59E0B", Closed = "#EF4444", "#94A3B8")
+  col <- switch(status, Recruiting = "#00ACA9", Open = "#2581C4",
+                "Set-up" = "#F07F3C", Closed = "#E30513", "#8A8A8C")
   sz  <- if (count > 0) max(32L, min(52L, as.integer(24 + count * 1.1))) else 20L
   lbl <- if (count > 0)
     sprintf('<text x="%d" y="%d" text-anchor="middle" dominant-baseline="central" fill="white" font-size="%d" font-weight="700" font-family="Outfit,sans-serif">%d</text>',
@@ -924,15 +924,15 @@ make_popup <- function(site_name, site_id, region, status, rand, target) {
   pct <- if (target > 0) min(100, round(100 * rand / target)) else 0
   sprintf(
     '<div style="font-family:Outfit,sans-serif;min-width:190px;">
-    <div style="font-size:15px;font-weight:700;color:#1B4F6B;margin-bottom:2px;">%s</div>
-    <div style="font-size:11px;color:#64748B;margin-bottom:10px;">%s &bull; %s</div>
+    <div style="font-size:15px;font-weight:700;color:#1B1B1B;margin-bottom:2px;">%s</div>
+    <div style="font-size:11px;color:#58595B;margin-bottom:10px;">%s &bull; %s</div>
     <table style="font-size:12px;width:100%%;border-collapse:collapse;">
-      <tr><td style="color:#64748B;padding:3px 10px 3px 0">Status</td><td><strong>%s</strong></td></tr>
-      <tr><td style="color:#64748B;padding:3px 10px 3px 0">Randomised</td><td><strong>%d / %d</strong></td></tr>
+      <tr><td style="color:#58595B;padding:3px 10px 3px 0">Status</td><td><strong>%s</strong></td></tr>
+      <tr><td style="color:#58595B;padding:3px 10px 3px 0">Randomised</td><td><strong>%d / %d</strong></td></tr>
     </table>
     <div style="background:#E2EAF0;border-radius:4px;height:6px;margin:8px 0 3px;">
-      <div style="width:%d%%;height:6px;border-radius:4px;background:linear-gradient(90deg,#0FA88E,#2EC4A5);"></div></div>
-    <span style="font-size:10px;color:#64748B">%d%% of site target</span></div>',
+      <div style="width:%d%%;height:6px;border-radius:4px;background:linear-gradient(90deg,#00788E,#00ACA9);"></div></div>
+    <span style="font-size:10px;color:#58595B">%d%% of site target</span></div>',
     site_name, site_id, coalesce(region, ""), status, rand, target, pct, pct)
 }
 
@@ -973,8 +973,8 @@ delta_badge_ui <- function(current, previous, suffix = "") {
 e_tonic <- function(p) {
   p %>%
     e_tooltip(trigger = "axis",
-              backgroundColor = "rgba(27,79,107,0.92)",
-              borderColor = "#1B4F6B",
+              backgroundColor = "rgba(27,27,27,0.92)",
+              borderColor = "#1B1B1B",
               textStyle = list(color = "#fff", fontFamily = "Outfit")) %>%
     e_legend(bottom = 0, textStyle = list(fontFamily = "Outfit", fontSize = 11, color = col_muted)) %>%
     e_grid(left = "8%", right = "4%", bottom = "18%", top = "8%") %>%
@@ -983,7 +983,7 @@ e_tonic <- function(p) {
     e_y_axis(axisLabel  = list(fontFamily = "Outfit", fontSize = 11, color = col_muted),
              splitLine  = list(lineStyle = list(color = "#E2EAF0")),
              min = 0) %>%
-    e_color(c(col_teal, col_navy, col_amber, "#A78BFA", "#F97316", "#EC4899"))
+    e_color(c(col_teal, col_navy, col_amber, "#C59A00", "#F97316", "#F07F3C"))
 }
 
 # build_participant_table renders a wide HTML table whose timepoint columns are
@@ -1035,8 +1035,8 @@ build_participant_table <- function(df, layout = NULL) {
   <table>
   <thead>
     <tr style="background:#F8FAFD">
-      <th rowspan="2" style="text-align:left;border-right:2px solid #EEF3F8;min-width:90px;background:#F8FAFD">Record ID</th>
-      <th rowspan="2" style="text-align:left;border-right:2px solid #EEF3F8;min-width:110px;background:#F8FAFD">Site</th>
+      <th rowspan="2" style="text-align:left;border-right:2px solid #F4F4F4;min-width:90px;background:#F8FAFD">Record ID</th>
+      <th rowspan="2" style="text-align:left;border-right:2px solid #F4F4F4;min-width:110px;background:#F8FAFD">Site</th>
       %s
     </tr>
     <tr>%s</tr>
@@ -1051,7 +1051,7 @@ build_participant_table <- function(df, layout = NULL) {
       '<td>%s</td>',
       icon(if (c %in% names(df)) df[[c]][i] else NA)
     ), character(1)), collapse = "")
-    sprintf('<tr><td class="sid" style="text-align:left;border-right:2px solid #EEF3F8">%s</td><td style="text-align:left;border-right:2px solid #EEF3F8">%s</td>%s</tr>',
+    sprintf('<tr><td class="sid" style="text-align:left;border-right:2px solid #F4F4F4">%s</td><td style="text-align:left;border-right:2px solid #F4F4F4">%s</td>%s</tr>',
             htmltools::htmlEscape(df$record_id[i]),
             htmltools::htmlEscape((df$site_dag %||% rep("", nrow(df)))[i]),
             cells)
@@ -1082,7 +1082,7 @@ if (!exists("empty_echart")) {
       echarts4r::e_scatter(y, symbol_size = 0) |>
       echarts4r::e_title(subtext = msg,
                          subtextStyle = list(
-                           color     = "#94A3B8",
+                           color     = "#8A8A8C",
                            fontSize  = 13,
                            fontFamily = "Outfit, sans-serif"
                          )) |>
@@ -1099,7 +1099,7 @@ if (!exists("empty_reactable")) {
       data.frame(Message = msg),
       columns = list(
         Message = reactable::colDef(
-          style = list(color = "#94A3B8", fontStyle = "italic",
+          style = list(color = "#8A8A8C", fontStyle = "italic",
                        fontFamily = "Outfit, sans-serif", fontSize = "12px")
         )
       ),

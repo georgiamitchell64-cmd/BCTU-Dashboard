@@ -95,7 +95,7 @@ clear_all_dismissed <- function(username) {
 render_notification_row <- function(n) {
   cols <- switch(n$severity,
     alert   = list(bg = "#FEF2F2", border = "#FECACA",
-                   icon_bg = "#FEE2E2", icon_fg = "#B91C1C"),
+                   icon_bg = "#FEE2E2", icon_fg = "#C20019"),
     warning = list(bg = "#FFFBEB", border = "#FDE68A",
                    icon_bg = "#FEF3C7", icon_fg = "#B45309")
   )
@@ -112,26 +112,26 @@ render_notification_row <- function(n) {
           div(style = "flex:1;min-width:0;",
               div(style = "display:flex;justify-content:space-between;
                            align-items:baseline;margin-bottom:3px;gap:10px;",
-                  div(style = "font-size:11.5px;color:#64748B;font-weight:600;",
+                  div(style = "font-size:11.5px;color:#58595B;font-weight:600;",
                       sprintf("%s · %s", n$trial, n$category)),
                   if (!is.null(n$value))
                     span(style = sprintf("font-size:11px;font-weight:700;color:%s;",
                                          cols$icon_fg), n$value)),
-              div(style = "font-weight:600;color:#0F172A;font-size:13px;line-height:1.4;",
+              div(style = "font-weight:600;color:#1B1B1B;font-size:13px;line-height:1.4;",
                   n$title),
-              div(style = "font-size:12px;color:#475569;line-height:1.5;margin-top:3px;",
+              div(style = "font-size:12px;color:#4A4A4A;line-height:1.5;margin-top:3px;",
                   n$body),
               div(style = "display:flex;gap:8px;margin-top:10px;",
                   tags$button(class = "btn btn-sm",
-                              style = "background:#FFFFFF;border:1px solid #DDE5EE;
-                                       color:#0F172A;font-size:11px;font-weight:500;
+                              style = "background:#FFFFFF;border:1px solid #E3E3E3;
+                                       color:#1B1B1B;font-size:11px;font-weight:500;
                                        padding:4px 10px;",
                               onclick = sprintf("Shiny.setInputValue('select_trial','%s',{priority:'event'});
                                                  Shiny.setInputValue('notif_close_drawer', Math.random(), {priority:'event'});",
                                                 n$code),
                               "View trial"),
                   tags$button(class = "btn btn-sm",
-                              style = "background:transparent;border:none;color:#64748B;
+                              style = "background:transparent;border:none;color:#58595B;
                                        font-size:11px;padding:4px 6px;",
                               onclick = sprintf("Shiny.setInputValue('notif_dismiss','%s',{priority:'event'})",
                                                 gsub("'", "\\\\'", n$key)),

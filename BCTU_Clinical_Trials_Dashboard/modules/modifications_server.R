@@ -151,18 +151,18 @@ modifications_tab_server <- function(input, output, session, state) {
 
   # Category colour map (mirrors design's MD_CATEGORIES palette)
   CAT_META <- list(
-    non_substantial  = list(short = "Minor",     color = "#94A3B8"),
-    important_detail = list(short = "Important", color = "#3B82F6"),
-    substantial_a    = list(short = "Cat A",     color = "#F59E0B"),
+    non_substantial  = list(short = "Minor",     color = "#8A8A8C"),
+    important_detail = list(short = "Important", color = "#2581C4"),
+    substantial_a    = list(short = "Cat A",     color = "#F07F3C"),
     substantial_b    = list(short = "Cat B",     color = "#EA580C"),
-    substantial_c    = list(short = "Cat C",     color = "#EF4444")
+    substantial_c    = list(short = "Cat C",     color = "#E30513")
   )
   STATUS_COLOR <- list(
-    "Draft" = "#94A3B8", "Locked for submission" = "#64748B",
-    "Submitted" = "#3B82F6", "Under review" = "#8B5CF6",
-    "Awaiting further information (RFI)" = "#F59E0B",
-    "Approved" = "#10B981", "Approved with conditions" = "#0D9488",
-    "Implemented" = "#059669", "Rejected / unfavourable" = "#EF4444",
+    "Draft" = "#8A8A8C", "Locked for submission" = "#58595B",
+    "Submitted" = "#2581C4", "Under review" = "#C59A00",
+    "Awaiting further information (RFI)" = "#F07F3C",
+    "Approved" = "#3AAA35", "Approved with conditions" = "#00788E",
+    "Implemented" = "#007838", "Rejected / unfavourable" = "#E30513",
     "Withdrawn" = "#6B7280"
   )
 
@@ -201,7 +201,7 @@ modifications_tab_server <- function(input, output, session, state) {
     }
     pipe_step <- function(s) {
       n <- status_counts(s)
-      col <- STATUS_COLOR[[s]] %||% "#94A3B8"
+      col <- STATUS_COLOR[[s]] %||% "#8A8A8C"
       on <- identical(status_filter, s)
       tags$button(
         class = paste("md-pipe-step", if (on) "on" else ""),
@@ -306,7 +306,7 @@ modifications_tab_server <- function(input, output, session, state) {
         category = colDef(name = "Category", maxWidth = 130, html = TRUE,
           cell = function(value, idx) {
             code <- df$cat_code[idx]
-            meta <- CAT_META[[code]] %||% list(short = value, color = "#94A3B8")
+            meta <- CAT_META[[code]] %||% list(short = value, color = "#8A8A8C")
             sprintf(
               '<span class="md-cat-pill" style="background:%s18;color:%s;"><span class="md-cat-pill-dot" style="background:%s;"></span>%s</span>',
               meta$color, meta$color, meta$color, htmltools::htmlEscape(meta$short))
@@ -337,7 +337,7 @@ modifications_tab_server <- function(input, output, session, state) {
         change_types = colDef(show = FALSE),
         status = colDef(name = "Status", maxWidth = 160, html = TRUE,
           cell = function(value) {
-            col <- STATUS_COLOR[[value]] %||% "#94A3B8"
+            col <- STATUS_COLOR[[value]] %||% "#8A8A8C"
             short <- sub(" \\(.*$", "", sub(" /.*$", "", value))
             sprintf(
               '<span class="md-status-pill" style="background:%s18;color:%s;"><span class="md-status-dot" style="background:%s;"></span>%s</span>',
@@ -352,7 +352,7 @@ modifications_tab_server <- function(input, output, session, state) {
       ),
       theme = reactableTheme(
         borderColor = "transparent",
-        headerStyle = list(background = "#F8FAFC", color = "#64748B", fontWeight = 600,
+        headerStyle = list(background = "#F8F8F8", color = "#58595B", fontWeight = 600,
                            fontSize = "10px", textTransform = "uppercase",
                            letterSpacing = "0.5px"),
         rowSelectedStyle = list(background = "#F1F8FB")
@@ -408,7 +408,7 @@ modifications_tab_server <- function(input, output, session, state) {
   output$mod_editor_cat <- renderUI({
     code <- input$mod_category %||% "non_substantial"
     label <- category_label(code)
-    col   <- (CAT_META[[code]] %||% list(color = "#1B4F6B"))$color
+    col   <- (CAT_META[[code]] %||% list(color = "#1B1B1B"))$color
     tags$span(style = sprintf("color:%s;", col), label)
   })
 

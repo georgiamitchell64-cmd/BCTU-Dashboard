@@ -5,7 +5,7 @@ trial_settings_server <- function(input, output, session, state) {
   output$settings_trial_mark <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg)) return(NULL)
-    col <- cfg$colors$primary %||% "#1B4F6B"
+    col <- cfg$colors$primary %||% "#1B1B1B"
     initial <- substr(toupper(cfg$short_name %||% cfg$code %||% "T"), 1, 1)
     div(class = "settings-mark",
         style = sprintf("background:%s;color:#fff;width:32px;height:32px;
@@ -26,19 +26,14 @@ trial_settings_server <- function(input, output, session, state) {
 
   # ── Breadcrumb for active section ───────────────────────────────────────
   output$settings_breadcrumb <- renderText({
-    sec <- input$settings_active_section %||% "appearance"
+    sec <- input$settings_active_section %||% "profile"
     labels <- c(
-      appearance       = "Appearance",
-      identity         = "Trial identity & data paths",
-      features         = "Features",
-      schedule         = "Follow-up schedule",
-      demographics     = "Demographics",
-      detail           = "Detail fields",
-      config           = "Config & overrides",
-      report_content   = "Report content",
-      portfolio_review = "Portfolio review",
-      report_templates = "Report templates",
-      danger           = "Danger zone"
+      profile    = "Trial profile",
+      look       = "Appearance & modules",
+      data       = "Data & mapping",
+      visits     = "Visits & CRFs",
+      monitoring = "Recruitment & monitoring",
+      reports    = "Reports & admin"
     )
     # NB: single-bracket lookup so an unknown section returns NA (which
     # %||% can fall through), instead of [[ which throws "subscript out of
@@ -73,14 +68,14 @@ trial_settings_server <- function(input, output, session, state) {
             div(style = sprintf("flex:1;height:24px;border-radius:5px;background:%s;", th$accent))),
 
         div(style = "display:flex;justify-content:space-between;align-items:center;",
-            div(style = "font-size:13px;font-weight:600;color:#0F172A;", th$label),
+            div(style = "font-size:13px;font-weight:600;color:#1B1B1B;", th$label),
             if (is_active)
               span(style = sprintf("font-size:10px;color:%s;font-weight:700;
                                     text-transform:uppercase;letter-spacing:.5px;", th$secondary),
                    HTML("&#10003; Active"))
         ),
-        div(style = "font-size:11px;color:#64748B;margin-top:2px;", th$sublabel),
-        div(style = "font-size:10px;color:#94A3B8;margin-top:4px;
+        div(style = "font-size:11px;color:#58595B;margin-top:2px;", th$sublabel),
+        div(style = "font-size:10px;color:#8A8A8C;margin-top:4px;
                      text-transform:uppercase;letter-spacing:.5px;",
             sprintf("Sidebar: %s", th$sidebar))
       )
@@ -90,17 +85,17 @@ trial_settings_server <- function(input, output, session, state) {
       onclick = "Shiny.setInputValue('pick_theme', 'custom', {priority:'event'})",
       style = sprintf("border:1px dashed %s;border-radius:12px;padding:12px;cursor:pointer;
                        background:#FAFBFD;transition:all .15s;%s",
-                      if (identical(active, "custom")) "#6366F1" else "#CBD5E1",
-                      if (identical(active, "custom")) "box-shadow:0 0 0 2px #6366F1;" else ""),
+                      if (identical(active, "custom")) "#0057BF" else "#CFCFCF",
+                      if (identical(active, "custom")) "box-shadow:0 0 0 2px #0057BF;" else ""),
       div(style = "display:flex;gap:4px;margin-bottom:10px;",
           div(style = "flex:2;height:24px;border-radius:5px;
-                       background:repeating-linear-gradient(45deg,#E2E8F0 0 4px,#F1F5F9 4px 8px);"),
+                       background:repeating-linear-gradient(45deg,#E3E3E3 0 4px,#F2F2F2 4px 8px);"),
           div(style = "flex:1;height:24px;border-radius:5px;
-                       background:repeating-linear-gradient(45deg,#E2E8F0 0 4px,#F1F5F9 4px 8px);"),
+                       background:repeating-linear-gradient(45deg,#E3E3E3 0 4px,#F2F2F2 4px 8px);"),
           div(style = "flex:1;height:24px;border-radius:5px;
-                       background:repeating-linear-gradient(45deg,#E2E8F0 0 4px,#F1F5F9 4px 8px);")),
-      div(style = "font-size:13px;font-weight:600;color:#0F172A;", "Custom"),
-      div(style = "font-size:11px;color:#64748B;margin-top:2px;",
+                       background:repeating-linear-gradient(45deg,#E3E3E3 0 4px,#F2F2F2 4px 8px);")),
+      div(style = "font-size:13px;font-weight:600;color:#1B1B1B;", "Custom"),
+      div(style = "font-size:11px;color:#58595B;margin-top:2px;",
           "Set your own colours")
     )
 
@@ -126,24 +121,26 @@ trial_settings_server <- function(input, output, session, state) {
 
   # ── Live preview ──────────────────────────────────────────────────────────
   output$color_preview_bar <- renderUI({
-    p <- input$set_col_primary   %||% "#1B4F6B"
-    s <- input$set_col_secondary %||% "#2EC4A5"
-    a <- input$set_col_accent    %||% "#F59E0B"
+    p <- .valid_hex(input$set_col_primary,   "#1B1B1B")
+    s <- .valid_hex(input$set_col_secondary, "#00788E")
+    a <- .valid_hex(input$set_col_accent,    "#C59A00")
 
     runjs(sprintf("$('#preview_primary').css('background','%s')", p))
     runjs(sprintf("$('#preview_secondary').css('background','%s')", s))
     runjs(sprintf("$('#preview_accent').css('background','%s')", a))
 
-    div(style = "display:flex;gap:2px;border-radius:6px;overflow:hidden;height:40px;",
-        div(style = sprintf("flex:3;background:%s;display:flex;align-items:center;justify-content:center;
-                             color:#fff;font-size:11px;font-weight:600;", p), "Sidebar"),
-        div(style = "flex:5;background:#EEF3F8;display:flex;align-items:center;padding:0 12px;",
-            div(style = sprintf("background:%s;color:#fff;padding:3px 10px;border-radius:4px;
-                                 font-size:10px;font-weight:600;margin-right:8px;", s), "Chart"),
-            div(style = sprintf("background:%s;color:#fff;padding:3px 10px;border-radius:4px;
-                                 font-size:10px;font-weight:600;", a), "Accent")
-        )
-    )
+    # Trial colours only ever reach headings and charts, so preview exactly that
+    div(class = "cp-preview",
+        div(div(class = "cp-head", style = sprintf("color:%s;", p), "Section heading"),
+            div(class = "cp-note", "How this trial's headings and charts will look")),
+        HTML(sprintf(paste0(
+          '<svg width="230" height="60" viewBox="0 0 230 60" aria-hidden="true">',
+          '<rect x="4" y="30" width="22" height="26" rx="3" fill="%1$s"/>',
+          '<rect x="32" y="16" width="22" height="40" rx="3" fill="%1$s"/>',
+          '<rect x="60" y="24" width="22" height="32" rx="3" fill="%2$s"/>',
+          '<rect x="88" y="8" width="22" height="48" rx="3" fill="%2$s"/>',
+          '<polyline points="124,48 150,36 176,40 202,18 226,10" fill="none" stroke="%3$s" ',
+          'stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'), p, s, a)))
   })
 
   # ── Follow-up schedule editor ───────────────────────────────────────────
@@ -468,7 +465,7 @@ trial_settings_server <- function(input, output, session, state) {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
 
-    cols <- cfg$colors %||% list(primary = "#1B4F6B", secondary = "#2EC4A5", accent = "#F59E0B")
+    cols <- cfg$colors %||% list(primary = "#1B1B1B", secondary = "#00ACA9", accent = "#F07F3C")
     updateTextInput(session, "set_col_primary",   value = cols$primary)
     updateTextInput(session, "set_col_secondary", value = cols$secondary)
     updateTextInput(session, "set_col_accent",    value = cols$accent)
@@ -519,8 +516,8 @@ trial_settings_server <- function(input, output, session, state) {
   output$settings_config_path <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg)) return(span("No trial selected."))
-    div(HTML(paste0("Config file: <code>",
-                    file.path(cfg$trial_dir, "config.R"), "</code>")))
+    div(class = "sm-line", span("Base config"),
+        span(class = "sm-file", title = file.path(cfg$trial_dir, "config.R"), "config.R"))
   })
 
   output$settings_overrides_status <- renderUI({
@@ -529,11 +526,12 @@ trial_settings_server <- function(input, output, session, state) {
     rv$settings_changed   # invalidate when settings change
     path <- overrides_path(cfg)
     if (file.exists(path)) {
-      div(style = "color:#0F172A;",
-          HTML(paste0("Overrides: <code>", path, "</code> ",
-                      "<span style='color:#6366F1;font-weight:600;'>active</span>")))
+      div(class = "sm-line", span("Your changes"),
+          span(style = "display:flex;gap:6px;align-items:center;min-width:0;",
+               span(class = "sm-file", title = path, basename(path)),
+               span(class = "ovr-pill on", "Active")))
     } else {
-      div(HTML("Overrides: <em>none — using config.R as-is</em>"))
+      div(class = "sm-line", span("Your changes"), span("None yet"))
     }
   })
 
@@ -575,9 +573,9 @@ trial_settings_server <- function(input, output, session, state) {
         else default
       }
       new_colors <- list(
-        primary   = valid_hex(input$set_col_primary,   "#1B4F6B"),
-        secondary = valid_hex(input$set_col_secondary, "#2EC4A5"),
-        accent    = valid_hex(input$set_col_accent,    "#F59E0B")
+        primary   = valid_hex(input$set_col_primary,   "#1B1B1B"),
+        secondary = valid_hex(input$set_col_secondary, "#00ACA9"),
+        accent    = valid_hex(input$set_col_accent,    "#F07F3C")
       )
       sidebar_variant <- "dark"
     }
@@ -594,7 +592,9 @@ trial_settings_server <- function(input, output, session, state) {
   })
 
   # ── Save identity + features ─────────────────────────────────────────────
-  observeEvent(input$settings_save_features, {
+  # One save for both cards (Trial profile → Names & target, and Appearance &
+  # modules → Dashboard modules), so neither can overwrite the other's fields.
+  save_identity_and_features <- function() {
     if (!require_role(rv, "manager")) return()
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
@@ -655,7 +655,9 @@ trial_settings_server <- function(input, output, session, state) {
                          htmltools::htmlEscape(new_short)),
                  username = rv$username, trial_code = cfg$code)
     showNotification(HTML("&#x2714; Settings saved."), type = "message", duration = 4)
-  })
+  }
+  observeEvent(input$settings_save_features, save_identity_and_features())
+  observeEvent(input$settings_save_profile,  save_identity_and_features())
 
   # ── Save data paths ──────────────────────────────────────────────────────
   observeEvent(input$settings_save_paths, {
@@ -707,14 +709,14 @@ trial_settings_server <- function(input, output, session, state) {
     if (is.null(cfg)) return()
 
     showModal(modalDialog(
-      title = div(style = "color:#DC2626;",
+      title = div(style = "color:#C20019;",
                   HTML("&#x26A0; Reset to defaults?")),
       size = "s", easyClose = TRUE,
       footer = tagList(
         modalButton("Cancel"),
         actionButton("settings_reset_confirm", "Yes, reset",
                      class = "btn btn-danger",
-                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")
+                     style = "background:#C20019;border-color:#C20019;font-weight:600;")
       ),
       div(style = "padding:6px 0;font-size:13px;line-height:1.6;",
           HTML("This deletes the trial's <code>overrides.json</code> and reverts
@@ -729,7 +731,7 @@ trial_settings_server <- function(input, output, session, state) {
     div(style = "background:#FFFFFF;border:1px solid #FEE2E2;border-radius:14px;
                  padding:18px 22px;",
         div(style = "display:flex;align-items:center;gap:10px;margin-bottom:8px;",
-            span(style = "color:#DC2626;font-size:18px;", HTML("&#x26A0;")),
+            span(style = "color:#C20019;font-size:18px;", HTML("&#x26A0;")),
             span(style = "font-weight:600;color:#991B1B;font-size:14px;",
                  "Danger zone")),
         div(style = "font-size:12.5px;color:#7F1D1D;line-height:1.6;margin-bottom:12px;",
@@ -738,7 +740,7 @@ trial_settings_server <- function(input, output, session, state) {
         actionButton("settings_delete_trial",
                      HTML("&#x1F5D1; Delete this trial"),
                      class = "btn btn-sm",
-                     style = "background:#FFFFFF;color:#DC2626;border:1px solid #FECACA;
+                     style = "background:#FFFFFF;color:#C20019;border:1px solid #FECACA;
                               font-weight:600;"))
   })
 
@@ -747,7 +749,7 @@ trial_settings_server <- function(input, output, session, state) {
     cfg <- rv$trial_config
     if (is.null(cfg)) return()
     showModal(modalDialog(
-      title = div(style = "color:#DC2626;",
+      title = div(style = "color:#C20019;",
                   HTML("&#x26A0; Delete trial?")),
       size = "m", easyClose = FALSE,
       footer = tagList(
@@ -755,7 +757,7 @@ trial_settings_server <- function(input, output, session, state) {
         actionButton("settings_delete_trial_confirm",
                      "Yes, delete this trial",
                      class = "btn btn-danger",
-                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")
+                     style = "background:#C20019;border-color:#C20019;font-weight:600;")
       ),
       div(style = "padding:6px 0;font-size:13px;line-height:1.7;",
           HTML(sprintf("You're about to permanently delete <strong>%s</strong>.<br><br>
@@ -825,7 +827,7 @@ trial_settings_server <- function(input, output, session, state) {
       .tk <- fresh$theme %||% "custom"
       .sv <- if (.tk %in% names(TRIAL_THEMES)) TRIAL_THEMES[[.tk]]$sidebar else "dark"
       apply_trial_colours(
-        fresh$colors %||% list(primary = "#1B4F6B", secondary = "#2EC4A5", accent = "#F59E0B"),
+        fresh$colors %||% list(primary = "#1B1B1B", secondary = "#00ACA9", accent = "#F07F3C"),
         sidebar = .sv)
       apply_features_live(fresh$features %||% list())
     }
@@ -869,7 +871,7 @@ trial_settings_server <- function(input, output, session, state) {
   }
 
   observeEvent(input$settings_active_section, {
-    if (identical(input$settings_active_section, "report_content")) .rc_load()
+    if (identical(input$settings_active_section, "reports")) .rc_load()
   })
 
   # Lazy-load when the trial changes too, so the form stays in sync with the
@@ -974,7 +976,7 @@ trial_settings_server <- function(input, output, session, state) {
   }
 
   observeEvent(input$settings_active_section, {
-    if (identical(input$settings_active_section, "portfolio_review")) .pr_load()
+    if (identical(input$settings_active_section, "profile")) .pr_load()
   })
   observeEvent(rv$trial_config, { .pr_load() }, ignoreInit = TRUE)
 
@@ -1024,7 +1026,7 @@ trial_settings_server <- function(input, output, session, state) {
   # Re-load the editor when entering the section, so the textarea reflects
   # what's actually on disk.
   observeEvent(input$settings_active_section, {
-    if (identical(input$settings_active_section, "report_templates")) {
+    if (identical(input$settings_active_section, "reports")) {
       .rt_load_into_editor()
       .rt_sync_override_field()
     }
@@ -1186,7 +1188,7 @@ trial_settings_server <- function(input, output, session, state) {
         modalButton("Cancel"),
         actionButton("rt_reset_confirm", "Yes, reset",
                      class = "btn btn-danger",
-                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")
+                     style = "background:#C20019;border-color:#C20019;font-weight:600;")
       ),
       div(style = "padding:6px 0;font-size:13px;line-height:1.6;",
           HTML(sprintf("This re-copies the canonical <strong>%s</strong> template
@@ -1210,7 +1212,7 @@ trial_settings_server <- function(input, output, session, state) {
         modalButton("Cancel"),
         actionButton("rt_reseed_all_confirm", "Yes, re-seed both",
                      class = "btn btn-danger",
-                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")
+                     style = "background:#C20019;border-color:#C20019;font-weight:600;")
       ),
       div(style = "padding:6px 0;font-size:13px;line-height:1.6;",
           HTML("This overwrites <strong>both</strong> the TMG/iTMG and TSC

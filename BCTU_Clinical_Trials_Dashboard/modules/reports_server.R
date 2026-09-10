@@ -154,7 +154,7 @@ reports_server <- function(input, output, session, state) {
       tycol <- if (isCum) "cum_target" else "monthly_target"
       sids  <- unique(df_m$site_id)
       pal   <- colorRampPalette(c(col_teal, col_navy, col_amber,
-                                  "#A78BFA", "#F97316"))(length(sids))
+                                  "#C59A00", "#F97316"))(length(sids))
       
       df_m2 <- df_m %>%
         mutate(month_label = factor(
@@ -220,7 +220,7 @@ reports_server <- function(input, output, session, state) {
       e_bar(rate, name = "% of target", barMaxWidth = 40,
             itemStyle = list(
               borderRadius = c(4, 4, 0, 0),
-              color = JS("function(p){return p.value>=100?'#2EC4A5':'#F59E0B';}")
+              color = JS("function(p){return p.value>=100?'#00ACA9':'#F07F3C';}")
             )) %>%
       e_mark_line(data = list(yAxis = 100),
                   lineStyle = list(type = "dashed", color = col_navy, width = 2),
@@ -234,7 +234,7 @@ reports_server <- function(input, output, session, state) {
                                 fontSize = 11, color = col_muted)) %>%
       e_tooltip(trigger = "axis",
                 formatter = JS("function(p){return p[0].name+'<br/>'+p[0].value+'%';}"),
-                backgroundColor = "rgba(27,79,107,.92)",
+                backgroundColor = "rgba(27,27,27,.92)",
                 textStyle = list(color = "#fff", fontFamily = "Outfit")) %>%
       e_toolbox(feature = list(saveAsImage = list(title = "Save PNG")))
   })
@@ -242,7 +242,7 @@ reports_server <- function(input, output, session, state) {
   output$heatmap_ui <- renderUI({
     df <- rpt_monthly()
     if (is.null(df) || nrow(df) == 0)
-      return(div(style = "padding:20px;color:#64748B;font-family:Outfit,sans-serif",
+      return(div(style = "padding:20px;color:#58595B;font-family:Outfit,sans-serif",
                  "No data"))
     df    <- df %>% mutate(month_label = format(month, "%b %Y"))
     mos   <- unique(df$month_label[order(df$month)])
@@ -265,22 +265,22 @@ reports_server <- function(input, output, session, state) {
         r <- site_df %>% filter(month_label == m)
         tags$td(if (nrow(r) > 0)
           HTML(hm_cell_html(r$actual[1], mo_tgt))
-          else HTML('<span style="color:#CBD5E1"></span>'))
+          else HTML('<span style="color:#CFCFCF"></span>'))
       })
       total   <- sum(site_df$actual, na.rm = TRUE)
       tgt     <- sum(site_df$monthly_target, na.rm = TRUE)
       pct     <- if (tgt > 0) round(100 * total / tgt) else 0
-      pct_col <- if (pct >= 100) "#059669" else if (pct >= 80) "#D97706" else "#DC2626"
+      pct_col <- if (pct >= 100) "#007838" else if (pct >= 80) "#CF4527" else "#C20019"
       tags$tr(
         tags$td(class = "site-td",
                 tags$div(sname),
                 tags$span(
-                  style = "font-size:10px;color:#64748B;font-weight:400",
+                  style = "font-size:10px;color:#58595B;font-weight:400",
                   paste0("Target: ", mo_tgt, "/mo"))),
-        tags$td(style = "text-align:center;color:#64748B", mo_tgt),
+        tags$td(style = "text-align:center;color:#58595B", mo_tgt),
         cells,
-        tags$td(style = "text-align:center;font-weight:700;color:#1B4F6B", total),
-        tags$td(style = "text-align:center;color:#64748B", tgt),
+        tags$td(style = "text-align:center;font-weight:700;color:#1B1B1B", total),
+        tags$td(style = "text-align:center;color:#58595B", tgt),
         tags$td(style = paste0("text-align:center;font-weight:700;color:", pct_col),
                 paste0(pct, "%"))
       )
@@ -364,7 +364,7 @@ reports_server <- function(input, output, session, state) {
   output$amd_sub_ui <- renderUI({
     n <- n_amd_sub()
     if (n == 0) return(p("No substantial amendments added yet.",
-                          style = "color:#64748B; font-style:italic;"))
+                          style = "color:#58595B; font-style:italic;"))
     lapply(seq_len(n), function(i) {
       div(
         style = "border:1px solid #e0e8ef; border-radius:4px; padding:8px 10px; margin-bottom:6px;",
@@ -382,7 +382,7 @@ reports_server <- function(input, output, session, state) {
   output$amd_nonsub_ui <- renderUI({
     n <- n_amd_nonsub()
     if (n == 0) return(p("No non-substantial amendments added yet.",
-                          style = "color:#64748B; font-style:italic;"))
+                          style = "color:#58595B; font-style:italic;"))
     lapply(seq_len(n), function(i) {
       div(
         style = "border:1px solid #e0e8ef; border-radius:4px; padding:8px 10px; margin-bottom:6px;",
@@ -400,7 +400,7 @@ reports_server <- function(input, output, session, state) {
   output$cs_ui <- renderUI({
     n <- n_custom()
     if (n == 0) return(p("No custom sections added yet.",
-                          style = "color:#64748B; font-style:italic;"))
+                          style = "color:#58595B; font-style:italic;"))
     lapply(seq_len(n), function(i) {
       div(
         style = "border:1px solid #e0e8ef; border-radius:4px; padding:10px 12px; margin-bottom:8px;",
@@ -696,16 +696,16 @@ reports_server <- function(input, output, session, state) {
   output$amendments_list_ui <- renderUI({
     items <- amendments_state()
     if (!length(items)) {
-      return(div(style = "padding:20px;text-align:center;color:#94A3B8;
+      return(div(style = "padding:20px;text-align:center;color:#8A8A8C;
                           font-size:12.5px;font-style:italic;",
                  "No amendments tracked yet — click Add amendment."))
     }
     rows <- lapply(seq_along(items), function(i) {
       a <- items[[i]]
       sev <- if (identical(a$type, "Substantial"))
-        list(bg = "#FEF2F2", fg = "#B91C1C", border = "#FECACA")
+        list(bg = "#FEF2F2", fg = "#C20019", border = "#FECACA")
       else
-        list(bg = "#F5F3FF", fg = "#6366F1", border = "#C7D2FE")
+        list(bg = "#F4F4F4", fg = "#1B1B1B", border = "#E3E3E3")
 
       div(style = sprintf("display:grid;grid-template-columns:auto 1fr auto;
                            gap:14px;padding:12px 14px;border:1px solid %s;
@@ -716,14 +716,14 @@ reports_server <- function(input, output, session, state) {
                                color:%s;align-self:center;width:90px;",
                               sev$fg),
               a$type %||% "Amendment"),
-          div(div(style = "font-weight:600;color:#0F172A;font-size:13px;",
+          div(div(style = "font-weight:600;color:#1B1B1B;font-size:13px;",
                   sprintf("%s — %s",
                           a$ref     %||% sprintf("Amendment %d", i),
                           a$status  %||% "Pending")),
-              div(style = "font-size:11.5px;color:#64748B;margin-top:2px;",
+              div(style = "font-size:11.5px;color:#58595B;margin-top:2px;",
                   sprintf("Submitted %s",
                           a$date %||% "—")),
-              div(style = "font-size:12.5px;color:#475569;margin-top:6px;
+              div(style = "font-size:12.5px;color:#4A4A4A;margin-top:6px;
                            line-height:1.5;",
                   a$description %||% "")),
           div(style = "display:flex;gap:6px;align-self:start;",
@@ -731,14 +731,14 @@ reports_server <- function(input, output, session, state) {
                            HTML("&#9998;"),
                            class = "btn btn-sm",
                            style = "padding:2px 8px;font-size:11px;
-                                    background:#FFFFFF;border:1px solid #DDE5EE;
-                                    color:#475569;"),
+                                    background:#FFFFFF;border:1px solid #E3E3E3;
+                                    color:#4A4A4A;"),
               actionButton(paste0("amend_del_", i),
                            HTML("&times;"),
                            class = "btn btn-sm",
                            style = "padding:2px 8px;font-size:13px;
                                     background:#FFFFFF;border:1px solid #FECACA;
-                                    color:#B91C1C;"))
+                                    color:#C20019;"))
       )
     })
     div(rows)
@@ -765,11 +765,11 @@ reports_server <- function(input, output, session, state) {
         if (!is.null(idx))
           actionButton("amend_save", "Save changes",
                        class = "btn btn-primary",
-                       style = "background:#6366F1;border-color:#6366F1;")
+                       style = "background:#1B1B1B;border-color:#1B1B1B;")
         else
           actionButton("amend_save", "Add",
                        class = "btn btn-primary",
-                       style = "background:#6366F1;border-color:#6366F1;"),
+                       style = "background:#1B1B1B;border-color:#1B1B1B;"),
         modalButton("Cancel")
       ),
       div(style = "display:grid;grid-template-columns:1fr 1fr;gap:12px;",
@@ -878,19 +878,19 @@ reports_server <- function(input, output, session, state) {
           style = sprintf("background:#FFFFFF;border:1px solid %s;border-radius:10px;
                            padding:12px 14px;cursor:pointer;margin-bottom:8px;
                            %s",
-                          if (active) "#6366F1" else "#EEF2F7",
-                          if (active) "box-shadow:0 0 0 2px #C7D2FE;" else ""),
+                          if (active) "#0057BF" else "#EEF2F7",
+                          if (active) "box-shadow:0 0 0 2px #E3E3E3;" else ""),
           div(style = "display:flex;justify-content:space-between;align-items:baseline;",
-              span(style = "font-weight:600;color:#0F172A;font-size:13.5px;", t$label),
+              span(style = "font-weight:600;color:#1B1B1B;font-size:13.5px;", t$label),
               if (active)
-                span(style = "font-size:10px;color:#6366F1;font-weight:700;
+                span(style = "font-size:10px;color:#0057BF;font-weight:700;
                               text-transform:uppercase;letter-spacing:.5px;",
                      HTML("&#10003; Active"))),
-          div(style = "font-size:11.5px;color:#64748B;margin-top:3px;",
+          div(style = "font-size:11.5px;color:#58595B;margin-top:3px;",
               t$description))
     })
     tagList(
-      tags$label(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+      tags$label(style = "font-size:11px;font-weight:600;color:#1B1B1B;
                           text-transform:uppercase;letter-spacing:.5px;",
                  "Template"),
       div(style = "margin-top:6px;", cards),
@@ -898,11 +898,11 @@ reports_server <- function(input, output, session, state) {
           actionButton("rb_save_template", HTML("&#x1F4BE; Save as default for this trial"),
                        class = "btn btn-sm",
                        style = "font-size:11px;padding:5px 10px;background:#FFFFFF;
-                                color:#1B4F6B;border:1px solid #DDE5EE;font-weight:500;"),
+                                color:#1B1B1B;border:1px solid #E3E3E3;font-weight:500;"),
           actionButton("rb_reset_template", HTML("&#x21BA; Reset"),
                        class = "btn btn-sm",
                        style = "font-size:11px;padding:5px 10px;background:transparent;
-                                color:#64748B;border:1px solid #DDE5EE;"))
+                                color:#58595B;border:1px solid #E3E3E3;"))
     )
   })
 
@@ -934,7 +934,7 @@ reports_server <- function(input, output, session, state) {
     chosen <- chosen[chosen %in% vapply(REPORT_SECTIONS, function(s) s$id, character(1))]
 
     chosen_block <- if (length(chosen) == 0) {
-      div(style = "padding:14px;color:#94A3B8;font-style:italic;font-size:12px;",
+      div(style = "padding:14px;color:#8A8A8C;font-style:italic;font-size:12px;",
           "No sections selected. Pick from below.")
     } else {
       rows <- lapply(seq_along(chosen), function(i) {
@@ -942,23 +942,23 @@ reports_server <- function(input, output, session, state) {
         div(style = "display:flex;align-items:center;gap:8px;
                      padding:8px 10px;background:#FFFFFF;border:1px solid #EEF2F7;
                      border-radius:8px;margin-bottom:6px;",
-            span(style = "color:#94A3B8;font-size:11px;font-weight:600;
+            span(style = "color:#8A8A8C;font-size:11px;font-weight:600;
                           width:22px;text-align:center;", i),
             div(style = "flex:1;",
-                div(style = "font-weight:500;color:#0F172A;font-size:13px;", sec$label),
-                div(style = "font-size:10.5px;color:#94A3B8;", sec$group)),
+                div(style = "font-weight:500;color:#1B1B1B;font-size:13px;", sec$label),
+                div(style = "font-size:10.5px;color:#8A8A8C;", sec$group)),
             actionButton(paste0("rb_up_", chosen[i]), HTML("&uarr;"),
                          class = "btn btn-sm",
                          style = "padding:1px 7px;font-size:11px;background:#FFFFFF;
-                                  border:1px solid #DDE5EE;color:#475569;"),
+                                  border:1px solid #E3E3E3;color:#4A4A4A;"),
             actionButton(paste0("rb_down_", chosen[i]), HTML("&darr;"),
                          class = "btn btn-sm",
                          style = "padding:1px 7px;font-size:11px;background:#FFFFFF;
-                                  border:1px solid #DDE5EE;color:#475569;"),
+                                  border:1px solid #E3E3E3;color:#4A4A4A;"),
             actionButton(paste0("rb_remove_", chosen[i]), HTML("&times;"),
                          class = "btn btn-sm",
                          style = "padding:1px 7px;font-size:12px;background:#FFFFFF;
-                                  border:1px solid #FECACA;color:#B91C1C;")
+                                  border:1px solid #FECACA;color:#C20019;")
         )
       })
       tagList(rows)
@@ -972,19 +972,19 @@ reports_server <- function(input, output, session, state) {
         actionButton(paste0("rb_add_", id),
                      HTML(sprintf("&#43; %s", htmltools::htmlEscape(sec$label))),
                      class = "btn btn-sm",
-                     style = "background:#F5F3FF;color:#6366F1;border:1px solid #C7D2FE;
+                     style = "background:#F4F4F4;color:#1B1B1B;border:1px solid #E3E3E3;
                               font-size:11px;font-weight:500;padding:4px 10px;
                               margin:0 6px 6px 0;")
       })
     } else NULL
 
     tagList(
-      tags$label(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+      tags$label(style = "font-size:11px;font-weight:600;color:#1B1B1B;
                           text-transform:uppercase;letter-spacing:.5px;",
                  "Sections (in order)"),
       div(style = "margin:6px 0 14px;", chosen_block),
       if (length(avail)) tagList(
-        tags$label(style = "font-size:11px;font-weight:600;color:#64748B;
+        tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
                             text-transform:uppercase;letter-spacing:.5px;",
                    "Add more"),
         div(style = "margin-top:6px;display:flex;flex-wrap:wrap;",
@@ -1061,7 +1061,7 @@ reports_server <- function(input, output, session, state) {
         downloadButton("rb_download",
                        uiOutput("rb_download_label", inline = TRUE),
                        class = "btn",
-                       style = "background:#1B4F6B;color:#fff;border:none;
+                       style = "background:#1B1B1B;color:#fff;border:none;
                                 font-weight:600;padding:10px 22px;border-radius:8px;
                                 font-size:13px;")
       ),
@@ -1172,22 +1172,22 @@ reports_server <- function(input, output, session, state) {
           sprintf("<title>%s — Portfolio Review</title>", trial_label),
           "<link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap' rel='stylesheet'>",
           "<style>",
-          "body{font-family:'Inter',system-ui,sans-serif;color:#0F1A24;",
+          "body{font-family:'Inter',system-ui,sans-serif;color:#1B1B1B;",
           "background:#F4F6F9;font-size:13px;margin:0;padding:24px;}",
           ".pf-page{width:794px;background:#fff;margin:0 auto 24px;",
           "padding:18px 48px 28px;box-shadow:0 1px 2px rgba(15,26,36,.06),",
           "0 8px 24px rgba(15,26,36,.08);}",
           ".pf-page-meta{display:flex;justify-content:space-between;",
-          "font-size:9.5px;color:#64748B;margin-bottom:12px;letter-spacing:.3px;}",
+          "font-size:9.5px;color:#58595B;margin-bottom:12px;letter-spacing:.3px;}",
           ".pf-banner{background:#7030A0;color:#fff;font-size:15px;font-weight:700;",
           "letter-spacing:.04em;text-transform:uppercase;text-align:center;",
           "padding:10px 16px;border-radius:4px 4px 0 0;}",
           ".pf-header-block{border:1px solid #E2E8EE;border-radius:4px;overflow:hidden;}",
           ".pf-info-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #E2E8EE;}",
-          ".pf-info-row{display:grid;grid-template-columns:160px 1fr;border-bottom:1px solid #EEF2F6;}",
+          ".pf-info-row{display:grid;grid-template-columns:160px 1fr;border-bottom:1px solid #EFEFEF;}",
           ".pf-info-cell{padding:5px 10px;font-size:11px;line-height:1.4;}",
-          ".pf-info-cell.label{font-weight:600;background:#F8FAFC;}",
-          ".pf-info-cell.value{color:#27384A;}",
+          ".pf-info-cell.label{font-weight:600;background:#F8F8F8;}",
+          ".pf-info-cell.value{color:#3C3C3B;}",
           ".pf-status-row{display:flex;gap:18px;padding:8px 10px;border:1px solid #E2E8EE;border-top:0;background:#fff;}",
           ".pf-check-item{display:flex;align-items:center;gap:6px;font-size:11px;}",
           ".pf-check-item.small{font-size:10.5px;}",
@@ -1198,7 +1198,7 @@ reports_server <- function(input, output, session, state) {
           ".pf-checkbox.checked{background:#7030A0;border-color:#7030A0;}",
           ".pf-summary{border:1px solid #E2E8EE;border-top:0;padding:8px 10px;background:#fff;border-radius:0 0 4px 4px;margin-bottom:10px;}",
           ".pf-summary-label{font-size:10.5px;font-weight:600;margin-bottom:4px;}",
-          ".pf-summary-text{font-family:'Source Serif 4',Georgia,serif;font-size:11px;color:#27384A;line-height:1.55;}",
+          ".pf-summary-text{font-family:'Source Serif 4',Georgia,serif;font-size:11px;color:#3C3C3B;line-height:1.55;}",
           ".pf-section{margin-bottom:10px;}",
           ".pf-section-banner{background:#7030A0;color:#fff;font-size:11.5px;",
           "font-weight:700;letter-spacing:.04em;padding:6px 12px;",
@@ -1208,54 +1208,54 @@ reports_server <- function(input, output, session, state) {
           ".pf-staffing-grid,.pf-issues-block{border:1px solid #E2E8EE;border-top:0;",
           "border-radius:0 0 4px 4px;background:#fff;}",
           ".pf-yn-row,.pf-meeting-row{display:grid;grid-template-columns:200px 1fr;",
-          "border-bottom:1px solid #EEF2F6;align-items:center;}",
+          "border-bottom:1px solid #EFEFEF;align-items:center;}",
           ".pf-yn-label,.pf-meeting-label,.pf-further-label{font-size:10.5px;",
-          "font-weight:500;padding:6px 10px;background:#F8FAFC;}",
+          "font-weight:500;padding:6px 10px;background:#F8F8F8;}",
           ".pf-yn-answer{display:flex;align-items:center;gap:14px;padding:6px 10px;}",
-          ".pf-yn-date{font-size:10.5px;color:#64748B;margin-left:8px;}",
-          ".pf-yn-date strong{color:#0F1A24;font-weight:600;}",
+          ".pf-yn-date{font-size:10.5px;color:#58595B;margin-left:8px;}",
+          ".pf-yn-date strong{color:#1B1B1B;font-weight:600;}",
           ".pf-divider{height:1px;background:#E2E8EE;}",
-          ".pf-meeting-dates{display:flex;gap:28px;padding:6px 10px;font-size:10.5px;color:#64748B;}",
-          ".pf-meeting-dates strong{color:#0F1A24;font-weight:600;font-family:'JetBrains Mono',monospace;font-size:10px;}",
+          ".pf-meeting-dates{display:flex;gap:28px;padding:6px 10px;font-size:10.5px;color:#58595B;}",
+          ".pf-meeting-dates strong{color:#1B1B1B;font-weight:600;font-family:'JetBrains Mono',monospace;font-size:10px;}",
           ".pf-further-row{display:grid;grid-template-columns:200px 1fr;align-items:start;}",
-          ".pf-further-text{font-size:10.5px;color:#27384A;line-height:1.55;padding:6px 10px;}",
+          ".pf-further-text{font-size:10.5px;color:#3C3C3B;line-height:1.55;padding:6px 10px;}",
           ".pf-rag-grid{display:flex;flex-direction:column;}",
-          ".pf-rag-item{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #EEF2F6;}",
+          ".pf-rag-item{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #EFEFEF;}",
           ".pf-rag-item:last-child{border-bottom:0;}",
           ".pf-rag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}",
-          ".pf-rag-text{font-size:10.5px;color:#64748B;line-height:1.4;}",
+          ".pf-rag-text{font-size:10.5px;color:#58595B;line-height:1.4;}",
           ".pf-chart-container{padding:12px 14px;}",
-          ".pf-chart-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;border:2px dashed #E2E8EE;border-radius:6px;background:#F8FAFC;gap:8px;}",
-          ".pf-chart-placeholder-text{font-size:12px;color:#64748B;font-weight:500;}",
-          ".pf-chart-placeholder-sub{font-size:10.5px;color:#94A3B8;}",
+          ".pf-chart-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;border:2px dashed #E2E8EE;border-radius:6px;background:#F8F8F8;gap:8px;}",
+          ".pf-chart-placeholder-text{font-size:12px;color:#58595B;font-weight:500;}",
+          ".pf-chart-placeholder-sub{font-size:10.5px;color:#8A8A8C;}",
           ".pf-recruit-stats{display:grid;grid-template-columns:repeat(4,1fr);margin-top:8px;border-top:1px solid #E2E8EE;border-bottom:1px solid #E2E8EE;}",
-          ".pf-recruit-stat{padding:7px 10px;border-right:1px solid #EEF2F6;display:flex;flex-direction:column;}",
+          ".pf-recruit-stat{padding:7px 10px;border-right:1px solid #EFEFEF;display:flex;flex-direction:column;}",
           ".pf-recruit-stat:last-child{border-right:0;}",
-          ".pf-recruit-stat .k{font-size:9px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.5px;}",
-          ".pf-recruit-stat .v{font-size:16px;font-weight:700;color:#0F1A24;font-variant-numeric:tabular-nums;}",
+          ".pf-recruit-stat .k{font-size:9px;font-weight:600;color:#58595B;text-transform:uppercase;letter-spacing:.5px;}",
+          ".pf-recruit-stat .v{font-size:16px;font-weight:700;color:#1B1B1B;font-variant-numeric:tabular-nums;}",
           ".pf-table{width:100%;border-collapse:collapse;font-size:10.5px;border:1px solid #E2E8EE;border-top:0;border-radius:0 0 4px 4px;overflow:hidden;}",
-          ".pf-table thead th{font-size:9px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:7px 10px;border-bottom:1.5px solid #0F1A24;background:#F8FAFC;}",
-          ".pf-table tbody td{padding:6px 10px;border-bottom:1px solid #EEF2F6;color:#27384A;}",
+          ".pf-table thead th{font-size:9px;font-weight:600;color:#58595B;text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:7px 10px;border-bottom:1.5px solid #1B1B1B;background:#F8F8F8;}",
+          ".pf-table tbody td{padding:6px 10px;border-bottom:1px solid #EFEFEF;color:#3C3C3B;}",
           ".pf-table tbody td.mono{font-family:'JetBrains Mono',monospace;font-size:10px;}",
           ".pf-pill{display:inline-flex;font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:.3px;}",
           ".pf-pill.green{background:#D1FAE5;color:#065F46;}",
           ".pf-pill.amber{background:#FEF3C7;color:#92400E;}",
-          ".pf-pill.grey{background:#EEF2F6;color:#27384A;}",
+          ".pf-pill.grey{background:#EFEFEF;color:#3C3C3B;}",
           ".pf-pill.red{background:#FEE2E2;color:#991B1B;}",
           ".pf-data-capture{display:flex;align-items:center;gap:8px;}",
-          ".pf-dc-bar{flex:1;height:6px;background:#EEF2F6;border-radius:3px;overflow:hidden;max-width:120px;}",
+          ".pf-dc-bar{flex:1;height:6px;background:#EFEFEF;border-radius:3px;overflow:hidden;max-width:120px;}",
           ".pf-dc-fill{height:100%;background:#7030A0;}",
-          ".pf-dc-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#0F1A24;font-weight:600;}",
-          ".pf-kv-row,.pf-staff-row{display:grid;grid-template-columns:240px 1fr;border-bottom:1px solid #EEF2F6;}",
+          ".pf-dc-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#1B1B1B;font-weight:600;}",
+          ".pf-kv-row,.pf-staff-row{display:grid;grid-template-columns:240px 1fr;border-bottom:1px solid #EFEFEF;}",
           ".pf-kv-row:last-child,.pf-staff-row:last-child{border-bottom:0;}",
-          ".pf-kv-label,.pf-staff-label{font-size:10.5px;font-weight:500;padding:5px 10px;background:#F8FAFC;}",
-          ".pf-kv-value{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#27384A;padding:5px 10px;}",
-          ".pf-staff-value{font-size:10.5px;color:#27384A;padding:6px 10px;line-height:1.5;}",
+          ".pf-kv-label,.pf-staff-label{font-size:10.5px;font-weight:500;padding:5px 10px;background:#F8F8F8;}",
+          ".pf-kv-value{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#3C3C3B;padding:5px 10px;}",
+          ".pf-staff-value{font-size:10.5px;color:#3C3C3B;padding:6px 10px;line-height:1.5;}",
           ".pf-issues-block{display:grid;grid-template-columns:1fr 1fr;}",
-          ".pf-issues-col{padding:8px 12px;border-right:1px solid #EEF2F6;}",
+          ".pf-issues-col{padding:8px 12px;border-right:1px solid #EFEFEF;}",
           ".pf-issues-col:last-child{border-right:0;}",
-          ".pf-issues-heading{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #EEF2F6;}",
-          ".pf-issues-list{margin:0;padding:0 0 0 14px;font-size:10.5px;color:#27384A;line-height:1.55;}",
+          ".pf-issues-heading{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #EFEFEF;}",
+          ".pf-issues-list{margin:0;padding:0 0 0 14px;font-size:10.5px;color:#3C3C3B;line-height:1.55;}",
           ".pf-issues-list li{margin-bottom:6px;}",
           "@media print{body{background:#fff;padding:0;}.pf-page{box-shadow:none;width:100%;page-break-after:always;}}",
           "</style></head><body>",
@@ -1536,7 +1536,7 @@ reports_server <- function(input, output, session, state) {
   output$rb_trial_card <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg))
-      return(div(style = "color:#94A3B8;font-size:12px;font-style:italic;
+      return(div(style = "color:#8A8A8C;font-size:12px;font-style:italic;
                           padding:12px 4px;", "No trial selected."))
     n <- length(rv$participants$record_id %||% character(0))
     if (n == 0) n <- 0
@@ -1741,26 +1741,26 @@ reports_server <- function(input, output, session, state) {
   output$rb_document_preview <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg))
-      return(div(style = "padding:60px;color:#94A3B8;font-style:italic;",
+      return(div(style = "padding:60px;color:#8A8A8C;font-style:italic;",
                  "Select a trial to preview the report."))
 
     # TMG / iTMG → live Rmd render embedded as an iframe
     tmpl_choice <- rb_template_choice()
     if (tmpl_choice %in% c("TMG", "iTMG")) {
       if (isTRUE(tmg_preview_state$rendering))
-        return(div(style = "padding:60px;text-align:center;color:#64748B;",
+        return(div(style = "padding:60px;text-align:center;color:#58595B;",
                    div(style="font-size:13px;font-weight:500;","Rendering preview…"),
-                   div(style="font-size:11px;margin-top:6px;color:#94A3B8;",
+                   div(style="font-size:11px;margin-top:6px;color:#8A8A8C;",
                        "First render can take 10–20 seconds.")))
       err <- tmg_preview_state$error
       if (!is.null(err) && is.null(tmg_preview_state$html))
-        return(div(style = "padding:40px;color:#B91C1C;font-size:13px;",
+        return(div(style = "padding:40px;color:#C20019;font-size:13px;",
                    tags$b("Preview failed:"), tags$br(), tags$code(err),
-                   tags$div(style="margin-top:10px;color:#64748B;font-size:12px;",
+                   tags$div(style="margin-top:10px;color:#58595B;font-size:12px;",
                             "Try clicking Download anyway, or restart the Shiny app.")))
       html <- tmg_preview_state$html
       if (is.null(html))
-        return(div(style = "padding:60px;color:#94A3B8;font-style:italic;",
+        return(div(style = "padding:60px;color:#8A8A8C;font-style:italic;",
                    "Preparing preview…"))
       return(tags$iframe(
         srcdoc = html,
@@ -1831,7 +1831,7 @@ reports_server <- function(input, output, session, state) {
         s <- report_section_by_id(id); if (is.null(s)) return("")
         tryCatch(s$render(ctx),
                  error = function(e)
-                   sprintf("<p style='color:#B91C1C;'>Failed: %s</p>",
+                   sprintf("<p style='color:#C20019;'>Failed: %s</p>",
                            htmltools::htmlEscape(e$message)))
       }
       reporting_period <- period
@@ -1880,7 +1880,7 @@ reports_server <- function(input, output, session, state) {
       if (is.null(sec)) return(NULL)
       html <- tryCatch(sec$render(ctx),
                        error = function(e)
-                         sprintf("<p style='color:#B91C1C;'>Failed: %s</p>",
+                         sprintf("<p style='color:#C20019;'>Failed: %s</p>",
                                  htmltools::htmlEscape(e$message)))
       tagList(
         div(class = "rb-page-marker",
@@ -1916,7 +1916,7 @@ reports_server <- function(input, output, session, state) {
       avail <- setdiff(all_ids, chosen)
 
       list_block <- if (!length(chosen))
-        div(style = "padding:14px;color:#94A3B8;font-size:12px;font-style:italic;",
+        div(style = "padding:14px;color:#8A8A8C;font-size:12px;font-style:italic;",
             "No sections selected. Add some below.")
       else
         div(class = "rb-section-list",
@@ -1954,7 +1954,7 @@ reports_server <- function(input, output, session, state) {
                           paste0("+ ", sec$label))
             }))
       else
-        span(style = "font-size:11.5px;color:#64748B;font-style:italic;",
+        span(style = "font-size:11.5px;color:#58595B;font-style:italic;",
              "All sections in report.")
 
       tagList(
@@ -1966,13 +1966,13 @@ reports_server <- function(input, output, session, state) {
             actionButton("rb_save_template",
                          HTML("&#x1F4BE; Save"),
                          class = "action-button",
-                         style = "flex:1;background:#fff;color:#1B4F6B;
+                         style = "flex:1;background:#fff;color:#1B1B1B;
                                   border:1px solid #E2E8EE;font-size:11.5px;
                                   font-weight:500;padding:6px 10px;border-radius:6px;"),
             actionButton("rb_reset_template",
                          HTML("&#x21BA; Reset"),
                          class = "action-button",
-                         style = "flex:1;background:transparent;color:#64748B;
+                         style = "flex:1;background:transparent;color:#58595B;
                                   border:1px solid #E2E8EE;font-size:11.5px;
                                   padding:6px 10px;border-radius:6px;"))
       )
@@ -2036,17 +2036,17 @@ reports_server <- function(input, output, session, state) {
       tagList(
         tags$h4(sprintf("Substantial · %d", length(sub))),
         if (length(sub)) lapply(sub, render_a, css_cls = "sub")
-        else span(style = "font-size:11.5px;color:#64748B;font-style:italic;",
+        else span(style = "font-size:11.5px;color:#58595B;font-style:italic;",
                   "None tracked yet."),
         tags$h4(sprintf("Non-substantial · %d", length(nonsub))),
         if (length(nonsub)) lapply(nonsub, render_a, css_cls = "nonsub")
-        else span(style = "font-size:11.5px;color:#64748B;font-style:italic;",
+        else span(style = "font-size:11.5px;color:#58595B;font-style:italic;",
                   "None tracked yet."),
         actionButton("amend_add",
                      HTML("&#43; Add amendment"),
                      class = "rb-add-btn action-button",
                      style = "margin-top:12px;background:transparent;
-                              border:1px dashed #E2E8EE;color:#64748B;
+                              border:1px dashed #E2E8EE;color:#58595B;
                               border-radius:6px;padding:7px;width:100%;")
       )
 
@@ -2071,7 +2071,7 @@ reports_server <- function(input, output, session, state) {
       rag <- input$pr_rag_status %||% ""
       rag_btn <- function(val, colour, label) {
         on <- if (identical(tolower(rag), tolower(val))) "color:#fff;" else
-              "background:#fff;color:#0F172A;"
+              "background:#fff;color:#1B1B1B;"
         sprintf("<button type='button' class='action-button' id='rb_pr_rag_%s'
                           style='flex:1;padding:8px;border-radius:6px;
                                   border:1px solid %s;font-weight:600;
@@ -2084,8 +2084,8 @@ reports_server <- function(input, output, session, state) {
       tagList(
         tags$h4("RAG status"),
         HTML(sprintf("<div style='display:flex;gap:6px;margin-bottom:10px;'>%s%s%s</div>",
-                     rag_btn("red",   "#DC2626", "Red"),
-                     rag_btn("amber", "#F59E0B", "Amber"),
+                     rag_btn("red",   "#C20019", "Red"),
+                     rag_btn("amber", "#F07F3C", "Amber"),
                      rag_btn("green", "#16A34A", "Green"))),
         ta("pr_rag_note",
            "RAG rationale (optional)",

@@ -1,37 +1,13 @@
 overview_tab_ui <- function() {
 
-  # Small inline SVG sparkline — decorative, matches the design's mini trend
-  # visual on KPI cards. Receives a numeric vector and a stroke colour.
-  pov_sparkline <- function(values, colour) {
-    w <- 80; h <- 32
-    rng <- diff(range(values))
-    if (rng == 0) rng <- 1
-    n   <- length(values)
-    pts <- vapply(seq_along(values), function(i) {
-      x <- (i - 1) / (n - 1) * w
-      y <- h - ((values[i] - min(values)) / rng) * (h - 4) - 2
-      sprintf("%.2f,%.2f", x, y)
-    }, character(1))
-    line <- paste(pts, collapse = " ")
-    area <- paste0(line, sprintf(" %d,%d 0,%d", w, h, h))
-    HTML(sprintf(
-      '<svg width="%d" height="%d" viewBox="0 0 %d %d">
-         <polygon points="%s" fill="%s" opacity="0.10"/>
-         <polyline points="%s" fill="none" stroke="%s"
-                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-       </svg>',
-      w, h, w, h, area, colour, line, colour
-    ))
-  }
-
   # Calendar glyph for the date-range pill
   cal_icon <- HTML(
     '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
        <rect x="2" y="3" width="12" height="11" rx="2"
-             stroke="#8E8EA0" stroke-width="1.2" fill="none"/>
-       <path d="M2 7h12" stroke="#8E8EA0" stroke-width="1.2"/>
+             stroke="#8A8A8C" stroke-width="1.2" fill="none"/>
+       <path d="M2 7h12" stroke="#8A8A8C" stroke-width="1.2"/>
        <path d="M5.5 1.5v3M10.5 1.5v3"
-             stroke="#8E8EA0" stroke-width="1.2" stroke-linecap="round"/>
+             stroke="#8A8A8C" stroke-width="1.2" stroke-linecap="round"/>
      </svg>'
   )
 
@@ -71,8 +47,7 @@ overview_tab_ui <- function() {
             div(class = "pov-kpi-delta-row",
                 uiOutput("delta_sites", inline = TRUE),
                 span(class = "pov-delta-label", "this period"))),
-          div(class = "pov-kpi-spark",
-              pov_sparkline(c(14,15,16,17,18,19,20,21,21,22,23,24), "#0EA5E9"))
+          div(class = "pov-kpi-spark", uiOutput("kpi_spark_sites"))
         ),
         # Total randomised
         div(class = "pov-kpi",
@@ -83,24 +58,23 @@ overview_tab_ui <- function() {
             div(class = "pov-kpi-delta-row",
                 uiOutput("delta_rand", inline = TRUE),
                 span(class = "pov-delta-label", "this period"))),
-          div(class = "pov-kpi-spark",
-              pov_sparkline(c(680,780,890,1020,1120,1250,1340,1440,1550,1640,1730,1847),
-                            "#10B981"))
+          div(class = "pov-kpi-spark", uiOutput("kpi_spark_rand"))
         ),
         # Of trial target
         div(class = "pov-kpi",
           div(class = "pov-kpi-body",
             div(class = "pov-kpi-label", "Of trial target"),
             div(class = "pov-kpi-value", textOutput("n_pct", inline = TRUE)),
-            div(class = "pov-kpi-sub",
-                paste0("of ", TRIAL_TARGET, " participants")),
+            div(class = "pov-kpi-sub", textOutput("n_target_sub", inline = TRUE)),
             div(class = "pov-kpi-delta-row",
                 uiOutput("delta_pct", inline = TRUE),
                 span(class = "pov-delta-label", "pp this period"))),
-          div(class = "pov-kpi-spark",
-              pov_sparkline(c(32,35,39,42,45,48,50,53,55,57,59,61.6), "#F59E0B"))
+          div(class = "pov-kpi-spark", uiOutput("kpi_spark_pct"))
         )
       ),
+
+      # ── Trial health: score, components, what needs attention ────────
+      uiOutput("health_card_ui"),
 
       # ── Work-package summary (multi-WP trials, "all WPs" view only) ──
       uiOutput("wp_summary_ui"),

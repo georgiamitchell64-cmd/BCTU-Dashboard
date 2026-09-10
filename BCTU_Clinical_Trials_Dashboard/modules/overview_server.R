@@ -49,6 +49,13 @@ overview_server <- function(input, output, session, state) {
     trial_replay_card(payload)
   })
 
+  # ── Trial health card + real KPI sparklines (last 12 months) ─────────────
+  output$health_card_ui  <- renderUI(th_health_card(state$health()))
+  output$kpi_spark_sites <- renderUI(th_kpi_spark(state$health(), "sites"))
+  output$kpi_spark_rand  <- renderUI(th_kpi_spark(state$health(), "cum"))
+  output$kpi_spark_pct   <- renderUI(th_kpi_spark(state$health(), "rand"))
+  output$n_target_sub    <- renderText(paste0("of ", format(trial_target_r(), big.mark = ","), " participants"))
+
   # ── CONSORT flow diagram (only when the trial's consort_flow feature is on) ─
   output$consort_card_ui <- renderUI({
     cfg <- rv$trial_config
@@ -446,7 +453,7 @@ overview_server <- function(input, output, session, state) {
                smooth     = TRUE,
                symbol     = "none",
                showSymbol = FALSE,
-               lineStyle  = list(color = "#2EC4A5",
+               lineStyle  = list(color = "#00ACA9",
                                  width = 2,
                                  type  = "dotted")) %>%
 
@@ -456,7 +463,7 @@ overview_server <- function(input, output, session, state) {
                smooth     = TRUE,
                symbol     = "none",
                showSymbol = FALSE,
-               lineStyle  = list(color = "#F59E0B",
+               lineStyle  = list(color = "#F07F3C",
                                  width = 2.5,
                                  type  = "dashed")) %>%
 
@@ -467,27 +474,27 @@ overview_server <- function(input, output, session, state) {
                symbol       = "circle",
                symbolSize   = 7,
                connectNulls = FALSE,
-               lineStyle    = list(color = "#1B4F6B", width = 3),
-               itemStyle    = list(color = "#1B4F6B")) %>%
+               lineStyle    = list(color = "#1B1B1B", width = 3),
+               itemStyle    = list(color = "#1B1B1B")) %>%
 
         # ── Styling ──────────────────────────────────────────────────────
         e_tooltip(trigger = "axis") %>%
         e_legend(bottom = 0,
-                 textStyle = list(color = "#1B4F6B", fontSize = 11),
+                 textStyle = list(color = "#1B1B1B", fontSize = 11),
                  data = list("Actual", "Projection (central)",
                              "Projection range", "Protocol plan")) %>%
         e_grid(left = "55", right = "30", top = 20, bottom = 60) %>%
         e_y_axis(name          = "Cumulative participants",
                  nameLocation  = "middle",
                  nameGap       = 42,
-                 nameTextStyle = list(fontSize = 11, color = "#64748B"),
-                 axisLabel     = list(fontSize = 10, color = "#64748B"),
+                 nameTextStyle = list(fontSize = 11, color = "#58595B"),
+                 axisLabel     = list(fontSize = 10, color = "#58595B"),
                  max           = trial_target_r(),
-                 splitLine     = list(lineStyle = list(color = "#EEF3F8"))) %>%
+                 splitLine     = list(lineStyle = list(color = "#F4F4F4"))) %>%
         e_x_axis(axisLabel = list(rotate = 45,
                                    fontSize = 10,
-                                   color = "#64748B"),
-                 axisLine  = list(lineStyle = list(color = "#CBD5E1")))
+                                   color = "#58595B"),
+                 axisLine  = list(lineStyle = list(color = "#CFCFCF")))
     },
     error = function(e) {
       message("Projection chart render error: ", e$message)
@@ -564,11 +571,11 @@ overview_server <- function(input, output, session, state) {
             itemStyle = list(color = JS(paste0(
               "function(p){var m={",
               paste(sprintf("'%s':'%s'", names(status_cols), unname(status_cols)), collapse = ","),
-              "};return m[p.name]||'#94A3B8';}")))) %>%
+              "};return m[p.name]||'#8A8A8C';}")))) %>%
       e_flip_coords() %>%
       e_tooltip(trigger = "item",
                 formatter = JS("function(p){return p.name+': '+p.value;}"),
-                backgroundColor = "rgba(27,79,107,.92)",
+                backgroundColor = "rgba(27,27,27,.92)",
                 textStyle = list(color = "#fff", fontFamily = "Outfit")) %>%
       e_grid(left = "30%", right = "12%", top = "3%", bottom = "3%") %>%
       e_x_axis(minInterval = 1, axisLabel = list(fontFamily = "Outfit", fontSize = 11, color = col_muted)) %>%
@@ -615,7 +622,7 @@ overview_server <- function(input, output, session, state) {
           siv_booked ~
             '<span style="color:#854F0B;background:#FEF3C7;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:600">Booked \u2014 no date</span>',
           TRUE ~
-            '<span style="color:#64748B;font-size:11px">\u2014</span>'
+            '<span style="color:#58595B;font-size:11px">\u2014</span>'
         )
       )
 
@@ -660,21 +667,21 @@ overview_server <- function(input, output, session, state) {
   PR_PROJECTED_DEFS <- list(
     list(key   = "proj_pts_monthly",
          label = "Pts — original projection, monthly",
-         color = "#0F172A", lty = "solid", lw = 1.5,
+         color = "#1B1B1B", lty = "solid", lw = 1.5,
          match = c("pts - original projection, monthly",
                    "pts.*projection.*monthly",
                    "projected.*monthly",
                    "original.*monthly")),
     list(key   = "proj_pts_cum",
          label = "Pts — original projection, cumulative",
-         color = "#7C3AED", lty = "solid", lw = 2.5,
+         color = "#C59A00", lty = "solid", lw = 2.5,
          match = c("pts - original projection, cumulative",
                    "pts.*projection.*cumulative",
                    "projected.*cumulative",
                    "original.*cumulative")),
     list(key   = "proj_sites_cum",
          label = "Sites — projected, cumulative",
-         color = "#0EA5E9", lty = "solid", lw = 1.5,
+         color = "#2581C4", lty = "solid", lw = 1.5,
          match = c("sites - projected, cumulative",
                    "sites.*projected.*cumulative",
                    "sites.*projection.*cumulative",
@@ -685,15 +692,15 @@ overview_server <- function(input, output, session, state) {
   PR_ACTUAL_DEFS <- list(
     list(key   = "actual_pts_monthly",
          label = "Pts — actual, monthly",
-         color = "#10B981", lty = "dashed", lw = 1.5,
+         color = "#3AAA35", lty = "dashed", lw = 1.5,
          source = "Auto from REDCap randomisation dates"),
     list(key   = "actual_pts_cum",
          label = "Pts — actual, cumulative",
-         color = "#059669", lty = "dashed", lw = 2.0,
+         color = "#007838", lty = "dashed", lw = 2.0,
          source = "Auto: cumulative actual recruits"),
     list(key   = "actual_sites_cum",
          label = "Sites — actual, cumulative",
-         color = "#F59E0B", lty = "dashed", lw = 1.5,
+         color = "#F07F3C", lty = "dashed", lw = 1.5,
          source = "Auto from Sites tab — date centre opened")
   )
 
@@ -943,7 +950,7 @@ overview_server <- function(input, output, session, state) {
     div(
       tags$style(HTML("
         .pr-import-card {
-          background:#F8FAFD; border:1px solid #DDE5EE; border-radius:10px;
+          background:#F8FAFD; border:1px solid #E3E3E3; border-radius:10px;
           padding:12px 14px; margin-bottom:14px;
         }
         .pr-import-row { display:grid; grid-template-columns:1fr auto; gap:8px;
@@ -951,12 +958,12 @@ overview_server <- function(input, output, session, state) {
         .pr-controls { display:grid; grid-template-columns:1fr 1fr; gap:10px;
                        margin-bottom:12px; }
         .pr-section-eye {
-          font-size:10px; font-weight:700; color:#1B4F6B;
+          font-size:10px; font-weight:700; color:#1B1B1B;
           text-transform:uppercase; letter-spacing:.6px; margin:14px 0 8px;
         }
         .pr-summary-row {
           display:flex; align-items:center; gap:10px; padding:8px 10px;
-          background:#FFFFFF; border:1px solid #EEF3F8; border-radius:8px;
+          background:#FFFFFF; border:1px solid #F4F4F4; border-radius:8px;
           margin-bottom:6px;
         }
         .pr-color-dot {
@@ -964,20 +971,20 @@ overview_server <- function(input, output, session, state) {
           border:1px solid rgba(15,23,42,.15);
         }
         .pr-summary-meta { flex:1; min-width:0; }
-        .pr-summary-label { font-size:12px; font-weight:600; color:#0F172A; }
-        .pr-summary-source { font-size:10.5px; color:#64748B; font-style:italic;
+        .pr-summary-label { font-size:12px; font-weight:600; color:#1B1B1B; }
+        .pr-summary-source { font-size:10.5px; color:#58595B; font-style:italic;
                              margin-top:1px; }
         .pr-summary-pill {
           font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px;
           letter-spacing:.3px; flex-shrink:0; white-space:nowrap;
         }
-        .pr-summary-empty { background:#F1F5F9; color:#94A3B8; }
+        .pr-summary-empty { background:#F2F2F2; color:#8A8A8C; }
         .pr-summary-ok    { background:#D4F5EC; color:#0F6E56; }
       ")),
 
       # Excel import card — the only way data enters this chart.
       div(class = "pr-import-card",
-        div(style = "font-size:11.5px;font-weight:600;color:#0F172A;margin-bottom:6px;",
+        div(style = "font-size:11.5px;font-weight:600;color:#1B1B1B;margin-bottom:6px;",
             HTML("&#128193; Excel project plan")),
         div(class = "pr-import-row",
             textInput("pr_excel_path", label = NULL,
@@ -985,7 +992,7 @@ overview_server <- function(input, output, session, state) {
                       placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/Portfolio Review.xlsx"),
             actionButton("pr_excel_import", "Import",
                          class = "btn-primary-sm")),
-        div(style = "font-size:10.5px;color:#64748B;margin-top:6px;line-height:1.5;",
+        div(style = "font-size:10.5px;color:#58595B;margin-top:6px;line-height:1.5;",
             "Workbook must have one row per month. Column A = month dates, ",
             "with one column per series labelled like ",
             tags$em("Pts - original projection, monthly"), ", ",
@@ -995,17 +1002,17 @@ overview_server <- function(input, output, session, state) {
 
       div(class = "pr-controls",
           div(tags$label("Start month",
-                         style = "font-size:11px;font-weight:600;color:#0F172A;
+                         style = "font-size:11px;font-weight:600;color:#1B1B1B;
                                   margin-bottom:3px;display:block;"),
               div(style = "padding:7px 10px;background:#F8FAFD;border:1px solid #E2E8EE;
-                           border-radius:6px;font-size:12px;color:#0F172A;
+                           border-radius:6px;font-size:12px;color:#1B1B1B;
                            font-variant-numeric:tabular-nums;",
                   format(sd, "%b %Y"))),
           div(tags$label("Number of months",
-                         style = "font-size:11px;font-weight:600;color:#0F172A;
+                         style = "font-size:11px;font-weight:600;color:#1B1B1B;
                                   margin-bottom:3px;display:block;"),
               div(style = "padding:7px 10px;background:#F8FAFD;border:1px solid #E2E8EE;
-                           border-radius:6px;font-size:12px;color:#0F172A;
+                           border-radius:6px;font-size:12px;color:#1B1B1B;
                            font-variant-numeric:tabular-nums;", n))),
 
       div(class = "pr-section-eye", "Projected (from Excel)"),
@@ -1018,7 +1025,7 @@ overview_server <- function(input, output, session, state) {
           downloadButton("pr_download_png",
                          HTML("&#x21E9; Download PNG (chart + table)"),
                          class = "btn-primary-sm",
-                         style = "background:#1B4F6B;color:#fff;border-color:#1B4F6B;
+                         style = "background:#1B1B1B;color:#fff;border-color:#1B1B1B;
                                   font-weight:600;width:100%;"))
     )
   })
@@ -1075,17 +1082,17 @@ overview_server <- function(input, output, session, state) {
     }
     chart |>
       echarts4r::e_title(title, left = "center",
-                         textStyle = list(color = "#1B4F6B", fontSize = 16,
+                         textStyle = list(color = "#1B1B1B", fontSize = 16,
                                           fontWeight = 700)) |>
       echarts4r::e_tooltip(trigger = "axis") |>
       echarts4r::e_legend(top = 30,
-                          textStyle = list(fontSize = 11, color = "#475569")) |>
+                          textStyle = list(fontSize = 11, color = "#4A4A4A")) |>
       echarts4r::e_grid(left = 60, right = 30, top = 110, bottom = 60) |>
       echarts4r::e_x_axis(axisLabel = list(rotate = 45, fontSize = 10,
-                                           color = "#64748B"),
-                          axisLine = list(lineStyle = list(color = "#CBD5E1"))) |>
-      echarts4r::e_y_axis(axisLabel = list(fontSize = 10, color = "#64748B"),
-                          splitLine = list(lineStyle = list(color = "#EEF3F8")))
+                                           color = "#58595B"),
+                          axisLine = list(lineStyle = list(color = "#CFCFCF"))) |>
+      echarts4r::e_y_axis(axisLabel = list(fontSize = 10, color = "#58595B"),
+                          splitLine = list(lineStyle = list(color = "#F4F4F4")))
   })
 
   # ── Data table that mirrors the Excel layout (rows = series, cols = months)
@@ -1119,15 +1126,15 @@ overview_server <- function(input, output, session, state) {
                     font-family:-apple-system, system-ui, sans-serif;
                     white-space:nowrap; min-width:100%; }
           .pr-tbl th, .pr-tbl td { padding:6px 10px; }
-          .pr-tbl-rowhead { background:#F8FAFD; color:#0F172A; font-weight:600;
+          .pr-tbl-rowhead { background:#F8FAFD; color:#1B1B1B; font-weight:600;
                             text-align:left; border-bottom:1px solid #E2E8EE;
                             border-right:1px solid #E2E8EE; position:sticky;
                             left:0; }
-          .pr-tbl-mhead { background:#1B4F6B; color:#fff; font-weight:600;
+          .pr-tbl-mhead { background:#1B1B1B; color:#fff; font-weight:600;
                           text-align:center; font-size:11px; }
-          .pr-tbl-val { text-align:right; color:#1B4F6B; font-weight:500;
+          .pr-tbl-val { text-align:right; color:#1B1B1B; font-weight:500;
                         font-variant-numeric:tabular-nums;
-                        border-bottom:1px solid #EEF3F8; }
+                        border-bottom:1px solid #F4F4F4; }
           .pr-tbl tr:last-child td { border-bottom:none; }
         ")),
         tags$table(class = "pr-tbl",
@@ -1274,15 +1281,15 @@ overview_server <- function(input, output, session, state) {
                   colour = NULL, linetype = NULL) +
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(
-      plot.title         = ggplot2::element_text(face = "bold", colour = "#1B4F6B",
+      plot.title         = ggplot2::element_text(face = "bold", colour = "#1B1B1B",
                                                  size = 14, hjust = 0.5),
       legend.position    = "top",
-      legend.text        = ggplot2::element_text(size = 9, colour = "#475569"),
+      legend.text        = ggplot2::element_text(size = 9, colour = "#4A4A4A"),
       panel.grid.minor   = ggplot2::element_blank(),
-      panel.grid.major   = ggplot2::element_line(colour = "#EEF3F8"),
+      panel.grid.major   = ggplot2::element_line(colour = "#F4F4F4"),
       axis.text.x        = ggplot2::element_text(angle = 45, hjust = 1,
-                                                 size = 8, colour = "#64748B"),
-      axis.text.y        = ggplot2::element_text(size = 8, colour = "#64748B"),
+                                                 size = 8, colour = "#58595B"),
+      axis.text.y        = ggplot2::element_text(size = 8, colour = "#58595B"),
       plot.margin        = ggplot2::margin(10, 14, 6, 14)) +
     ggplot2::guides(colour   = ggplot2::guide_legend(nrow = 2),
                     linetype = ggplot2::guide_legend(nrow = 2))
@@ -1308,10 +1315,10 @@ overview_server <- function(input, output, session, state) {
                   bg_params = list(fill = c("#FFFFFF", "#F8FAFD"))),
       colhead = list(fg_params = list(cex = 0.62, col = "#FFFFFF",
                                        fontface = "bold"),
-                     bg_params = list(fill = "#1B4F6B")),
+                     bg_params = list(fill = "#1B1B1B")),
       rowhead = list(fg_params = list(cex = 0.62, hjust = 0, x = 0.02,
-                                       fontface = "bold", col = "#0F172A"),
-                     bg_params = list(fill = "#F1F5F9"))
+                                       fontface = "bold", col = "#1B1B1B"),
+                     bg_params = list(fill = "#F2F2F2"))
     )
     g_table <- gridExtra::tableGrob(tbl[, -1, drop = FALSE],
                                     rows = tbl$Series, theme = tt)

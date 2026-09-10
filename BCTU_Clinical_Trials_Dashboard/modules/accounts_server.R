@@ -38,13 +38,13 @@ accounts_server <- function(input, output, session, state) {
                  span(r$message)))
     }
     div(style = "margin-top:10px;padding:14px 16px;
-                 background:#F0FDF9;border:1.5px dashed #2EC4A5;
+                 background:#F0FDF9;border:1.5px dashed #00ACA9;
                  border-radius:10px;",
-        div(style = "font-size:11px;font-weight:600;color:#1B4F6B;
+        div(style = "font-size:11px;font-weight:600;color:#1B1B1B;
                      text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;",
             sprintf("Temporary password for %s", r$target)),
         div(style = "font-family:'JetBrains Mono','Menlo',monospace;
-                     font-size:22px;font-weight:700;color:#1B4F6B;
+                     font-size:22px;font-weight:700;color:#1B1B1B;
                      letter-spacing:1px;user-select:all;",
             r$temp_password),
         div(style = "font-size:12px;color:#0F766E;margin-top:8px;line-height:1.5;",
@@ -81,8 +81,8 @@ accounts_server <- function(input, output, session, state) {
   })
 
   output$perms_table_ui <- renderUI({
-    yes <- "<span style='color:#059669;font-weight:700'>&check;</span>"
-    no  <- "<span style='color:#DC2626'>&cross;</span>"
+    yes <- "<span style='color:#007838;font-weight:700'>&check;</span>"
+    no  <- "<span style='color:#C20019'>&cross;</span>"
     roles <- list(
       c("Trial Manager", yes, yes, yes, yes, yes),
       c("CI",            yes, no,  no,  yes, no),

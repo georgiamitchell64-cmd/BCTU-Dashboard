@@ -97,19 +97,19 @@ list_activity <- function(limit = 200, trial_code = NULL,
 # ── Rendering ──────────────────────────────────────────────────────────────
 .activity_icon <- function(event_type) {
   switch(event_type,
-    trial_created      = list(emoji = "&#x2728;", colour = "#10B981"),
-    trial_deleted      = list(emoji = "&#x1F5D1;", colour = "#B91C1C"),
-    site_added         = list(emoji = "&#x1F3E5;", colour = "#6366F1"),
-    sites_bulk_added   = list(emoji = "&#x1F4CB;", colour = "#6366F1"),
-    site_deleted       = list(emoji = "&#x2796;", colour = "#B91C1C"),
-    csv_uploaded       = list(emoji = "&#x2B06;", colour = "#0EA5E9"),
-    amendment_added    = list(emoji = "&#x1F4DD;", colour = "#8B5CF6"),
-    amendment_edited   = list(emoji = "&#x270F;", colour = "#8B5CF6"),
-    amendment_removed  = list(emoji = "&#x2716;", colour = "#94A3B8"),
-    settings_saved     = list(emoji = "&#x2699;", colour = "#64748B"),
-    membership_changed = list(emoji = "&#x1F465;", colour = "#F59E0B"),
-    portfolio_role_changed = list(emoji = "&#x1F451;", colour = "#F59E0B"),
-    list(emoji = "&#x1F4CC;", colour = "#94A3B8"))
+    trial_created      = list(emoji = "&#x2728;", colour = "#3AAA35"),
+    trial_deleted      = list(emoji = "&#x1F5D1;", colour = "#C20019"),
+    site_added         = list(emoji = "&#x1F3E5;", colour = "#0057BF"),
+    sites_bulk_added   = list(emoji = "&#x1F4CB;", colour = "#0057BF"),
+    site_deleted       = list(emoji = "&#x2796;", colour = "#C20019"),
+    csv_uploaded       = list(emoji = "&#x2B06;", colour = "#2581C4"),
+    amendment_added    = list(emoji = "&#x1F4DD;", colour = "#C59A00"),
+    amendment_edited   = list(emoji = "&#x270F;", colour = "#C59A00"),
+    amendment_removed  = list(emoji = "&#x2716;", colour = "#8A8A8C"),
+    settings_saved     = list(emoji = "&#x2699;", colour = "#58595B"),
+    membership_changed = list(emoji = "&#x1F465;", colour = "#F07F3C"),
+    portfolio_role_changed = list(emoji = "&#x1F451;", colour = "#F07F3C"),
+    list(emoji = "&#x1F4CC;", colour = "#8A8A8C"))
 }
 
 .time_ago <- function(timestamp) {
@@ -142,14 +142,14 @@ render_activity_row <- function(row, trials = NULL) {
       div(style = "flex:1;min-width:0;",
           div(style = "display:flex;justify-content:space-between;align-items:baseline;
                        gap:10px;margin-bottom:2px;",
-              div(style = "font-size:13px;color:#0F172A;line-height:1.5;",
+              div(style = "font-size:13px;color:#1B1B1B;line-height:1.5;",
                   HTML(row$summary)),
-              span(style = "font-size:11px;color:#94A3B8;flex-shrink:0;
+              span(style = "font-size:11px;color:#8A8A8C;flex-shrink:0;
                             font-variant-numeric:tabular-nums;",
                    .time_ago(row$timestamp))),
-          div(style = "font-size:11px;color:#64748B;",
+          div(style = "font-size:11px;color:#58595B;",
               if (!is.null(trial_label))
-                span(style = "background:#F1F5F9;color:#0F172A;
+                span(style = "background:#F2F2F2;color:#1B1B1B;
                               padding:1px 8px;border-radius:999px;
                               font-weight:500;margin-right:6px;",
                      trial_label),

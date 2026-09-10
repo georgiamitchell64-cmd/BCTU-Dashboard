@@ -24,6 +24,29 @@ participants_tab_ui <- function() {
                          class = "btn data-dl-btn"))
     ),
 
+    # ── Data health: every scheduled form for every participant ─────────
+    div(class = "th-section",
+      div(class = "th-section-head",
+        div(tags$h3("Data health"),
+            div(class = "th-sub-t",
+                "Every scheduled CRF and questionnaire for every participant. Due dates come from the visit schedule in Settings → Visits & CRFs; hover over a cell for details or click a row to open the participant.")),
+      ),
+      uiOutput("data_health_kpis"),
+      uiOutput("crf_grid_ui")),
+
+    # ── Worklist: who needs chasing, most urgent first ──────────────────
+    div(class = "th-section",
+      div(class = "th-section-head",
+        div(tags$h3("Participants needing attention"),
+            div(class = "th-sub-t",
+                "Overdue site CRFs and missing operation or discharge dates rank highest; overdue questionnaires add a little. Click a row for the full CRF history.")),
+        div(class = "th-toolbar",
+            selectInput("wl_site", NULL, choices = c("All sites" = ""), width = "190px"),
+            checkboxGroupInput("wl_prio", NULL, choices = c("High", "Medium", "Low"),
+                               selected = c("High", "Medium"), inline = TRUE),
+            downloadButton("dl_worklist", HTML("&darr; Download"), class = "btn-ghost-sm"))),
+      reactableOutput("worklist_table")),
+
     # ── Row 2: Safety & regulatory card (full width) ────────────────────
     div(class = "data-safety-card",
       div(class = "data-safety-head",
@@ -65,13 +88,13 @@ participants_tab_ui <- function() {
              textOutput("demo_n_label", inline = TRUE))
       ),
       uiOutput("participant_breakdowns_ui"),
-      div(style = "font-size:11px;color:#64748B;font-style:italic;
-                   padding-top:8px;margin-top:8px;border-top:1px dashed #DDE5EE;
+      div(style = "font-size:11px;color:#58595B;font-style:italic;
+                   padding-top:8px;margin-top:8px;border-top:1px dashed #E3E3E3;
                    display:flex;justify-content:space-between;align-items:center;",
           span(textOutput("breakdowns_summary_txt", inline = TRUE)),
           actionLink("configure_breakdowns",
                      HTML("&#x2699; Configure"),
-                     style = "color:#1B4F6B;font-weight:600;font-size:11px;"))
+                     style = "color:#1B1B1B;font-weight:600;font-size:11px;"))
     ),
 
     # ── Row 4: Withdrawals + Quick actions side by side ─────────────────
@@ -90,16 +113,16 @@ participants_tab_ui <- function() {
       div(class = "data-panel data-quick-actions",
         div(class = "data-panel-head",
           span(class = "data-panel-title",
-               style = "color:#0FA88E;", "Quick actions")
+               style = "color:#00788E;", "Quick actions")
         ),
         actionButton("qa_open_returns", label = HTML(
           paste0("&#8599; Open Returns tab",
-                 "<span style='float:right;color:#64748B;font-weight:400;'>",
+                 "<span style='float:right;color:#58595B;font-weight:400;'>",
                  "completeness</span>")),
           class = "qa-btn"),
         actionButton("qa_review_wd", label = HTML(
           paste0("&#8599; Review withdrawals",
-                 "<span style='float:right;color:#64748B;font-weight:400;' ",
+                 "<span style='float:right;color:#58595B;font-weight:400;' ",
                  "id='qa_wd_n'></span>")),
           class = "qa-btn"),
         downloadButton("qa_export_full", HTML("&darr; Export full dataset"),

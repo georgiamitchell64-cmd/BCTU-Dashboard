@@ -36,15 +36,15 @@ postal_tracking_server <- function(id, redcap_data,
     postal_db_init()
 
     # Brand colours (status palette mirrors the Postal Tracking design)
-    NAVY      <- "#1B4F6B"
-    TEAL      <- "#2EC4A5"
+    NAVY      <- "#1B1B1B"
+    TEAL      <- "#00ACA9"
     AMBER     <- "#f0a500"
     CORAL     <- "#e05c3a"
     GREY      <- "#adb5bd"
     LTGREY    <- "#f4f6f8"
-    GREEN     <- "#10B981"   # Returned
-    INDIGO    <- "#6366F1"   # Transcribed
-    SLATE     <- "#94A3B8"   # Not sent
+    GREEN     <- "#3AAA35"   # Returned
+    INDIGO    <- "#0057BF"   # Transcribed
+    SLATE     <- "#8A8A8C"   # Not sent
 
     # Trigger that re-reads the DB after each upsert
     refresh_trigger <- reactiveVal(0)
@@ -135,7 +135,7 @@ postal_tracking_server <- function(id, redcap_data,
     })
 
     # ── Status badge renderer ───────────────────────────────────────────────
-    EXCL_RED <- "#DC2626"
+    EXCL_RED <- "#C20019"
 
     status_badge <- function(status) {
       colour <- switch(status,
@@ -249,7 +249,7 @@ postal_tracking_server <- function(id, redcap_data,
               # Excluded participants must not be sent post — show a
               # locked dash instead of an editable checkbox.
               if (identical(df$status[idx], "Excluded"))
-                return('<span style="color:#94A3B8;">—</span>')
+                return('<span style="color:#8A8A8C;">—</span>')
               rk <- df$row_key[idx]
               checked <- if (!is.na(v) && v == 1) "checked" else ""
               sprintf(
@@ -268,7 +268,7 @@ postal_tracking_server <- function(id, redcap_data,
             html     = TRUE,
             cell     = function(v, idx) {
               if (identical(df$status[idx], "Excluded"))
-                return('<span style="color:#94A3B8;">—</span>')
+                return('<span style="color:#8A8A8C;">—</span>')
               rk    <- df$row_key[idx]
               value <- if (is.na(v) || v == "") "" else substr(v, 1, 10)
               sprintf(
@@ -290,14 +290,14 @@ postal_tracking_server <- function(id, redcap_data,
               rk  <- df$row_key[idx]
               st  <- df$status[idx]
               if (!is.na(v) && nzchar(v))
-                return(sprintf('<span class="muted" style="color:#64748B;">%s</span>',
+                return(sprintf('<span class="muted" style="color:#58595B;">%s</span>',
                                format(as.Date(v), "%d %b %Y")))
               if (identical(st, "Sent"))
                 return(sprintf(
                   '<button class="pt-action-btn returned"
                      onclick="Shiny.setInputValue(\'%s\',{row:\'%s\',nonce:Math.random()},{priority:\'event\'})">Mark returned</button>',
                   ns("mark_returned"), rk))
-              '<span style="color:#94A3B8;">—</span>'
+              '<span style="color:#8A8A8C;">—</span>'
             }
           ),
           date_transcribed = reactable::colDef(
@@ -308,14 +308,14 @@ postal_tracking_server <- function(id, redcap_data,
               rk <- df$row_key[idx]
               st <- df$status[idx]
               if (!is.na(v) && nzchar(v))
-                return(sprintf('<span class="muted" style="color:#64748B;">%s</span>',
+                return(sprintf('<span class="muted" style="color:#58595B;">%s</span>',
                                format(as.Date(v), "%d %b %Y")))
               if (identical(st, "Returned"))
                 return(sprintf(
                   '<button class="pt-action-btn transcribed"
                      onclick="Shiny.setInputValue(\'%s\',{row:\'%s\',nonce:Math.random()},{priority:\'event\'})">Mark transcribed</button>',
                   ns("mark_transcribed"), rk))
-              '<span style="color:#94A3B8;">—</span>'
+              '<span style="color:#8A8A8C;">—</span>'
             }
           ),
           reason_not_sent = reactable::colDef(
@@ -329,7 +329,7 @@ postal_tracking_server <- function(id, redcap_data,
                 return(sprintf('<span class="pt-reason">%s</span>',
                                htmltools::htmlEscape(v)))
               if (identical(st, "Excluded"))
-                return('<span style="color:#94A3B8;">—</span>')
+                return('<span style="color:#8A8A8C;">—</span>')
               if (st %in% c("Overdue","Due now","Upcoming","Future")) {
                 reasons <- c("Nurse rang instead","Participant withdrawn",
                              "Participant deceased","Address unknown",
@@ -344,7 +344,7 @@ postal_tracking_server <- function(id, redcap_data,
                      onchange="if(this.value){Shiny.setInputValue(\'%s\',{row:\'%s\',reason:this.value,nonce:Math.random()},{priority:\'event\'})}">%s</select>',
                   ns("set_reason"), rk, opts))
               }
-              '<span style="color:#94A3B8;">—</span>'
+              '<span style="color:#8A8A8C;">—</span>'
             }
           ),
           notes = reactable::colDef(
@@ -596,7 +596,7 @@ postal_tracking_server <- function(id, redcap_data,
                             headerStyle = openxlsx::createStyle(
                               textDecoration = "bold",
                               fontColour     = "#FFFFFF",
-                              fgFill         = "#1B4F6B",
+                              fgFill         = "#1B1B1B",
                               halign         = "center"
                             ))
         openxlsx::setColWidths(wb, "Postal audit log",

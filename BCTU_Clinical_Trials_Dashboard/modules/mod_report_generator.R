@@ -113,9 +113,9 @@ mod_report_generator_ui <- function(id) {
         condition = sprintf("input['%s'] == 'TSC'", ns("report_type")),
         div(
           style = paste("flex:1.5; min-width:360px; background:#f8fafb;",
-                        "border:1px solid #d0dde6; border-left:3px solid #1B4F6B;",
+                        "border:1px solid #d0dde6; border-left:3px solid #1B1B1B;",
                         "border-radius:4px; padding:14px 16px;"),
-          h5("TSC report details", style = "margin-top:0; color:#1B4F6B;"),
+          h5("TSC report details", style = "margin-top:0; color:#1B1B1B;"),
 
           tabsetPanel(
             id = ns("tsc_tabs"),
@@ -149,12 +149,12 @@ mod_report_generator_ui <- function(id) {
             ),
             tabPanel("Amendments",
               br(),
-              h6("Substantial amendments", style = "color:#1B4F6B;"),
+              h6("Substantial amendments", style = "color:#1B1B1B;"),
               uiOutput(ns("amd_sub_ui")),
               actionButton(ns("amd_sub_add"), "+ Add substantial amendment", class = "btn-sm"),
               actionButton(ns("amd_sub_remove"), "− Remove last", class = "btn-sm"),
               br(), br(),
-              h6("Non-substantial amendments", style = "color:#1B4F6B;"),
+              h6("Non-substantial amendments", style = "color:#1B1B1B;"),
               uiOutput(ns("amd_nonsub_ui")),
               actionButton(ns("amd_nonsub_add"), "+ Add non-substantial amendment", class = "btn-sm"),
               actionButton(ns("amd_nonsub_remove"), "− Remove last", class = "btn-sm")

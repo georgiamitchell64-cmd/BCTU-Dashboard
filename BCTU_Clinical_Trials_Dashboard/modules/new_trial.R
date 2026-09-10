@@ -160,9 +160,9 @@ new_trial_setup_ui <- function() {
                                     width = "100%"),
                           hint("Path to a .png or .jpg — shown in the topbar and reports.")),
                       div(class = "nt-grid-3 nt-colors",
-                          .nt_color("wiz_col_primary",   "Primary",   "#1B4F6B"),
-                          .nt_color("wiz_col_secondary", "Secondary", "#2EC4A5"),
-                          .nt_color("wiz_col_accent",    "Accent",    "#F59E0B")))
+                          .nt_color("wiz_col_primary",   "Primary",   "#1B1B1B"),
+                          .nt_color("wiz_col_secondary", "Secondary", "#00ACA9"),
+                          .nt_color("wiz_col_accent",    "Accent",    "#F07F3C")))
               )),
 
               # ── Step 3 — Follow-up schedule (events) ──────────────────

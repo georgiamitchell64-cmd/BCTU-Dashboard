@@ -51,13 +51,13 @@ sites_tab_ui <- function() {
                                placeholder = "Search sites, cities, codes…")),
                 div(class = "fchips",
                     tags$button(class = "fchip", `data-status` = "Recruiting", onclick = "siteChip(this)",
-                                span(class = "fchip-dot", style = "background:#10B981;"), "Recruiting"),
+                                span(class = "fchip-dot", style = "background:#3AAA35;"), "Recruiting"),
                     tags$button(class = "fchip", `data-status` = "Set-up", onclick = "siteChip(this)",
-                                span(class = "fchip-dot", style = "background:#94A3B8;"), "Set-up"),
+                                span(class = "fchip-dot", style = "background:#8A8A8C;"), "Set-up"),
                     tags$button(class = "fchip", `data-status` = "Paused", onclick = "siteChip(this)",
-                                span(class = "fchip-dot", style = "background:#F59E0B;"), "Paused"),
+                                span(class = "fchip-dot", style = "background:#F07F3C;"), "Paused"),
                     tags$button(class = "fchip", `data-status` = "Closed", onclick = "siteChip(this)",
-                                span(class = "fchip-dot", style = "background:#64748B;"), "Closed")
+                                span(class = "fchip-dot", style = "background:#58595B;"), "Closed")
                 )
             ),
             div(class = "st-right",
@@ -70,6 +70,9 @@ sites_tab_ui <- function() {
 
         # ── Summary stats ──────────────────────────────────────────────
         uiOutput("sites_summary_stats"),
+
+        # ── Site health: funnel plot + scorecards ──────────────────────
+        uiOutput("site_health_ui"),
 
         # ── Right-click context menu (shared) ─────────────────────────
         div(id = "site_ctx", class = "site-ctx",
@@ -118,7 +121,7 @@ site_edit_modal <- function(row = NULL, is_new = FALSE) {
       modalButton("Cancel"),
       actionButton("site_edit_save", if (is_new) "Add site" else "Save changes",
                    class = "btn btn-primary",
-                   style = "background:#1B4F6B;border-color:#1B4F6B;font-weight:600;")
+                   style = "background:#1B1B1B;border-color:#1B1B1B;font-weight:600;")
     ),
 
     div(class = "se-form",

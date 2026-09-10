@@ -25,6 +25,78 @@ participants_server <- function(input, output, session, state) {
   # NULL for nothing open). One-open-at-a-time.
   active_drill <- reactiveVal(NULL)
 
+  # ── Data health (shared th_build via state$health) ───────────────────────
+  health <- state$health
+
+  output$data_health_kpis <- renderUI({
+    H <- health()
+    if (is.null(H) || !nrow(H$participants)) return(NULL)
+    sm <- H$summary; a <- sm$attention
+    kpi <- function(l, v, s, bad = FALSE) div(class = paste("th-kpi", if (bad) "bad"),
+      div(class = "th-kpi-l", l), div(class = "th-kpi-v", v), div(class = "th-kpi-s", s))
+    div(class = "th-kpis",
+      kpi("CRF completeness", if (is.na(sm$completeness)) "—" else sprintf("%.0f%%", sm$completeness),
+          sprintf("%d of %d expected CRFs entered", sm$complete_crfs, sm$expected_crfs)),
+      kpi("Overdue CRFs", sm$overdue_crfs, "site forms past their grace period", sm$overdue_crfs > 0),
+      kpi("Overdue questionnaires", sm$overdue_proms, "participant-completed forms"),
+      kpi("Need urgent follow-up", a[["High"]], sprintf("%d more at medium priority", a[["Medium"]]),
+          a[["High"]] > 0),
+      kpi("Due now", sum(H$crf$status == "due"), "inside the grace window"))
+  })
+
+  output$crf_grid_ui <- renderUI({
+    H <- health()
+    if (is.null(H)) return(th_empty_note("Load a REDCap export to see CRF returns."))
+    th_crfgrid_widget(H, "th-crfgrid-data")
+  })
+
+  observe({
+    H <- health()
+    s <- if (is.null(H) || is.null(H$issues)) character() else sort(unique(H$issues$site))
+    updateSelectInput(session, "wl_site", choices = c("All sites" = "", s),
+                      selected = isolate(input$wl_site) %||% "")
+  })
+
+  worklist <- reactive({
+    H <- health()
+    iss <- if (is.null(H)) NULL else H$issues
+    if (is.null(iss) || !nrow(iss)) return(NULL)
+    if (nzchar(input$wl_site %||% "")) iss <- iss[iss$site == input$wl_site, , drop = FALSE]
+    iss[iss$priority %in% (input$wl_prio %||% character()), , drop = FALSE]
+  })
+
+  output$worklist_table <- renderReactable({
+    iss <- worklist()
+    if (is.null(iss) || !nrow(iss))
+      return(empty_reactable("No participants need attention with these filters."))
+    reactable(
+      iss[, c("priority", "id", "site", "stage", "issues", "overdue_forms", "max_days_overdue")],
+      compact = TRUE, highlight = TRUE, searchable = TRUE,
+      defaultPageSize = 15, showPageSizeOptions = TRUE, pageSizeOptions = c(15, 30, 60),
+      onClick = htmlwidgets::JS("function(row) { Shiny.setInputValue('th_participant_open', {id: row.values.id, n: Math.random()}, {priority: 'event'}); }"),
+      rowStyle = list(cursor = "pointer"),
+      defaultColDef = colDef(style = list(fontSize = "12.5px")),
+      columns = list(
+        priority = colDef(name = "Priority", width = 96,
+                          cell = function(v) span(class = paste0("th-prio th-prio-", v), v)),
+        id = colDef(name = "Participant", width = 110, style = list(fontWeight = 600, fontSize = "12.5px")),
+        site = colDef(name = "Site", width = 130),
+        stage = colDef(name = "Where they are", width = 150),
+        issues = colDef(name = "What needs doing", minWidth = 240),
+        overdue_forms = colDef(name = "Overdue forms", minWidth = 260,
+                               style = list(color = "#58595B", fontSize = "12px")),
+        max_days_overdue = colDef(name = "Longest overdue", width = 124, align = "right",
+                                  cell = function(v) if (v > 0) paste(v, "days") else "—")))
+  })
+
+  output$dl_worklist <- downloadHandler(
+    filename = function() sprintf("%s_worklist_%s.csv", rv$trial_config$code %||% "trial",
+                                  format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      iss <- worklist()
+      utils::write.csv(if (is.null(iss)) data.frame() else iss, file, row.names = FALSE)
+    })
+
   # ── Donut KPI cards ────────────────────────────────────────────────────
   # Denominator for EVERY timepoint donut = number RANDOMISED (the same basis
   # the recruitment charts use), not "number of participants who appear in the
@@ -112,7 +184,7 @@ participants_server <- function(input, output, session, state) {
       div(class = "donut-info",
           div(class = "lbl", label),
           div(class = "vv", as.character(n),
-              tags$span(style = "font-size:13px;color:#64748B;font-weight:500;",
+              tags$span(style = "font-size:13px;color:#58595B;font-weight:500;",
                         sprintf(" / %d", n_total))),
           div(class = "sub", sub_extra)
       )
@@ -133,7 +205,7 @@ participants_server <- function(input, output, session, state) {
     den <- n_randomised()
     base_n <- n_event("Baseline")
     cards <- list(donut_card_ui(base_n, den, "Baseline",
-                  ring = "#EDE9FE", fill = "#7C3AED",
+                  ring = "#EFEFEF", fill = trial_palette()[["primary"]],
                   sub_extra = sprintf("%d missing", max(0L, den - base_n))))
 
     ev    <- (rv$trial_config$redcap_events) %||% list()
@@ -144,10 +216,8 @@ participants_server <- function(input, output, session, state) {
     # error) keep TONIC's completion donuts working; others use <role>_complete.
     known_fields <- list(discharge = "discharge_complete",
                          day_30 = "day30_complete", day_90 = "day90_complete")
-    palette <- list(c("#DBEAFE","#2563EB"), c("#D1FAE5","#10B981"),
-                    c("#A7F3D0","#059669"), c("#FEF3C7","#D97706"),
-                    c("#FCE7F3","#DB2777"), c("#E0E7FF","#4F46E5"),
-                    c("#CCFBF1","#0D9488"))
+    # Completion donuts are trial charts: one ring colour, the trial's primary
+    palette <- list(c("#EFEFEF", trial_palette()[["primary"]]))
 
     for (i in seq_along(roles)) {
       role <- roles[i]
@@ -291,7 +361,7 @@ participants_server <- function(input, output, session, state) {
             span(class = "ic", icon_html), span(title, " · 0 events")),
           actionLink("safety_drill_close", HTML("&times;"),
                      class = "safety-drill-close")),
-        div(style = "padding:18px;text-align:center;color:#64748B;font-size:12px;font-style:italic;",
+        div(style = "padding:18px;text-align:center;color:#58595B;font-size:12px;font-style:italic;",
             if (identical(key, "comp"))
               "No complications — map complication columns in Trial Settings → Detail fields, then upload your export."
             else "No events recorded.")
@@ -303,7 +373,7 @@ participants_server <- function(input, output, session, state) {
     #  · every section also shows its mapped extra columns (x__<header>) and the
     #    reason/notes narrative, so SAE death/causality/expectedness, withdrawal
     #    cos/reason and complication details all surface.
-    em        <- '<span style="color:#94A3B8">&mdash;</span>'
+    em        <- '<span style="color:#8A8A8C">&mdash;</span>'
     is_event  <- "term" %in% names(df)
     xcols     <- grep("^x__", names(df), value = TRUE)
     show_reason <- "narrative" %in% names(df) &&
@@ -358,7 +428,7 @@ participants_server <- function(input, output, session, state) {
                        med <- suppressWarnings(stats::median(df$lag_days, na.rm = TRUE))
                        if (is.na(med)) "" else sprintf(" · median lag %d days", as.integer(med))
                      } else "")),
-        span(style = "color:#94A3B8;",
+        span(style = "color:#8A8A8C;",
              "Source: REDCap export · mapped fields")
       )
     )
@@ -370,7 +440,7 @@ participants_server <- function(input, output, session, state) {
   output$withdrawal_donut_ui <- renderUI({
     df <- wd_df()
     if (nrow(df) == 0) {
-      return(div(style = "padding:18px;text-align:center;color:#64748B;font-style:italic;font-size:12px;",
+      return(div(style = "padding:18px;text-align:center;color:#58595B;font-style:italic;font-size:12px;",
                  "No withdrawals recorded."))
     }
     counts <- as.data.frame(table(code = df$severity), stringsAsFactors = FALSE)
@@ -386,8 +456,8 @@ participants_server <- function(input, output, session, state) {
       }, character(1))
     else counts$code
 
-    palette <- c("#DC2626", "#F59E0B", "#3B82F6", "#7C3AED", "#64748B",
-                 "#0FA88E", "#EF4444")
+    palette <- c("#C20019", "#F07F3C", "#2581C4", "#C59A00", "#58595B",
+                 "#00788E", "#E30513")
     total <- sum(counts$n)
     circ  <- 314  # 2 * pi * 50
     offset <- 0
@@ -487,10 +557,10 @@ participants_server <- function(input, output, session, state) {
     }
     editable <- find_editable_code_cols(raw, cfg, det)
     labels_section <- if (length(editable) > 0) {
-      div(style = "margin-top:22px;border-top:1px solid #EEF3F8;padding-top:16px;",
-          div(style = "font-weight:600;color:#0F172A;font-size:13px;margin-bottom:3px;",
+      div(style = "margin-top:22px;border-top:1px solid #F4F4F4;padding-top:16px;",
+          div(style = "font-weight:600;color:#1B1B1B;font-size:13px;margin-bottom:3px;",
               HTML("&#127991; Value labels &mdash; edit to rename")),
-          div(style = "font-size:12px;color:#64748B;margin-bottom:14px;",
+          div(style = "font-size:12px;color:#58595B;margin-bottom:14px;",
               "Give each coded value a readable name. These are the group names shown in the demographic cards — edit any field to rename a grouping. Existing names are pre-filled."),
           lapply(editable, function(ci) {
             div(class = "dg-col",
@@ -512,16 +582,16 @@ participants_server <- function(input, output, session, state) {
     } else NULL
     showModal(modalDialog(
       title = div(style = "display:flex;align-items:center;gap:10px;",
-                  span(style = "font-size:18px;color:#6366F1;", HTML("&#x2699;")),
+                  span(style = "font-size:18px;color:#0057BF;", HTML("&#x2699;")),
                   span("Configure demographic breakdowns")),
       size = "l", easyClose = TRUE,
       footer = tagList(
         modalButton("Cancel"),
         actionButton("save_breakdowns", "Save",
                      class = "btn btn-primary",
-                     style = "background:#6366F1;border-color:#6366F1;font-weight:600;")
+                     style = "background:#1B1B1B;border-color:#1B1B1B;font-weight:600;")
       ),
-      div(style = "font-size:12.5px;color:#64748B;margin-bottom:14px;line-height:1.6;",
+      div(style = "font-size:12.5px;color:#58595B;margin-bottom:14px;line-height:1.6;",
           HTML(sprintf("Detected <strong>%d</strong> columns suitable for breakdowns from the latest CSV. Tick the ones you want to display.",
                        nrow(det)))),
       checkboxGroupInput(
@@ -529,10 +599,10 @@ participants_server <- function(input, output, session, state) {
         choiceNames = lapply(seq_len(nrow(det)), function(i) {
           r <- det[i, ]
           tagList(
-            span(style = "font-weight:600;color:#0F172A;", r$label),
-            span(style = "font-size:10.5px;color:#94A3B8;margin-left:6px;text-transform:uppercase;letter-spacing:.4px;",
+            span(style = "font-weight:600;color:#1B1B1B;", r$label),
+            span(style = "font-size:10.5px;color:#8A8A8C;margin-left:6px;text-transform:uppercase;letter-spacing:.4px;",
                  r$type),
-            span(style = "font-size:11px;color:#64748B;margin-left:6px;",
+            span(style = "font-size:11px;color:#58595B;margin-left:6px;",
                  sprintf("· %s · %d unique%s", r$column, r$n_unique,
                          if (r$n_missing > 0) sprintf(" · %d missing", r$n_missing) else ""))
           )

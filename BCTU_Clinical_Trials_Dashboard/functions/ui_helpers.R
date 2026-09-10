@@ -6,7 +6,7 @@ tonic_card <- function(..., title = NULL, amber = FALSE, tools = NULL, full_scre
       class = header_class,
       div(
         style = "display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px",
-        if (!is.null(title)) span(style = "font-size:13px;font-weight:600;color:#1B4F6B", title) else NULL,
+        if (!is.null(title)) span(style = "font-size:13px;font-weight:600;color:#1B1B1B", title) else NULL,
         if (!is.null(tools)) tools else NULL
       )
     ),
@@ -26,7 +26,7 @@ fa_icon <- function(name, style = "solid", fw = TRUE) {
   tags$i(class = cls)
 }
 
-vbox_html <- function(icon_class, label, value_id, sub, top_color = "#2EC4A5", delta_id = NULL, icon_bg = "background:#E8F0F5;color:#1B4F6B") {
+vbox_html <- function(icon_class, label, value_id, sub, top_color = "#00ACA9", delta_id = NULL, icon_bg = "background:#E8F0F5;color:#1B1B1B") {
   delta_span <- if (!is.null(delta_id)) span(uiOutput(delta_id, inline = TRUE)) else NULL
   div(
     class = "tonic-vbox",
@@ -62,7 +62,7 @@ empty_reactable <- function(msg = "No data") {
     columns = list(
       Message = reactable::colDef(
         minWidth = 300,
-        style = list(color = "#94A3B8", fontStyle = "italic",
+        style = list(color = "#8A8A8C", fontStyle = "italic",
                      fontFamily = "Outfit, sans-serif", fontSize = "12px")
       )
     ),

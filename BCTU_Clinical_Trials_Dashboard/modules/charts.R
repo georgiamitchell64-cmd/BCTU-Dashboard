@@ -41,7 +41,7 @@ charts_tab_ui <- function() {
                   span(style = "font-size:11px;color:var(--muted);font-style:italic",
                        HTML("&#x1F4F7; Camera icon saves as PNG")),
                   downloadButton("dl_c1_data", HTML("&#x2B07; Download data"),
-                                 style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
+                                 style = "font-size:11px;background:#1B1B1B;color:#fff;border:none;",
                                  class = "dl-data-btn btn btn-sm")),
       withSpinner(echarts4rOutput("chart_recruit", height = "360px"),
                   type = 4, color = col_teal)
@@ -51,7 +51,7 @@ charts_tab_ui <- function() {
         tonic_card(
           title = "Sites recruiting — by month",
           tools = downloadButton("dl_c2_data", HTML("&#x2B07; Download"),
-                                 style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
+                                 style = "font-size:11px;background:#1B1B1B;color:#fff;border:none;",
                                  class = "dl-data-btn btn btn-sm"),
           withSpinner(echarts4rOutput("chart_sites_recruiting", height = "280px"),
                       type = 4, color = col_teal)
@@ -59,7 +59,7 @@ charts_tab_ui <- function() {
         tonic_card(
           title = "Recruitment rate vs monthly target (%)",
           tools = downloadButton("dl_c3_data", HTML("&#x2B07; Download"),
-                                 style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
+                                 style = "font-size:11px;background:#1B1B1B;color:#fff;border:none;",
                                  class = "dl-data-btn btn btn-sm"),
           withSpinner(echarts4rOutput("chart_rate", height = "280px"),
                       type = 4, color = col_teal)
@@ -77,10 +77,10 @@ charts_tab_ui <- function() {
                        "~ Within 80%"),
                   span(style = "background:#FEE2E2;color:#991B1B;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600",
                        HTML("&cross; Below 80%")),
-                  span(style = "background:#F8FAFC;color:#94A3B8;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600",
+                  span(style = "background:#F8F8F8;color:#8A8A8C;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600",
                        HTML("&middot; No data")),
                   downloadButton("dl_heatmap", HTML("&#x2B07; Download"),
-                                 style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
+                                 style = "font-size:11px;background:#1B1B1B;color:#fff;border:none;",
                                  class = "dl-data-btn btn btn-sm")),
       div(style = "overflow-x:auto", uiOutput("heatmap_ui"))
     ),
@@ -89,7 +89,7 @@ charts_tab_ui <- function() {
     tonic_card(
       title = "Per-site summary",
       tools = downloadButton("dl_summary", HTML("&#x2B07; Download"),
-                             style = "font-size:11px;background:#1B4F6B;color:#fff;border:none;",
+                             style = "font-size:11px;background:#1B1B1B;color:#fff;border:none;",
                              class = "dl-data-btn btn btn-sm"),
       withSpinner(reactableOutput("summary_table"),
                   type = 4, color = col_teal)

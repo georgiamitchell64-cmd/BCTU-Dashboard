@@ -13,13 +13,14 @@ DATA_DIR     <- file.path(getwd(), "data")  # Overwritten when trial is selected
 # app fully offline; UK hospitals are still resolved from a local lookup.
 ALLOW_REMOTE_GEOCODING <- FALSE
 
-col_navy  <- "#1B4F6B";  col_teal  <- "#2EC4A5";  col_teal2 <- "#0FA88E"
-col_amber <- "#F59E0B";  col_red   <- "#EF4444";  col_blue  <- "#3B82F6"
-col_muted <- "#64748B";  col_bg    <- "#EEF3F8"
+# University of Birmingham palette (see www/tonic_core.css for the full set)
+col_navy  <- "#1B1B1B";  col_teal  <- "#00ACA9";  col_teal2 <- "#00788E"
+col_amber <- "#F07F3C";  col_red   <- "#E30513";  col_blue  <- "#0057BF"
+col_muted <- "#58595B";  col_bg    <- "#F4F4F4";  col_gold  <- "#C59A00"
 
 status_cols <- c(
-  "Identified" = "#94A3B8", "Set-up" = "#F59E0B",
-  "Open" = "#3B82F6", "Recruiting" = "#2EC4A5", "Closed" = "#EF4444"
+  "Identified" = "#8A8A8C", "Set-up" = "#F07F3C",
+  "Open" = "#0057BF", "Recruiting" = "#3AAA35", "Closed" = "#E30513"
 )
 
 # Portfolio categories (Stage 4). Each trial's config carries
@@ -50,6 +51,12 @@ trial_category <- function(cfg) {
 # `theme = "indigo"` in overrides.json. "Custom" disables the picker and
 # lets the user set primary/secondary/accent freely.
 TRIAL_THEMES <- list(
+  uob = list(
+    label   = "University of Birmingham",
+    sublabel = "Black, white & gold",
+    primary = "#1B1B1B", secondary = "#00788E", accent = "#C59A00",
+    sidebar = "light"
+  ),
   navy_teal = list(
     label   = "Navy & Teal",
     sublabel = "Classic BCTU",

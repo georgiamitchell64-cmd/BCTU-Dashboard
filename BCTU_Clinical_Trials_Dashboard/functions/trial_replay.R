@@ -61,11 +61,11 @@
 
 .tr_exit_colour <- function(label) {
   l <- tolower(label)
-  if (grepl("death|died|deceased", l)) return("#475569")
-  if (grepl("no op|operation", l))      return("#F59E0B")
-  if (grepl("lost", l))                 return("#3B82F6")
-  if (grepl("withdr", l))               return("#EF4444")
-  "#7C3AED"
+  if (grepl("death|died|deceased", l)) return("#4A4A4A")
+  if (grepl("no op|operation", l))      return("#F07F3C")
+  if (grepl("lost", l))                 return("#2581C4")
+  if (grepl("withdr", l))               return("#E30513")
+  "#8A8A8C"
 }
 
 # Pathway stages for this trial. `now` describes a participant currently in the
@@ -242,9 +242,8 @@ trial_replay_payload <- function(raw, sites = NULL, cfg = current_trial_config()
   }
 
   # ── Protocol target schedule (scaled when a work package is active) ───────
-  ts <- cfg$target_schedule
-  has_ts <- is.data.frame(ts) && nrow(ts) > 0 &&
-            all(c("month_date", "cumulative_target") %in% names(ts))
+  ts <- th_target_schedule(cfg)
+  has_ts <- !is.null(ts)
   ts_s <- if (has_ts) as.numeric(as.POSIXct(format(as.Date(ts$month_date)), tz = "UTC")) else numeric()
   trial_target <- suppressWarnings(as.numeric(trial_target %||% cfg$trial_target %||% 0))
   base_target  <- suppressWarnings(as.numeric(cfg$trial_target %||% 0))

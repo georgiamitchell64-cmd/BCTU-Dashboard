@@ -130,12 +130,12 @@ consort_object <- function(counts) {
   # Light teal = progress / milestones (randomised, received intervention, analysed)
   # Light amber = side-boxes (exclusions, losses) — visual "nudge"
   # Navy border on every box for a consistent TONIC brand outline.
-  fill_cream <- grid::gpar(fill = "#FFF8F0", col = "#1B4F6B", lwd = 1.5)
-  fill_teal  <- grid::gpar(fill = "#E0F7F3", col = "#1B4F6B", lwd = 1.5)
+  fill_cream <- grid::gpar(fill = "#FFF8F0", col = "#1B1B1B", lwd = 1.5)
+  fill_teal  <- grid::gpar(fill = "#E2F4F3", col = "#1B1B1B", lwd = 1.5)
   fill_amber <- grid::gpar(fill = "#FFF6E5", col = "#B8860B", lwd = 1.5)
-  fill_navy  <- grid::gpar(fill = "#1B4F6B", col = "#1B4F6B", lwd = 1.5)
+  fill_navy  <- grid::gpar(fill = "#1B1B1B", col = "#1B1B1B", lwd = 1.5)
 
-  text_navy  <- grid::gpar(cex = 0.85, fontfamily = "sans", col = "#1B4F6B")
+  text_navy  <- grid::gpar(cex = 0.85, fontfamily = "sans", col = "#1B1B1B")
   text_white <- grid::gpar(cex = 0.85, fontfamily = "sans", col = "#FFFFFF", fontface = "bold")
   text_amber <- grid::gpar(cex = 0.8,  fontfamily = "sans", col = "#6B4A0B")
 
@@ -275,8 +275,8 @@ consort_svg <- function(counts, title = "CONSORT flow diagram",
   # Final touch-ups: arrow/connector strokes default to black on some
   # renderers — swap to navy so they match the TONIC palette. We leave
   # box fills alone (they were set per-box via box_gp in consort_object).
-  svg_str <- gsub('stroke="#000000"', 'stroke="#1B4F6B"', svg_str, fixed = TRUE)
-  svg_str <- gsub('stroke:#000000',   'stroke:#1B4F6B',   svg_str, fixed = TRUE)
+  svg_str <- gsub('stroke="#000000"', 'stroke="#1B1B1B"', svg_str, fixed = TRUE)
+  svg_str <- gsub('stroke:#000000',   'stroke:#1B1B1B',   svg_str, fixed = TRUE)
 
   svg_str
 }
@@ -371,7 +371,7 @@ consort_counts_live <- function(raw, cfg = current_trial_config()) {
 # downloaded report HTML. Withdrawals branch off as an amber card listing each
 # type and its count.
 consort_html <- function(counts, cfg = NULL) {
-  navy <- "#1B4F6B"; teal_bg <- "#E0F7F3"; amber_bg <- "#FFF7E6"; amber_br <- "#E0A93B"
+  navy <- "#1B1B1B"; teal_bg <- "#E2F4F3"; amber_bg <- "#FFF7E6"; amber_br <- "#E0A93B"
   esc  <- function(x) htmltools::htmlEscape(x)
 
   box <- function(label, n) sprintf(
@@ -382,7 +382,7 @@ consort_html <- function(counts, cfg = NULL) {
        <div style='font-size:23px;font-weight:800;color:%s;line-height:1.1;margin-top:2px;'>%s</div>
      </div>",
     teal_bg, navy, navy, esc(label), navy, format(n, big.mark = ","))
-  conn <- "<div style='width:2px;height:24px;background:#9FB6C4;margin:2px auto;'></div>"
+  conn <- "<div style='width:2px;height:24px;background:#A6A6A6;margin:2px auto;'></div>"
 
   wd <- counts$withdrawals
   wd_card <- ""
@@ -395,7 +395,7 @@ consort_html <- function(counts, cfg = NULL) {
               esc(wd$label[i]), wd$n[i]), character(1)), collapse = "")
     wd_card <- sprintf(
       "<div style='align-self:center;'>
-         <div style='font-size:11px;color:#9FB6C4;text-align:center;margin-bottom:4px;'>&larr; discontinued</div>
+         <div style='font-size:11px;color:#A6A6A6;text-align:center;margin-bottom:4px;'>&larr; discontinued</div>
          <div style='background:%s;border:1.5px solid %s;border-radius:12px;padding:12px 16px;min-width:240px;'>
            <div style='font-size:11.5px;font-weight:700;color:#7A5B12;text-transform:uppercase;
                        letter-spacing:.4px;'>Withdrawn / discontinued (n = %d)</div>%s</div>

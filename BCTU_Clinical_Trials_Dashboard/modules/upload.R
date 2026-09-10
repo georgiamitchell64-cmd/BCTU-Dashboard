@@ -20,7 +20,7 @@ upload_tab_ui <- function() {
                                                                class = "btn btn-outline-secondary", style = "flex:1")
                                               )
                                           ),
-                                          tags$hr(style = "border:none;border-top:1px solid #EEF3F8;margin:14px 0"),
+                                          tags$hr(style = "border:none;border-top:1px solid #F4F4F4;margin:14px 0"),
                                           div(style = "font-size:10px;font-weight:600;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px",
                                               "Files in folder"),
                                           uiOutput("folder_files_ui")
@@ -31,16 +31,16 @@ upload_tab_ui <- function() {
                                               tags$br(), "Graph exports: CI, Team Leader, and Trial Manager."),
                                           div(style = "display:flex;flex-direction:column;gap:8px",
                                               downloadButton("dl_sites_xlsx", HTML("&#x2B07; Site data (.xlsx)"),
-                                                             style = "font-family:'Outfit',sans-serif;background:#1B4F6B;color:#fff;border:none;text-align:center;justify-content:center",
+                                                             style = "font-family:'Outfit',sans-serif;background:#1B1B1B;color:#fff;border:none;text-align:center;justify-content:center",
                                                              class = "dl-data-btn"),
                                               downloadButton("dl_monthly_xlsx", HTML("&#x2B07; Monthly recruitment (.xlsx)"),
-                                                             style = "font-family:'Outfit',sans-serif;background:#0FA88E;color:#fff;border:none;text-align:center;justify-content:center",
+                                                             style = "font-family:'Outfit',sans-serif;background:#00788E;color:#fff;border:none;text-align:center;justify-content:center",
                                                              class = "dl-data-btn"),
                                               downloadButton("dl_log_xlsx", HTML("&#x2B07; Activity log (.xlsx)"),
-                                                             style = "font-family:'Outfit',sans-serif;background:#fff;color:#475569;border:1px solid #DDE5EE;text-align:center;justify-content:center",
+                                                             style = "font-family:'Outfit',sans-serif;background:#fff;color:#4A4A4A;border:1px solid #E3E3E3;text-align:center;justify-content:center",
                                                              class = "dl-data-btn"),
                                               downloadButton("dl_participants_xlsx", HTML("&#x2B07; Participant data (.xlsx)"),
-                                                             style = "font-family:'Outfit',sans-serif;background:#fff;color:#475569;border:1px solid #DDE5EE;text-align:center;justify-content:center",
+                                                             style = "font-family:'Outfit',sans-serif;background:#fff;color:#4A4A4A;border:1px solid #E3E3E3;text-align:center;justify-content:center",
                                                              class = "dl-data-btn")
                                           )
                                )

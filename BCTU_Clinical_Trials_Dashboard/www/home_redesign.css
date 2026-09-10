@@ -3,34 +3,30 @@
    Scoped under .home-root so it does not affect other tabs.
 ============================================================================= */
 
-/* Home screen uses the BCTU brand palette. Token names (--navy / --teal /
-   --accent) are preserved so component CSS below doesn't need rewriting —
-   each token is just remapped to a BCTU purple. Individual trial pages
-   (outside .home-root) keep their own trial-specific palettes untouched. */
+/* Home screen uses the University of Birmingham palette: black and white with
+   gold as the accent (tokens defined in tonic_core.css). The --bctu-* names
+   are kept so the component CSS below doesn't need rewriting. */
 .home-root {
-  /* BCTU brand */
-  --bctu-deep:    #6E2B6B;   /* darkest circle / text colour */
-  --bctu-mid:     #9A4A93;   /* mid magenta */
-  --bctu-light:   #C485AF;   /* light pink */
-  --bctu-pale:    #E8D2E5;   /* palest tint — accent backgrounds */
-  --bctu-paler:   #F7EEF4;   /* near-white pink wash */
+  --bctu-deep:    var(--uob-black);      /* headings, primary buttons */
+  --bctu-mid:     var(--uob-deep-grey);  /* secondary emphasis */
+  --bctu-light:   var(--uob-gold);       /* accent lines and highlights */
+  --bctu-pale:    #EFEFEF;               /* accent backgrounds */
+  --bctu-paler:   #F7F7F7;               /* near-white wash */
 
-  /* Compatibility shims — old token names mapped onto BCTU */
+  /* Compatibility shims — old token names mapped onto the UoB roles */
   --navy:    var(--bctu-deep);
-  --navy-dk: #4F1F50;
+  --navy-dk: #000000;
   --navy-lt: var(--bctu-mid);
-  --teal:    var(--bctu-light);
-  --teal-dk: var(--bctu-mid);
-  --accent:  var(--bctu-mid);
+  --teal:    var(--uob-turquoise);
+  --teal-dk: var(--uob-deep-turquoise);
+  --accent:  var(--uob-gold);
 
-  --amber:#F59E0B; --red:#EF4444; --green:#10B981;
-  /* Neutral slate scale + clean white surfaces (was purple/pink-tinted) for a
-     crisper, more modern look. BCTU brand colours above are kept for accents. */
-  --ink:#1A1D29; --ink-2:#39414F;
-  --muted:#64748B; --muted-2:#94A3B8;
-  --line:#E3E8EF; --line-2:#EEF1F6;
-  --bg: #F6F7F9; --panel:#FFFFFF; --rail:#F1F3F6;
-  --ui:'Inter','Outfit',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --amber: var(--uob-orange); --red: var(--uob-red); --green: var(--uob-green);
+  --ink:#1B1B1B; --ink-2:#3C3C3B;
+  --muted:#58595B; --muted-2:#8A8A8C;
+  --line:#E3E3E3; --line-2:#EFEFEF;
+  --bg: #F4F4F4; --panel:#FFFFFF; --rail:#F7F7F7;
+  --ui:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
   background: var(--bg);
   color: var(--ink);
@@ -54,18 +50,13 @@
   color: var(--ink); gap:18px; flex-shrink:0;
   border-bottom: 1px solid var(--line);
   position: relative;
-  box-shadow: 0 1px 0 rgba(110, 43, 107, 0.04);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
 }
-/* BCTU accent strip beneath the bar — purple-to-pink gradient mirroring
-   the four-circle logo. */
+/* Gold rule beneath the bar — the UoB brand's call-to-action line. */
 .home-topbar::after {
   content: ''; position: absolute; left: 0; right: 0; bottom: -3px;
   height: 3px;
-  background: linear-gradient(90deg,
-    var(--bctu-deep)  0%,
-    var(--bctu-mid)  35%,
-    var(--bctu-light) 70%,
-    var(--bctu-pale) 100%);
+  background: var(--uob-gold);
 }
 .home-topbar img { /* the BCTU logo */
   height: 56px !important; width: auto !important;
@@ -166,7 +157,7 @@
   font-variant-numeric: tabular-nums;
 }
 .htab.active .htab-count {
-  background: rgba(46,196,165,.15); color: var(--teal-dk);
+  background: rgba(0,172,169,.15); color: var(--teal-dk);
 }
 .htab-dot {
   width:6px; height:6px; background: var(--red); border-radius:50%;
@@ -371,11 +362,11 @@
   width:6px; height:6px; border-radius:50%; flex-shrink:0;
 }
 .stat-pill.on-track { background: #D1FAE5; color: #065F46; }
-.stat-pill.on-track .stat-pill-dot { background: #10B981; }
+.stat-pill.on-track .stat-pill-dot { background: #3AAA35; }
 .stat-pill.warning  { background: #FEF3C7; color: #92400E; }
-.stat-pill.warning  .stat-pill-dot { background: #F59E0B; }
+.stat-pill.warning  .stat-pill-dot { background: #F07F3C; }
 .stat-pill.at-risk  { background: #FEE2E2; color: #991B1B; }
-.stat-pill.at-risk  .stat-pill-dot { background: #EF4444; }
+.stat-pill.at-risk  .stat-pill-dot { background: #E30513; }
 
 /* ── Trial mark ─────────────────────────────────────────────────────────── */
 .trial-mark2 {
@@ -504,7 +495,7 @@
   font-size:24px; font-weight:300; margin-bottom:4px;
 }
 .add-card:hover .add-card-plus {
-  background: rgba(46,196,165,.12); color: var(--accent);
+  background: rgba(0,172,169,.12); color: var(--accent);
 }
 .add-card-l1 { font-size:13px; font-weight:600; }
 .add-card-l2 { font-size:11.5px; color: var(--muted); }
@@ -556,7 +547,7 @@
 .notif-bell-badge {
   position:absolute; top:2px; right:2px;
   min-width:14px; height:14px; padding:0 3px;
-  border-radius:999px; background:#F43F5E; color:#fff;
+  border-radius:999px; background:#C20019; color:#fff;
   font-size:9px; font-weight:700;
   display:flex; align-items:center; justify-content:center; line-height:1;
 }
@@ -591,7 +582,7 @@ body.home-mode .home-root + * { width:100%; }
 
 /* Extra tokens reused below */
 .home-root {
-  --green-dk: #059669;
+  --green-dk: #007838;
   --amber-dk: #B45309;
   --red-dk:   #991B1B;
   --blue-dk:  #1D4ED8;
@@ -604,7 +595,7 @@ body.home-mode .home-root + * { width:100%; }
 }
 .home-root .pf-kpi {
   background:#fff; border:1px solid var(--line); border-radius:14px;
-  padding:18px; box-shadow:0 1px 3px rgba(110,43,107,.04);
+  padding:18px; box-shadow:0 1px 3px rgba(0,0,0,.04);
   position:relative; overflow:hidden;
 }
 .home-root .pf-kpi::before {
@@ -631,7 +622,7 @@ body.home-mode .home-root + * { width:100%; }
 }
 .home-root .pf-panel {
   background:#fff; border:1px solid var(--line); border-radius:14px;
-  padding:20px; box-shadow:0 1px 3px rgba(110,43,107,.04);
+  padding:20px; box-shadow:0 1px 3px rgba(0,0,0,.04);
   margin-bottom:14px;
 }
 .home-root .pf-panel-head {
@@ -670,11 +661,11 @@ body.home-mode .home-root + * { width:100%; }
   background: linear-gradient(90deg, var(--bctu-deep), var(--bctu-light));
   transition: width .3s;
 }
-.home-root .pf-rec-bar-f.s-on    { background: linear-gradient(90deg, #059669, #10B981); }
-.home-root .pf-rec-bar-f.s-warn  { background: linear-gradient(90deg, #F59E0B, #FCD34D); }
-.home-root .pf-rec-bar-f.s-risk  { background: linear-gradient(90deg, #EF4444, #F87171); }
-.home-root .pf-rec-bar-f.s-setup { background: linear-gradient(90deg, #3B82F6, #93C5FD); }
-.home-root .pf-rec-bar-f.s-closed{ background: linear-gradient(90deg, #A693AF, #C7B6CC); }
+.home-root .pf-rec-bar-f.s-on    { background: linear-gradient(90deg, #007838, #3AAA35); }
+.home-root .pf-rec-bar-f.s-warn  { background: linear-gradient(90deg, #F07F3C, #FCD34D); }
+.home-root .pf-rec-bar-f.s-risk  { background: linear-gradient(90deg, #E30513, #F87171); }
+.home-root .pf-rec-bar-f.s-setup { background: linear-gradient(90deg, #2581C4, #93C5FD); }
+.home-root .pf-rec-bar-f.s-closed{ background: linear-gradient(90deg, #8A8A8C, #CFCFCF); }
 
 .home-root .pf-rec-count {
   font-size:13px; color:var(--ink-2); text-align:right;
@@ -689,7 +680,7 @@ body.home-mode .home-root + * { width:100%; }
 .home-root .pf-rec-pill.s-warn  { background:#FEF3C7; color:var(--amber-dk); }
 .home-root .pf-rec-pill.s-risk  { background:#FEE2E2; color:var(--red-dk);   }
 .home-root .pf-rec-pill.s-setup { background:#DBEAFE; color:var(--blue-dk);  }
-.home-root .pf-rec-pill.s-closed{ background:#F1F5F9; color:#475569;         }
+.home-root .pf-rec-pill.s-closed{ background:#F2F2F2; color:#4A4A4A;         }
 
 /* ── Portfolio: status donut ──────────────────────────────────────────── */
 .home-root .pf-donut-flex {
@@ -757,7 +748,7 @@ body.home-mode .home-root + * { width:100%; }
   background:#fff; border:1px solid var(--line); border-radius:12px;
   padding:12px 14px; display:flex; gap:10px; align-items:center;
   flex-wrap:wrap; margin: 8px 0 14px;
-  box-shadow:0 1px 3px rgba(110,43,107,.04);
+  box-shadow:0 1px 3px rgba(0,0,0,.04);
 }
 .home-root .at-search-wrap {
   position:relative; flex:1; min-width:220px;
@@ -776,7 +767,7 @@ body.home-mode .home-root + * { width:100%; }
 }
 .home-root .at-search-wrap input:focus {
   border-color: var(--bctu-mid);
-  box-shadow:0 0 0 3px rgba(154,74,147,.16);
+  box-shadow:0 0 0 3px rgba(197,154,0,.16);
 }
 .home-root .at-pill-group {
   display:flex; gap:4px; background:var(--bctu-paler);
@@ -789,7 +780,7 @@ body.home-mode .home-root + * { width:100%; }
 }
 .home-root .at-pill.on {
   background:#fff; color:var(--bctu-deep); font-weight:600;
-  box-shadow:0 1px 2px rgba(110,43,107,.10);
+  box-shadow:0 1px 2px rgba(0,0,0,.10);
 }
 .home-root .at-toolbar .shiny-input-container { margin:0; }
 .home-root .at-toolbar select {
@@ -846,13 +837,13 @@ body.home-mode .home-root + * { width:100%; }
 }
 .home-root .at-trial-row:hover {
   transform:translateY(-1px);
-  box-shadow:0 6px 18px rgba(110,43,107,.10);
+  box-shadow:0 6px 18px rgba(0,0,0,.10);
   border-color:var(--bctu-mid);
 }
-.home-root .at-trial-row.s-on     { border-left-color: #10B981; }
-.home-root .at-trial-row.s-warn   { border-left-color: #F59E0B; }
-.home-root .at-trial-row.s-risk   { border-left-color: #EF4444; }
-.home-root .at-trial-row.s-setup  { border-left-color: #3B82F6; }
+.home-root .at-trial-row.s-on     { border-left-color: #3AAA35; }
+.home-root .at-trial-row.s-warn   { border-left-color: #F07F3C; }
+.home-root .at-trial-row.s-risk   { border-left-color: #E30513; }
+.home-root .at-trial-row.s-setup  { border-left-color: #2581C4; }
 .home-root .at-trial-row.s-closed { border-left-color: var(--muted-2); opacity:.78; }
 
 .home-root .at-name { display:flex; flex-direction:column; gap:3px; min-width:0; }
@@ -884,11 +875,11 @@ body.home-mode .home-root + * { width:100%; }
   background: linear-gradient(90deg, var(--bctu-mid), var(--bctu-light));
   transition: width .3s;
 }
-.home-root .at-bar-f.s-on    { background: linear-gradient(90deg, #059669, #10B981); }
-.home-root .at-bar-f.s-warn  { background: linear-gradient(90deg, #F59E0B, #FCD34D); }
-.home-root .at-bar-f.s-risk  { background: linear-gradient(90deg, #EF4444, #F87171); }
-.home-root .at-bar-f.s-setup { background: linear-gradient(90deg, #3B82F6, #93C5FD); }
-.home-root .at-bar-f.s-closed{ background: linear-gradient(90deg, #A693AF, #C7B6CC); }
+.home-root .at-bar-f.s-on    { background: linear-gradient(90deg, #007838, #3AAA35); }
+.home-root .at-bar-f.s-warn  { background: linear-gradient(90deg, #F07F3C, #FCD34D); }
+.home-root .at-bar-f.s-risk  { background: linear-gradient(90deg, #E30513, #F87171); }
+.home-root .at-bar-f.s-setup { background: linear-gradient(90deg, #2581C4, #93C5FD); }
+.home-root .at-bar-f.s-closed{ background: linear-gradient(90deg, #8A8A8C, #CFCFCF); }
 .home-root .at-bar-label {
   font-size:11px; color:var(--muted);
   display:flex; justify-content:space-between;
@@ -906,7 +897,7 @@ body.home-mode .home-root + * { width:100%; }
 }
 .home-root .at-stat-s { font-size:11px; color:var(--muted); margin-top:1px; }
 .home-root .at-stat-s .pos { color: var(--green-dk); font-weight:600; }
-.home-root .at-stat-s .neg { color: #EF4444; font-weight:600; }
+.home-root .at-stat-s .neg { color: #E30513; font-weight:600; }
 
 .home-root .at-meta {
   font-size:12px; color:var(--ink-2); min-width:0; line-height:1.45;
@@ -929,11 +920,11 @@ body.home-mode .home-root + * { width:100%; }
   background: var(--bctu-mid);
 }
 .home-root .at-dot.warm        { color: var(--green-dk); }
-.home-root .at-dot.warm::before{ background: #10B981; }
+.home-root .at-dot.warm::before{ background: #3AAA35; }
 .home-root .at-dot.warm-light  { color: var(--bctu-mid); }
 .home-root .at-dot.warm-light::before { background: var(--bctu-mid); }
 .home-root .at-dot.cool        { color: var(--amber-dk); }
-.home-root .at-dot.cool::before{ background: #F59E0B; }
+.home-root .at-dot.cool::before{ background: #F07F3C; }
 .home-root .at-dot.cold        { color: var(--muted); }
 .home-root .at-dot.cold::before{ background: var(--muted-2); }
 
@@ -948,7 +939,7 @@ body.home-mode .home-root + * { width:100%; }
 .home-root .at-status.s-warn   { background:#FEF3C7; color:var(--amber-dk); }
 .home-root .at-status.s-risk   { background:#FEE2E2; color:var(--red-dk);   }
 .home-root .at-status.s-setup  { background:#DBEAFE; color:var(--blue-dk);  }
-.home-root .at-status.s-closed { background:#F1F5F9; color:#475569;         }
+.home-root .at-status.s-closed { background:#F2F2F2; color:#4A4A4A;         }
 .home-root .at-arrow {
   color: var(--bctu-mid); font-size:16px; transition:transform .12s;
 }

@@ -307,6 +307,37 @@ init_app_state <- function(input, output, session) {
     df
   })
 
+  # ── Trial health (Overview, Data, Sites and Randomisations) ──────────────
+  # One th_build() per data change, shared by every tab so the scores,
+  # worklist and projections always agree. Follows the WP picker.
+  health <- reactive({
+    cfg <- rv$trial_config
+    req(cfg)
+    tryCatch(th_build(redcap_wp(), sites_wp(), cfg,
+                      trial_target = wp_effective_target(cfg, rv$active_wp)),
+             error = function(e) { message("Trial health: ", e$message); NULL })
+  }) %>% bindCache(
+    rv$trial_config$code %||% "", rv$active_wp %||% 0L, Sys.Date(), rv$loaded_file %||% "",
+    nrow(redcap_wp() %||% data.frame()), ncol(redcap_wp() %||% data.frame()),
+    digest::digest(list(sites_wp()$site_name, sites_wp()$site_open_date,
+                        sites_wp()$monthly_target, sites_wp()$status)),
+    digest::digest(rv$trial_config[c("monitoring", "crf_schedule", "redcap_fields",
+                                     "redcap_events", "target_schedule", "cos_type_labels",
+                                     "trial_target", "projection_defaults", "pilot")]))
+
+  # Drill-downs opened from any health widget (funnel, scorecards, CRF grid, worklist)
+  observeEvent(input$th_site_open, {
+    H <- health(); req(H)
+    showModal(modalDialog(th_site_detail(H, input$th_site_open$site),
+                          size = "l", easyClose = TRUE, footer = modalButton("Close")))
+  })
+  observeEvent(input$th_participant_open, {
+    H <- health(); req(H)
+    showModal(modalDialog(th_participant_detail(H, input$th_participant_open$id),
+                          size = "l", easyClose = TRUE, footer = modalButton("Close")))
+  })
+
   list(rv = rv, filtered = filtered,
-       parts_wp = parts_wp, redcap_wp = redcap_wp, sites_wp = sites_wp)
+       parts_wp = parts_wp, redcap_wp = redcap_wp, sites_wp = sites_wp,
+       health = health)
 }

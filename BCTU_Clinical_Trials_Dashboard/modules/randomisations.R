@@ -2,46 +2,44 @@ randomisations_tab_ui <- function() {
   tabPanel("randomisations",
     div(class = "rand-shell",
 
-      # ── KPI headline row ─────────────────────────────────────────
-      uiOutput("rand_kpi_strip"),
+      # ── KPI headline row: volume, recent trend, in / out of hours ─────
+      uiOutput("rand_health_kpis"),
 
-      # ── Charts: monthly bar + cumulative line ────────────────────
-      div(class = "rand-charts",
-        tags$section(class = "tonic-card ov-card",
-          div(class = "ov-card-head",
-              tags$h2("Monthly randomisations")),
-          div(class = "ov-card-body",
-              withSpinner(echarts4rOutput("rand_monthly_chart", height = "280px"),
-                          type = 4, color = col_teal))
-        ),
-        tags$section(class = "tonic-card ov-card",
-          div(class = "ov-card-head",
-              tags$h2("Cumulative randomisations")),
-          div(class = "ov-card-body",
-              withSpinner(echarts4rOutput("rand_cumulative_chart", height = "280px"),
-                          type = 4, color = col_teal))
-        )
-      ),
+      # ── Where recruitment is heading ─────────────────────────────────
+      div(class = "th-section",
+        div(class = "th-section-head",
+          div(tags$h3("Where recruitment is heading"),
+              div(class = "th-sub-t",
+                  "Cumulative randomisations with three projections from recent recruitment, and the likely range from 1,000 simulations. Toggle lines on and off; hover for values."))),
+        uiOutput("rand_trajectory_ui")),
 
-      # ── Per-site randomisation counts (read-only) ────────────────
-      tags$section(class = "tonic-card ov-card",
-        div(class = "ov-card-head",
-            tags$h2("Per-site randomisations"),
-            span(class = "ov-card-tool-note",
-                 "Counts come from the latest REDCap CSV export.")),
-        div(class = "ov-card-body",
-            withSpinner(reactableOutput("rand_table"),
-                        type = 4, color = col_teal))
-      ),
+      # ── When recruitment happens ─────────────────────────────────────
+      div(class = "th-grid-2",
+        div(class = "th-section",
+          div(class = "th-section-head",
+            div(tags$h3("When randomisations happen"),
+                div(class = "th-sub-t",
+                    "Weekday by hour of day. The shaded band is working hours, set in Settings → Recruitment & monitoring."))),
+          uiOutput("rand_punchcard_ui")),
+        div(class = "th-section",
+          div(class = "th-section-head",
+            div(tags$h3("Monthly randomisations"),
+                div(class = "th-sub-t", "Split into in hours, weekday out of hours, and weekends and bank holidays."))),
+          withSpinner(echarts4rOutput("rand_monthly_chart", height = "300px"),
+                      type = 4, color = col_teal))),
 
-      # ── Activity log ────────────────────────────────────────────
-      tags$section(class = "tonic-card ov-card",
-        div(class = "ov-card-head",
-            tags$h2("Activity log")),
-        div(class = "ov-card-body",
-            withSpinner(reactableOutput("log_table"),
-                        type = 4, color = col_teal))
-      )
+      # ── Recruitment by site ──────────────────────────────────────────
+      div(class = "th-section",
+        div(class = "th-section-head",
+          div(tags$h3("Recruitment by site"),
+              div(class = "th-sub-t",
+                  "Pace, timing and gaps for each site. Slow starts, long gaps and quiet spells show where a site may need support."))),
+        withSpinner(reactableOutput("rand_site_patterns"), type = 4, color = col_teal)),
+
+      # ── Activity log ────────────────────────────────────────────────
+      div(class = "th-section",
+        div(class = "th-section-head", div(tags$h3("Activity log"))),
+        withSpinner(reactableOutput("log_table"), type = 4, color = col_teal))
     )
   )
 }

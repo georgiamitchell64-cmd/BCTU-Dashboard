@@ -5,7 +5,7 @@
 # and writes a PNG to the supplied filepath. Returns the filepath invisibly
 # so it can be chained into an Rmd chunk.
 #
-# Styled to match TONIC brand: navy (#1B4F6B) + teal (#2EC4A5), Outfit font
+# Styled to match TONIC brand: navy (#1B1B1B) + teal (#00ACA9), Outfit font
 # if available, sans fallback otherwise.
 
 suppressPackageStartupMessages({
@@ -14,8 +14,8 @@ suppressPackageStartupMessages({
 })
 
 # --- Theme -----------------------------------------------------------------
-tonic_navy <- "#1B4F6B"
-tonic_teal <- "#2EC4A5"
+tonic_navy <- "#1B1B1B"
+tonic_teal <- "#00ACA9"
 tonic_muted <- "#6b7c8d"
 tonic_grid  <- "#e0e8ef"
 
@@ -265,7 +265,7 @@ chart_gantt <- function(rd, filepath,
                add_months(trial_start, 52),  # Oct 2028
                add_months(trial_start, 55),  # Jan 2029
                add_months(trial_start, 56)), # Feb 2029
-    colour = c("#85B7EB", "#1B4F6B", "#2EC4A5", "#FAC775",
+    colour = c("#85B7EB", "#1B1B1B", "#00ACA9", "#FAC775",
                "#97C459", "#F0997B", "#ED93B1"),
     stringsAsFactors = FALSE
   )

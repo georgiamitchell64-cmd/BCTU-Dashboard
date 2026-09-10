@@ -59,12 +59,12 @@ postal_tracking_ui <- function(id) {
       tags$div(class = "pt-legend",
         tags$span(tags$span(class = "pt-leg-dot", style = "background:#e05c3a;"), "Overdue"),
         tags$span(tags$span(class = "pt-leg-dot", style = "background:#f0a500;"), "Due now (within 7 days)"),
-        tags$span(tags$span(class = "pt-leg-dot", style = "background:#1B4F6B;"), "Upcoming (next 14 days)"),
-        tags$span(tags$span(class = "pt-leg-dot", style = "background:#2EC4A5;"), "Sent"),
-        tags$span(tags$span(class = "pt-leg-dot", style = "background:#10B981;"), "Returned"),
-        tags$span(tags$span(class = "pt-leg-dot", style = "background:#6366F1;"), "Transcribed"),
-        tags$span(tags$span(class = "pt-leg-dot", style = "background:#94A3B8;"), "Not sent / Future"),
-        tags$span(tags$span(class = "pt-leg-dot", style = "background:#DC2626;"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#1B1B1B;"), "Upcoming (next 14 days)"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#00ACA9;"), "Sent"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#3AAA35;"), "Returned"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#0057BF;"), "Transcribed"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#8A8A8C;"), "Not sent / Future"),
+        tags$span(tags$span(class = "pt-leg-dot", style = "background:#C20019;"),
                   "Excluded (deceased / withdrawn / lost to follow-up — do not send)")
       )
     ),

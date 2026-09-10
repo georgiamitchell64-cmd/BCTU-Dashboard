@@ -4,6 +4,25 @@ sites_server <- function(input, output, session, state) {
   editing_orig_id  <- reactiveVal(NULL)   # site_id being edited (NULL = adding)
   pending_delete_id <- reactiveVal(NULL)
 
+  # ── Site health (shared th_build via state$health) ──────────────────────
+  output$site_health_ui <- renderUI({
+    H <- state$health()
+    if (is.null(H) || is.null(H$sites) || !nrow(H$sites)) return(NULL)
+    tagList(
+      div(class = "th-section",
+        div(class = "th-section-head",
+          div(tags$h3("Site health"),
+              div(class = "th-sub-t",
+                  "Each site's change-of-status and overdue-CRF rates against its size. A site outside the funnel is unusually high for its size, not just small. Click a site for details."))),
+        th_funnel_widget(H, "th-funnel-sites")),
+      div(class = "th-section",
+        div(class = "th-section-head",
+          div(tags$h3("Site scorecards"),
+              div(class = "th-sub-t",
+                  "Scored on recruitment against target, retention, CRF returns and recent activity. Weights and thresholds are in Settings → Recruitment & monitoring."))),
+        th_site_cards(H)))
+  })
+
   # ── Summary stats tiles ─────────────────────────────────────────────────
   output$sites_summary_stats <- renderUI({
     df <- rv$sites
@@ -23,13 +42,13 @@ sites_server <- function(input, output, session, state) {
           div(class = "sites-stat-l", label))
     }
     div(class = "sites-stats-row",
-        make_stat(nrow(df),      "Total sites", "#1B4F6B"),
-        make_stat(n_recruiting,  "Recruiting",  "#10B981"),
-        make_stat(n_setup,       "In set-up",   "#94A3B8"),
-        make_stat(n_paused,      "Paused",      "#F59E0B"),
-        make_stat(n_closed,      "Closed",      "#64748B"),
-        make_stat(total_rand,    "Randomised",  "#1B4F6B"),
-        if (n_flagged > 0) make_stat(n_flagged, "Incomplete", "#DC2626"))
+        make_stat(nrow(df),      "Total sites", "#1B1B1B"),
+        make_stat(n_recruiting,  "Recruiting",  "#3AAA35"),
+        make_stat(n_setup,       "In set-up",   "#8A8A8C"),
+        make_stat(n_paused,      "Paused",      "#F07F3C"),
+        make_stat(n_closed,      "Closed",      "#58595B"),
+        make_stat(total_rand,    "Randomised",  "#1B1B1B"),
+        if (n_flagged > 0) make_stat(n_flagged, "Incomplete", "#C20019"))
   })
 
   # ── Filtered view (search box + status chips, both wired from sites.R JS) ─
@@ -212,13 +231,13 @@ sites_server <- function(input, output, session, state) {
     nm  <- if (length(idx)) (rv$sites$site_name[idx[1]] %||% id) else id
     pending_delete_id(id)
     showModal(modalDialog(
-      title = div(style = "color:#B91C1C;", HTML("&#x26A0; Delete site?")),
+      title = div(style = "color:#C20019;", HTML("&#x26A0; Delete site?")),
       size = "s", easyClose = TRUE,
       footer = tagList(
         modalButton("Cancel"),
         actionButton("site_delete_confirm", "Yes, delete",
                      class = "btn btn-danger",
-                     style = "background:#DC2626;border-color:#DC2626;font-weight:600;")),
+                     style = "background:#C20019;border-color:#C20019;font-weight:600;")),
       div(style = "font-size:13px;line-height:1.6;",
           HTML(sprintf("Permanently remove <strong>%s</strong>? This can't be undone.",
                        htmltools::htmlEscape(nm))))))
@@ -255,22 +274,22 @@ sites_server <- function(input, output, session, state) {
     if (!require_role(rv, "manager")) return()
     showModal(modalDialog(
       title = div(style = "display:flex;align-items:center;gap:10px;",
-                  span(style = "font-size:18px;color:#1B4F6B;", HTML("&#x1F4CB;")),
+                  span(style = "font-size:18px;color:#1B1B1B;", HTML("&#x1F4CB;")),
                   span("Bulk add sites")),
       size = "l", easyClose = TRUE,
       footer = tagList(
         modalButton("Cancel"),
         actionButton("bulk_add_go", "Add sites",
                      class = "btn btn-primary",
-                     style = "background:#1B4F6B;border-color:#1B4F6B;font-weight:600;")
+                     style = "background:#1B1B1B;border-color:#1B1B1B;font-weight:600;")
       ),
       tabsetPanel(
         id = "bulk_add_mode",
         tabPanel("Paste",
           div(style = "padding:14px 0;",
-              div(style = "font-size:12.5px;color:#475569;line-height:1.7;margin-bottom:10px;",
+              div(style = "font-size:12.5px;color:#4A4A4A;line-height:1.7;margin-bottom:10px;",
                   HTML("One site per line. Extra columns optional, separated by <code>|</code> (pipe):")),
-              tags$pre(style = "background:#F8FAFD;border:1px solid #EEF2F7;padding:10px 12px;border-radius:6px;font-size:11.5px;color:#475569;line-height:1.6;",
+              tags$pre(style = "background:#F8FAFD;border:1px solid #EEF2F7;padding:10px 12px;border-radius:6px;font-size:11.5px;color:#4A4A4A;line-height:1.6;",
                        "Site name | City | Country | Status | Monthly target | Overall target",
                        "\nLeeds General Infirmary | Leeds | United Kingdom | Recruiting | 3 | 60",
                        "\nManchester Royal Infirmary"),
@@ -278,12 +297,12 @@ sites_server <- function(input, output, session, state) {
                             rows = 10, width = "100%"))),
         tabPanel("CSV upload",
           div(style = "padding:14px 0;",
-              div(style = "font-size:12.5px;color:#475569;line-height:1.7;margin-bottom:10px;",
+              div(style = "font-size:12.5px;color:#4A4A4A;line-height:1.7;margin-bottom:10px;",
                   HTML("CSV with at least a <code>site_name</code> column. Optional: <code>city</code>, <code>region</code>, <code>country</code>, <code>status</code>, <code>monthly_target</code>, <code>target</code>.")),
               fileInput("bulk_csv", label = NULL, accept = ".csv", buttonLabel = "Choose CSV"))),
         tabPanel("Defaults",
           div(style = "padding:14px 0;",
-              div(style = "font-size:12.5px;color:#475569;margin-bottom:14px;",
+              div(style = "font-size:12.5px;color:#4A4A4A;margin-bottom:14px;",
                   "Applied to every site that doesn't specify these explicitly."),
               div(style = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;",
                   selectInput("bulk_def_status", "Default status",
@@ -338,7 +357,7 @@ sites_server <- function(input, output, session, state) {
     parsed <- bulk_parsed()
     existing <- rv$sites$site_name %||% character(0)
     if (!nrow(parsed))
-      return(div(style = "font-size:12px;color:#94A3B8;font-style:italic;padding:8px 0;",
+      return(div(style = "font-size:12px;color:#8A8A8C;font-style:italic;padding:8px 0;",
                  "Paste a site list or upload a CSV — preview will appear here."))
     valid  <- !is.na(parsed$site_name) & nzchar(trimws(parsed$site_name))
     parsed <- parsed[valid, , drop = FALSE]
@@ -354,9 +373,9 @@ sites_server <- function(input, output, session, state) {
             lapply(seq_len(nrow(parsed)), function(i) {
               r <- parsed[i, ]
               div(style = sprintf("padding:5px 0;border-top:1px solid #EEF2F7;color:%s;",
-                                  if (dups[i]) "#94A3B8" else "#0F172A"),
+                                  if (dups[i]) "#8A8A8C" else "#1B1B1B"),
                   span(style = "font-weight:500;", r$site_name),
-                  if (!is.na(r$city) && nzchar(r$city)) span(style = "color:#64748B;", sprintf(" · %s", r$city)),
+                  if (!is.na(r$city) && nzchar(r$city)) span(style = "color:#58595B;", sprintf(" · %s", r$city)),
                   if (dups[i]) span(style = "color:#92400E;float:right;", "already exists"))
             })))
   })
