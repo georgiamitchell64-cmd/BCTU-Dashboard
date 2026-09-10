@@ -34,7 +34,22 @@ sites_server <- function(input, output, session, state) {
     total_rand   <- sum(df$randomised, na.rm = TRUE)
     src          <- ifelse(is.na(df$source) | df$source == "", "auto", df$source)
     n_manual     <- sum(src == "manual")
-    n_flagged    <- sum(is.na(df$city) | is.na(df$site_open_date), na.rm = TRUE)
+    # A missing open date is only a data gap for a site that has actually
+    # opened. Identified and Set-up sites have not opened yet, so leaving the
+    # date blank there is expected and must not raise an "Incomplete" flag.
+    opened_statuses <- c("Open", "Recruiting", "Paused", "Closed")
+    missing_open    <- is.na(df$site_open_date) & df$status %in% opened_statuses
+    n_flagged       <- sum(is.na(df$city) | missing_open, na.rm = TRUE)
+
+    # Actual monthly average recruits per site — each site's randomisations over
+    # the months it has been open, averaged across the sites that have an open
+    # date recorded. A site without one has no denominator, so it is left out
+    # rather than counted as zero.
+    per_site_rates <- .actual_monthly_per_site(df$randomised, df$site_open_date)
+    avg_per_site   <- if (any(!is.na(per_site_rates)))
+                        mean(per_site_rates, na.rm = TRUE) else NA_real_
+    avg_label      <- if (is.na(avg_per_site)) "—" else
+                        formatC(avg_per_site, format = "f", digits = 1)
 
     make_stat <- function(value, label, color) {
       div(class = "sites-stat",
@@ -47,6 +62,7 @@ sites_server <- function(input, output, session, state) {
         make_stat(n_setup,       "In set-up",   "#8A8A8C"),
         make_stat(n_paused,      "Paused",      "#F07F3C"),
         make_stat(n_closed,      "Closed",      "#58595B"),
+        make_stat(avg_label,     "Avg recruits / site / month", "#00788E"),
         make_stat(total_rand, recruit_term("Past", rv$trial_config), "#1B1B1B"),
         if (n_flagged > 0) make_stat(n_flagged, "Incomplete", "#C20019"))
   })
@@ -175,11 +191,26 @@ sites_server <- function(input, output, session, state) {
 
     city    <- trimws(input$se_city %||% "")
     country <- trimws(input$se_country %||% "")
-    ll <- tryCatch(geocode_location(if (nzchar(city)) city else name, country),
-                   error = function(e) list(lat = NA_real_, lon = NA_real_))
+    # Geocode the hospital first, and only fall back to the city. Geocoding the
+    # city gave every site in a town the identical centroid, so their map
+    # markers landed exactly on top of one another. .uk_hospital_coords holds
+    # per-hospital coordinates, so the site name resolves to the actual site.
+    ll <- tryCatch({
+      by_site <- if (nzchar(name)) hospital_latlon(name) else
+                   list(lat = NA_real_, lon = NA_real_)
+      if (!is.na(by_site$lat)) by_site
+      else geocode_location(if (nzchar(city)) city else name, country)
+    }, error = function(e) list(lat = NA_real_, lon = NA_real_))
+    # Clearing a dateInput sends a zero-length value, not NULL or "". The old
+    # guard ran that through nzchar(), producing logical(0), and `if` on a
+    # zero-length condition errors — which crashed the save when either date
+    # was left blank. Treat anything empty, NA or unparseable as "no date".
     as_d <- function(x) {
-      if (is.null(x) || !nzchar(as.character(x))) return(as.Date(NA))
-      tryCatch(as.Date(x), error = function(e) as.Date(NA))
+      if (is.null(x) || length(x) == 0) return(as.Date(NA))
+      x <- x[1]
+      if (is.na(x) || !nzchar(as.character(x))) return(as.Date(NA))
+      d <- tryCatch(suppressWarnings(as.Date(x)), error = function(e) as.Date(NA))
+      if (length(d) == 0) as.Date(NA) else d[1]
     }
     src <- if (is_new) "manual" else {
       sidx <- which(!is.na(rv$sites$site_id) & rv$sites$site_id == orig)

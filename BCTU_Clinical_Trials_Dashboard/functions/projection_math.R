@@ -11,6 +11,13 @@
 #     → list with rate_pessimistic/central/optimistic derived from actuals
 #       when ≥3 months of randomisation data exist; NULL otherwise.
 #
+#   .actual_monthly_per_site(randomised, open_date, asof)   [now in prepare_report_data.R]
+#     → numeric vector: each site's achieved recruits per month, randomisations
+#       over the months it has been open. Backs the Sites tab's
+#       "Avg recruits / site / month" tile and the report's "Actual / mo" column.
+#
+#   .iso_date_chr(x) → dates normalised to "YYYY-MM-DD" character.   [now in prepare_report_data.R]
+#
 # Model:
 #   Starting from "now" (first of this month), we project forward
 #   month-by-month. Each month:

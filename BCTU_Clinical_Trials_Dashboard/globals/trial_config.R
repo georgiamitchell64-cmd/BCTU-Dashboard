@@ -114,6 +114,35 @@ evt <- function(name, default = name, cfg = .TRIAL_CFG, all = FALSE) {
 #' Get the active trial config (or NULL if none selected yet).
 current_trial_config <- function() .TRIAL_CFG
 
+# App-level fallbacks for per-site recruitment targets, used only when neither
+# the site record nor the trial config supplies a value. See site_defaults().
+.SITE_TARGET_FALLBACK  <- 42L
+.SITE_MONTHLY_FALLBACK <- 2L
+
+#' Per-site recruitment defaults for a trial.
+#'
+#' A site's overall and monthly targets belong to the site and are edited on
+#' the Sites tab. These are only the values used when a site has none recorded
+#' — a new site created from a REDCap data access group, or a row imported from
+#' a pipeline sheet without target columns. They were previously written as
+#' bare 42 / 2 literals in five places across the app; declaring them here
+#' keeps the fallback in one spot and lets a trial override it in config.R via
+#'
+#'   site_defaults = list(target = 60L, monthly_target = 3L)
+#'
+#' Returns a list(target, monthly_target) of integers.
+site_defaults <- function(cfg = .TRIAL_CFG) {
+  sd <- if (is.null(cfg)) NULL else cfg$site_defaults
+  as_int <- function(x, fallback) {
+    v <- suppressWarnings(as.integer(x %||% NA))
+    if (length(v) != 1 || is.na(v) || v < 0) fallback else v
+  }
+  list(
+    target         = as_int(sd$target,         .SITE_TARGET_FALLBACK),
+    monthly_target = as_int(sd$monthly_target, .SITE_MONTHLY_FALLBACK)
+  )
+}
+
 #' Effective recruitment target for the current dashboard view.
 #' Returns the per-work-package target when a WP is active and the config
 #' defines `work_package_targets` (an integer vector aligned to
