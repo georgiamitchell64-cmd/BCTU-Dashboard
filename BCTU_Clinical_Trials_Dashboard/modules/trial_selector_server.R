@@ -2336,6 +2336,7 @@ trial_selector_server <- function(input, output, session, state) {
     if (isTRUE(input$wiz_feat_returns))     features_on <- c(features_on, "Return rates")
     if (isTRUE(input$wiz_feat_pilot))       features_on <- c(features_on, "Pilot criteria")
     if (isTRUE(input$wiz_feat_consort))     features_on <- c(features_on, "CONSORT")
+    if (isTRUE(input$wiz_feat_replay))      features_on <- c(features_on, "Trial replay")
     if (isTRUE(input$wiz_feat_baseline))    features_on <- c(features_on, "Baseline table")
     if (length(features_on) == 0) features_on <- "None"
 
@@ -2667,6 +2668,7 @@ trial_config <- list(
     pilot_criteria           = %s,
     consort_flow             = %s,
     baseline_table           = %s,
+    trial_replay             = %s,
     participant_questionnaires = %s
   )
 )
@@ -2699,6 +2701,7 @@ trial_config <- list(
       if (isTRUE(input$wiz_feat_pilot))          "TRUE" else "FALSE",
       if (isTRUE(input$wiz_feat_consort))        "TRUE" else "FALSE",
       if (isTRUE(input$wiz_feat_baseline))       "TRUE" else "FALSE",
+      if (isTRUE(input$wiz_feat_replay))         "TRUE" else "FALSE",
       if (isTRUE(input$wiz_feat_questionnaires %||% TRUE)) "TRUE" else "FALSE"
     )
 

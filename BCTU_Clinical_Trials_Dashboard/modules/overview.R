@@ -161,6 +161,9 @@ overview_tab_ui <- function() {
             textOutput("proj_note", inline = TRUE))
       ),
 
+      # ── Trial replay: living CONSORT, site race, pace (feature flag) ──
+      uiOutput("trial_replay_ui"),
+
       # ── CONSORT flow (only when the trial enables it) ───────────────
       uiOutput("consort_card_ui"),
 

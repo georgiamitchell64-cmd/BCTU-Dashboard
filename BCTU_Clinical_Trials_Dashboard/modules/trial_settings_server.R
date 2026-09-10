@@ -487,6 +487,7 @@ trial_settings_server <- function(input, output, session, state) {
     updateCheckboxInput(session, "set_feat_returns",        value = isTRUE(feat$return_rates))
     updateCheckboxInput(session, "set_feat_consort",        value = isTRUE(feat$consort_flow))
     updateCheckboxInput(session, "set_feat_baseline",       value = isTRUE(feat$baseline_table))
+    updateCheckboxInput(session, "set_feat_replay",         value = isTRUE(feat$trial_replay))
     # Default questionnaires flag to TRUE for legacy configs that pre-date this toggle
     updateCheckboxInput(session, "set_feat_questionnaires",
                         value = isTRUE(feat$participant_questionnaires %||% TRUE))
@@ -610,6 +611,7 @@ trial_settings_server <- function(input, output, session, state) {
       pilot_criteria             = isTRUE(input$set_feat_pilot),
       consort_flow               = isTRUE(input$set_feat_consort),
       baseline_table             = isTRUE(input$set_feat_baseline),
+      trial_replay               = isTRUE(input$set_feat_replay),
       participant_questionnaires = isTRUE(input$set_feat_questionnaires)
     )
 

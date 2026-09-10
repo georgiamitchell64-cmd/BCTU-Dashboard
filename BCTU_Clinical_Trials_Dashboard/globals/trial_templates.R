@@ -28,7 +28,8 @@ trial_templates <- list(
 
     features = list(
       postal_tracking = TRUE, return_rates = TRUE, projections = TRUE,
-      pilot_criteria = TRUE, consort_flow = TRUE, baseline_table = TRUE
+      pilot_criteria = TRUE, consort_flow = TRUE, baseline_table = TRUE,
+      trial_replay = TRUE
     ),
 
     help_text = "Based on the TONIC trial structure. Includes nutrition, morbidity scoring (NELA), and patient-reported outcomes at discharge, 30 days, and 90 days."
@@ -55,7 +56,8 @@ trial_templates <- list(
 
     features = list(
       postal_tracking = FALSE, return_rates = TRUE, projections = TRUE,
-      pilot_criteria = FALSE, consort_flow = TRUE, baseline_table = TRUE
+      pilot_criteria = FALSE, consort_flow = TRUE, baseline_table = TRUE,
+      trial_replay = TRUE
     ),
 
     help_text = "For planned procedures with pre-operative baseline assessment. Follow-up typically at 6 weeks and 6 months rather than 30/90 days."
@@ -83,7 +85,8 @@ trial_templates <- list(
 
     features = list(
       postal_tracking = TRUE, return_rates = TRUE, projections = TRUE,
-      pilot_criteria = FALSE, consort_flow = TRUE, baseline_table = TRUE
+      pilot_criteria = FALSE, consort_flow = TRUE, baseline_table = TRUE,
+      trial_replay = TRUE
     ),
 
     help_text = "Includes colorectal-specific instruments (LARS, Wexner) alongside general surgical outcomes."
@@ -106,7 +109,8 @@ trial_templates <- list(
 
     features = list(
       postal_tracking = FALSE, return_rates = FALSE, projections = TRUE,
-      pilot_criteria = FALSE, consort_flow = FALSE, baseline_table = FALSE
+      pilot_criteria = FALSE, consort_flow = FALSE, baseline_table = FALSE,
+      trial_replay = FALSE
     ),
 
     help_text = "Start here if you're unsure. You can enable features later in Trial Settings."

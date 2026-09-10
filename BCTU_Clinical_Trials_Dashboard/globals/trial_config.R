@@ -318,7 +318,8 @@ trial_config <- list(
     projections      = TRUE,      # Enable recruitment projections
     pilot_criteria   = FALSE,     # Enable pilot progression criteria
     consort_flow     = FALSE,     # Enable CONSORT flow diagram
-    baseline_table   = FALSE      # Enable baseline characteristics table
+    baseline_table   = FALSE,     # Enable baseline characteristics table
+    trial_replay     = FALSE      # Enable animated trial replay on Overview
   )
 )
 '

@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TONIC Trial Replay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#1B4F6B; --navy-dk:#143D54; --teal:#2EC4A5; --teal-dk:#0FA88E; --teal-lt:#E0F7F3;
+    --amber:#F59E0B; --amber-dk:#B45309; --red:#EF4444; --blue:#3B82F6;
+    --bg:#EEF3F8; --card:#fff; --border:#DDE5EE; --muted:#64748B; --text:#1E293B;
+    --font:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:var(--font);color:var(--text);font-size:13px}
+  .shell{max-width:1280px;margin:0 auto;padding:24px}
+  header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+  h1{font-size:22px;color:var(--navy);margin:0 0 4px;font-weight:700;letter-spacing:-.3px}
+  .lead{color:var(--muted);max-width:760px;line-height:1.55}
+  .badge{font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;white-space:nowrap}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(27,79,107,.05)}
+  .card h2{font-size:14px;font-weight:700;color:var(--navy);margin:0}
+  .card .sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;max-width:720px}
+  .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+
+  /* Timeline */
+  .timeline{display:flex;align-items:center;gap:18px;position:sticky;top:12px;z-index:5;flex-wrap:wrap}
+  .play{width:44px;height:44px;border-radius:50%;border:none;background:var(--navy);color:#fff;display:grid;place-items:center;cursor:pointer;flex:none;transition:background .15s}
+  .play:hover{background:var(--navy-dk)}
+  .play:focus-visible,.pill-btn:focus-visible,.linkbtn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+  .now{min-width:150px}
+  .now-date{font-size:20px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+  .now-sub{font-size:11.5px;color:var(--muted)}
+  .scrub{position:relative;flex:1;min-width:260px;padding-top:24px}
+  .spark{position:absolute;left:9px;right:9px;top:0;height:22px;display:flex;align-items:flex-end;gap:2px}
+  .spark i{flex:1;background:#CBD5E1;border-radius:2px 2px 0 0;transition:background .2s}
+  .spark i.on{background:var(--teal)}
+  input[type=range]{width:100%;accent-color:var(--navy);margin:4px 0 0;cursor:pointer}
+  .mlabels{position:relative;height:14px;margin:0 9px}
+  .mlabels span{position:absolute;transform:translateX(-50%);font-size:10.5px;color:var(--muted)}
+  .pill-group{display:flex;gap:4px;background:var(--bg);padding:3px;border-radius:8px}
+  .pill-btn{padding:6px 11px;font-size:11.5px;font-weight:500;color:var(--muted);background:transparent;border:none;border-radius:6px;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .pill-btn.on{background:#fff;color:var(--navy);font-weight:600;box-shadow:0 1px 2px rgba(27,79,107,.12)}
+  .linkbtn{padding:0;margin-top:3px;border:none;background:none;color:var(--teal-dk);font:600 11.5px var(--font);cursor:pointer}
+  .linkbtn:hover{text-decoration:underline}
+
+  /* KPIs */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:14px 0}
+  .kpi{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+  .kpi .l{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+  .kpi .v{font-size:24px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;margin-top:2px}
+  .kpi .v small{font-size:13px;color:var(--muted);font-weight:500}
+  .kpi .s{font-size:11.5px;color:var(--muted)}
+  .kpi .bar{height:4px;background:var(--bg);border-radius:3px;margin:6px 0 5px;overflow:hidden}
+  .kpi .bar i{display:block;height:100%;background:var(--teal);border-radius:3px;transition:width .3s}
+  .down{color:var(--amber-dk);font-weight:600}
+  .up{color:var(--teal-dk);font-weight:600}
+
+  /* Living CONSORT */
+  .pipe-wrap{position:relative}
+  #pipe{display:block;width:100%}
+  .tip{position:absolute;left:0;top:0;pointer-events:none;background:var(--navy-dk);color:#fff;border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.55;box-shadow:0 8px 24px rgba(20,61,84,.25);min-width:220px;opacity:0;transition:opacity .12s;z-index:10}
+  .tip.show{opacity:1}
+  .tip b{font-size:13px}
+  .tip .k{color:#9FB6C4;display:inline-block;width:82px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .ld{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .ld.ring{background:var(--navy);box-shadow:0 0 0 1.5px #fff,0 0 0 3px var(--amber)}
+  .ld.pulse{border:1.5px solid var(--teal);width:13px;height:13px}
+
+  /* Race */
+  .grid2{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;margin-top:14px}
+  .stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+  @media (max-width:900px){.grid2{grid-template-columns:1fr}}
+  .race{position:relative}
+  .rrow{position:absolute;left:0;right:0;top:0;height:28px;display:grid;grid-template-columns:118px 1fr 70px;align-items:center;gap:10px;transition:transform .6s cubic-bezier(.2,.8,.2,1),opacity .3s}
+  .rname{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rname i{width:8px;height:8px;border-radius:50%;flex:none}
+  .rtrack{position:relative;height:16px;background:#F1F5F9;border-radius:5px}
+  .rfill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--teal);transition:width .35s ease,background-color .3s}
+  .rexp{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--navy);opacity:.6;border-radius:1px;transition:left .35s ease}
+  .rval{font-size:13px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+  .rrow.closed{opacity:.45}
+  .rrow.closed .rval{font-size:11px;font-weight:500;color:var(--muted)}
+  .rrow.dim{opacity:.25}
+  .race-key{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:14px}
+  .race-key span{display:flex;align-items:center;gap:6px}
+  .race-key i{display:inline-block;width:14px;height:8px;border-radius:3px}
+
+  /* Pace + ticker */
+  .delta{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:20px;white-space:nowrap}
+  .delta.behind{background:#FEF3C7;color:#92400E}
+  .delta.ahead{background:var(--teal-lt);color:#0B7A67}
+  #pace .ax{font-size:10.5px;fill:#94A3B8;font-family:var(--font)}
+  .ticker{list-style:none;margin:0;padding:0}
+  .ticker li{display:grid;grid-template-columns:10px 50px 1fr;gap:8px;align-items:baseline;padding:7px 4px;border-top:1px solid #EEF2F6;font-size:12.5px;border-radius:6px}
+  .ticker li:first-child{border-top:none}
+  .ticker li.new{animation:tin .8s ease}
+  @keyframes tin{from{background:var(--teal-lt)}to{background:transparent}}
+  .tdot{width:8px;height:8px;border-radius:50%}
+  .tdate{color:var(--muted);font-variant-numeric:tabular-nums;font-size:11.5px}
+  .ticker .empty{color:var(--muted);display:block}
+  .foot{color:var(--muted);font-size:11.5px;line-height:1.6;margin:18px 2px 0}
+  code{font-size:11px;background:#fff;border:1px solid var(--border);border-radius:4px;padding:1px 4px}
+  @media (prefers-reduced-motion: reduce){.rrow,.rfill,.rexp,.kpi .bar i{transition:none}.ticker li.new{animation:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div>
+      <h1>TONIC trial replay</h1>
+      <div class="lead">A preview of the Trial replay card on the dashboard's Overview tab. It opens on today; press play to watch TONIC unfold day by day. Participants move through the CONSORT pathway, sites overtake each other in the recruitment race, and recruitment is tracked against the protocol target schedule. Drag the timeline to jump to any date.</div>
+    </div>
+    <span class="badge">Synthetic data · prototype</span>
+  </header>
+
+  <section class="card timeline" aria-label="Timeline controls">
+    <button id="play" class="play" aria-label="Play"></button>
+    <div class="now"><div class="now-date" id="nowDate"></div><div class="now-sub" id="nowSub"></div><button class="linkbtn" id="today">Jump to today</button></div>
+    <div class="scrub">
+      <div class="spark" id="spark" aria-hidden="true"></div>
+      <input type="range" id="scrub" min="0" step="0.1" aria-label="Replay date">
+      <div class="mlabels" id="mlabels" aria-hidden="true"></div>
+    </div>
+    <div class="pill-group" id="speed" role="group" aria-label="Playback speed">
+      <button class="pill-btn" data-s="7">1 wk/s</button>
+      <button class="pill-btn on" data-s="14">2 wk/s</button>
+      <button class="pill-btn" data-s="30">1 mo/s</button>
+    </div>
+  </section>
+
+  <section class="kpis" aria-live="polite">
+    <div class="kpi"><div class="l">Randomised</div><div class="v" id="kN">0</div><div class="bar"><i id="kNbar" style="width:0"></i></div><div class="s" id="kNs"></div></div>
+    <div class="kpi"><div class="l">Internal pilot</div><div class="v" id="kP">0</div><div class="bar"><i id="kPbar" style="width:0"></i></div><div class="s" id="kPs"></div></div>
+    <div class="kpi"><div class="l">Sites recruiting</div><div class="v" id="kS">0</div><div class="s">of 24 planned sites</div></div>
+    <div class="kpi"><div class="l">In active follow-up</div><div class="v" id="kF">0</div><div class="s">awaiting surgery → Day 90</div></div>
+    <div class="kpi"><div class="l">Reached Day 90</div><div class="v" id="kD">0</div><div class="s" id="kDs"></div></div>
+    <div class="kpi"><div class="l">Discontinued</div><div class="v" id="kX">0</div><div class="s" id="kXs"></div></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>Living CONSORT</h2>
+        <div class="sub">Each dot is one participant. The big numbers are cumulative, as in a CONSORT diagram. The dots show where each participant is right now. Hover over a dot to see that participant's pathway.</div>
+      </div>
+      <div class="pill-group" id="colourBy" role="group" aria-label="Dot colour">
+        <button class="pill-btn on" data-c="status">Colour by status</button>
+        <button class="pill-btn" data-c="site">Colour by site</button>
+      </div>
+    </div>
+    <div class="pipe-wrap"><canvas id="pipe" role="img" aria-label="Participant flow"></canvas><div class="tip" id="tip"></div></div>
+    <div class="legend">
+      <span><i class="ld" style="background:var(--navy)"></i>Participant</span>
+      <span><i class="ld" style="background:var(--teal-dk)"></i>Day 90 complete</span>
+      <span><i class="ld ring"></i>Part withdrawal (still in some follow-up)</span>
+      <span><i class="ld pulse"></i>Ring = something just happened</span>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>Site recruitment race</h2>
+          <div class="sub">Sites re-rank as they overtake each other. Hover over a site to highlight its participants in the Living CONSORT above.</div>
+        </div>
+      </div>
+      <div id="race" class="race"></div>
+      <div class="race-key">
+        <span><i style="background:var(--teal)"></i>On pace</span>
+        <span><i style="background:var(--amber)"></i>Behind expected</span>
+        <span><i style="width:2px;height:12px;background:var(--navy);opacity:.6"></i>Expected at 2 per month since opening</span>
+      </div>
+    </section>
+    <div class="stack">
+      <section class="card">
+        <div class="card-head">
+          <div><h2>Pace vs target</h2><div class="sub">Cumulative randomisations against the target schedule in <code>config.R</code></div></div>
+          <span class="delta" id="delta"></span>
+        </div>
+        <div id="pace"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>What just happened</h2><div class="sub">Latest events up to the replay date</div></div></div>
+        <ul class="ticker" id="ticker"></ul>
+      </section>
+    </div>
+  </div>
+
+  <p class="foot">Everything here comes from fields TONIC already exports: <code>rand_dttm_s</code>, <code>site_name</code>, <code>iop_op_end_dt</code>, <code>dis_discharge_day</code>, <code>cos_type</code> and <code>cos_dt</code>, plus <code>target_schedule</code> and <code>trial_target</code> from <code>trials/tonic/config.R</code>. Day 30 and Day 90 are counted from the operation date, so they show time in follow-up rather than form returns. All participants, sites, rates and dates on this page are synthetic.</p>
+</div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+
+// ── Seeded synthetic data (same every load) ─────────────────────────────────
+function mulberry32(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R = mulberry32(898);
+const gauss = () => { let u = 0; while (!u) u = R(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * R()); };
+
+const DAY = 864e5, START = Date.UTC(2026, 2, 1), END = Math.round((Date.UTC(2026, 8, 10) - START) / DAY);
+const dayOf = s => (Date.parse(s + 'T00:00:00Z') - START) / DAY;
+const fmt = (d, y) => new Date(START + d * DAY).toLocaleDateString('en-GB',
+  y ? { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' } : { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const TRIAL_TARGET = 898, PILOT_TARGET = 60, PILOT_SITES = 6;
+const TARGET = [['2026-03-01',0],['2026-04-01',4],['2026-05-01',12],['2026-06-01',24],['2026-07-01',36],
+                ['2026-08-01',48],['2026-09-01',60],['2026-10-01',76]].map(([d, v]) => [dayOf(d), v]);
+const targetAt = t => {
+  for (let i = 1; i < TARGET.length; i++) {
+    const [a, va] = TARGET[i - 1], [b, vb] = TARGET[i];
+    if (t <= b) return va + (vb - va) * (t - a) / (b - a);
+  }
+  return TARGET[TARGET.length - 1][1];
+};
+const MONTHS = ['Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'].map((m, i) => [dayOf(`2026-${String(i + 3).padStart(2, '0')}-01`), m]);
+
+const SITES = [
+  ['Birmingham',  '2026-03-02', 2.6, '#1B4F6B'],
+  ['Leeds',       '2026-03-16', 2.2, '#2EC4A5'],
+  ['Nottingham',  '2026-04-06', 1.9, '#F59E0B'],
+  ['Bristol',     '2026-04-20', 2.3, '#7C3AED'],
+  ['Newcastle',   '2026-05-11', 1.4, '#3B82F6'],
+  ['Southampton', '2026-06-01', 2.0, '#DB2777'],
+  ['Sheffield',   '2026-07-06', 1.3, '#65A30D'],
+  ['Oxford',      '2026-08-10', 1.6, '#0891B2']
+].map(([name, open, rate, col]) => ({ name, openD: dayOf(open), rate, col, n: 0 }));
+
+const STAGES = [
+  { k: 'Randomised',       short: 'Randomised', now: 'awaiting surgery',    status: 'Awaiting surgery' },
+  { k: 'Received surgery', short: 'Surgery',    now: 'in hospital',         status: 'In hospital after surgery' },
+  { k: 'Discharged',       short: 'Discharged', now: 'before Day 30',       status: 'Discharged, before Day 30' },
+  { k: 'Reached Day 30',   short: 'Day 30',     now: 'in Day 30–90 window', status: 'Between Day 30 and Day 90' },
+  { k: 'Reached Day 90',   short: 'Day 90',     now: 'follow-up complete',  status: 'Reached Day 90' }
+];
+// Labels match cos_type_labels in trials/tonic/config.R
+const EXITS = [
+  { k: 'death',    label: 'Death',               col: '#475569', verb: 'death notified' },
+  { k: 'noop',     label: 'No operation',        col: '#F59E0B', verb: 'did not have the index operation' },
+  { k: 'withdrew', label: 'Complete withdrawal', col: '#EF4444', verb: 'withdrew completely' },
+  { k: 'ltfu',     label: 'Lost to follow-up',   col: '#3B82F6', verb: 'lost to follow-up' }
+];
+const EXI = { death: 0, noop: 1, withdrew: 2, ltfu: 3 };
+
+const P = [];
+for (const s of SITES)
+  for (let d = Math.ceil(s.openD); d <= END; d++) {
+    const ramp = Math.min(1, 0.35 + (d - s.openD) / 70);
+    if (R() < s.rate / 30.44 * ramp) P.push({ site: s, rand: d + R() * 0.9 });
+  }
+P.sort((a, b) => a.rand - b.rand);
+P.forEach((p, i) => {
+  p.id = 'TON-' + String(i + 1).padStart(4, '0');
+  const r = R();
+  if (r < 0.03) { p.op = p.dis = p.d30 = p.d90 = Infinity; p.exit = { type: 'noop', at: p.rand + 1 + R() * 3 }; return; }
+  p.op  = p.rand + (R() < 0.7 ? 0.3 : 1.2);
+  p.dis = p.op + Math.min(45, Math.max(4, 10 * Math.exp(0.45 * gauss())));
+  p.d30 = p.op + 30;
+  p.d90 = p.op + 90;
+  if (r < 0.10)      p.exit = { type: 'death', at: R() < 0.6 ? p.op + 2 + R() * (p.dis - p.op - 2) : p.dis + R() * (p.d90 - p.dis) };
+  else if (r < 0.12) p.exit = { type: 'withdrew', at: p.rand + 5 + R() * 75 };
+  else if (r < 0.15) p.exit = { type: 'ltfu', at: p.op + 40 + R() * 45 };
+  else if (R() < 0.04) p.part = p.rand + 10 + R() * 60;
+});
+
+const EV = [];
+SITES.forEach(s => EV.push({ t: s.openD, col: '#7C3AED', txt: `<b>${s.name}</b> opened to recruitment` }));
+P.forEach((p, i) => {
+  EV.push({ t: p.rand, col: '#2EC4A5', txt: `<b>${p.id}</b> randomised at ${p.site.name}` });
+  if ([10, 25, 50].includes(i + 1)) EV.push({ t: p.rand + 1e-4, col: '#1B4F6B', txt: `Milestone: <b>${i + 1} participants</b> randomised` });
+  if (i + 1 === PILOT_TARGET) EV.push({ t: p.rand + 1e-4, col: '#1B4F6B', txt: `Milestone: <b>60th participant</b>, hitting the internal pilot target` });
+  if (p.exit) { const e = EXITS[EXI[p.exit.type]]; EV.push({ t: p.exit.at, col: e.col, txt: `<b>${p.id}</b> ${e.verb}` }); }
+  else EV.push({ t: p.d90, col: '#0FA88E', txt: `<b>${p.id}</b> reached Day 90` });
+  if (p.part) EV.push({ t: p.part, col: '#F59E0B', txt: `<b>${p.id}</b> part withdrawal, still in some follow-up` });
+});
+EV.sort((a, b) => a.t - b.t);
+
+// ── State ───────────────────────────────────────────────────────────────────
+let t = END, playing = false, speed = 14, colourBy = 'status', hl = null, hover = null;
+let lastDay = -1, lastEv = -1, last = performance.now();
+let groups = [], lanes = [], reached = [], nNow = 0;
+
+function stageAt(p, t) {
+  if (p.rand > t) return -1;
+  if (p.exit && p.exit.at <= t) return 10 + EXI[p.exit.type];
+  if (t < p.op) return 0;
+  if (t < p.dis) return 1;
+  if (t < p.d30) return 2;
+  if (t < p.d90) return 3;
+  return 4;
+}
+
+// ── Canvas layout ───────────────────────────────────────────────────────────
+const cv = $('#pipe'), ctx = cv.getContext('2d'), wrap = $('.pipe-wrap'), tip = $('#tip');
+const F = "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif", GAP = 28, H = 430;
+let W = 0, L = {};
+function layout() {
+  W = wrap.clientWidth;
+  const d = devicePixelRatio || 1;
+  cv.width = W * d; cv.height = H * d; cv.style.height = H + 'px';
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  const laneH = 108, boxH = H - laneH - 22, bw = (W - GAP * 4) / 5;
+  L.boxes = STAGES.map((_, i) => ({ x: i * (bw + GAP), y: 0, w: bw, h: boxH }));
+  L.lane = { x: 0, y: boxH + 22, w: W, h: laneH };
+  const lx = 140, sw = (W - lx) / 4;
+  L.sub = EXITS.map((_, i) => ({ x: lx + i * sw, y: L.lane.y, w: sw, h: laneH }));
+}
+
+function place(list, area, top, padX) {
+  const aw = area.w - padX * 2, ah = area.h - top - 10;
+  let S = 13, cols = Math.max(1, Math.floor(aw / S));
+  if (Math.ceil(list.length / cols) * S > ah) {
+    S = Math.max(6, Math.floor(Math.sqrt(aw * ah / list.length)));
+    cols = Math.max(1, Math.floor(aw / S));
+  }
+  list.forEach((p, i) => {
+    p.tx = area.x + padX + S / 2 + (i % cols) * S;
+    p.ty = area.y + top + S / 2 + Math.floor(i / cols) * S;
+    p.r = Math.min(4.6, S * 0.36);
+  });
+}
+
+// ── Per-frame model update ──────────────────────────────────────────────────
+function update(dt) {
+  groups = [[], [], [], [], []]; lanes = [[], [], [], []]; reached = [0, 0, 0, 0, 0]; nNow = 0;
+  SITES.forEach(s => s.n = 0);
+  const b0 = L.boxes[0];
+  for (const p of P) {
+    if (p.rand <= t) {
+      nNow++; p.site.n++;
+      const ms = [p.rand, p.op, p.dis, p.d30, p.d90];
+      for (let k = 0; k < 5; k++) if (ms[k] <= t && !(p.exit && p.exit.at < ms[k])) reached[k]++;
+    }
+    const s = stageAt(p, t), prev = p.stage;
+    if (s !== prev) {
+      if ((prev === undefined || prev === -1) && s !== -1) { p.x = b0.x + 6; p.y = b0.y + b0.h * 0.6; p.pulse = 1; }
+      else if (s >= 10 && prev < 10) p.pulse = 1;
+      p.stage = s;
+    }
+    if (s === -1) { p.ta = 0; continue; }
+    p.ta = 1;
+    (s >= 10 ? lanes[s - 10] : groups[s]).push(p);
+  }
+  groups.forEach((g, k) => {
+    g.sort((a, b) => [a.rand, a.op, a.dis, a.d30, a.d90][k] - [b.rand, b.op, b.dis, b.d30, b.d90][k]);
+    place(g, L.boxes[k], 76, 12);
+  });
+  lanes.forEach((g, k) => { g.sort((a, b) => a.exit.at - b.exit.at); place(g, L.sub[k], 46, 12); });
+  // Frame-rate independent easing (≈0.14 per frame at 60 fps)
+  const k = RM ? 1 : 1 - Math.pow(1e-4, dt), ka = RM ? 1 : 1 - Math.pow(5e-5, dt), kp = Math.pow(0.05, dt);
+  for (const p of P) {
+    if (p.x === undefined) continue;
+    if (p.ta) { p.x += (p.tx - p.x) * k; p.y += (p.ty - p.y) * k; }
+    p.a = (p.a || 0) + (p.ta - (p.a || 0)) * ka;
+    p.pulse = (p.pulse || 0) * kp;
+  }
+}
+
+// ── Drawing ─────────────────────────────────────────────────────────────────
+function rr(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+// Ellipsise to fit — canvas maxWidth would squash the glyphs instead.
+function fit(txt, maxW) {
+  txt = String(txt);
+  if (!(maxW > 0) || ctx.measureText(txt).width <= maxW) return txt;
+  while (txt.length > 1 && ctx.measureText(txt + '…').width > maxW) txt = txt.slice(0, -1);
+  return txt.trimEnd() + '…';
+}
+// Up to two lines, ellipsising the second (Discontinued lane labels)
+function wrap2(txt, maxW) {
+  if (ctx.measureText(txt).width <= maxW) return [txt];
+  const words = String(txt).split(' ');
+  let first = words.shift();
+  while (words.length && ctx.measureText(first + ' ' + words[0]).width <= maxW) first += ' ' + words.shift();
+  return words.length ? [fit(first, maxW), fit(words.join(' '), maxW)] : [fit(first, maxW)];
+}
+function capLabel(txt, x, y, maxW) {
+  ctx.font = `600 10px ${F}`; ctx.fillStyle = '#64748B'; ctx.letterSpacing = '0.7px';
+  ctx.fillText(fit(txt.toUpperCase(), maxW), x, y); ctx.letterSpacing = '0px';
+}
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  L.boxes.forEach((b, i) => {
+    rr(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 10);
+    ctx.fillStyle = i === 4 ? '#E0F7F3' : '#F8FAFC'; ctx.fill();
+    ctx.strokeStyle = i === 4 ? '#A7E3D6' : '#DDE5EE'; ctx.lineWidth = 1; ctx.stroke();
+    const narrow = b.w < 170;
+    ctx.textAlign = 'left'; capLabel(narrow ? STAGES[i].short : STAGES[i].k, b.x + 12, b.y + 20, b.w - 24);
+    ctx.font = `700 22px ${F}`; ctx.fillStyle = '#1B4F6B'; ctx.fillText(reached[i], b.x + 12, b.y + 46);
+    ctx.font = `500 11px ${F}`; ctx.fillStyle = '#64748B';
+    ctx.fillText(fit(`${groups[i].length} ${narrow ? 'here now' : STAGES[i].now}`, b.w - 24), b.x + 12, b.y + 63);
+    if (i < 4) {
+      const cx = b.x + b.w + GAP / 2, cy = b.y + b.h / 2;
+      ctx.beginPath(); ctx.moveTo(cx - 4, cy - 7); ctx.lineTo(cx + 3, cy); ctx.lineTo(cx - 4, cy + 7);
+      ctx.strokeStyle = '#9FB6C4'; ctx.lineWidth = 2; ctx.stroke();
+    }
+  });
+
+  const ln = L.lane, ex = lanes.reduce((a, l) => a + l.length, 0);
+  rr(ln.x + 0.5, ln.y + 0.5, ln.w - 1, ln.h - 1, 10);
+  ctx.fillStyle = '#FFF7E6'; ctx.fill(); ctx.strokeStyle = '#F3D9A4'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.textAlign = 'left'; capLabel('Discontinued', ln.x + 14, ln.y + 22);
+  ctx.font = `700 22px ${F}`; ctx.fillStyle = '#7A5B12'; ctx.fillText(ex, ln.x + 14, ln.y + 50);
+  ctx.font = `500 11px ${F}`; ctx.fillStyle = '#8A6D2F';
+  ctx.fillText(nNow ? `${(ex / nNow * 100).toFixed(1)}% of randomised` : 'none yet', ln.x + 14, ln.y + 68);
+  L.sub.forEach((s, i) => {
+    ctx.beginPath(); ctx.moveTo(s.x + 0.5, s.y + 12); ctx.lineTo(s.x + 0.5, s.y + s.h - 12);
+    ctx.strokeStyle = '#F3D9A4'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(s.x + 16, s.y + 18, 4, 0, 7); ctx.fillStyle = EXITS[i].col; ctx.fill();
+    ctx.textAlign = 'left'; ctx.font = `600 11.5px ${F}`; ctx.fillStyle = '#1E293B'; wrap2(EXITS[i].label, s.w - 64).forEach((line, j) => ctx.fillText(line, s.x + 26, s.y + 22 + j * 13));
+    ctx.textAlign = 'right'; ctx.font = `700 13px ${F}`; ctx.fillStyle = '#7A5B12'; ctx.fillText(lanes[i].length, s.x + s.w - 12, s.y + 22);
+  });
+
+  for (const p of P) {
+    if (!p.a || p.a < 0.01 || p.x === undefined) continue;
+    const dim = hl && p.site !== hl, r = p.r || 4.6;
+    const col = colourBy === 'site' ? p.site.col
+      : p.stage >= 10 ? EXITS[p.stage - 10].col
+      : p.stage === 4 ? '#0FA88E' : '#1B4F6B';
+    ctx.globalAlpha = p.a * (dim ? 0.12 : 1);
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fillStyle = col; ctx.fill();
+    if (p.part !== undefined && t >= p.part && p.stage >= 0 && p.stage < 10) {
+      ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.2, 0, 7); ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 1.6; ctx.stroke();
+    }
+    if (p.pulse > 0.03 && !dim) {
+      ctx.globalAlpha = p.pulse * 0.55;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 5 + (1 - p.pulse) * 16, 0, 7); ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    if (p === hover) {
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r + 3.5, 0, 7); ctx.strokeStyle = '#143D54'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── Tooltip + linked highlighting ───────────────────────────────────────────
+function tipHtml(p) {
+  const row = (k, v) => `<div><span class="k">${k}</span>${v}</div>`;
+  let h = `<b>${p.id}</b>` + row('Site', p.site.name) + row('Randomised', fmt(p.rand, 1));
+  if (p.op <= t) h += row('Surgery', fmt(p.op, 1));
+  if (p.dis <= t && !(p.exit && p.exit.at < p.dis)) h += row('Discharged', `${fmt(p.dis, 1)} (${Math.round(p.dis - p.op)}-day stay)`);
+  if (p.part !== undefined && t >= p.part) h += row('Part w/d', fmt(p.part, 1));
+  const st = p.stage >= 10 ? `${EXITS[p.stage - 10].label}, ${fmt(p.exit.at, 1)}` : STAGES[p.stage].status;
+  return h + row('Status', `<b style="font-size:12px">${st}</b>`);
+}
+function setHl(s) { hl = s; SITES.forEach(x => x.el.classList.toggle('dim', !!s && x !== s)); }
+cv.addEventListener('mousemove', e => {
+  const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  let best = null, bd = 81;
+  for (const p of P) {
+    if (!p.a || p.a < 0.5) continue;
+    const d = (p.x - mx) ** 2 + (p.y - my) ** 2;
+    if (d < bd) { bd = d; best = p; }
+  }
+  if (best !== hover) { hover = best; setHl(hover ? hover.site : null); }
+  if (!hover) { tip.classList.remove('show'); return; }
+  tip.innerHTML = tipHtml(hover); tip.classList.add('show');
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(mx + 14, W - tw - 4) + 'px';
+  tip.style.top = (my + 14 + th > H ? my - th - 10 : my + 14) + 'px';
+});
+cv.addEventListener('mouseleave', () => { hover = null; tip.classList.remove('show'); setHl(null); });
+
+// ── Race ────────────────────────────────────────────────────────────────────
+const race = $('#race'), ROW = 34;
+race.style.height = SITES.length * ROW - 6 + 'px';
+SITES.forEach(s => {
+  const el = document.createElement('div');
+  el.className = 'rrow';
+  el.innerHTML = `<span class="rname"><i style="background:${s.col}"></i>${s.name}</span><div class="rtrack"><div class="rfill"></div><div class="rexp"></div></div><span class="rval"></span>`;
+  race.appendChild(el);
+  Object.assign(s, { el, fill: el.querySelector('.rfill'), exp: el.querySelector('.rexp'), val: el.querySelector('.rval') });
+  el.addEventListener('mouseenter', () => setHl(s));
+  el.addEventListener('mouseleave', () => setHl(null));
+});
+function renderRace() {
+  SITES.forEach(s => s.expected = s.openD <= t ? (t - s.openD) / 30.44 * 2 : 0);
+  const open = SITES.filter(s => s.openD <= t).sort((a, b) => b.n - a.n || a.openD - b.openD);
+  const closed = SITES.filter(s => s.openD > t).sort((a, b) => a.openD - b.openD);
+  const scale = Math.max(8, ...SITES.map(s => Math.max(s.n, s.expected))) * 1.12;
+  [...open, ...closed].forEach((s, i) => {
+    const isOpen = s.openD <= t;
+    s.el.style.transform = `translateY(${i * ROW}px)`;
+    s.el.classList.toggle('closed', !isOpen);
+    s.fill.style.width = (s.n / scale * 100) + '%';
+    s.fill.style.backgroundColor = s.n >= s.expected * 0.85 ? 'var(--teal)' : 'var(--amber)';
+    s.exp.style.left = (s.expected / scale * 100) + '%';
+    s.exp.style.display = isOpen ? '' : 'none';
+    s.val.textContent = isOpen ? s.n : `opens ${fmt(s.openD)}`;
+  });
+}
+
+// ── Pace chart ──────────────────────────────────────────────────────────────
+function renderPace() {
+  const el = $('#pace'), w = el.clientWidth || 480, h = 210, ml = 30, mr = 18, mt = 14, mb = 24;
+  const X1 = dayOf('2026-10-01'), ymax = Math.max(80, Math.ceil(P.length / 20) * 20);
+  const x = d => ml + d / X1 * (w - ml - mr), y = v => mt + (1 - v / ymax) * (h - mt - mb);
+  let g = '';
+  for (let v = 0; v <= ymax; v += 20)
+    g += `<line x1="${ml}" x2="${w - mr}" y1="${y(v)}" y2="${y(v)}" stroke="#EEF2F6"/><text x="${ml - 6}" y="${y(v) + 3.5}" text-anchor="end" class="ax">${v}</text>`;
+  MONTHS.forEach(([d, m], i) => g += `<text x="${x(d)}" y="${h - 6}" text-anchor="${i === MONTHS.length - 1 ? 'end' : 'middle'}" class="ax">${m}</text>`);
+  g += `<polyline points="${TARGET.map(([d, v]) => `${x(d)},${y(v)}`).join(' ')}" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="5 4"/>`;
+  let path = `M${x(0)},${y(0)}`, c = 0;
+  for (const p of P) { if (p.rand > t) break; path += `H${x(p.rand).toFixed(1)}V${y(++c).toFixed(1)}`; }
+  path += `H${x(t).toFixed(1)}`;
+  g += `<path d="${path}V${y(0)}H${x(0)}Z" fill="#1B4F6B" opacity=".08"/><path d="${path}" fill="none" stroke="#1B4F6B" stroke-width="2.2" stroke-linejoin="round"/>`;
+  const tg = targetAt(t), xt = x(t), right = xt > w - 120;
+  g += `<line x1="${xt}" x2="${xt}" y1="${mt}" y2="${h - mb}" stroke="#94A3B8" stroke-dasharray="2 3"/>`;
+  g += `<circle cx="${xt}" cy="${y(tg)}" r="4" fill="#fff" stroke="#F59E0B" stroke-width="2"/>`;
+  g += `<circle cx="${xt}" cy="${y(c)}" r="5" fill="#1B4F6B" stroke="#fff" stroke-width="2"/>`;
+  g += `<text x="${xt + (right ? -10 : 10)}" y="${y(c) + (c < tg ? 16 : -8)}" text-anchor="${right ? 'end' : 'start'}" font-size="12" font-weight="700" fill="#1B4F6B" font-family="Plus Jakarta Sans,system-ui,sans-serif">${c} randomised</text>`;
+  g += `<g font-size="11" font-family="Plus Jakarta Sans,system-ui,sans-serif" fill="#64748B"><line x1="${ml + 8}" x2="${ml + 26}" y1="${mt + 6}" y2="${mt + 6}" stroke="#1B4F6B" stroke-width="2.2"/><text x="${ml + 31}" y="${mt + 10}">Actual</text><line x1="${ml + 80}" x2="${ml + 98}" y1="${mt + 6}" y2="${mt + 6}" stroke="#F59E0B" stroke-width="2" stroke-dasharray="5 4"/><text x="${ml + 103}" y="${mt + 10}">Target schedule</text></g>`;
+  el.innerHTML = `<svg width="${w}" height="${h}" role="img" aria-label="${c} randomised against a target of ${Math.round(tg)} on ${fmt(t, 1)}">${g}</svg>`;
+  const diff = c - Math.round(tg), dl = $('#delta');
+  dl.className = 'delta ' + (diff < 0 ? 'behind' : 'ahead');
+  dl.textContent = diff < 0 ? `${-diff} behind target` : diff === 0 ? 'On target' : `${diff} ahead of target`;
+  return { c, tg };
+}
+
+// ── Ticker ──────────────────────────────────────────────────────────────────
+function renderTicker() {
+  let k = 0; while (k < EV.length && EV[k].t <= t) k++;
+  if (k === lastEv) return;
+  const forward = k > lastEv && lastEv !== -1;
+  lastEv = k;
+  const items = EV.slice(Math.max(0, k - 7), k).reverse();
+  $('#ticker').innerHTML = items.length
+    ? items.map((e, i) => `<li class="${i === 0 && forward ? 'new' : ''}"><span class="tdot" style="background:${e.col}"></span><span class="tdate">${fmt(e.t)}</span><span>${e.txt}</span></li>`).join('')
+    : '<li><span></span><span></span><span class="empty">Nothing yet. Press play.</span></li>';
+}
+
+// ── Timeline controls ───────────────────────────────────────────────────────
+const scrub = $('#scrub'), playBtn = $('#play');
+scrub.max = END;
+const wc = Array(Math.floor(END / 7) + 1).fill(0);
+P.forEach(p => wc[Math.floor(p.rand / 7)]++);
+const wm = Math.max(...wc, 1);
+$('#spark').innerHTML = wc.map(c => `<i style="height:${Math.max(6, c / wm * 100)}%"></i>`).join('');
+const sparkEls = [...$('#spark').children];
+$('#mlabels').innerHTML = MONTHS.filter(([d]) => d <= END).map(([d, m]) => `<span style="left:${d / END * 100}%">${m}</span>`).join('');
+
+const ICON_PLAY  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const ICON_PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+function setPlaying(v) {
+  if (v && t >= END - 0.01) { t = 0; lastEv = -1; }
+  playing = v;
+  playBtn.innerHTML = v ? ICON_PAUSE : ICON_PLAY;
+  playBtn.setAttribute('aria-label', v ? 'Pause' : 'Play');
+}
+playBtn.addEventListener('click', () => setPlaying(!playing));
+scrub.addEventListener('input', () => { t = +scrub.value; setPlaying(false); });
+$('#today').addEventListener('click', () => { t = END; setPlaying(false); });
+document.querySelectorAll('#speed .pill-btn').forEach(b => b.addEventListener('click', () => {
+  speed = +b.dataset.s;
+  document.querySelectorAll('#speed .pill-btn').forEach(x => x.classList.toggle('on', x === b));
+}));
+document.querySelectorAll('#colourBy .pill-btn').forEach(b => b.addEventListener('click', () => {
+  colourBy = b.dataset.c;
+  document.querySelectorAll('#colourBy .pill-btn').forEach(x => x.classList.toggle('on', x === b));
+}));
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !['INPUT', 'BUTTON'].includes(e.target.tagName)) { e.preventDefault(); setPlaying(!playing); }
+});
+
+// ── DOM refresh (once per replay day) ───────────────────────────────────────
+function updateDom() {
+  const dt = new Date(START + t * DAY), month = dt.getUTCMonth() - 1, atEnd = t >= END - 0.01;
+  $('#nowDate').textContent = fmt(t, 1);
+  $('#nowSub').textContent = `Recruitment month ${month}${atEnd ? ' · today' : ''}`;
+  scrub.value = t;
+  sparkEls.forEach((el, i) => el.classList.toggle('on', i * 7 <= t));
+
+  const { tg } = renderPace();
+  const diff = nNow - Math.round(tg);
+  $('#kN').innerHTML = `${nNow} <small>/ ${TRIAL_TARGET}</small>`;
+  $('#kNbar').style.width = (nNow / TRIAL_TARGET * 100) + '%';
+  $('#kNs').innerHTML = `Target by now ${Math.round(tg)} · <span class="${diff < 0 ? 'down' : 'up'}">${diff < 0 ? '▼ ' + -diff + ' behind' : diff === 0 ? 'on target' : '▲ ' + diff + ' ahead'}</span>`;
+  const openN = SITES.filter(s => s.openD <= t).length;
+  $('#kP').innerHTML = `${Math.min(nNow, PILOT_TARGET)} <small>/ ${PILOT_TARGET}</small>`;
+  $('#kPbar').style.width = Math.min(100, nNow / PILOT_TARGET * 100) + '%';
+  $('#kPs').textContent = `${Math.min(openN, PILOT_SITES)} of ${PILOT_SITES} pilot sites open`;
+  $('#kS').textContent = openN;
+  $('#kF').textContent = groups[0].length + groups[1].length + groups[2].length + groups[3].length;
+  const due = P.filter(p => p.d90 <= t).length;
+  $('#kD').textContent = reached[4];
+  $('#kDs').textContent = due ? `${Math.round(reached[4] / due * 100)}% of those due` : 'none due yet';
+  const ex = lanes.reduce((a, l) => a + l.length, 0);
+  $('#kX').textContent = ex;
+  $('#kXs').textContent = nNow ? `${(ex / nNow * 100).toFixed(1)}% of randomised` : '—';
+  cv.setAttribute('aria-label', `Participant flow on ${fmt(t, 1)}: ` +
+    STAGES.map((s, i) => `${s.k} ${reached[i]}`).join(', ') + `, discontinued ${ex}`);
+
+  renderRace();
+  renderTicker();
+  if (hover && hover.a > 0.5) tip.innerHTML = tipHtml(hover);
+}
+
+// ── Main loop ───────────────────────────────────────────────────────────────
+function frame(now) {
+  const dt = Math.min(0.25, (now - last) / 1000); last = now;
+  if (playing) { t += dt * speed; if (t >= END) { t = END; setPlaying(false); } }
+  update(dt);
+  const day = Math.floor(t * 2);
+  if (day !== lastDay) { lastDay = day; updateDom(); }
+  draw();
+  requestAnimationFrame(frame);
+}
+
+layout();
+new ResizeObserver(() => { layout(); lastDay = -1; }).observe(wrap);
+setPlaying(false);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

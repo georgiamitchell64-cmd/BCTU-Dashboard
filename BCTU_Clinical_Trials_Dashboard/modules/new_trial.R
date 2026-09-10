@@ -277,6 +277,7 @@ new_trial_setup_ui <- function() {
                           checkboxInput("wiz_feat_returns",        "Return rates tab",                          value = FALSE),
                           checkboxInput("wiz_feat_pilot",          "Pilot progression criteria",                value = FALSE),
                           checkboxInput("wiz_feat_consort",        "CONSORT flow diagram",                      value = FALSE),
+                          checkboxInput("wiz_feat_replay",         "Trial replay (animated CONSORT & site race)", value = FALSE),
                           checkboxInput("wiz_feat_baseline",       "Baseline characteristics table",            value = FALSE)),
                       hint("Uncheck PROMs for trials where patients don't complete questionnaires (e.g. observational, registry, biomarker-only)."))
               )),

@@ -188,6 +188,9 @@ trial_config <- list(
     stringsAsFactors = FALSE
   ),
 
+  # ── Internal pilot (structured; drives the Overview trial replay) ─────────
+  pilot = list(target = 60L, sites = 6L, months = 6L),
+
   # ── Participant table layout ───────────────────────────────────────────────
   participant_table_layout = list(
     timepoints = list(
@@ -280,6 +283,7 @@ trial_config <- list(
     projections      = TRUE,
     pilot_criteria   = TRUE,
     consort_flow     = TRUE,
-    baseline_table   = TRUE
+    baseline_table   = TRUE,
+    trial_replay     = TRUE
   )
 )

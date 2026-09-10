@@ -35,10 +35,25 @@ overview_server <- function(input, output, session, state) {
     render_insights_panel(insights_cached())
   })
 
+  # ── Trial replay (only when the trial's trial_replay feature is on) ───────
+  # Living CONSORT + site race + pace vs target, animated by
+  # www/trial_replay.js. Follows the WP picker and supersedes the static
+  # CONSORT card below.
+  output$trial_replay_ui <- renderUI({
+    cfg <- rv$trial_config
+    if (is.null(cfg) || !isTRUE(cfg$features$trial_replay)) return(NULL)
+    payload <- tryCatch(
+      trial_replay_payload(redcap_wp(), sites_wp(), cfg,
+                           trial_target = wp_effective_target(cfg, rv$active_wp)),
+      error = function(e) { message("Trial replay: ", e$message); NULL })
+    trial_replay_card(payload)
+  })
+
   # ── CONSORT flow diagram (only when the trial's consort_flow feature is on) ─
   output$consort_card_ui <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg) || !isTRUE(cfg$features$consort_flow)) return(NULL)
+    if (isTRUE(cfg$features$trial_replay)) return(NULL)  # replaced by the Living CONSORT
     counts <- tryCatch(consort_counts_live(redcap_wp(), cfg), error = function(e) NULL)
     if (is.null(counts)) return(NULL)
     tags$section(class = "pov-card",
