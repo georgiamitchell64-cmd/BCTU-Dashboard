@@ -176,8 +176,29 @@ resolve_report_template <- function(cfg, kind) {
   NULL
 }
 
+# Keep a dated copy of a trial's own template before anything overwrites it,
+# so Reset, Re-seed and Save can always be undone from reports/backups/.
+# `incoming` (a file path or the new text) skips the backup when nothing changes.
+backup_trial_report_template <- function(cfg, kind, incoming = NULL) {
+  path <- trial_report_template_path(cfg, kind)
+  if (!file.exists(path)) return(invisible(NULL))
+  current <- tryCatch(paste(readLines(path, warn = FALSE), collapse = "\n"), error = function(e) NULL)
+  if (!is.null(incoming)) {
+    new_text <- if (length(incoming) == 1 && !grepl("\n", incoming) && file.exists(incoming))
+      tryCatch(paste(readLines(incoming, warn = FALSE), collapse = "\n"), error = function(e) NULL)
+    else paste(incoming, collapse = "\n")
+    if (identical(current, new_text)) return(invisible(NULL))
+  }
+  dir <- file.path(dirname(path), "backups")
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  dest <- file.path(dir, sprintf("%s_report_%s.Rmd", kind, format(Sys.time(), "%Y-%m-%d_%H%M%S")))
+  ok <- tryCatch(file.copy(path, dest, overwrite = FALSE), error = function(e) FALSE)
+  invisible(if (isTRUE(ok)) dest else NULL)
+}
+
 # Copy the canonical templates into a trial's reports/ folder. Idempotent —
-# `overwrite = FALSE` by default so we don't trample edits the user has made.
+# `overwrite = FALSE` by default so we don't trample edits the user has made;
+# with `overwrite = TRUE` the trial's current copy is backed up first.
 seed_trial_report_templates <- function(cfg, overwrite = FALSE) {
   trial_dir   <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
   reports_dir <- file.path(trial_dir, "reports")
@@ -188,6 +209,7 @@ seed_trial_report_templates <- function(cfg, overwrite = FALSE) {
     dst <- trial_report_template_path(cfg, kind)
     if (!file.exists(src)) next
     if (file.exists(dst) && !overwrite) next
+    if (file.exists(dst)) backup_trial_report_template(cfg, kind, incoming = src)
     tryCatch(file.copy(src, dst, overwrite = TRUE),
              error = function(e) message("Template copy failed (", kind, "): ",
                                          e$message))

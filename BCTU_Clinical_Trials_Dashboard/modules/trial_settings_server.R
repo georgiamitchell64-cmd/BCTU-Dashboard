@@ -1162,6 +1162,7 @@ trial_settings_server <- function(input, output, session, state) {
     path <- trial_report_template_path(cfg, rt_kind())
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     tryCatch({
+      backup_trial_report_template(cfg, rt_kind(), incoming = body)
       writeLines(body, path, useBytes = TRUE)
       rt_modified_marker(rt_modified_marker() + 1L)
       log_activity("report_template_saved",
@@ -1191,9 +1192,9 @@ trial_settings_server <- function(input, output, session, state) {
                      style = "background:#C20019;border-color:#C20019;font-weight:600;")
       ),
       div(style = "padding:6px 0;font-size:13px;line-height:1.6;",
-          HTML(sprintf("This re-copies the canonical <strong>%s</strong> template
-                        from the project root, overwriting your trial's edits.
-                        This can't be undone.",
+          HTML(sprintf("This replaces this trial's <strong>%s</strong> template
+                        with the standard one. Your current version is saved
+                        first in the trial's <code>reports/backups</code> folder.",
                        toupper(rt_kind()))))
     ))
   })
@@ -1215,10 +1216,10 @@ trial_settings_server <- function(input, output, session, state) {
                      style = "background:#C20019;border-color:#C20019;font-weight:600;")
       ),
       div(style = "padding:6px 0;font-size:13px;line-height:1.6;",
-          HTML("This overwrites <strong>both</strong> the TMG/iTMG and TSC
-                templates in this trial's reports/ folder with fresh copies
-                from the project root. Any per-trial edits to those files
-                will be lost."))
+          HTML("This replaces <strong>both</strong> the TMG/iTMG and TSC
+                templates for this trial with the standard ones. Your current
+                versions are saved first in the trial's
+                <code>reports/backups</code> folder."))
     ))
   })
 
@@ -1254,6 +1255,7 @@ trial_settings_server <- function(input, output, session, state) {
     }
     dir.create(dirname(dst), recursive = TRUE, showWarnings = FALSE)
     tryCatch({
+      backup_trial_report_template(cfg, rt_kind(), incoming = src)
       file.copy(src, dst, overwrite = TRUE)
       rt_modified_marker(rt_modified_marker() + 1L)
       .rt_load_into_editor()

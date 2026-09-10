@@ -1,639 +1,18 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Reports — report builder in three panels:
+#   set up (left) · live preview (centre) · readiness and generate (right)
+# Styles: www/reports.css. Server: modules/reports_server.R.
+# ─────────────────────────────────────────────────────────────────────────────
+
+.rb_step <- function(n, title, ..., note = NULL, id = NULL)
+  div(class = "rb-step", id = id,
+      div(class = "rb-step-h", span(class = "rb-step-n", sprintf("%02d", n)), span(class = "rb-step-t", title)),
+      ...,
+      if (!is.null(note)) div(class = "rb-step-note", note))
+
 reports_tab_ui <- function() {
   tabPanel("reports",
-
-    # ── Design-matched styles (scoped to .rb-app) ──────────────────────────
-    tags$style(HTML("
-      .rb-app {
-        --rb-navy:#1B1B1B; --rb-navy-dk:#000000; --rb-navy-lt:#333333;
-        --rb-teal:#00ACA9; --rb-teal-dk:#00788E;
-        --rb-amber:#F07F3C; --rb-red:#E30513;
-        --rb-ink:#1B1B1B; --rb-ink-2:#3C3C3B;
-        --rb-muted:#58595B; --rb-muted-2:#8A8A8C;
-        --rb-line:#E2E8EE; --rb-line-2:#EFEFEF;
-        --rb-bg:#F4F6F9; --rb-rail:#F8F8F8;
-        --rb-doc:'Source Serif 4', Charter, Georgia, serif;
-        --rb-mono:'JetBrains Mono', ui-monospace, Menlo, monospace;
-        font-size:13px; color:var(--rb-ink);
-        background:var(--rb-bg); margin:-20px -22px;
-        height:calc(100vh - 96px); overflow:hidden;
-      }
-      .rb-work {
-        display:grid; grid-template-columns:300px 1fr 360px;
-        height:100%;
-      }
-      @media (max-width:1280px){
-        .rb-work { grid-template-columns:260px 1fr 320px; }
-      }
-
-      /* ── Left rail ── */
-      .rb-rail {
-        background:var(--rb-rail); border-right:1px solid var(--rb-line);
-        padding:14px 14px 24px; overflow-y:auto; height:100%;
-      }
-      .rb-rail h4 {
-        font-size:10.5px; font-weight:600; color:var(--rb-muted);
-        text-transform:uppercase; letter-spacing:.7px;
-        margin:14px 4px 8px;
-      }
-      .rb-rail h4:first-of-type { margin-top:4px; }
-      .rb-trial-card {
-        background:#fff; border:1px solid var(--rb-line); border-radius:8px;
-        padding:10px 12px; display:flex; align-items:center; gap:11px;
-        margin-bottom:14px;
-      }
-      .rb-trial-mark {
-        width:36px; height:36px; border-radius:7px;
-        display:flex; align-items:center; justify-content:center;
-        color:#fff; font-weight:700; font-size:12px; letter-spacing:-.3px;
-        background:linear-gradient(135deg,var(--rb-navy),var(--rb-teal));
-        flex-shrink:0;
-      }
-      .rb-trial-meta-k {
-        font-size:9.5px; font-weight:600; color:var(--rb-muted);
-        text-transform:uppercase; letter-spacing:.6px;
-      }
-      .rb-trial-meta-name {
-        font-size:14px; font-weight:700; color:var(--rb-ink);
-        letter-spacing:-.2px; line-height:1.1; margin-top:1px;
-      }
-      .rb-trial-meta-sub {
-        font-size:10.5px; color:var(--rb-muted); margin-top:2px;
-        font-variant-numeric:tabular-nums;
-      }
-      .rb-seg {
-        display:flex; background:#fff; border:1px solid var(--rb-line);
-        border-radius:6px; padding:2px; gap:2px;
-      }
-      .rb-seg button {
-        flex:1; padding:6px 8px; background:transparent; border:none;
-        border-radius:4px; font-size:11.5px; color:var(--rb-muted);
-        font-weight:500; cursor:pointer; font-family:inherit;
-      }
-      .rb-seg button.on {
-        background:var(--rb-navy); color:#fff; font-weight:600;
-      }
-      .rb-rail-input {
-        width:100%; padding:7px 10px; border:1px solid var(--rb-line);
-        border-radius:6px; background:#fff; font-size:12px;
-        color:var(--rb-ink); font-family:inherit;
-      }
-      .rb-rail-input:focus {
-        outline:none; border-color:var(--rb-teal);
-        box-shadow:0 0 0 2px rgba(0,172,169,.15);
-      }
-      .rb-tdesc {
-        font-size:11px; color:var(--rb-muted); margin-top:6px;
-        line-height:1.45;
-      }
-      .rb-stat-row {
-        display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:6px;
-      }
-      .rb-stat-tile {
-        background:#fff; border:1px solid var(--rb-line); border-radius:6px;
-        padding:8px 10px;
-      }
-      .rb-stat-label {
-        font-size:9.5px; font-weight:600; color:var(--rb-muted);
-        text-transform:uppercase; letter-spacing:.5px;
-      }
-      .rb-stat-value {
-        font-size:16px; font-weight:700; color:var(--rb-navy);
-        font-variant-numeric:tabular-nums; letter-spacing:-.4px; margin-top:1px;
-      }
-      .rb-stat-sub { font-size:10px; color:var(--rb-muted); margin-top:1px; }
-
-      /* ── Centre canvas ── */
-      .rb-canvas {
-        background:var(--rb-bg); overflow-y:auto; overflow-x:hidden;
-        display:flex; flex-direction:column; align-items:center;
-        min-width:0; height:100%;
-      }
-      .rb-toolbar {
-        position:sticky; top:0; z-index:10;
-        background:rgba(244,246,249,.92); backdrop-filter:blur(8px);
-        width:100%; border-bottom:1px solid var(--rb-line);
-        padding:10px 22px;
-        display:flex; align-items:center; gap:12px; flex-shrink:0;
-      }
-      .rb-tb-title {
-        font-size:13px; font-weight:600; color:var(--rb-ink);
-      }
-      .rb-tb-meta {
-        font-size:11.5px; color:var(--rb-muted);
-        font-family:var(--rb-mono); font-variant-numeric:tabular-nums;
-      }
-      .rb-tb-spacer { flex:1; }
-      .rb-tb-btn {
-        display:inline-flex; align-items:center; gap:6px;
-        padding:6px 12px; border-radius:6px;
-        border:1px solid var(--rb-line); background:#fff;
-        color:var(--rb-ink-2); font-size:12px; font-weight:500;
-        font-family:inherit; cursor:pointer;
-      }
-      .rb-tb-btn:hover { border-color:#cbd6df; }
-      .rb-tb-btn.primary {
-        background:var(--rb-navy); color:#fff; border-color:var(--rb-navy);
-        font-weight:600; padding:7px 14px;
-      }
-      .rb-tb-btn.primary:hover { background:var(--rb-navy-lt); }
-
-      .rb-pages {
-        display:flex; flex-direction:column; align-items:center;
-        gap:24px; padding:28px 22px 80px; width:100%;
-        transition: transform .15s ease;
-      }
-      .rb-page {
-        width:794px;  /* A4 width at ~96dpi */
-        min-height:1123px; /* A4 height at ~96dpi */
-        background:#fff;
-        box-shadow:0 1px 4px rgba(15,26,36,.08),0 8px 28px rgba(15,26,36,.10);
-        border-radius:2px;
-        position:relative;
-        overflow:hidden;
-      }
-      .rb-page-inner { padding:48px 64px 40px; min-height:1050px; }
-      .rb-page-marker {
-        font-family:var(--rb-mono); font-size:10px;
-        color:var(--rb-muted-2); letter-spacing:1px; text-transform:uppercase;
-        display:flex; align-items:center; gap:10px; width:794px; max-width:100%;
-      }
-      .rb-page-marker .ln {
-        flex:1; height:1px; background:var(--rb-line);
-      }
-      .rb-page-foot {
-        padding:0 64px 24px; display:flex; justify-content:space-between;
-        align-items:center; font-size:9.5px; color:var(--rb-muted);
-      }
-
-      /* Document typography */
-      .rb-doc { font-family:var(--rb-doc); color:var(--rb-ink);
-                font-size:12.5px; line-height:1.6; }
-      .rb-doc h1 { font-size:30px; font-weight:600; line-height:1.15;
-                   letter-spacing:-.4px; color:var(--rb-ink); margin:0; }
-      .rb-doc h2 { font-size:18px; font-weight:600; color:var(--rb-navy);
-                   margin:0 0 4px; letter-spacing:-.1px; line-height:1.25; }
-      .rb-doc p { margin:0 0 9px; }
-      .rb-doc strong { font-weight:600; color:var(--rb-ink); }
-      .rb-doc .sec-num {
-        font-family:'Inter',sans-serif; font-size:10px; font-weight:600;
-        color:var(--rb-teal-dk); text-transform:uppercase; letter-spacing:1.5px;
-        margin-bottom:3px;
-      }
-      .rb-doc .sec-rule {
-        height:1px; background:var(--rb-line); margin:0 0 12px;
-      }
-      .rb-doc .secblock { margin-bottom:18px; }
-      .rb-doc .secblock-head {
-        display:flex; align-items:baseline; gap:14px;
-        margin-bottom:8px; padding-bottom:6px;
-        border-bottom:1px solid var(--rb-line);
-      }
-      .rb-doc .secblock-head .n {
-        font-family:'Inter',sans-serif; font-size:10px; font-weight:700;
-        color:var(--rb-teal-dk); font-variant-numeric:tabular-nums;
-        letter-spacing:.5px;
-      }
-      .rb-doc .secblock-head h2 { margin:0; flex:1; }
-
-      /* Title page */
-      .rb-titlepage {
-        display:flex; flex-direction:column; min-height:1000px;
-        padding:0; position:relative;
-      }
-      .rb-tp-stripe {
-        position:absolute; left:0; top:0; bottom:0; width:8px;
-        background:linear-gradient(180deg,var(--rb-navy),var(--rb-teal));
-      }
-      .rb-tp-top {
-        display:flex; align-items:flex-start; justify-content:space-between;
-        gap:20px; padding:40px 64px 0;
-      }
-      .rb-tp-mark { display:flex; align-items:center; gap:10px; }
-      .rb-tp-mark .lm {
-        width:34px; height:34px; border-radius:7px;
-        display:flex; align-items:center; justify-content:center;
-        color:#fff; font-weight:700; font-size:14px; letter-spacing:-.5px;
-        background:linear-gradient(135deg,var(--rb-navy),var(--rb-teal));
-      }
-      .rb-tp-mark .ln-a {
-        font-family:'Inter',sans-serif; font-size:11.5px;
-        font-weight:600; color:var(--rb-ink);
-      }
-      .rb-tp-mark .ln-b {
-        font-family:'Inter',sans-serif; font-size:9.5px;
-        color:var(--rb-muted); letter-spacing:.5px; text-transform:uppercase;
-      }
-      .rb-tp-spons {
-        font-family:'Inter',sans-serif; text-align:right; font-size:9.5px;
-        color:var(--rb-muted); letter-spacing:.4px; text-transform:uppercase;
-      }
-      .rb-tp-spons strong {
-        display:block; font-size:10.5px; color:var(--rb-ink-2);
-        margin-top:2px; letter-spacing:.2px; text-transform:none;
-        font-weight:600;
-      }
-      .rb-tp-mid {
-        flex:1; padding:60px 64px 40px;
-        display:flex; flex-direction:column; justify-content:center;
-      }
-      .rb-tp-eyebrow {
-        font-family:'Inter',sans-serif; font-size:11px; font-weight:600;
-        color:var(--rb-teal-dk); letter-spacing:2px; text-transform:uppercase;
-        margin-bottom:18px; display:flex; align-items:center; gap:10px;
-      }
-      .rb-tp-eyebrow .bar {
-        width:32px; height:2px; background:var(--rb-teal-dk);
-      }
-      .rb-tp-title {
-        font-family:var(--rb-doc); font-size:48px; font-weight:600;
-        line-height:1.05; letter-spacing:-1.5px; color:var(--rb-ink);
-        margin:0 0 14px;
-      }
-      .rb-tp-sub {
-        font-family:var(--rb-doc); font-size:18px; line-height:1.4;
-        color:var(--rb-ink-2); font-style:italic; margin:0 0 20px;
-        max-width:540px;
-      }
-      .rb-tp-period {
-        font-family:'Inter',sans-serif; font-size:13px;
-        color:var(--rb-ink-2); margin-bottom:6px;
-      }
-      .rb-tp-period strong { color:var(--rb-ink); font-weight:600; }
-      .rb-tp-meta {
-        display:grid; grid-template-columns:1fr 1fr; gap:22px 36px;
-        margin-top:36px; padding-top:22px;
-        border-top:1px solid var(--rb-line);
-      }
-      .rb-tp-meta .item { display:flex; flex-direction:column; gap:2px; }
-      .rb-tp-meta .k {
-        font-family:'Inter',sans-serif; font-size:9.5px; font-weight:600;
-        color:var(--rb-muted); text-transform:uppercase; letter-spacing:.7px;
-      }
-      .rb-tp-meta .v {
-        font-family:var(--rb-doc); font-size:13.5px;
-        color:var(--rb-ink); font-weight:500;
-      }
-
-      /* ── Refined single-canvas shell ── */
-      .rb-shell {
-        position:relative; height:100%;
-        display:flex; flex-direction:column;
-      }
-      .rb-main {
-        position:relative; flex:1; display:flex; min-height:0;
-      }
-      /* Stretch the canvas to fill the full width of the shell — the
-         old 3-column grid gave it a 1fr track; now we need flex:1. */
-      .rb-main > .rb-canvas { flex: 1 1 auto; min-width: 0; width: 100%; }
-      /* Trial chip in toolbar */
-      .rb-trial-chip {
-        display:inline-flex; align-items:center; gap:8px;
-        padding:6px 12px; border-radius:6px; background:#fff;
-        border:1px solid var(--rb-line); border-left:3px solid var(--rb-navy);
-        font-size:12px; color:var(--rb-ink); line-height:1;
-      }
-      .rb-trial-chip .rb-trial-code {
-        font-weight:700; letter-spacing:.2px; color:var(--rb-ink);
-        font-variant-numeric:tabular-nums;
-      }
-      .rb-trial-chip .rb-trial-sep { color:var(--rb-muted-2); }
-      .rb-trial-chip .rb-trial-type { color:var(--rb-muted); font-weight:500; }
-
-      /* Slide-over panel (replaces the old right rail) */
-      .rb-panel {
-        position:absolute; top:0; right:0; bottom:0;
-        width:420px; max-width:90vw;
-        background:#fff; border-left:1px solid var(--rb-line);
-        box-shadow:-12px 0 32px rgba(15,26,36,.08);
-        display:flex; flex-direction:column;
-        z-index:20;
-        transform:translateX(100%);
-        transition:transform .2s ease-out;
-      }
-      .rb-panel.open { transform:translateX(0); }
-      .rb-panel-head {
-        display:flex; align-items:center; justify-content:space-between;
-        padding:14px 18px; border-bottom:1px solid var(--rb-line-2);
-      }
-      .rb-panel-head h3 {
-        margin:0; font-size:13px; font-weight:600; color:var(--rb-ink);
-        text-transform:capitalize;
-      }
-      .rb-panel-close {
-        background:none; border:none; font-size:18px;
-        color:var(--rb-muted); cursor:pointer; padding:4px 6px;
-        line-height:1;
-      }
-      .rb-panel-close:hover { color:var(--rb-ink); }
-      .rb-panel-body { flex:1; overflow-y:auto; padding:14px 18px 28px; }
-      .rb-panel-body h4 {
-        font-size:10.5px; font-weight:600; color:var(--rb-muted);
-        text-transform:uppercase; letter-spacing:.7px;
-        margin:14px 4px 8px;
-      }
-      .rb-panel-body h4:first-child { margin-top:0; }
-
-      /* Toolbar tab toggle buttons (Sections / Narrative / Meeting / Amendments) */
-      .rb-tb-btn.rb-btab {
-        background:#fff;
-      }
-      .rb-tb-btn.rb-btab.active {
-        background:var(--rb-rail); color:var(--rb-navy);
-        border-color:var(--rb-navy); font-weight:600;
-      }
-      .rb-tb-sep {
-        width:1px; height:20px; background:var(--rb-line); margin:0 4px;
-      }
-      .rb-tb-meta-pill {
-        font-size:11px; color:var(--rb-muted);
-        font-variant-numeric:tabular-nums;
-        padding:4px 8px; background:var(--rb-rail);
-        border-radius:4px;
-      }
-      .rb-bbody { padding:14px 14px 28px; }
-      .rb-bbody h4 {
-        font-size:10.5px; font-weight:600; color:var(--rb-muted);
-        text-transform:uppercase; letter-spacing:.7px;
-        margin:6px 0 8px;
-      }
-      .rb-bbody h4:not(:first-child) { margin-top:18px; }
-      .rb-section-list {
-        display:flex; flex-direction:column; gap:5px;
-      }
-      .rb-sec-item {
-        display:flex; align-items:center; gap:8px;
-        padding:8px 10px; background:#fff;
-        border:1px solid var(--rb-line); border-radius:6px;
-        transition:border-color .12s;
-      }
-      .rb-sec-item:hover { border-color:#cbd6df; }
-      .rb-sec-handle {
-        color:var(--rb-muted-2); flex-shrink:0; font-size:11px;
-        line-height:1; cursor:grab; user-select:none;
-      }
-      .rb-sec-toggle {
-        width:14px; height:14px; border:1.5px solid var(--rb-line);
-        border-radius:3px; cursor:pointer; flex-shrink:0;
-        display:flex; align-items:center; justify-content:center;
-        background:#fff;
-      }
-      .rb-sec-toggle.on {
-        background:var(--rb-navy); border-color:var(--rb-navy);
-      }
-      .rb-sec-toggle.on::after {
-        content:''; width:6px; height:3px;
-        border-left:1.5px solid #fff; border-bottom:1.5px solid #fff;
-        transform:rotate(-45deg) translate(0,-1px);
-      }
-      .rb-sec-meta { flex:1; min-width:0; }
-      .rb-sec-title {
-        font-size:12px; color:var(--rb-ink);
-        font-weight:500; line-height:1.2;
-      }
-      .rb-sec-group {
-        font-size:10px; color:var(--rb-muted); margin-top:1px;
-      }
-      .rb-sec-arrows {
-        display:flex; flex-direction:column; gap:1px; flex-shrink:0;
-      }
-      .rb-sec-arrows button {
-        background:transparent; border:none; color:var(--rb-muted);
-        font-size:8px; line-height:1; padding:1px 4px;
-        cursor:pointer; font-family:inherit;
-      }
-      .rb-sec-arrows button:hover { color:var(--rb-navy); }
-      .rb-sec-page {
-        font-size:10.5px; color:var(--rb-muted);
-        font-variant-numeric:tabular-nums;
-        font-family:var(--rb-mono); flex-shrink:0;
-      }
-      .rb-chips { display:flex; flex-wrap:wrap; gap:5px; }
-      .rb-chip {
-        padding:4px 9px; border-radius:14px;
-        border:1px solid var(--rb-line); background:#fff;
-        font-size:11px; color:var(--rb-ink-2);
-        cursor:pointer; font-family:inherit;
-      }
-      .rb-chip:hover {
-        border-color:var(--rb-navy); color:var(--rb-navy);
-      }
-      .rb-ta {
-        width:100%; padding:8px 10px;
-        border:1px solid var(--rb-line); border-radius:6px;
-        background:#fff; font-size:12px; color:var(--rb-ink);
-        font-family:inherit; resize:vertical; line-height:1.5;
-      }
-      .rb-ta:focus {
-        outline:none; border-color:var(--rb-teal);
-        box-shadow:0 0 0 2px rgba(0,172,169,.15);
-      }
-      .rb-field {
-        display:flex; flex-direction:column; gap:5px; margin-bottom:10px;
-      }
-      .rb-field label {
-        font-size:11px; font-weight:600; color:var(--rb-ink-2);
-      }
-      .rb-amend {
-        border:1px solid var(--rb-line); border-radius:6px;
-        padding:8px 10px; background:#fff; margin-bottom:6px;
-      }
-      .rb-amend-head {
-        display:flex; align-items:center; justify-content:space-between;
-        margin-bottom:4px; gap:8px;
-      }
-      .rb-amend-ref {
-        font-family:var(--rb-mono); font-size:10.5px;
-        color:var(--rb-navy); font-weight:600;
-      }
-      .rb-amend-status {
-        font-size:9.5px; text-transform:uppercase; letter-spacing:.4px;
-        font-weight:600; padding:2px 6px; border-radius:3px;
-      }
-      .rb-amend-status.sub { background:#FEE2E2; color:#991B1B; }
-      .rb-amend-status.nonsub { background:#E0F2FE; color:#075985; }
-      .rb-amend-desc {
-        font-size:11.5px; color:var(--rb-ink-2); line-height:1.4;
-      }
-      .rb-add-btn {
-        width:100%; padding:7px;
-        background:transparent; border:1px dashed var(--rb-line);
-        border-radius:6px; color:var(--rb-muted); font-size:11.5px;
-        font-weight:500; cursor:pointer; font-family:inherit;
-      }
-      .rb-add-btn:hover {
-        color:var(--rb-navy); border-color:var(--rb-navy);
-      }
-
-      /* ─── Portfolio Review (Trial Update Summary v4.0) ──────────────── */
-      .pf-banner{background:#7030A0;color:#fff;font-size:15px;font-weight:700;
-                 letter-spacing:.04em;text-transform:uppercase;text-align:center;
-                 padding:10px 16px;border-radius:4px 4px 0 0;font-variant:small-caps;
-                 font-family:'Inter',sans-serif;}
-      .pf-header-block{border:1px solid #E2E8EE;border-radius:4px;overflow:hidden;
-                       margin-bottom:0;background:#fff;}
-      .pf-info-grid{display:grid;grid-template-columns:1fr 1fr;
-                    border-top:1px solid #E2E8EE;font-family:'Inter',sans-serif;}
-      .pf-info-row{display:grid;grid-template-columns:160px 1fr;
-                   border-bottom:1px solid #EFEFEF;}
-      .pf-info-cell{padding:5px 10px;font-size:11px;line-height:1.4;}
-      .pf-info-cell.label{font-weight:600;color:#1B1B1B;background:#F8F8F8;}
-      .pf-info-cell.value{color:#3C3C3B;}
-
-      .pf-status-row{display:flex;gap:18px;padding:8px 10px;
-                     border:1px solid #E2E8EE;border-top:0;background:#fff;
-                     font-family:'Inter',sans-serif;}
-      .pf-check-item{display:flex;align-items:center;gap:6px;font-size:11px;
-                     color:#3C3C3B;}
-      .pf-check-item.small{font-size:10.5px;}
-      .pf-checkbox{width:14px;height:14px;border:1.5px solid #E2E8EE;
-                   border-radius:3px;display:inline-flex;align-items:center;
-                   justify-content:center;font-size:9px;color:#fff;
-                   flex-shrink:0;background:#fff;line-height:1;}
-      .pf-checkbox.sm{width:12px;height:12px;font-size:8px;}
-      .pf-checkbox.checked{background:#7030A0;border-color:#7030A0;}
-
-      .pf-summary{border:1px solid #E2E8EE;border-top:0;padding:8px 10px;
-                  background:#fff;border-radius:0 0 4px 4px;margin-bottom:10px;
-                  font-family:'Inter',sans-serif;}
-      .pf-summary-label{font-size:10.5px;font-weight:600;color:#1B1B1B;
-                        margin-bottom:4px;}
-      .pf-summary-text{font-family:'Source Serif 4',Georgia,serif;font-size:11px;
-                       color:#3C3C3B;line-height:1.55;}
-
-      .pf-section{margin-bottom:10px;font-family:'Inter',sans-serif;}
-      .pf-section-banner{background:#7030A0;color:#fff;font-size:11.5px;
-                         font-weight:700;letter-spacing:.04em;padding:6px 12px;
-                         border-radius:4px 4px 0 0;text-transform:uppercase;}
-      .pf-section-banner.alert{background:#7F1D1D;}
-
-      .pf-progress-grid{border:1px solid #E2E8EE;border-top:0;
-                        border-radius:0 0 4px 4px;background:#fff;}
-      .pf-yn-row{display:grid;grid-template-columns:200px 1fr;
-                 border-bottom:1px solid #EFEFEF;align-items:center;}
-      .pf-yn-row:last-child{border-bottom:0;}
-      .pf-yn-label{font-size:10.5px;font-weight:500;color:#1B1B1B;
-                   padding:6px 10px;background:#F8F8F8;}
-      .pf-yn-answer{display:flex;align-items:center;gap:14px;padding:6px 10px;}
-      .pf-yn-date{font-size:10.5px;color:#58595B;margin-left:8px;}
-      .pf-yn-date strong{color:#1B1B1B;font-weight:600;}
-      .pf-divider{height:1px;background:#E2E8EE;}
-      .pf-meeting-row{display:grid;grid-template-columns:200px 1fr;
-                      border-bottom:1px solid #EFEFEF;align-items:center;}
-      .pf-meeting-label{font-size:10.5px;font-weight:500;color:#1B1B1B;
-                        padding:6px 10px;background:#F8F8F8;}
-      .pf-meeting-dates{display:flex;gap:28px;padding:6px 10px;font-size:10.5px;
-                        color:#58595B;}
-      .pf-meeting-dates strong{color:#1B1B1B;font-weight:600;
-                               font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;
-                               font-size:10px;}
-      .pf-further-row{display:grid;grid-template-columns:200px 1fr;align-items:start;}
-      .pf-further-label{font-size:10.5px;font-weight:500;color:#1B1B1B;
-                        padding:6px 10px;background:#F8F8F8;}
-      .pf-further-text{font-size:10.5px;color:#3C3C3B;line-height:1.55;
-                       padding:6px 10px;}
-
-      .pf-rag-grid{border:1px solid #E2E8EE;border-top:0;
-                   border-radius:0 0 4px 4px;background:#fff;
-                   display:flex;flex-direction:column;}
-      .pf-rag-item{display:flex;align-items:center;gap:10px;padding:7px 12px;
-                   border-bottom:1px solid #EFEFEF;}
-      .pf-rag-item:last-child{border-bottom:0;}
-      .pf-rag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-      .pf-rag-text{font-size:10.5px;color:#58595B;line-height:1.4;}
-
-      .pf-chart-container{border:1px solid #E2E8EE;border-top:0;
-                          border-radius:0 0 4px 4px;background:#fff;
-                          padding:12px 14px;}
-      .pf-chart-placeholder{display:flex;flex-direction:column;align-items:center;
-                            justify-content:center;height:200px;
-                            border:2px dashed #E2E8EE;border-radius:6px;
-                            background:#F8F8F8;gap:8px;}
-      .pf-chart-placeholder-icon{font-size:28px;color:#8A8A8C;}
-      .pf-chart-placeholder-text{font-size:12px;color:#58595B;font-weight:500;}
-      .pf-chart-placeholder-sub{font-size:10.5px;color:#8A8A8C;}
-      .pf-recruit-stats{display:grid;grid-template-columns:repeat(4,1fr);
-                        margin-top:8px;border-top:1px solid #E2E8EE;
-                        border-bottom:1px solid #E2E8EE;}
-      .pf-recruit-stat{padding:7px 10px 7px 0;display:flex;flex-direction:column;
-                       gap:1px;border-right:1px solid #EFEFEF;}
-      .pf-recruit-stat:last-child{border-right:0;}
-      .pf-recruit-stat:not(:first-child){padding-left:10px;}
-      .pf-recruit-stat .k{font-size:9px;font-weight:600;color:#58595B;
-                          text-transform:uppercase;letter-spacing:.5px;}
-      .pf-recruit-stat .v{font-size:16px;font-weight:700;color:#1B1B1B;
-                          font-variant-numeric:tabular-nums;letter-spacing:-.3px;}
-
-      .pf-table{width:100%;border-collapse:collapse;font-size:10.5px;
-                border:1px solid #E2E8EE;border-top:0;
-                border-radius:0 0 4px 4px;overflow:hidden;
-                font-family:'Inter',sans-serif;}
-      .pf-table thead th{font-size:9px;font-weight:600;color:#58595B;
-                         text-transform:uppercase;letter-spacing:.6px;
-                         text-align:left;padding:7px 10px;
-                         border-bottom:1.5px solid #1B1B1B;background:#F8F8F8;}
-      .pf-table tbody td{padding:6px 10px;border-bottom:1px solid #EFEFEF;
-                         color:#3C3C3B;line-height:1.4;background:#fff;}
-      .pf-table tbody td.mono{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;
-                              font-size:10px;}
-      .pf-pill{display:inline-flex;align-items:center;font-size:9.5px;
-               font-weight:600;padding:1px 7px;border-radius:10px;
-               text-transform:uppercase;letter-spacing:.3px;}
-      .pf-pill.green{background:#D1FAE5;color:#065F46;}
-      .pf-pill.amber{background:#FEF3C7;color:#92400E;}
-      .pf-pill.grey{background:#EFEFEF;color:#3C3C3B;}
-      .pf-pill.red{background:#FEE2E2;color:#991B1B;}
-      .pf-data-capture{display:flex;align-items:center;gap:8px;}
-      .pf-dc-bar{flex:1;height:6px;background:#EFEFEF;border-radius:3px;
-                 overflow:hidden;max-width:120px;}
-      .pf-dc-fill{height:100%;background:#7030A0;border-radius:3px;}
-      .pf-dc-label{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;
-                   font-size:10.5px;color:#1B1B1B;font-weight:600;}
-
-      .pf-kv-grid{border:1px solid #E2E8EE;border-top:0;
-                  border-radius:0 0 4px 4px;background:#fff;}
-      .pf-kv-row{display:grid;grid-template-columns:240px 1fr;
-                 border-bottom:1px solid #EFEFEF;}
-      .pf-kv-row:last-child{border-bottom:0;}
-      .pf-kv-label{font-size:10.5px;font-weight:500;color:#1B1B1B;
-                   padding:5px 10px;background:#F8F8F8;
-                   font-family:'Inter',sans-serif;}
-      .pf-kv-value{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;
-                   font-size:10.5px;color:#3C3C3B;padding:5px 10px;}
-
-      .pf-staffing-grid{border:1px solid #E2E8EE;border-top:0;
-                        border-radius:0 0 4px 4px;background:#fff;}
-      .pf-staff-row{display:grid;grid-template-columns:240px 1fr;
-                    border-bottom:1px solid #EFEFEF;align-items:start;}
-      .pf-staff-row:last-child{border-bottom:0;}
-      .pf-staff-label{font-size:10.5px;font-weight:500;color:#1B1B1B;
-                      padding:6px 10px;background:#F8F8F8;
-                      font-family:'Inter',sans-serif;}
-      .pf-staff-value{font-size:10.5px;color:#3C3C3B;padding:6px 10px;
-                      line-height:1.5;font-family:'Inter',sans-serif;}
-
-      .pf-issues-block{border:1px solid #E2E8EE;border-top:0;
-                       border-radius:0 0 4px 4px;background:#fff;
-                       display:grid;grid-template-columns:1fr 1fr;}
-      .pf-issues-col{padding:8px 12px;border-right:1px solid #EFEFEF;
-                     font-family:'Inter',sans-serif;}
-      .pf-issues-col:last-child{border-right:0;}
-      .pf-issues-heading{font-size:10px;font-weight:600;color:#1B1B1B;
-                         text-transform:uppercase;letter-spacing:.5px;
-                         margin-bottom:6px;padding-bottom:4px;
-                         border-bottom:1px solid #EFEFEF;}
-      .pf-issues-list{margin:0;padding:0 0 0 14px;font-size:10.5px;
-                      color:#3C3C3B;line-height:1.55;display:flex;
-                      flex-direction:column;gap:6px;}
-      .pf-issues-list li::marker{color:#8A8A8C;}
-
-      /* Portfolio page — slightly different padding than generic rb-page */
-      .rb-page.pf-page .rb-page-inner{padding:18px 48px 14px;}
-      .rb-page.pf-page .pf-page-meta{display:flex;justify-content:space-between;
-                                     align-items:center;font-size:9.5px;
-                                     color:#58595B;font-family:'Inter',sans-serif;
-                                     margin-bottom:12px;letter-spacing:.3px;
-                                     font-weight:500;}
-    ")),
+    # Fonts used inside the document preview pages
     tags$link(href = paste0("https://fonts.googleapis.com/css2",
                             "?family=Inter:wght@400;500;600;700",
                             "&family=Source+Serif+4:wght@400;600;700",
@@ -641,143 +20,131 @@ reports_tab_ui <- function() {
               rel = "stylesheet"),
 
     div(class = "rb-app",
-      div(class = "rb-shell",
+      div(class = "rb-work3",
 
-        # ─── TOP TOOLBAR ─────────────────────────────────────────────────
-        div(class = "rb-toolbar",
-            # Left cluster: trial chip + report-type segmented + meta
-            div(class = "rb-trial-chip",
-                textOutput("rb_canvas_title", inline = TRUE)),
-            uiOutput("rb_template_seg", inline = TRUE),
-            div(class = "rb-tb-meta-pill",
-                textOutput("rb_canvas_meta", inline = TRUE)),
+        # ═══ Set up ═══════════════════════════════════════════════════════
+        tags$aside(class = "rb-setup", `aria-label` = "Report set-up",
+          uiOutput("rb_trial_card"),
 
-            div(class = "rb-tb-spacer"),
+          .rb_step(1, "Report type", uiOutput("rb_type_cards")),
 
-            # Zoom controls (kept as before)
-            tags$button(class = "rb-tb-btn", type = "button",
-                        onclick = "var p=$('.rb-pages'); var z=parseFloat(p.data('zoom')||1); z=Math.max(0.3,z-0.1); p.data('zoom',z).css('transform','scale('+z+')').css('transform-origin','top center'); $('#rb_zoom_val').text(Math.round(z*100)+'%');",
-                        HTML("&minus;")),
-            span(id = "rb_zoom_val",
-                 style = "font-size:12px;font-weight:600;color:#1B1B1B;min-width:40px;text-align:center;",
-                 "100%"),
-            tags$button(class = "rb-tb-btn", type = "button",
-                        onclick = "var p=$('.rb-pages'); var z=parseFloat(p.data('zoom')||1); z=Math.min(1.5,z+0.1); p.data('zoom',z).css('transform','scale('+z+')').css('transform-origin','top center'); $('#rb_zoom_val').text(Math.round(z*100)+'%');",
-                        HTML("+")),
+          .rb_step(2, "Reporting period",
+            div(class = "rb-presets", role = "group", `aria-label` = "Reporting period",
+              lapply(list(c("3m", "Last 3 months"), c("6m", "Last 6 months"),
+                          c("12m", "Last 12 months"), c("all", "Whole trial")), function(p)
+                tags$button(type = "button", class = paste("rb-preset", if (p[1] == "3m") "on"),
+                            `data-p` = p[1], p[2]))),
+            dateRangeInput("rb_dates", "From – to",
+                           start = Sys.Date() %m-% months(3), end = Sys.Date(),
+                           format = "d M yyyy", separator = "to"),
+            shinyWidgets::pickerInput("rb_sites", "Sites", choices = NULL, multiple = TRUE,
+              options = list(`none-selected-text` = "All sites", `actions-box` = TRUE,
+                             `live-search` = TRUE, `selected-text-format` = "count > 2")),
+            note = "“Whole trial” ignores the dates and site filter."),
 
-            div(class = "rb-tb-sep"),
+          .rb_step(3, "Options", id = "rb_opts_step",
+            checkboxInput("include_withdrawn", "Include withdrawn participants", FALSE),
+            div(id = "rb_opt_appendix",
+                checkboxInput("report_appendix", "Add the data appendix", FALSE)),
+            radioButtons("completeness_style", "CRF completeness shown as",
+                         c("Heatmap" = "heatmap", "List" = "flat", "Both" = "both"), "heatmap", inline = TRUE)),
 
-            # Panel toggles — Sections / Narrative / Meeting / Amendments
-            tags$button(id = "rb_btab_sections",
-                        class = "rb-tb-btn rb-btab action-button",
-                        type = "button", "Sections"),
-            tags$button(id = "rb_btab_narrative",
-                        class = "rb-tb-btn rb-btab action-button",
-                        type = "button", "Narrative"),
-            tags$button(id = "rb_btab_meeting",
-                        class = "rb-tb-btn rb-btab action-button",
-                        type = "button", "Meeting"),
-            tags$button(id = "rb_btab_amend",
-                        class = "rb-tb-btn rb-btab action-button",
-                        type = "button", "Amendments"),
-            tags$button(id = "rb_btab_portfolio",
-                        class = "rb-tb-btn rb-btab action-button",
-                        type = "button", "Portfolio"),
+          .rb_step(4, "People",
+            textInput("prepared_by", "Prepared by", ""),
+            textInput("reviewed_by", "Reviewed by", "")),
 
-            div(class = "rb-tb-sep"),
-
-            # Preview · Print
-            tags$button(class = "rb-tb-btn", type = "button",
-                        onclick = "window.print();",
-                        HTML("Preview &middot; Print")),
-
-            # Generate report (primary)
-            actionButton("rb_open_generate_modal",
-                         HTML("&#x2193; Generate report"),
-                         class = "rb-tb-btn primary",
-                         style = "background:#1B1B1B;color:#fff;")
+          .rb_step(5, "Content", uiOutput("rb_content_ui"))
         ),
 
-        # ─── MAIN AREA ───────────────────────────────────────────────────
-        div(class = "rb-main",
-          # Full-width document canvas (template unchanged)
+        # ═══ Preview ══════════════════════════════════════════════════════
+        div(class = "rb-canvas-wrap",
           tags$main(class = "rb-canvas",
-            div(class = "rb-pages",
-                uiOutput("rb_document_preview"))
-          ),
+            div(class = "rb-toolbar",
+                div(class = "rb-tb-titles",
+                    div(class = "rb-tb-title", textOutput("rb_canvas_title", inline = TRUE)),
+                    div(class = "rb-tb-sub", textOutput("rb_canvas_meta", inline = TRUE))),
+                div(class = "rb-tb-spacer"),
+                uiOutput("rb_preview_status", inline = TRUE),
+                div(class = "rb-zoom",
+                    tags$button(class = "rb-tb-btn", type = "button", `aria-label` = "Zoom out",
+                                onclick = "rbZoom(-0.1)", HTML("&minus;")),
+                    span(id = "rb_zoom_val", "100%"),
+                    tags$button(class = "rb-tb-btn", type = "button", `aria-label` = "Zoom in",
+                                onclick = "rbZoom(0.1)", "+")),
+                tags$button(class = "rb-tb-btn", type = "button", onclick = "rbPrint()", "Print")),
+            div(class = "rb-pages", uiOutput("rb_document_preview"))),
 
-          # Slide-over panel — hidden by default; opened via toolbar tabs
-          tags$aside(id = "rb_panel", class = "rb-panel",
+          # Slide-over editor, opened from Set up → Content
+          tags$aside(id = "rb_panel", class = "rb-panel", `aria-label` = "Report content editor",
             div(class = "rb-panel-head",
-              tags$h3(id = "rb_panel_title", "Sections"),
-              tags$button(id = "rb_panel_close",
-                          class = "rb-panel-close action-button",
-                          type = "button",
-                          HTML("&times;"))
-            ),
-            div(class = "rb-panel-body",
-              uiOutput("rb_builder_body")
-            )
-          )
-        )
-      ),
+                tags$h3(id = "rb_panel_title", "Sections"),
+                tags$button(id = "rb_panel_close", class = "rb-panel-close", type = "button",
+                            `aria-label` = "Close editor", HTML("&times;"))),
+            div(class = "rb-panel-body", uiOutput("rb_builder_body")))
+        ),
 
-      # Preserve server bindings that used to live in the left rail.
-      # These outputs are still produced by reports_server; keeping the
-      # uiOutput targets in the DOM (hidden) prevents Shiny binding errors
-      # without surfacing the old controls visually.
-      div(style = "display:none;",
-          uiOutput("rb_trial_card"),
-          uiOutput("rb_template_desc"),
-          uiOutput("rb_summary_tiles"),
-          dateRangeInput("rpt_dates", label = NULL,
-                         start = floor_date(Sys.Date() %m-% months(2), "month"),
-                         end   = Sys.Date(),
-                         format = "d M yyyy"),
-          tags$button(id = "rb_scope_filtered", class = "on action-button",
-                      type = "button", "Filtered"),
-          tags$button(id = "rb_scope_full", class = "action-button",
-                      type = "button", "Full trial")
+        # ═══ Generate ═════════════════════════════════════════════════════
+        tags$aside(class = "rb-side", `aria-label` = "Generate report",
+          div(class = "rb-side-block",
+              div(class = "rb-side-h", "Ready to generate"),
+              uiOutput("rb_readiness")),
+          div(class = "rb-side-block",
+              div(class = "rb-side-h", "Output"),
+              uiOutput("rb_format_ui"),
+              downloadButton("rb_download", "Generate report", class = "rb-generate"),
+              uiOutput("rb_gen_note")),
+          div(class = "rb-side-block",
+              div(class = "rb-side-h", "Recent reports"),
+              uiOutput("rb_recent_ui")))
       )
     ),
 
-    # JS: toolbar tab → slide-over open/close + scope segment buttons
     tags$script(HTML("
-      var RB_PANEL_TITLES = {
-        sections:  'Sections',
-        narrative: 'Narrative',
-        meeting:   'Meeting details',
-        amend:     'Amendments',
-        portfolio: 'Portfolio review'
-      };
-      $(document).on('click', '.rb-btab', function(){
-        var $btn = $(this);
-        var id   = $btn.attr('id');
-        var key  = id.replace('rb_btab_','');
-        var $panel = $('#rb_panel');
-        var alreadyActive = $btn.hasClass('active');
+      function rbZoom(d) {
+        var p = $('.rb-pages');
+        var z = Math.min(1.5, Math.max(0.3, (parseFloat(p.data('zoom')) || 1) + d));
+        p.data('zoom', z).css({ transform: 'scale(' + z + ')', 'transform-origin': 'top center' });
+        $('#rb_zoom_val').text(Math.round(z * 100) + '%');
+      }
+      // Print the report itself (the preview frame) rather than the whole app
+      function rbPrint() {
+        var f = document.querySelector('#rb_document_preview iframe');
+        if (f && f.contentWindow) { f.contentWindow.focus(); f.contentWindow.print(); }
+        else window.print();
+      }
+      var RB_PANEL_TITLES = { sections: 'Sections', narrative: 'Narrative',
+                              amend: 'Amendments', portfolio: 'Portfolio review' };
+      $(document).on('click', '.rb-btab', function() {
+        var key = this.id.replace('rb_btab_', '');
+        var open = !$(this).hasClass('active');
         $('.rb-btab').removeClass('active');
-        if (alreadyActive) {
-          $panel.removeClass('open');
-          Shiny.setInputValue('rb_active_btab', null, {priority:'event'});
-        } else {
-          $btn.addClass('active');
-          $('#rb_panel_title').text(RB_PANEL_TITLES[key] || key);
-          $panel.addClass('open');
-          Shiny.setInputValue('rb_active_btab', key, {priority:'event'});
-        }
+        $('#rb_panel').toggleClass('open', open);
+        if (open) { $(this).addClass('active'); $('#rb_panel_title').text(RB_PANEL_TITLES[key] || key); }
+        Shiny.setInputValue('rb_active_btab', open ? key : null, { priority: 'event' });
       });
-      $(document).on('click', '#rb_panel_close', function(){
+      $(document).on('click', '#rb_panel_close', function() {
         $('.rb-btab').removeClass('active');
         $('#rb_panel').removeClass('open');
-        Shiny.setInputValue('rb_active_btab', null, {priority:'event'});
+        Shiny.setInputValue('rb_active_btab', null, { priority: 'event' });
       });
-      $(document).on('click', '#rb_scope_filtered, #rb_scope_full', function(){
-        $('#rb_scope_filtered, #rb_scope_full').removeClass('on');
-        $(this).addClass('on');
-        var key = $(this).attr('id') === 'rb_scope_full' ? 'full' : 'filtered';
-        Shiny.setInputValue('rb_scope', key, {priority:'event'});
+      // Period presets; editing the dates by hand switches to a custom period
+      var rbPresetAt = 0;
+      $(document).on('click', '.rb-preset', function() {
+        $('.rb-preset').removeClass('on'); $(this).addClass('on');
+        rbPresetAt = Date.now();
+        Shiny.setInputValue('rb_preset', $(this).data('p'), { priority: 'event' });
       });
+      $(document).on('change', '#rb_dates input', function() {
+        if (Date.now() - rbPresetAt < 1500) return;
+        $('.rb-preset').removeClass('on');
+        Shiny.setInputValue('rb_preset', 'custom', { priority: 'event' });
+      });
+      // Jump to Settings → Reports & admin (report text and templates)
+      function rbOpenReportSettings() {
+        Shiny.setInputValue('go_settings', Math.random(), { priority: 'event' });
+        if (window.setActiveTab) setActiveTab('tn_settings');
+        setTimeout(function() { $('.settings-item[data-section=reports]').trigger('click'); }, 400);
+      }
     "))
   )
 }

@@ -441,6 +441,7 @@ trial_selector_server <- function(input, output, session, state) {
             amendment_added  = list(c = "#C59A00", l = "AMEND"),
             amendment_edited = list(c = "#C59A00", l = "AMEND"),
             settings_saved   = list(c = "#58595B", l = "SET"),
+            report_generated = list(c = "#1B1B1B", l = "REPORT"),
             membership_changed = list(c = "#F07F3C", l = "USER"),
             portfolio_role_changed = list(c = "#F07F3C", l = "ROLE")
           )

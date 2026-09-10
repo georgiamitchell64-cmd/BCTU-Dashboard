@@ -17,6 +17,7 @@ build_app_ui <- function() {
       tags$link(rel = "stylesheet", type = "text/css", href = "trial_replay.css"),
       tags$link(rel = "stylesheet", type = "text/css", href = "trial_health.css"),
       tags$link(rel = "stylesheet", type = "text/css", href = "settings.css"),
+      tags$link(rel = "stylesheet", type = "text/css", href = "reports.css"),
       tags$script(src = "trial_replay.js", defer = NA),
       tags$script(src = "trial_health.js", defer = NA),
       tags$script(HTML("

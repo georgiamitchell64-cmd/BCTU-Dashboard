@@ -107,6 +107,7 @@ list_activity <- function(limit = 200, trial_code = NULL,
     amendment_edited   = list(emoji = "&#x270F;", colour = "#C59A00"),
     amendment_removed  = list(emoji = "&#x2716;", colour = "#8A8A8C"),
     settings_saved     = list(emoji = "&#x2699;", colour = "#58595B"),
+    report_generated   = list(emoji = "&#x1F4C4;", colour = "#1B1B1B"),
     membership_changed = list(emoji = "&#x1F465;", colour = "#F07F3C"),
     portfolio_role_changed = list(emoji = "&#x1F451;", colour = "#F07F3C"),
     list(emoji = "&#x1F4CC;", colour = "#8A8A8C"))

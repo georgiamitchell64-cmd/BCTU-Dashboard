@@ -1039,82 +1039,405 @@ reports_server <- function(input, output, session, state) {
   })
 
   # ════════════════════════════════════════════════════════════════════════
-  # Generate Report Modal + Multi-format download
+  # Report builder — set up (period, sites, people, options), readiness,
+  # output format and generation history
   # ════════════════════════════════════════════════════════════════════════
+  RB_RMD      <- c("TMG", "iTMG", "TSC")        # built from the trial's Rmd templates
+  RB_FORMATS  <- list(TMG = c("pdf", "docx", "html"), iTMG = c("pdf", "docx", "html"),
+                      TSC = "docx", NIHR = c("docx", "pdf", "html"),
+                      Portfolio = c("docx", "pdf", "html"))
+  RB_FMT_DESC <- c(pdf = "Print-ready", docx = "Editable Word", html = "Web archive")
+
   rb_export_format <- reactiveVal("docx")
+  rb_scope         <- reactiveVal("filtered")   # "full" = whole trial, no filters
+  rb_log_nonce     <- reactiveVal(0L)
 
-  observeEvent(input$rb_open_generate_modal, {
+  observeEvent(input$rb_set_format, rb_export_format(input$rb_set_format))
+
+  # Period presets; editing the dates by hand sends "custom"
+  observeEvent(input$rb_preset, {
+    p <- input$rb_preset
+    rb_scope(if (identical(p, "all")) "full" else "filtered")
+    m <- switch(p, "3m" = 3, "6m" = 6, "12m" = 12, NULL)
+    if (!is.null(m))
+      updateDateRangeInput(session, "rb_dates", start = Sys.Date() %m-% months(m), end = Sys.Date())
+  })
+
+  observe({
+    s  <- rv$sites
+    ch <- if (!is.null(s) && "site_name" %in% names(s))
+      sort(unique(stats::na.omit(as.character(s$site_name)))) else character(0)
+    shinyWidgets::updatePickerInput(session, "rb_sites", choices = ch,
+                                    selected = intersect(isolate(input$rb_sites), ch))
+  })
+
+  observeEvent(rv$username, {
+    if (!nzchar(trimws(isolate(input$prepared_by) %||% "")))
+      updateTextInput(session, "prepared_by", value = rv$username)
+  }, ignoreNULL = TRUE)
+
+  observe({
+    t <- rb_template_choice()
+    shinyjs::toggle("rb_opts_step",    condition = t %in% RB_RMD)
+    shinyjs::toggle("rb_opt_appendix", condition = t %in% c("TMG", "iTMG"))
+    fm <- RB_FORMATS[[t]] %||% "docx"
+    if (!isolate(rb_export_format()) %in% fm) rb_export_format(fm[1])
+  })
+
+  # A new report type has different editors, so close the slide-over
+  observeEvent(rb_template_choice(), {
+    shinyjs::runjs("$('#rb_panel').removeClass('open'); $('.rb-btab').removeClass('active');")
+  }, ignoreInit = TRUE)
+
+  rb_filters <- reactive({
+    full  <- identical(rb_scope(), "full")
+    d     <- input$rb_dates
+    has_d <- !full && length(d) == 2 && !anyNA(d)
+    list(full  = full,
+         sites = if (full || !length(input$rb_sites)) NULL else input$rb_sites,
+         from  = if (has_d) as.Date(d[1]) else NULL,
+         to    = if (has_d) as.Date(d[2]) else NULL)
+  })
+  rb_period_label <- reactive({
+    f <- rb_filters()
+    if (f$full) "Whole trial"
+    else if (is.null(f$from)) "No period set"
+    else sprintf("%s – %s", format(f$from, "%d %b %Y"), format(f$to, "%d %b %Y"))
+  })
+  rb_sites_label <- reactive({
+    s <- rb_filters()$sites
+    if (is.null(s)) "All sites"
+    else if (length(s) <= 2) paste(s, collapse = ", ")
+    else sprintf("%d sites", length(s))
+  })
+
+  # ── Shared by the preview and the download ─────────────────────────────
+  rb_crf_path <- function() tryCatch({
+    p <- latest_return_rate_file(dir = rv$trial_config$return_rates_dir,
+                                 trial_code = rv$trial_config$code)
+    if (is.null(p) || !file.exists(p)) NULL else p
+  }, error = function(e) NULL)
+
+  rb_report_data <- function(crf_path = rb_crf_path()) {
+    f <- rb_filters()
+    prepare_report_data(df = rv$raw_redcap, selected_sites = f$sites,
+                        date_from = f$from, date_to = f$to,
+                        include_withdrawn = isTRUE(input$include_withdrawn),
+                        pipeline_df = rv$sites, crf_csv_path = crf_path)
+  }
+
+  # Amendments register → the date / description / status table the TSC template expects
+  rb_amendments_df <- function(kind) {
+    a <- Filter(function(x) identical(x$type %||% "", kind), amendments_state())
+    if (!length(a)) return(NULL)
+    data.frame(
+      date        = vapply(a, function(x) {
+        d <- suppressWarnings(as.Date(x$date %||% NA_character_))
+        if (is.na(d)) "" else format(d, "%d %b %Y") }, ""),
+      description = vapply(a, function(x) {
+        parts <- c(x$ref, x$description)
+        parts <- parts[!is.na(parts) & nzchar(parts)]
+        paste(parts, collapse = " — ") }, ""),
+      status      = vapply(a, function(x) x$status %||% "", ""),
+      stringsAsFactors = FALSE)
+  }
+
+  rb_rmd_params <- function(kind, report_data, crf_path, tmpl_choice) {
     cfg <- rv$trial_config
-    if (is.null(cfg)) return()
+    f   <- rb_filters()
+    common <- list(
+      report_data        = report_data,
+      selected_sites     = if (is.null(f$sites)) "All sites" else paste(f$sites, collapse = ", "),
+      date_from          = f$from,
+      date_to            = f$to,
+      crf_csv_path       = crf_path,
+      report_date        = format(Sys.Date(), "%d %B %Y"),
+      include_withdrawn  = isTRUE(input$include_withdrawn),
+      completeness_style = input$completeness_style %||% "heatmap",
+      report_content     = cfg$report_content,
+      logo_path          = resolve_logo_path(cfg))
+    if (identical(kind, "tsc"))
+      c(common, list(prepared_by = input$prepared_by %||% rv$username %||% "",
+                     reviewed_by = input$reviewed_by %||% "",
+                     amendments_substantial     = rb_amendments_df("Substantial"),
+                     amendments_non_substantial = rb_amendments_df("Non-substantial")))
+    else
+      c(common, list(include_appendix = isTRUE(input$report_appendix),
+                     report_type = if (identical(tmpl_choice, "iTMG")) "iTMG" else "TMG"))
+  }
 
-    period <- if (!is.null(input$rpt_dates))
-      sprintf("%s — %s",
-              format(input$rpt_dates[1], "%b %Y"),
-              format(input$rpt_dates[2], "%b %Y")) else "—"
-    n_secs <- length(rb_section_order())
+  # Copy a template and the helper files it sources into a render folder
+  rb_stage_rmd <- function(rmd_src, dir) {
+    dest <- file.path(dir, basename(rmd_src))
+    file.copy(rmd_src, dest, overwrite = TRUE)
+    for (h in c("functions/flat_completeness.R", "functions/baseline_table.R",
+                "functions/consort_flow.R", "functions/tsc_charts.R",
+                "www/BlackText-landscape.png"))          # BCTU header logo
+      if (file.exists(h)) file.copy(h, file.path(dir, basename(h)), overwrite = TRUE)
+    dest
+  }
 
-    showModal(modalDialog(
-      title = NULL,
-      size = "m", easyClose = TRUE,
-      footer = tagList(
-        modalButton("Cancel"),
-        downloadButton("rb_download",
-                       uiOutput("rb_download_label", inline = TRUE),
-                       class = "btn",
-                       style = "background:#1B1B1B;color:#fff;border:none;
-                                font-weight:600;padding:10px 22px;border-radius:8px;
-                                font-size:13px;")
-      ),
+  rb_log_generated <- function(tmpl, fmt) {
+    cfg <- rv$trial_config
+    log_activity("report_generated",
+                 sprintf("Generated the <strong>%s</strong> report (%s) · %s",
+                         htmltools::htmlEscape(tmpl), toupper(fmt),
+                         htmltools::htmlEscape(rb_period_label())),
+                 username = rv$username, trial_code = cfg$code,
+                 metadata = list(template = tmpl, format = fmt,
+                                 period = rb_period_label(), sites = rb_sites_label()))
+    rb_log_nonce(rb_log_nonce() + 1L)
+  }
 
-      div(
-        tags$h2(class = "rpt-modal-title",
-                sprintf("Generate %s report", rb_template_choice())),
-        div(class = "rpt-modal-sub",
-            sprintf("%s · %s",
-                    cfg$short_name %||% toupper(cfg$code), period)),
+  # ── Section-based reports (NIHR, Portfolio): pages built in the app ─────
+  rb_section_ctx <- function(cfg, period) list(
+    rv = rv, cfg = cfg,
+    template_label   = REPORT_TEMPLATES[[rb_template_choice()]]$label,
+    period_label     = period,
+    prepared_by      = input$prepared_by %||% rv$username,
+    reviewed_by      = input$reviewed_by,
+    custom_text      = input$rb_custom_text,
+    next_period_text = input$rb_next_period,
+    portfolio        = portfolio_ctx())
 
-        div(class = "rpt-format-label", "Output format"),
+  rb_section_pages <- function(cfg, secs, tmpl_key, period, ctx) {
+    template <- REPORT_TEMPLATES[[tmpl_key]]
+    title_page <- div(class = "rb-page",
+      div(class = "rb-titlepage",
+        div(class = "rb-tp-stripe"),
+        div(class = "rb-tp-top",
+            div(class = "rb-tp-mark",
+                div(class = "lm", substring(toupper(cfg$short_name %||% "T"), 1, 1)),
+                div(div(class = "ln-a", cfg$short_name %||% toupper(cfg$code)),
+                    div(class = "ln-b", "BCTU Clinical Trials"))),
+            div(class = "rb-tp-spons", "Sponsor",
+                tags$strong(cfg$report_defaults$sponsor %||% "—"))),
+        div(class = "rb-tp-mid",
+            div(class = "rb-tp-eyebrow", span(class = "bar"), paste(tmpl_key, "Report")),
+            tags$h1(class = "rb-tp-title", template$label %||% "Trial Report"),
+            tags$p(class = "rb-tp-sub", cfg$name %||% ""),
+            div(class = "rb-tp-period", "Reporting period · ", tags$strong(period)),
+            div(class = "rb-tp-meta",
+                div(class = "item", div(class = "k", "Trial code"),
+                    div(class = "v", toupper(cfg$code %||% "—"))),
+                div(class = "item", div(class = "k", "Chief Investigator"),
+                    div(class = "v", cfg$report_defaults$ci %||% "—")),
+                div(class = "item", div(class = "k", "Prepared by"),
+                    div(class = "v", input$prepared_by %||% rv$username %||% "—")),
+                div(class = "item", div(class = "k", "Date generated"),
+                    div(class = "v", format(Sys.Date(), "%d %B %Y")))))))
+    content_pages <- lapply(seq_along(secs), function(i) {
+      sec <- report_section_by_id(secs[i])
+      if (is.null(sec)) return(NULL)
+      html <- tryCatch(sec$render(ctx), error = function(e)
+        sprintf("<p style='color:#C20019;'>Failed: %s</p>", htmltools::htmlEscape(e$message)))
+      tagList(
+        div(class = "rb-page-marker", span(class = "ln"), sprintf("Page %d", i + 1), span(class = "ln")),
+        div(class = "rb-page",
+            div(class = "rb-page-inner",
+                div(class = "rb-doc",
+                    div(class = "secblock",
+                        div(class = "secblock-head",
+                            span(class = "n", sprintf("§ %02d", i)), tags$h2(sec$label)),
+                        HTML(html)))),
+            div(class = "rb-page-foot",
+                span(sprintf("%s · %s", cfg$short_name %||% toupper(cfg$code), tmpl_key)),
+                span(sprintf("Page %d of %d", i + 1, length(secs) + 1)))))
+    })
+    do.call(tagList, c(list(title_page), content_pages))
+  }
 
-        div(class = "rpt-format-grid",
-            div(id = "fmt_docx", class = "rpt-format-card rpt-format-active",
-                onclick = "Shiny.setInputValue('rb_set_format','docx',{priority:'event'});
-                           $('.rpt-format-card').removeClass('rpt-format-active');
-                           $(this).addClass('rpt-format-active');",
-                div(class = "rpt-format-ext", ".docx"),
-                div(class = "rpt-format-desc", "Editable Word document, page-formatted")),
-            div(id = "fmt_pdf", class = "rpt-format-card",
-                onclick = "Shiny.setInputValue('rb_set_format','pdf',{priority:'event'});
-                           $('.rpt-format-card').removeClass('rpt-format-active');
-                           $(this).addClass('rpt-format-active');",
-                div(class = "rpt-format-ext", ".pdf"),
-                div(class = "rpt-format-desc", "Print-ready PDF, A4 with chrome")),
-            div(id = "fmt_html", class = "rpt-format-card",
-                onclick = "Shiny.setInputValue('rb_set_format','html',{priority:'event'});
-                           $('.rpt-format-card').removeClass('rpt-format-active');
-                           $(this).addClass('rpt-format-active');",
-                div(class = "rpt-format-ext", ".html"),
-                div(class = "rpt-format-desc", "Self-contained HTML for archive"))
-        ),
+  # A standalone HTML file of the section pages, for the NIHR download
+  rb_export_html <- function(cfg, secs, period, ctx) {
+    css <- tryCatch(paste(readLines(file.path("www", "reports.css"), warn = FALSE), collapse = "\n"),
+                    error = function(e) "")
+    body <- htmltools::renderTags(
+      div(class = "rb-app rb-export",
+          div(class = "rb-pages", rb_section_pages(cfg, secs, "NIHR", period, ctx))))$html
+    paste0("<!doctype html><html><head><meta charset='utf-8'>",
+           sprintf("<title>%s — %s</title>",
+                   htmltools::htmlEscape(cfg$short_name %||% cfg$code %||% "Trial"),
+                   htmltools::htmlEscape(REPORT_TEMPLATES$NIHR$label)),
+           "<link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700",
+           "&family=Source+Serif+4:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap' rel='stylesheet'>",
+           "<style>", css,
+           "\nbody{margin:0;background:#F4F6F9;font-family:'Inter',system-ui,sans-serif;}",
+           ".rb-page-marker{display:none;}",
+           "@media print{body{background:#fff;}.rb-pages{padding:0;gap:0;}",
+           ".rb-page{box-shadow:none;page-break-after:always;}}",
+           "</style></head><body>", body, "</body></html>")
+  }
 
-        div(class = "rpt-modal-info",
-            sprintf("%d sections · ~%d pages · Filtered to reporting period",
-                    n_secs, n_secs + 1))
-      )
-    ))
+  # ── Set up panel: report type cards and content editors ───────────────
+  output$rb_type_cards <- renderUI({
+    cur <- rb_template_choice()
+    div(class = "rb-types", role = "radiogroup", `aria-label` = "Report type",
+      lapply(names(REPORT_TEMPLATES), function(k) {
+        t  <- REPORT_TEMPLATES[[k]]
+        m  <- regmatches(t$label, regexec("^(.*?) \\((.*)\\)$", t$label))[[1]]
+        on <- identical(k, cur)
+        tags$button(type = "button", class = paste("rb-type", if (on) "on"),
+                    role = "radio", `aria-checked` = if (on) "true" else "false",
+                    onclick = sprintf("Shiny.setInputValue('rb_pick_template','%s',{priority:'event'})", k),
+                    span(class = "rb-type-name", if (length(m) == 3) m[2] else t$label),
+                    span(class = "rb-type-fmt",
+                         paste(c(pdf = "PDF", docx = "Word", html = "HTML")[RB_FORMATS[[k]] %||% "docx"],
+                               collapse = " · ")),
+                    span(class = "rb-type-desc",
+                         if (length(m) == 3) paste0(m[3], ". ", t$description) else t$description))
+      }))
   })
 
-  observeEvent(input$rb_set_format, {
-    rb_export_format(input$rb_set_format)
+  output$rb_content_ui <- renderUI({
+    t    <- rb_template_choice()
+    n_am <- length(amendments_state())
+    n_sc <- length(rb_section_order())
+    ed <- function(key, title, sub)
+      tags$button(id = paste0("rb_btab_", key), type = "button", class = "rb-editor-btn rb-btab",
+                  div(tags$b(title), tags$small(sub)), tags$i(HTML("&rsaquo;")))
+    amend <- ed("amend", "Amendments", sprintf("%d in the register", n_am))
+    items <- switch(t,
+      TSC       = list(amend),
+      NIHR      = list(ed("sections", "Sections", sprintf("%d in this report", n_sc)),
+                       ed("narrative", "Narrative", "Notes and plans for the next period"), amend),
+      Portfolio = list(ed("portfolio", "Portfolio review details", "RAG status, meetings, issues"),
+                       ed("sections", "Sections", sprintf("%d in this report", n_sc)),
+                       ed("narrative", "Narrative", "Notes and plans for the next period")),
+      list())
+    rmd <- t %in% RB_RMD
+    tagList(
+      div(class = "rb-editors", items,
+          if (rmd) tags$button(type = "button", class = "rb-editor-btn", onclick = "rbOpenReportSettings()",
+                               div(tags$b("Report text and template"),
+                                   tags$small("Cover title, registration line, the template itself")),
+                               tags$i(HTML("&rsaquo;")))),
+      if (rmd) div(class = "rb-step-note",
+                   "This report's layout comes from the trial's template, so its sections are set there."))
   })
 
-  output$rb_download_label <- renderUI({
-    fmt <- rb_export_format()
-    label <- switch(fmt,
-                    "docx" = "Generate DOCX",
-                    "pdf"  = "Generate PDF",
-                    "html" = "Generate HTML",
-                    "Generate")
-    HTML(label)
+  # ── Generate panel: readiness, output format, history ──────────────────
+  output$rb_readiness <- renderUI({
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(div(class = "rb-empty", "Select a trial first."))
+    t <- rb_template_choice()
+    chk <- function(state, title, sub = NULL)
+      div(class = paste("rb-check", state),
+          span(class = "ic", `aria-hidden` = "true",
+               switch(state, ok = HTML("&#10003;"), warn = "!", bad = HTML("&times;"), "i")),
+          div(tags$b(title), if (!is.null(sub)) tags$small(sub)))
+    n       <- length(unique(rv$participants$record_id %||% character(0)))
+    ok_data <- !is.null(rv$raw_redcap) && nrow(rv$raw_redcap) > 0
+    items <- list(
+      if (ok_data) chk("ok", sprintf("Data loaded · %s participants", format(n, big.mark = ",")),
+                       rv$loaded_file %||% NULL)
+      else chk("bad", "No REDCap export loaded", "Upload one on the Upload tab first."),
+      chk(if (identical(rb_period_label(), "No period set")) "warn" else "ok",
+          rb_period_label(), rb_sites_label()),
+      if (nzchar(trimws(input$prepared_by %||% ""))) chk("ok", "Prepared by", input$prepared_by)
+      else chk("warn", "Who prepared the report?", "Add a name under People."))
+    if (identical(t, "TSC") && !nzchar(trimws(input$reviewed_by %||% "")))
+      items <- c(items, list(chk("warn", "No reviewer named", "TSC reports list who reviewed them.")))
+    if (t %in% RB_RMD) {
+      kind  <- if (identical(t, "TSC")) "tsc" else "tonic"
+      src   <- resolve_report_template(cfg, kind)
+      std   <- default_report_template_path(kind)
+      own   <- trial_report_template_path(cfg, kind)
+      np    <- function(x) normalizePath(x, mustWork = FALSE)
+      same  <- function(a, b) file.exists(a) && file.exists(b) &&
+        identical(unname(tools::md5sum(a)), unname(tools::md5sum(b)))
+      items <- c(items, list(
+        if (is.null(src)) chk("bad", "Template missing", "Check Settings → Reports & admin.")
+        else if (np(src) == np(own))
+          chk("info", "Using this trial's template",
+              if (same(src, std)) "Identical to the standard template" else "Customised for this trial")
+        else if (np(src) == np(std))
+          chk("info", "Using the standard template", "This trial has no copy of its own")
+        else chk("info", "Using an external template", basename(src))))
+      rc <- cfg$report_content %||% list()
+      has_rc <- any(vapply(rc[intersect(c("trial_title", "trial_subtitle", "registration_line"), names(rc))],
+                           function(x) is.character(x) && any(nzchar(x)), logical(1)))
+      items <- c(items, list(
+        if (has_rc) chk("ok", "Report text set", "Cover title and registration from Settings")
+        else chk("warn", "Report text not set",
+                 tagList("Add a cover title and registration line in ",
+                         tags$a(onclick = "rbOpenReportSettings()", "Settings"), "."))))
+      if (isTRUE(rb_preview_stale()))
+        items <- c(items, list(chk("warn", "Preview out of date",
+          tagList("Settings changed since it was built. ",
+                  tags$a(onclick = "Shiny.setInputValue('rb_refresh_preview', Math.random(), {priority:'event'})",
+                         "Update preview")))))
+    }
+    if (t %in% c("TSC", "NIHR")) {
+      k <- length(amendments_state())
+      items <- c(items, list(chk("info", sprintf("%d amendment%s in the register", k, if (k == 1) "" else "s"))))
+    }
+    if (identical(t, "NIHR") &&
+        !nzchar(trimws(paste(input$rb_custom_text %||% "", input$rb_next_period %||% ""))))
+      items <- c(items, list(chk("warn", "No narrative yet", "Add notes and plans under Content → Narrative.")))
+    if (identical(t, "Portfolio") && !nzchar(input$pr_rag_status %||% ""))
+      items <- c(items, list(chk("warn", "RAG status not chosen",
+                                 "Set it under Content → Portfolio review details.")))
+
+    # Points from the trial health checks worth raising at the meeting
+    raise <- tryCatch({
+      sm   <- state$health()$summary
+      red  <- if (!is.null(sm$rag)) as.integer(sm$rag[["red"]]) else 0L
+      high <- if (!is.null(sm$attention)) as.integer(sm$attention[["High"]]) else 0L
+      fin  <- sm$finish$p50
+      c(if (red > 0) sprintf("%d site%s rated red on the Sites tab", red, if (red == 1) "" else "s"),
+        if (isTRUE(sm$overdue_crfs > 0))
+          sprintf("%d overdue CRF%s", sm$overdue_crfs, if (sm$overdue_crfs == 1) "" else "s"),
+        if (high > 0) sprintf("%d participant%s needing urgent follow-up", high, if (high == 1) "" else "s"),
+        if (isTRUE(sm$ahead < 0)) sprintf("%d behind the recruitment target schedule", -sm$ahead),
+        if (!is.null(fin) && length(fin) && !is.na(fin))
+          sprintf("Target projected around %s", format(as.Date(fin), "%b %Y")))
+    }, error = function(e) NULL)
+    tagList(items,
+            if (length(raise)) div(class = "rb-raise",
+                                   div(class = "rb-raise-h", "Worth raising at the meeting"),
+                                   tags$ul(lapply(raise, tags$li))))
+  })
+
+  output$rb_format_ui <- renderUI({
+    t   <- rb_template_choice()
+    fm  <- RB_FORMATS[[t]] %||% "docx"
+    cur <- rb_export_format()
+    div(class = "rb-formats", role = "radiogroup", `aria-label` = "Output format",
+      lapply(c("pdf", "docx", "html"), function(f) {
+        ok <- f %in% fm
+        on <- ok && identical(f, cur)
+        tags$button(type = "button", class = paste("rb-fmt", if (on) "on"),
+                    disabled = if (!ok) NA, role = "radio", `aria-checked` = if (on) "true" else "false",
+                    title = if (!ok) "Not available for this report type",
+                    onclick = if (ok) sprintf("Shiny.setInputValue('rb_set_format','%s',{priority:'event'})", f),
+                    tags$b(paste0(".", f)), tags$small(RB_FMT_DESC[[f]]))
+      }))
+  })
+
+  output$rb_gen_note <- renderUI({
+    div(class = "rb-gen-note", switch(rb_template_choice(),
+      TSC  = "TSC reports are Word documents, built from the trial's TSC template.",
+      TMG  = , iTMG = "PDF matches the preview exactly. Word keeps the text, tables and charts editable.",
+      "Built from the pages shown in the preview."))
+  })
+
+  output$rb_recent_ui <- renderUI({
+    rb_log_nonce()
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return(NULL)
+    ev <- tryCatch(list_activity(limit = 6, trial_code = cfg$code, event_type = "report_generated"),
+                   error = function(e) data.frame())
+    if (!is.data.frame(ev) || !nrow(ev))
+      return(div(class = "rb-empty", "No reports generated yet for this trial."))
+    lapply(seq_len(nrow(ev)), function(i) {
+      m    <- tryCatch(jsonlite::fromJSON(ev$metadata[i]), error = function(e) list())
+      who  <- if (is.na(ev$username[i])) "" else ev$username[i]
+      bits <- c(m$period %||% "", who)
+      div(class = "rb-recent-row",
+          tags$b(sprintf("%s · %s", m$template %||% "Report", toupper(m$format %||% ""))),
+          tags$time(datetime = ev$timestamp[i], .time_ago(ev$timestamp[i])),
+          span(paste(bits[nzchar(bits)], collapse = " · ")))
+    })
   })
 
   # Generate (multi-format)
@@ -1135,133 +1458,125 @@ reports_server <- function(input, output, session, state) {
       fmt <- rb_export_format()
       template_choice <- rb_template_choice()
 
-      # Portfolio review template renders directly from the section
+      # Section-based reports (Portfolio review, NIHR) render from the section
       # registry — no Rmd. Build an HTML document, then convert per fmt.
-      if (template_choice == "Portfolio") {
-        period <- if (!is.null(input$rpt_dates))
-          sprintf("%s – %s",
-                  format(input$rpt_dates[1], "%d %b %Y"),
-                  format(input$rpt_dates[2], "%d %b %Y")) else "—"
-        ctx <- list(
-          rv = rv, cfg = cfg,
-          template_label = REPORT_TEMPLATES$Portfolio$label,
-          period_label = period,
-          prepared_by = input$prepared_by %||% rv$username,
-          reviewed_by = input$reviewed_by,
-          custom_text = input$rb_custom_text,
-          next_period_text = input$rb_next_period,
-          portfolio = portfolio_ctx()
-        )
-        secs <- rb_section_order()
-        # Match the in-app preview: pin the design-mandated order so the
-        # download mirrors what the user sees on screen.
-        ordered_default <- c("pr_trial_summary", "pr_review_progress",
-                             "pr_rag_status", "pr_recruitment",
-                             "pr_milestones", "pr_database",
-                             "pr_finance", "pr_issues")
-        secs <- c(intersect(ordered_default, secs),
-                  setdiff(secs, ordered_default))
-        body_html <- paste(vapply(secs, function(id) {
-          s <- report_section_by_id(id); if (is.null(s)) return("")
-          tryCatch(s$render(ctx),
-                   error = function(e) sprintf("<p>Failed: %s</p>", e$message))
-        }, character(1)), collapse = "\n")
-        trial_label <- htmltools::htmlEscape(cfg$short_name %||% cfg$code %||% "Trial")
-        full_html <- paste0(
-          "<!doctype html><html><head><meta charset='utf-8'>",
-          sprintf("<title>%s — Portfolio Review</title>", trial_label),
-          "<link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap' rel='stylesheet'>",
-          "<style>",
-          "body{font-family:'Inter',system-ui,sans-serif;color:#1B1B1B;",
-          "background:#F4F6F9;font-size:13px;margin:0;padding:24px;}",
-          ".pf-page{width:794px;background:#fff;margin:0 auto 24px;",
-          "padding:18px 48px 28px;box-shadow:0 1px 2px rgba(15,26,36,.06),",
-          "0 8px 24px rgba(15,26,36,.08);}",
-          ".pf-page-meta{display:flex;justify-content:space-between;",
-          "font-size:9.5px;color:#58595B;margin-bottom:12px;letter-spacing:.3px;}",
-          ".pf-banner{background:#7030A0;color:#fff;font-size:15px;font-weight:700;",
-          "letter-spacing:.04em;text-transform:uppercase;text-align:center;",
-          "padding:10px 16px;border-radius:4px 4px 0 0;}",
-          ".pf-header-block{border:1px solid #E2E8EE;border-radius:4px;overflow:hidden;}",
-          ".pf-info-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #E2E8EE;}",
-          ".pf-info-row{display:grid;grid-template-columns:160px 1fr;border-bottom:1px solid #EFEFEF;}",
-          ".pf-info-cell{padding:5px 10px;font-size:11px;line-height:1.4;}",
-          ".pf-info-cell.label{font-weight:600;background:#F8F8F8;}",
-          ".pf-info-cell.value{color:#3C3C3B;}",
-          ".pf-status-row{display:flex;gap:18px;padding:8px 10px;border:1px solid #E2E8EE;border-top:0;background:#fff;}",
-          ".pf-check-item{display:flex;align-items:center;gap:6px;font-size:11px;}",
-          ".pf-check-item.small{font-size:10.5px;}",
-          ".pf-checkbox{width:14px;height:14px;border:1.5px solid #E2E8EE;border-radius:3px;",
-          "display:inline-flex;align-items:center;justify-content:center;",
-          "font-size:9px;color:#fff;background:#fff;line-height:1;}",
-          ".pf-checkbox.sm{width:12px;height:12px;font-size:8px;}",
-          ".pf-checkbox.checked{background:#7030A0;border-color:#7030A0;}",
-          ".pf-summary{border:1px solid #E2E8EE;border-top:0;padding:8px 10px;background:#fff;border-radius:0 0 4px 4px;margin-bottom:10px;}",
-          ".pf-summary-label{font-size:10.5px;font-weight:600;margin-bottom:4px;}",
-          ".pf-summary-text{font-family:'Source Serif 4',Georgia,serif;font-size:11px;color:#3C3C3B;line-height:1.55;}",
-          ".pf-section{margin-bottom:10px;}",
-          ".pf-section-banner{background:#7030A0;color:#fff;font-size:11.5px;",
-          "font-weight:700;letter-spacing:.04em;padding:6px 12px;",
-          "border-radius:4px 4px 0 0;text-transform:uppercase;}",
-          ".pf-section-banner.alert{background:#7F1D1D;}",
-          ".pf-progress-grid,.pf-rag-grid,.pf-chart-container,.pf-kv-grid,",
-          ".pf-staffing-grid,.pf-issues-block{border:1px solid #E2E8EE;border-top:0;",
-          "border-radius:0 0 4px 4px;background:#fff;}",
-          ".pf-yn-row,.pf-meeting-row{display:grid;grid-template-columns:200px 1fr;",
-          "border-bottom:1px solid #EFEFEF;align-items:center;}",
-          ".pf-yn-label,.pf-meeting-label,.pf-further-label{font-size:10.5px;",
-          "font-weight:500;padding:6px 10px;background:#F8F8F8;}",
-          ".pf-yn-answer{display:flex;align-items:center;gap:14px;padding:6px 10px;}",
-          ".pf-yn-date{font-size:10.5px;color:#58595B;margin-left:8px;}",
-          ".pf-yn-date strong{color:#1B1B1B;font-weight:600;}",
-          ".pf-divider{height:1px;background:#E2E8EE;}",
-          ".pf-meeting-dates{display:flex;gap:28px;padding:6px 10px;font-size:10.5px;color:#58595B;}",
-          ".pf-meeting-dates strong{color:#1B1B1B;font-weight:600;font-family:'JetBrains Mono',monospace;font-size:10px;}",
-          ".pf-further-row{display:grid;grid-template-columns:200px 1fr;align-items:start;}",
-          ".pf-further-text{font-size:10.5px;color:#3C3C3B;line-height:1.55;padding:6px 10px;}",
-          ".pf-rag-grid{display:flex;flex-direction:column;}",
-          ".pf-rag-item{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #EFEFEF;}",
-          ".pf-rag-item:last-child{border-bottom:0;}",
-          ".pf-rag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}",
-          ".pf-rag-text{font-size:10.5px;color:#58595B;line-height:1.4;}",
-          ".pf-chart-container{padding:12px 14px;}",
-          ".pf-chart-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;border:2px dashed #E2E8EE;border-radius:6px;background:#F8F8F8;gap:8px;}",
-          ".pf-chart-placeholder-text{font-size:12px;color:#58595B;font-weight:500;}",
-          ".pf-chart-placeholder-sub{font-size:10.5px;color:#8A8A8C;}",
-          ".pf-recruit-stats{display:grid;grid-template-columns:repeat(4,1fr);margin-top:8px;border-top:1px solid #E2E8EE;border-bottom:1px solid #E2E8EE;}",
-          ".pf-recruit-stat{padding:7px 10px;border-right:1px solid #EFEFEF;display:flex;flex-direction:column;}",
-          ".pf-recruit-stat:last-child{border-right:0;}",
-          ".pf-recruit-stat .k{font-size:9px;font-weight:600;color:#58595B;text-transform:uppercase;letter-spacing:.5px;}",
-          ".pf-recruit-stat .v{font-size:16px;font-weight:700;color:#1B1B1B;font-variant-numeric:tabular-nums;}",
-          ".pf-table{width:100%;border-collapse:collapse;font-size:10.5px;border:1px solid #E2E8EE;border-top:0;border-radius:0 0 4px 4px;overflow:hidden;}",
-          ".pf-table thead th{font-size:9px;font-weight:600;color:#58595B;text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:7px 10px;border-bottom:1.5px solid #1B1B1B;background:#F8F8F8;}",
-          ".pf-table tbody td{padding:6px 10px;border-bottom:1px solid #EFEFEF;color:#3C3C3B;}",
-          ".pf-table tbody td.mono{font-family:'JetBrains Mono',monospace;font-size:10px;}",
-          ".pf-pill{display:inline-flex;font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:.3px;}",
-          ".pf-pill.green{background:#D1FAE5;color:#065F46;}",
-          ".pf-pill.amber{background:#FEF3C7;color:#92400E;}",
-          ".pf-pill.grey{background:#EFEFEF;color:#3C3C3B;}",
-          ".pf-pill.red{background:#FEE2E2;color:#991B1B;}",
-          ".pf-data-capture{display:flex;align-items:center;gap:8px;}",
-          ".pf-dc-bar{flex:1;height:6px;background:#EFEFEF;border-radius:3px;overflow:hidden;max-width:120px;}",
-          ".pf-dc-fill{height:100%;background:#7030A0;}",
-          ".pf-dc-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#1B1B1B;font-weight:600;}",
-          ".pf-kv-row,.pf-staff-row{display:grid;grid-template-columns:240px 1fr;border-bottom:1px solid #EFEFEF;}",
-          ".pf-kv-row:last-child,.pf-staff-row:last-child{border-bottom:0;}",
-          ".pf-kv-label,.pf-staff-label{font-size:10.5px;font-weight:500;padding:5px 10px;background:#F8F8F8;}",
-          ".pf-kv-value{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#3C3C3B;padding:5px 10px;}",
-          ".pf-staff-value{font-size:10.5px;color:#3C3C3B;padding:6px 10px;line-height:1.5;}",
-          ".pf-issues-block{display:grid;grid-template-columns:1fr 1fr;}",
-          ".pf-issues-col{padding:8px 12px;border-right:1px solid #EFEFEF;}",
-          ".pf-issues-col:last-child{border-right:0;}",
-          ".pf-issues-heading{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #EFEFEF;}",
-          ".pf-issues-list{margin:0;padding:0 0 0 14px;font-size:10.5px;color:#3C3C3B;line-height:1.55;}",
-          ".pf-issues-list li{margin-bottom:6px;}",
-          "@media print{body{background:#fff;padding:0;}.pf-page{box-shadow:none;width:100%;page-break-after:always;}}",
-          "</style></head><body>",
-          sprintf("<div class='pf-page'><div class='pf-page-meta'><span>Birmingham Clinical Trials Unit</span><span>Version 4.0 · %s</span></div>%s</div>",
-                  htmltools::htmlEscape(period), body_html),
-          "</body></html>")
+      if (template_choice %in% c("Portfolio", "NIHR")) {
+        period <- rb_period_label()
+        ctx    <- rb_section_ctx(cfg, period)
+        if (identical(template_choice, "NIHR")) {
+          full_html <- rb_export_html(cfg, rb_section_order(), period, ctx)
+        } else {
+          secs <- rb_section_order()
+          # Match the in-app preview: pin the design-mandated order so the
+          # download mirrors what the user sees on screen.
+          ordered_default <- c("pr_trial_summary", "pr_review_progress",
+                               "pr_rag_status", "pr_recruitment",
+                               "pr_milestones", "pr_database",
+                               "pr_finance", "pr_issues")
+          secs <- c(intersect(ordered_default, secs),
+                    setdiff(secs, ordered_default))
+          body_html <- paste(vapply(secs, function(id) {
+            s <- report_section_by_id(id); if (is.null(s)) return("")
+            tryCatch(s$render(ctx),
+                     error = function(e) sprintf("<p>Failed: %s</p>", e$message))
+          }, character(1)), collapse = "\n")
+          trial_label <- htmltools::htmlEscape(cfg$short_name %||% cfg$code %||% "Trial")
+          full_html <- paste0(
+            "<!doctype html><html><head><meta charset='utf-8'>",
+            sprintf("<title>%s — Portfolio Review</title>", trial_label),
+            "<link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap' rel='stylesheet'>",
+            "<style>",
+            "body{font-family:'Inter',system-ui,sans-serif;color:#1B1B1B;",
+            "background:#F4F6F9;font-size:13px;margin:0;padding:24px;}",
+            ".pf-page{width:794px;background:#fff;margin:0 auto 24px;",
+            "padding:18px 48px 28px;box-shadow:0 1px 2px rgba(15,26,36,.06),",
+            "0 8px 24px rgba(15,26,36,.08);}",
+            ".pf-page-meta{display:flex;justify-content:space-between;",
+            "font-size:9.5px;color:#58595B;margin-bottom:12px;letter-spacing:.3px;}",
+            ".pf-banner{background:#7030A0;color:#fff;font-size:15px;font-weight:700;",
+            "letter-spacing:.04em;text-transform:uppercase;text-align:center;",
+            "padding:10px 16px;border-radius:4px 4px 0 0;}",
+            ".pf-header-block{border:1px solid #E2E8EE;border-radius:4px;overflow:hidden;}",
+            ".pf-info-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #E2E8EE;}",
+            ".pf-info-row{display:grid;grid-template-columns:160px 1fr;border-bottom:1px solid #EFEFEF;}",
+            ".pf-info-cell{padding:5px 10px;font-size:11px;line-height:1.4;}",
+            ".pf-info-cell.label{font-weight:600;background:#F8F8F8;}",
+            ".pf-info-cell.value{color:#3C3C3B;}",
+            ".pf-status-row{display:flex;gap:18px;padding:8px 10px;border:1px solid #E2E8EE;border-top:0;background:#fff;}",
+            ".pf-check-item{display:flex;align-items:center;gap:6px;font-size:11px;}",
+            ".pf-check-item.small{font-size:10.5px;}",
+            ".pf-checkbox{width:14px;height:14px;border:1.5px solid #E2E8EE;border-radius:3px;",
+            "display:inline-flex;align-items:center;justify-content:center;",
+            "font-size:9px;color:#fff;background:#fff;line-height:1;}",
+            ".pf-checkbox.sm{width:12px;height:12px;font-size:8px;}",
+            ".pf-checkbox.checked{background:#7030A0;border-color:#7030A0;}",
+            ".pf-summary{border:1px solid #E2E8EE;border-top:0;padding:8px 10px;background:#fff;border-radius:0 0 4px 4px;margin-bottom:10px;}",
+            ".pf-summary-label{font-size:10.5px;font-weight:600;margin-bottom:4px;}",
+            ".pf-summary-text{font-family:'Source Serif 4',Georgia,serif;font-size:11px;color:#3C3C3B;line-height:1.55;}",
+            ".pf-section{margin-bottom:10px;}",
+            ".pf-section-banner{background:#7030A0;color:#fff;font-size:11.5px;",
+            "font-weight:700;letter-spacing:.04em;padding:6px 12px;",
+            "border-radius:4px 4px 0 0;text-transform:uppercase;}",
+            ".pf-section-banner.alert{background:#7F1D1D;}",
+            ".pf-progress-grid,.pf-rag-grid,.pf-chart-container,.pf-kv-grid,",
+            ".pf-staffing-grid,.pf-issues-block{border:1px solid #E2E8EE;border-top:0;",
+            "border-radius:0 0 4px 4px;background:#fff;}",
+            ".pf-yn-row,.pf-meeting-row{display:grid;grid-template-columns:200px 1fr;",
+            "border-bottom:1px solid #EFEFEF;align-items:center;}",
+            ".pf-yn-label,.pf-meeting-label,.pf-further-label{font-size:10.5px;",
+            "font-weight:500;padding:6px 10px;background:#F8F8F8;}",
+            ".pf-yn-answer{display:flex;align-items:center;gap:14px;padding:6px 10px;}",
+            ".pf-yn-date{font-size:10.5px;color:#58595B;margin-left:8px;}",
+            ".pf-yn-date strong{color:#1B1B1B;font-weight:600;}",
+            ".pf-divider{height:1px;background:#E2E8EE;}",
+            ".pf-meeting-dates{display:flex;gap:28px;padding:6px 10px;font-size:10.5px;color:#58595B;}",
+            ".pf-meeting-dates strong{color:#1B1B1B;font-weight:600;font-family:'JetBrains Mono',monospace;font-size:10px;}",
+            ".pf-further-row{display:grid;grid-template-columns:200px 1fr;align-items:start;}",
+            ".pf-further-text{font-size:10.5px;color:#3C3C3B;line-height:1.55;padding:6px 10px;}",
+            ".pf-rag-grid{display:flex;flex-direction:column;}",
+            ".pf-rag-item{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #EFEFEF;}",
+            ".pf-rag-item:last-child{border-bottom:0;}",
+            ".pf-rag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}",
+            ".pf-rag-text{font-size:10.5px;color:#58595B;line-height:1.4;}",
+            ".pf-chart-container{padding:12px 14px;}",
+            ".pf-chart-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;border:2px dashed #E2E8EE;border-radius:6px;background:#F8F8F8;gap:8px;}",
+            ".pf-chart-placeholder-text{font-size:12px;color:#58595B;font-weight:500;}",
+            ".pf-chart-placeholder-sub{font-size:10.5px;color:#8A8A8C;}",
+            ".pf-recruit-stats{display:grid;grid-template-columns:repeat(4,1fr);margin-top:8px;border-top:1px solid #E2E8EE;border-bottom:1px solid #E2E8EE;}",
+            ".pf-recruit-stat{padding:7px 10px;border-right:1px solid #EFEFEF;display:flex;flex-direction:column;}",
+            ".pf-recruit-stat:last-child{border-right:0;}",
+            ".pf-recruit-stat .k{font-size:9px;font-weight:600;color:#58595B;text-transform:uppercase;letter-spacing:.5px;}",
+            ".pf-recruit-stat .v{font-size:16px;font-weight:700;color:#1B1B1B;font-variant-numeric:tabular-nums;}",
+            ".pf-table{width:100%;border-collapse:collapse;font-size:10.5px;border:1px solid #E2E8EE;border-top:0;border-radius:0 0 4px 4px;overflow:hidden;}",
+            ".pf-table thead th{font-size:9px;font-weight:600;color:#58595B;text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:7px 10px;border-bottom:1.5px solid #1B1B1B;background:#F8F8F8;}",
+            ".pf-table tbody td{padding:6px 10px;border-bottom:1px solid #EFEFEF;color:#3C3C3B;}",
+            ".pf-table tbody td.mono{font-family:'JetBrains Mono',monospace;font-size:10px;}",
+            ".pf-pill{display:inline-flex;font-size:9.5px;font-weight:600;padding:1px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:.3px;}",
+            ".pf-pill.green{background:#D1FAE5;color:#065F46;}",
+            ".pf-pill.amber{background:#FEF3C7;color:#92400E;}",
+            ".pf-pill.grey{background:#EFEFEF;color:#3C3C3B;}",
+            ".pf-pill.red{background:#FEE2E2;color:#991B1B;}",
+            ".pf-data-capture{display:flex;align-items:center;gap:8px;}",
+            ".pf-dc-bar{flex:1;height:6px;background:#EFEFEF;border-radius:3px;overflow:hidden;max-width:120px;}",
+            ".pf-dc-fill{height:100%;background:#7030A0;}",
+            ".pf-dc-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#1B1B1B;font-weight:600;}",
+            ".pf-kv-row,.pf-staff-row{display:grid;grid-template-columns:240px 1fr;border-bottom:1px solid #EFEFEF;}",
+            ".pf-kv-row:last-child,.pf-staff-row:last-child{border-bottom:0;}",
+            ".pf-kv-label,.pf-staff-label{font-size:10.5px;font-weight:500;padding:5px 10px;background:#F8F8F8;}",
+            ".pf-kv-value{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#3C3C3B;padding:5px 10px;}",
+            ".pf-staff-value{font-size:10.5px;color:#3C3C3B;padding:6px 10px;line-height:1.5;}",
+            ".pf-issues-block{display:grid;grid-template-columns:1fr 1fr;}",
+            ".pf-issues-col{padding:8px 12px;border-right:1px solid #EFEFEF;}",
+            ".pf-issues-col:last-child{border-right:0;}",
+            ".pf-issues-heading{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #EFEFEF;}",
+            ".pf-issues-list{margin:0;padding:0 0 0 14px;font-size:10.5px;color:#3C3C3B;line-height:1.55;}",
+            ".pf-issues-list li{margin-bottom:6px;}",
+            "@media print{body{background:#fff;padding:0;}.pf-page{box-shadow:none;width:100%;page-break-after:always;}}",
+            "</style></head><body>",
+            sprintf("<div class='pf-page'><div class='pf-page-meta'><span>Birmingham Clinical Trials Unit</span><span>Version 4.0 · %s</span></div>%s</div>",
+                    htmltools::htmlEscape(period), body_html),
+            "</body></html>")
+        }
 
         tmp_html <- tempfile(fileext = ".html")
         writeLines(full_html, tmp_html, useBytes = TRUE)
@@ -1317,6 +1632,7 @@ reports_server <- function(input, output, session, state) {
                              type = "warning", duration = 10)
           })
         }
+        rb_log_generated(template_choice, fmt)
         removeModal()
         return(invisible())
       }
@@ -1334,53 +1650,18 @@ reports_server <- function(input, output, session, state) {
         return()
       }
 
-      # Build the report_data the same way the legacy download_report does
-      # (same prepare_report_data() pipeline so output is identical).
-      use_filters    <- !identical(input$rb_scope, "full")
-      sites_for_prep <- if (use_filters) input$rpt_sites else NULL
-      from_for_prep  <- if (use_filters) input$rpt_dates[1] else NULL
-      to_for_prep    <- if (use_filters) input$rpt_dates[2] else NULL
-
-      latest_crf_path <- tryCatch({
-        p <- latest_return_rate_file(
-          dir        = rv$trial_config$return_rates_dir,
-          trial_code = rv$trial_config$code
-        )
-        if (is.null(p) || !file.exists(p)) NULL else p
-      }, error = function(e) NULL)
-
-      report_data <- tryCatch(
-        prepare_report_data(
-          df                = rv$raw_redcap,
-          selected_sites    = sites_for_prep,
-          date_from         = from_for_prep,
-          date_to           = to_for_prep,
-          include_withdrawn = isTRUE(input$include_withdrawn),
-          pipeline_df       = rv$sites,
-          crf_csv_path      = latest_crf_path),
-        error = function(e) {
-          showNotification(
-            paste("Cannot generate report:", conditionMessage(e)),
-            type = "error", duration = 12)
-          NULL
-        })
+      # Build report_data exactly as the preview does (same filters, same pipeline)
+      latest_crf_path <- rb_crf_path()
+      report_data <- tryCatch(rb_report_data(latest_crf_path), error = function(e) {
+        showNotification(paste("Cannot generate report:", conditionMessage(e)),
+                         type = "error", duration = 12)
+        NULL
+      })
       if (is.null(report_data)) return(invisible())
 
-      site_label <- if (is.null(sites_for_prep) || !length(sites_for_prep))
-        "All sites" else paste(sites_for_prep, collapse = ", ")
-
-      # Stage Rmd + helpers in a temp dir so render() can find them
-      tmp_dir  <- tempdir()
-      rmd_dest <- file.path(tmp_dir, basename(rmd_src))
-      file.copy(rmd_src, rmd_dest, overwrite = TRUE)
-      for (h in c("functions/flat_completeness.R",
-                  "functions/baseline_table.R",
-                  "functions/consort_flow.R",
-                  "functions/tsc_charts.R",
-                  "www/BlackText-landscape.png")) {   # BCTU header logo
-        if (file.exists(h))
-          file.copy(h, file.path(tmp_dir, basename(h)), overwrite = TRUE)
-      }
+      # Stage the template and the helpers it sources in a fresh render folder
+      tmp_dir  <- tempfile("rb_report_"); dir.create(tmp_dir)
+      rmd_dest <- rb_stage_rmd(rmd_src, tmp_dir)
 
       # Ensure pandoc is findable (rmarkdown + the docx fallback both need it).
       # Cross-platform — handles macOS RStudio bundles, Windows installs, and
@@ -1396,69 +1677,43 @@ reports_server <- function(input, output, session, state) {
         return()
       }
 
-      # ── TSC branch: render the word-native template directly ──────────
+      # ── TSC branch: render the Word-native template directly ──────────
       if (rmd_kind == "tsc") {
-        tryCatch({
+        ok_tsc <- tryCatch({
           rmarkdown::render(
             input             = rmd_dest,
             output_file       = file,
             output_format     = "word_document",
-            params = filter_params_for_rmd(list(
-              report_data         = report_data,
-              selected_sites      = site_label,
-              date_from           = from_for_prep,
-              date_to             = to_for_prep,
-              crf_csv_path        = latest_crf_path,
-              report_date         = format(Sys.Date(), "%d %B %Y"),
-              prepared_by         = input$prepared_by %||% rv$username,
-              reviewed_by         = input$reviewed_by,
-              completeness_style  = input$completeness_style %||% "heatmap",
-              report_content      = cfg$report_content,
-              logo_path           = resolve_logo_path(cfg)
-            ), rmd_dest),
+            params            = filter_params_for_rmd(
+              rb_rmd_params("tsc", report_data, latest_crf_path, template_choice), rmd_dest),
             envir             = new.env(parent = globalenv()),
             intermediates_dir = tmp_dir,
             clean             = TRUE,
-            quiet             = TRUE
-          )
+            quiet             = TRUE)
+          TRUE
         }, error = function(e) {
-          showNotification(paste("TSC render failed:", e$message),
-                           type = "error", duration = 12)
+          showNotification(paste("TSC report failed:", e$message), type = "error", duration = 12)
+          FALSE
         })
+        if (isTRUE(ok_tsc)) rb_log_generated(template_choice, "docx")
         return(invisible())
       }
 
       # ── TMG / iTMG branch: render the Rmd to HTML, then convert ────────
-      # The tonic_report.Rmd is HTML-styled; PDF preserves formatting via
-      # chromote (it's just printing the HTML). DOCX via pandoc loses most
-      # styling — we surface a warning so the user knows.
-      report_type_param <- if (template_choice == "iTMG") "iTMG" else "TMG"
-      html_out <- file.path(tmp_dir, "tonic_rendered.html")
-
+      # The template is HTML-styled: PDF prints that HTML through headless
+      # Chrome, DOCX bakes the charts in and converts with a branded reference.
+      html_out <- file.path(tmp_dir, "report.html")
       ok <- tryCatch({
         rmarkdown::render(
           input             = rmd_dest,
           output_file       = html_out,
           output_format     = "html_document",
-          params = filter_params_for_rmd(list(
-            report_data         = report_data,
-            selected_sites      = site_label,
-            date_from           = from_for_prep,
-            date_to             = to_for_prep,
-            include_withdrawn   = isTRUE(input$include_withdrawn),
-            include_appendix    = isTRUE(input$report_appendix),
-            report_date         = format(Sys.Date(), "%d %B %Y"),
-            logo_path           = resolve_logo_path(cfg),
-            crf_csv_path        = latest_crf_path,
-            report_type         = report_type_param,
-            completeness_style  = input$completeness_style %||% "heatmap",
-            report_content      = cfg$report_content
-          ), rmd_dest),
+          params            = filter_params_for_rmd(
+            rb_rmd_params("tonic", report_data, latest_crf_path, template_choice), rmd_dest),
           envir             = new.env(parent = globalenv()),
           intermediates_dir = tmp_dir,
           clean             = TRUE,
-          quiet             = TRUE
-        )
+          quiet             = TRUE)
         TRUE
       }, error = function(e) {
         showNotification(paste("Report render failed:", e$message),
@@ -1521,6 +1776,7 @@ reports_server <- function(input, output, session, state) {
         }
       }
 
+      rb_log_generated(template_choice, fmt)
       removeModal()
     }
   )
@@ -1552,78 +1808,34 @@ reports_server <- function(input, output, session, state) {
                 sprintf("%d / %d randomised · %d%%", n, target, pct))))
   })
 
-  output$rb_template_seg <- renderUI({
-    cur <- rb_template_choice()
-    keys <- names(REPORT_TEMPLATES)
-    div(class = "rb-seg",
-        lapply(keys, function(k) {
-          tags$button(
-            id = paste0("rb_pick_", k),
-            class = paste("action-button", if (identical(k, cur)) "on" else ""),
-            type = "button",
-            onclick = sprintf("Shiny.setInputValue('rb_pick_template','%s',{priority:'event'})", k),
-            k)
-        }))
-  })
-
-  output$rb_template_desc <- renderUI({
-    k <- rb_template_choice()
-    div(class = "rb-tdesc",
-        REPORT_TEMPLATES[[k]]$description %||% "")
-  })
-
-  output$rb_summary_tiles <- renderUI({
-    cfg <- rv$trial_config
-    n_rand <- length(unique(rv$participants$record_id %||% character(0)))
-    n_sites <- nrow(rv$sites %||% data.frame())
-    n_open  <- sum(rv$sites$status %in% c("Open", "Recruiting"), na.rm = TRUE)
-    n_amend <- length(amendments_state())
-
-    tile <- function(label, value, sub) {
-      div(class = "rb-stat-tile",
-          div(class = "rb-stat-label", label),
-          div(class = "rb-stat-value", value),
-          div(class = "rb-stat-sub", sub))
-    }
-
-    div(class = "rb-stat-row",
-        tile("Randomised",   n_rand,  "across the trial"),
-        tile("Active sites", n_open,  sprintf("of %d", n_sites)),
-        tile("Insights",
-             length(tryCatch(
-               compute_insights(rv$raw_redcap, rv$sites, cfg %||% list()),
-               error = function(e) list())),
-             "auto-detected"),
-        tile("Amendments",   n_amend, "in register"))
-  })
-
   output$rb_canvas_title <- renderText({
     cfg <- rv$trial_config
-    sprintf("%s %s Report",
-            cfg$short_name %||% toupper(cfg$code %||% "Trial"),
-            rb_template_choice())
+    sprintf("%s · %s", cfg$short_name %||% toupper(cfg$code %||% "Trial"),
+            REPORT_TEMPLATES[[rb_template_choice()]]$label %||% rb_template_choice())
   })
 
   output$rb_canvas_meta <- renderText({
-    secs <- rb_section_order()
-    sprintf("· %d sections · A4 · classic", length(secs))
+    t <- rb_template_choice()
+    paste(c(rb_period_label(), rb_sites_label(),
+            if (t %in% RB_RMD) "layout from the trial's template"
+            else sprintf("%d sections", length(rb_section_order()))), collapse = " · ")
   })
 
-  # ── TMG / iTMG preview: render the Rmd live and embed in an iframe ──────
-  # The TMG/iTMG download path uses tonic_report.Rmd. We render the same Rmd
-  # for the on-screen preview so what the user sees matches what they
-  # download (byte-for-byte for HTML format).
-  tmg_preview_state <- reactiveValues(html = NULL, error = NULL, rendering = FALSE)
+  # ── Rmd-built reports (TMG / iTMG / TSC): render the trial's template to
+  # HTML for the preview, with exactly the params the download uses.
+  tmg_preview_state <- reactiveValues(html = NULL, error = NULL, rendering = FALSE,
+                                      key = NULL, done_for = NULL, at = NULL)
 
   render_tmg_preview_html <- function() {
     cfg <- rv$trial_config
     if (is.null(cfg)) return(NULL)
     tmpl_choice <- rb_template_choice()
-    if (!tmpl_choice %in% c("TMG", "iTMG")) return(NULL)
+    if (!tmpl_choice %in% RB_RMD) return(NULL)
+    kind <- if (identical(tmpl_choice, "TSC")) "tsc" else "tonic"
 
-    rmd_src <- resolve_report_template(cfg, "tonic")
+    rmd_src <- resolve_report_template(cfg, kind)
     if (is.null(rmd_src)) {
-      tmg_preview_state$error <- "TMG report template not found."
+      tmg_preview_state$error <- sprintf("%s report template not found.", tmpl_choice)
       return(NULL)
     }
     if (!ensure_pandoc()) {
@@ -1631,65 +1843,20 @@ reports_server <- function(input, output, session, state) {
       return(NULL)
     }
 
-    use_filters    <- !identical(input$rb_scope, "full")
-    sites_for_prep <- if (use_filters) input$rpt_sites else NULL
-    from_for_prep  <- if (use_filters) input$rpt_dates[1] else NULL
-    to_for_prep    <- if (use_filters) input$rpt_dates[2] else NULL
-
-    latest_crf_path <- tryCatch({
-      p <- latest_return_rate_file(
-        dir        = rv$trial_config$return_rates_dir,
-        trial_code = rv$trial_config$code
-      )
-      if (is.null(p) || !file.exists(p)) NULL else p
-    }, error = function(e) NULL)
-
-    report_data <- tryCatch(
-      prepare_report_data(
-        df                = rv$raw_redcap,
-        selected_sites    = sites_for_prep,
-        date_from         = from_for_prep,
-        date_to           = to_for_prep,
-        include_withdrawn = isTRUE(input$include_withdrawn),
-        pipeline_df       = rv$sites,
-        crf_csv_path      = latest_crf_path),
-      error = function(e) { tmg_preview_state$error <- e$message; NULL })
+    crf_path    <- rb_crf_path()
+    report_data <- tryCatch(rb_report_data(crf_path),
+                            error = function(e) { tmg_preview_state$error <- e$message; NULL })
     if (is.null(report_data)) return(NULL)
 
-    tmp_dir  <- tempfile("tmg_preview_"); dir.create(tmp_dir)
-    rmd_dest <- file.path(tmp_dir, basename(rmd_src))
-    file.copy(rmd_src, rmd_dest, overwrite = TRUE)
-    for (h in c("functions/flat_completeness.R",
-                "functions/baseline_table.R",
-                "functions/consort_flow.R",
-                "www/BlackText-landscape.png")) {   # BCTU header logo
-      if (file.exists(h))
-        file.copy(h, file.path(tmp_dir, basename(h)), overwrite = TRUE)
-    }
-    html_out <- file.path(tmp_dir, "tmg_preview.html")
-
-    site_label <- if (is.null(sites_for_prep) || !length(sites_for_prep))
-      "All sites" else paste(sites_for_prep, collapse = ", ")
-
+    tmp_dir  <- tempfile("rb_preview_"); dir.create(tmp_dir)
+    rmd_dest <- rb_stage_rmd(rmd_src, tmp_dir)
+    html_out <- file.path(tmp_dir, "preview.html")
     ok <- tryCatch({
       rmarkdown::render(
         input         = rmd_dest,
         output_file   = html_out,
         output_format = "html_document",
-        params = filter_params_for_rmd(list(
-          report_data       = report_data,
-          selected_sites    = site_label,
-          date_from         = from_for_prep,
-          date_to           = to_for_prep,
-          include_withdrawn = isTRUE(input$include_withdrawn),
-          include_appendix  = isTRUE(input$report_appendix),
-          report_date       = format(Sys.Date(), "%d %B %Y"),
-          logo_path         = resolve_logo_path(cfg),
-          crf_csv_path      = latest_crf_path,
-          report_type       = tmpl_choice,
-          completeness_style = input$completeness_style %||% "heatmap",
-          report_content    = cfg$report_content
-        ), rmd_dest),
+        params        = filter_params_for_rmd(rb_rmd_params(kind, report_data, crf_path, tmpl_choice), rmd_dest),
         envir = new.env(parent = globalenv()),
         intermediates_dir = tmp_dir, clean = TRUE, quiet = TRUE)
       TRUE
@@ -1699,131 +1866,97 @@ reports_server <- function(input, output, session, state) {
     paste(readLines(html_out, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
   }
 
-  # Re-render when inputs that affect the report change. Debounced so
-  # rapid changes don't trigger a flood of renders.
-  preview_trigger <- reactive({
-    list(rb_template_choice(),
-         rv$trial_config$code,
-         input$rb_scope,
-         input$rpt_sites,
-         input$rpt_dates,
-         input$include_withdrawn,
-         input$report_appendix,
-         input$completeness_style,
-         nrow(rv$raw_redcap %||% data.frame()),
-         length(rv$trial_config$report_content))
-  }) |> debounce(800)
+  # Rendering an Rmd takes 10–20 seconds and holds up the whole app, so the
+  # preview rebuilds only when the report type, trial or data change, or when
+  # someone presses Update preview. Other changes just mark it out of date.
+  rb_preview_nonce <- reactiveVal(0L)
+  observeEvent(input$rb_refresh_preview, rb_preview_nonce(rb_preview_nonce() + 1L))
 
-  observeEvent(preview_trigger(), {
-    tryCatch({
-      tmpl <- rb_template_choice()
-      if (!tmpl %in% c("TMG", "iTMG")) return()
-      cfg <- rv$trial_config
-      if (is.null(cfg)) return()
-      tmg_preview_state$rendering <- TRUE
-      tmg_preview_state$error <- NULL
-      html <- tryCatch(render_tmg_preview_html(),
-                       error = function(e) {
-                         tmg_preview_state$error <- conditionMessage(e)
-                         message("TMG preview render failed: ", conditionMessage(e))
-                         NULL
-                       })
-      tmg_preview_state$rendering <- FALSE
-      tmg_preview_state$html <- html
-    }, error = function(e) {
-      message("TMG preview observer error: ", conditionMessage(e))
-      tmg_preview_state$rendering <- FALSE
-      tmg_preview_state$error <- conditionMessage(e)
-    })
-  }, ignoreNULL = FALSE, ignoreInit = FALSE)
+  rb_preview_inputs <- reactive(list(
+    rb_filters(), isTRUE(input$include_withdrawn), isTRUE(input$report_appendix),
+    input$completeness_style, input$prepared_by, input$reviewed_by,
+    amendments_state(), rv$trial_config$report_content, rv$trial_config$report_template_paths))
 
-  # Document preview: cover page + content pages, one per enabled section
+  rb_preview_want <- reactive(list(
+    tmpl = rb_template_choice(), trial = rv$trial_config$code,
+    n = nrow(rv$raw_redcap %||% data.frame()), nonce = rb_preview_nonce()))
+
+  observeEvent(list(rb_preview_want(), input$active_tab), {
+    if (!identical(input$active_tab, "reports") || is.null(rv$trial_config)) return()
+    want <- rb_preview_want()
+    if (!want$tmpl %in% RB_RMD || isTRUE(tmg_preview_state$rendering)) return()
+    if (identical(want, tmg_preview_state$done_for) && !is.null(tmg_preview_state$html)) return()
+    tmg_preview_state$rendering <- TRUE
+    tmg_preview_state$error <- NULL
+    key <- rb_preview_inputs()
+    # Let "Building the preview…" reach the browser before R gets busy
+    later::later(function() {
+      withReactiveDomain(session, isolate({
+        html <- tryCatch(render_tmg_preview_html(), error = function(e) {
+          tmg_preview_state$error <- conditionMessage(e)
+          message("Report preview failed: ", conditionMessage(e))
+          NULL
+        })
+        tmg_preview_state$html      <- html
+        tmg_preview_state$done_for  <- want
+        tmg_preview_state$key       <- key
+        tmg_preview_state$at        <- Sys.time()
+        tmg_preview_state$rendering <- FALSE
+        # The report type changed while this was building: build that one too
+        if (!identical(rb_preview_want(), want)) rb_preview_nonce(rb_preview_nonce() + 1L)
+      }))
+    }, 0.2)
+  }, ignoreInit = FALSE)
+
+  rb_preview_stale <- reactive({
+    rb_template_choice() %in% RB_RMD && !is.null(tmg_preview_state$html) &&
+      !isTRUE(tmg_preview_state$rendering) && !identical(rb_preview_inputs(), tmg_preview_state$key)
+  })
+
+  output$rb_preview_status <- renderUI({
+    if (!rb_template_choice() %in% RB_RMD) return(span(class = "rb-stale", "Live preview"))
+    if (isTRUE(tmg_preview_state$rendering)) return(span(class = "rb-stale", "Building preview…"))
+    if (isTRUE(rb_preview_stale()))
+      return(span(class = "rb-stale is-stale", "Settings changed",
+                  tags$button(type = "button", class = "rb-tb-btn",
+                              onclick = "Shiny.setInputValue('rb_refresh_preview', Math.random(), {priority:'event'})",
+                              "Update preview")))
+    at <- tmg_preview_state$at
+    span(class = "rb-stale", if (!is.null(at)) paste("Preview built", format(at, "%H:%M")) else "")
+  })
+
+  # Document preview: the trial's rendered template for TMG / iTMG / TSC,
+  # otherwise a cover page and one page per section (Portfolio: two pages)
   output$rb_document_preview <- renderUI({
     cfg <- rv$trial_config
     if (is.null(cfg))
-      return(div(style = "padding:60px;color:#8A8A8C;font-style:italic;",
-                 "Select a trial to preview the report."))
+      return(div(class = "rb-note-card", "Select a trial to preview the report."))
 
-    # TMG / iTMG → live Rmd render embedded as an iframe
     tmpl_choice <- rb_template_choice()
-    if (tmpl_choice %in% c("TMG", "iTMG")) {
+    if (tmpl_choice %in% RB_RMD) {
       if (isTRUE(tmg_preview_state$rendering))
-        return(div(style = "padding:60px;text-align:center;color:#58595B;",
-                   div(style="font-size:13px;font-weight:500;","Rendering preview…"),
-                   div(style="font-size:11px;margin-top:6px;color:#8A8A8C;",
-                       "First render can take 10–20 seconds.")))
+        return(div(class = "rb-note-card",
+                   tags$b("Building the preview…"), tags$br(),
+                   "The report template takes 10–20 seconds to run."))
       err <- tmg_preview_state$error
       if (!is.null(err) && is.null(tmg_preview_state$html))
-        return(div(style = "padding:40px;color:#C20019;font-size:13px;",
-                   tags$b("Preview failed:"), tags$br(), tags$code(err),
-                   tags$div(style="margin-top:10px;color:#58595B;font-size:12px;",
-                            "Try clicking Download anyway, or restart the Shiny app.")))
+        return(div(class = "rb-note-card", style = "border-color:#F3C2C8;",
+                   tags$b(style = "color:#C20019;", "The preview couldn't be built"), tags$br(),
+                   tags$code(err), tags$br(),
+                   "Check the template in Settings → Reports & admin, then press Update preview."))
       html <- tmg_preview_state$html
       if (is.null(html))
-        return(div(style = "padding:60px;color:#8A8A8C;font-style:italic;",
-                   "Preparing preview…"))
+        return(div(class = "rb-note-card", "Preparing the preview…"))
       return(tags$iframe(
-        srcdoc = html,
-        style  = "width:100%;height:calc(100vh - 220px);min-height:760px;
-                  border:1px solid #E2E8EE;border-radius:6px;background:#e8eef2;",
-        sandbox = "allow-scripts allow-same-origin"))
+        srcdoc  = html, title = "Report preview",
+        style   = "width:100%;height:calc(100vh - 190px);min-height:720px;
+                   border:1px solid #E2E8EE;border-radius:6px;background:#fff;",
+        sandbox = "allow-scripts allow-same-origin allow-modals"))
     }
 
     secs   <- rb_section_order()
-    template <- REPORT_TEMPLATES[[rb_template_choice()]]
-    period <- if (!is.null(input$rpt_dates))
-      sprintf("%s – %s",
-              format(input$rpt_dates[1], "%d %b %Y"),
-              format(input$rpt_dates[2], "%d %b %Y")) else "—"
-
-    # Title page
-    title_page <- div(class = "rb-page",
-      div(class = "rb-titlepage",
-        div(class = "rb-tp-stripe"),
-        div(class = "rb-tp-top",
-            div(class = "rb-tp-mark",
-                div(class = "lm",
-                    substring(toupper(cfg$short_name %||% "T"), 1, 1)),
-                div(div(class = "ln-a", cfg$short_name %||% toupper(cfg$code)),
-                    div(class = "ln-b", "BCTU Clinical Trials"))),
-            div(class = "rb-tp-spons", "Sponsor",
-                tags$strong(cfg$report_defaults$sponsor %||% "—"))),
-        div(class = "rb-tp-mid",
-            div(class = "rb-tp-eyebrow",
-                span(class = "bar"),
-                paste(rb_template_choice(), "Report")),
-            tags$h1(class = "rb-tp-title",
-                    template$label %||% "Trial Report"),
-            tags$p(class = "rb-tp-sub", cfg$name %||% ""),
-            div(class = "rb-tp-period",
-                "Reporting period · ",
-                tags$strong(period)),
-            div(class = "rb-tp-meta",
-                div(class = "item",
-                    div(class = "k", "Trial code"),
-                    div(class = "v", toupper(cfg$code %||% "—"))),
-                div(class = "item",
-                    div(class = "k", "Chief Investigator"),
-                    div(class = "v", cfg$report_defaults$ci %||% "—")),
-                div(class = "item",
-                    div(class = "k", "Prepared by"),
-                    div(class = "v", input$prepared_by %||% rv$username %||% "—")),
-                div(class = "item",
-                    div(class = "k", "Date generated"),
-                    div(class = "v", format(Sys.Date(), "%d %B %Y"))))))
-    )
-
-    # Build content pages — one section per page using existing render functions.
-    ctx <- list(
-      rv = rv, cfg = cfg,
-      template_label = template$label,
-      period_label = period,
-      prepared_by = input$prepared_by %||% rv$username,
-      reviewed_by = input$reviewed_by,
-      custom_text = input$rb_custom_text,
-      next_period_text = input$rb_next_period,
-      portfolio = portfolio_ctx()
-    )
+    period <- rb_period_label()
+    ctx    <- rb_section_ctx(cfg, period)
 
     # ── Portfolio template: render the design-matched two-page layout ──
     if (identical(rb_template_choice(), "Portfolio")) {
@@ -1873,37 +2006,7 @@ reports_server <- function(input, output, session, state) {
         build_page(page2_ids, 2, total))
       return(do.call(tagList, pages))
     }
-
-    content_pages <- lapply(seq_along(secs), function(i) {
-      sec_id <- secs[i]
-      sec    <- report_section_by_id(sec_id)
-      if (is.null(sec)) return(NULL)
-      html <- tryCatch(sec$render(ctx),
-                       error = function(e)
-                         sprintf("<p style='color:#C20019;'>Failed: %s</p>",
-                                 htmltools::htmlEscape(e$message)))
-      tagList(
-        div(class = "rb-page-marker",
-            span(class = "ln"),
-            sprintf("Page %d", i + 1),
-            span(class = "ln")),
-        div(class = "rb-page",
-            div(class = "rb-page-inner",
-                div(class = "rb-doc",
-                    div(class = "secblock",
-                        div(class = "secblock-head",
-                            span(class = "n", sprintf("§ %02d", i)),
-                            tags$h2(sec$label)),
-                        HTML(html)))),
-            div(class = "rb-page-foot",
-                span(sprintf("%s · %s",
-                             cfg$short_name %||% toupper(cfg$code),
-                             rb_template_choice())),
-                span(sprintf("Page %d of %d", i + 1, length(secs) + 1))))
-      )
-    })
-
-    do.call(tagList, c(list(title_page), content_pages))
+    rb_section_pages(cfg, secs, tmpl_choice, period, ctx)
   })
 
   # Builder body: switches based on active tab in the right rail.
@@ -1990,30 +2093,6 @@ reports_server <- function(input, output, session, state) {
         tags$script(HTML("
           $(document).off('input.rbnar').on('input.rbnar',
             '#rb_custom_text, #rb_next_period', function(){
-              Shiny.setInputValue(this.id, this.value, {priority:'event'});
-          });"))
-      )
-
-    } else if (identical(tab, "meeting")) {
-      tagList(
-        tags$h4("Meeting details"),
-        div(class = "rb-field",
-            tags$label("Date generated"),
-            tags$input(class = "rb-rail-input", type = "text",
-                       value = format(Sys.Date(), "%d %b %Y"), readonly = "readonly")),
-        div(class = "rb-field",
-            tags$label("Prepared by"),
-            tags$input(id = "prepared_by", class = "rb-rail-input action-button",
-                       type = "text",
-                       value = input$prepared_by %||% rv$username %||% "")),
-        div(class = "rb-field",
-            tags$label("Reviewed by"),
-            tags$input(id = "reviewed_by", class = "rb-rail-input action-button",
-                       type = "text",
-                       value = input$reviewed_by %||% "")),
-        tags$script(HTML("
-          $(document).off('input.rbmtg').on('input.rbmtg',
-            '#prepared_by, #reviewed_by', function(){
               Shiny.setInputValue(this.id, this.value, {priority:'event'});
           });"))
       )

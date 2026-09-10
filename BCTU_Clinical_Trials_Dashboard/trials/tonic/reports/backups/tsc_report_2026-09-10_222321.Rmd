@@ -28,6 +28,13 @@ params:
   charts_dir: NULL             # directory containing pre-rendered PNGs (optional; otherwise rendered on the fly)
   completeness_style: "heatmap" # "heatmap", "flat", or "both"
   completeness_rate: "pct_expected" # "pct_due" or "pct_expected"
+  # Trial-specific report content (filled per-trial via Trial Settings → Report content).
+  # Same shape as tonic_report.Rmd: short_name, trial_title, trial_subtitle,
+  # registration_line, general_info, etc.
+  report_content: NULL
+  # Path to the trial logo (file). If supplied + readable, embedded top-centre
+  # on the cover. Falls back to text "[Trial logo]" placeholder when absent.
+  logo_path: NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -291,12 +298,27 @@ hm_ft <- function(hm) {
 ```{r cover-page}
 # Cover page rendered as a borderless flextable spanning full width.
 # Word respects this reliably; raw HTML tags don't render in Word output.
+# Trial-specific bits come from params$report_content (set per-trial in
+# Trial Settings → Report content); fall back to neutral placeholders so
+# the cover still renders for trials that haven't filled it in.
+rc <- if (is.null(params$report_content)) list() else params$report_content
+.cover_short    <- if (is.null(rc$short_name)    || !nzchar(rc$short_name))    "Trial"                              else rc$short_name
+.cover_title    <- if (is.null(rc$trial_title)   || !nzchar(rc$trial_title))   .cover_short                         else rc$trial_title
+.cover_subtitle <- if (is.null(rc$trial_subtitle)|| !nzchar(rc$trial_subtitle))""                                    else rc$trial_subtitle
+.cover_reg      <- if (is.null(rc$registration_line) || !nzchar(rc$registration_line)) "" else rc$registration_line
+
+# Decide whether we have a usable logo file. If we do, row 1 will be empty
+# text and we'll compose() an image into that cell after the table is built;
+# otherwise the row stays as a muted "[Trial logo]" placeholder.
+.logo_ok <- !is.null(params$logo_path) && nzchar(params$logo_path) &&
+            file.exists(params$logo_path) && !dir.exists(params$logo_path)
+
 cover_df <- data.frame(
   x = c(
-    "[Trial logo]",
-    "TONIC",
-    "A randomised trial comparing early parenteral nutrition vs standard nutritional care in adults undergoing emergency laparotomy.",
-    "Trial Registration: ISRCTN 59200516 · IRAS 328678",
+    if (.logo_ok) "" else "[Trial logo]",
+    .cover_title,
+    .cover_subtitle,
+    .cover_reg,
     "",
     "Trial Steering Committee Report"
   ),
@@ -310,9 +332,28 @@ cover_ft <- flextable(cover_df) |>
   width(j = 1, width = 6.5) |>
   padding(padding = 4, part = "body")
 
-# Row-specific styling
-cover_ft <- color(cover_ft, i = 1, color = "#94A3B8")          # logo placeholder muted
-cover_ft <- fontsize(cover_ft, i = 1, size = 10)
+# Embed the actual logo top-centre when available. as_image requires a
+# real file path and inch-units for width/height; we cap dimensions so even
+# wide logos don't blow up the cover.
+if (.logo_ok) {
+  cover_ft <- tryCatch(
+    flextable::compose(
+      cover_ft, i = 1, j = 1,
+      value = flextable::as_paragraph(
+        flextable::as_image(src = params$logo_path,
+                            width = 2.4, height = 1.0)
+      )),
+    error = function(e) {
+      message("Logo embed failed in TSC cover: ", e$message)
+      cover_ft
+    }
+  )
+  cover_ft <- padding(cover_ft, i = 1, padding.top = 12, padding.bottom = 6)
+} else {
+  # Row-specific styling for the placeholder
+  cover_ft <- color(cover_ft, i = 1, color = "#94A3B8")
+  cover_ft <- fontsize(cover_ft, i = 1, size = 10)
+}
 
 cover_ft <- bold(cover_ft, i = 2)                              # TONIC title
 cover_ft <- color(cover_ft, i = 2, color = tonic_navy_ft)
@@ -377,7 +418,7 @@ kv_table(
     `Secondary outcome measures`  = safe(ts$secondary_outcomes),
     Funder                        = safe(ts$funder, "National Institute for Health and Care Research, Health Technology Assessment Programme (NIHR \u2013 HTA) \u2014 NIHR155875")
   ),
-  header_row = "TONIC Trial"
+  header_row = paste(.cover_short, "Trial")
 )
 ```
 
@@ -816,7 +857,7 @@ if (file.exists("baseline_table.R")) {
 
 Tables 3–5 break down the various reasons for exclusion during the different stages of the screening process.
 
-**Table 3: Reason for the patient not being eligible for TONIC**
+**Table 3: Reason for the patient not being eligible for `r .cover_short`**
 
 ```{r screening-ineligible}
 manual_placeholder(
@@ -826,7 +867,7 @@ manual_placeholder(
 )
 ```
 
-**Table 4: Reason the patient was not given the TONIC PIS**
+**Table 4: Reason the patient was not given the `r .cover_short` PIS**
 
 ```{r screening-no-pis}
 manual_placeholder(
@@ -1215,4 +1256,4 @@ render_custom_sections("end_of_report")
 
 ---
 
-*TONIC TSC Report · Birmingham Clinical Trials Unit · `r params$report_date`*
+*`r .cover_short` TSC Report · Birmingham Clinical Trials Unit · `r params$report_date`*

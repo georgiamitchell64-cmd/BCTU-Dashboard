@@ -12,15 +12,21 @@
     },
     {
       "name": "Mockups (static)",
-      "runtimeExecutable": "python3",
+      "runtimeExecutable": "Rscript",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "8000",
-        "--directory",
-        "mockups"
+        "-e",
+        "httpuv::runStaticServer('mockups', host='127.0.0.1', port=8000, browse=FALSE)"
       ],
       "port": 8000
+    },
+    {
+      "name": "Full app harness",
+      "runtimeExecutable": "Rscript",
+      "runtimeArgs": [
+        "-e",
+        "Sys.setenv(REPO=getwd(), SCRATCH='/private/tmp/claude-501/-Users-georgiamitchell-Documents-Claude-Projects-TONIC-Dashboard-BCTU-Clinical-Trials-Dashboard/8ddf0050-130d-4deb-af9d-b241748c6c4b/scratchpad', CSV='/private/tmp/claude-501/-Users-georgiamitchell-Documents-Claude-Projects-TONIC-Dashboard-BCTU-Clinical-Trials-Dashboard/8ddf0050-130d-4deb-af9d-b241748c6c4b/scratchpad/TONIC_SYNTHETIC_HEALTH.csv'); shiny::runApp('/private/tmp/claude-501/-Users-georgiamitchell-Documents-Claude-Projects-TONIC-Dashboard-BCTU-Clinical-Trials-Dashboard/8ddf0050-130d-4deb-af9d-b241748c6c4b/scratchpad/app_harness', host='127.0.0.1', port=3842, launch.browser=FALSE)"
+      ],
+      "port": 3842
     }
   ]
 }
