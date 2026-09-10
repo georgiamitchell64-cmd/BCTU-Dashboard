@@ -22,6 +22,27 @@
     "discharge": "discharge_arm_1",
     "day_30": {},
     "day_90": {},
-    "sub_forms": ["sub_forms_arm_1", "ad_hoc_arm_1"]
+    "sub_forms": [
+      "sub_forms_arm_1",
+      "ad_hoc_arm_1"
+    ]
+  },
+  "short_name": "A TEST",
+  "name": "RANDOMISED CONTROL TRIAL",
+  "trial_target": 100,
+  "category": "Surgery",
+  "features": {
+    "postal_tracking": false,
+    "return_rates": false,
+    "projections": true,
+    "pilot_criteria": false,
+    "consort_flow": false,
+    "baseline_table": false,
+    "trial_replay": true,
+    "participant_questionnaires": true
+  },
+  "report_defaults": {
+    "ci": "GEORGIA MITCHELL",
+    "sponsor": "UNIVERSITY OF BIRMINGHAM"
   }
 }

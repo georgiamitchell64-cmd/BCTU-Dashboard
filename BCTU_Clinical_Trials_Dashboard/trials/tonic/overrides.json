@@ -30,5 +30,23 @@
     "primary": "#1B4F6B",
     "secondary": "#8B5CF6",
     "accent": "#10B981"
+  },
+  "short_name": "TONIC",
+  "name": "TONIC — Early Parenteral Nutrition vs Standard Care",
+  "trial_target": 898,
+  "category": "Surgery",
+  "features": {
+    "postal_tracking": true,
+    "return_rates": true,
+    "projections": true,
+    "pilot_criteria": true,
+    "consort_flow": true,
+    "baseline_table": true,
+    "trial_replay": true,
+    "participant_questionnaires": true
+  },
+  "report_defaults": {
+    "ci": "Mr Matthew Lee",
+    "sponsor": "University of Birmingham"
   }
 }
