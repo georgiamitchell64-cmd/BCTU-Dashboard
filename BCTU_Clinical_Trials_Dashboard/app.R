@@ -78,8 +78,8 @@ source("modules/sites.R",              local = TRUE)
 source("modules/sites_server.R",        local = TRUE)
 source("modules/upload.R",             local = TRUE)
 source("modules/upload_server.R",       local = TRUE)
-source("modules/accounts.R",           local = TRUE)
-source("modules/accounts_server.R",     local = TRUE)
+source("modules/people.R",             local = TRUE)
+source("modules/people_server.R",      local = TRUE)
 source("modules/return_rates_ui.R",     local = TRUE)
 source("modules/return_rates_server.R", local = TRUE)
 source("modules/postal_tracking_ui.R",      local = TRUE)
@@ -138,8 +138,8 @@ server <- function(input, output, session) {
            error = function(e) message("SITES: ", e$message))
   tryCatch(upload_server(input, output, session, state),
            error = function(e) message("UPLOAD: ", e$message))
-  tryCatch(accounts_server(input, output, session, state),
-           error = function(e) message("ACCOUNTS: ", e$message))
+  tryCatch(people_server(input, output, session, state),
+           error = function(e) message("PEOPLE: ", e$message))
   tryCatch(trial_settings_server(input, output, session, state),
            error = function(e) message("SETTINGS: ", e$message))
   tryCatch(settings_monitoring_server(input, output, session, state),

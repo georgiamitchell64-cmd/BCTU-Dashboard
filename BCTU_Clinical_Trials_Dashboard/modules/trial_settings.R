@@ -135,6 +135,17 @@ trial_settings_tab_ui <- function() {
                   .st_field("Chief Investigator", textInput("set_ci", NULL, "")),
                   .st_field("Sponsor", textInput("set_sponsor", NULL, "")))),
 
+            .st_card("Team & access", "Who can open this trial and what they can do. Admins always have full access; new people are added by an admin under People on the home screen.",
+              uiOutput("st_team_ui"),
+              .st_sublabel("Give someone access"),
+              div(class = "team-add",
+                  selectizeInput("st_team_add_user", NULL, choices = NULL, width = "100%",
+                                 options = list(placeholder = "Choose a person…")),
+                  selectInput("st_team_add_role", NULL, width = "100%",
+                              c("Read-only" = "readonly", "Coordinator" = "coordinator",
+                                "Statistician" = "statistician", "Manager" = "manager")),
+                  actionButton("st_team_add", "Add", class = "btn-primary-sm"))),
+
             .st_card("Portfolio review", "Trial-level facts for the BCTU Trial Update Summary. Meeting dates and RAG status are entered on the Reports tab.",
               save = .st_save("pr_save"),
               div(class = "form-grid",

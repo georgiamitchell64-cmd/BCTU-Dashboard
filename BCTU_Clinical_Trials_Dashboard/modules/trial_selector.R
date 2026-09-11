@@ -12,9 +12,13 @@ trial_selector_ui <- function() {
           }
         });
         function homeShowTab(tab, el) {
-          ['my','overview','all','sites','activity'].forEach(function(t){
+          ['my','overview','all','sites','activity','people'].forEach(function(t){
             var n = document.getElementById('home_tab_'+t);
-            if (n) n.style.display = (t===tab) ? '' : 'none';
+            if (!n) return;
+            n.style.display = (t===tab) ? '' : 'none';
+            // Tell Shiny, so outputs inside a tab that has just appeared
+            // stop being suspended as hidden and render.
+            if (window.jQuery) jQuery(n).trigger((t===tab) ? 'shown' : 'hidden');
           });
           document.querySelectorAll('.home-root .htab').forEach(function(t){
             t.classList.remove('active');
@@ -109,7 +113,9 @@ trial_selector_ui <- function() {
                   tags$button(class = "htab",
                               onclick = "homeShowTab('activity', this)",
                               "Activity",
-                              uiOutput("home_activity_dot", inline = TRUE))
+                              uiOutput("home_activity_dot", inline = TRUE)),
+                  shinyjs::hidden(tags$button(id = "htab_people", class = "htab",
+                                              onclick = "homeShowTab('people', this)", "People"))
               ),
 
               # My Trials
@@ -241,6 +247,8 @@ trial_selector_ui <- function() {
               ),
 
               # Activity
+              people_tab_ui(),
+
               div(id = "home_tab_activity", style = "display:none;",
                   div(class = "sec-head2",
                       div(tags$h2("Activity"),
@@ -486,38 +494,3 @@ trial_selector_ui <- function() {
 }
 
 
-# ── "User management" modal (admin only) ──────────────────────────────────────
-# Master-detail console: searchable user list on the left, a detail panel on the
-# right with portfolio role, per-trial access and password actions. Passwords are
-# never shown — only reset (to a temporary the user must change) or set.
-manage_users_modal <- function() {
-  modalDialog(
-    title = NULL, footer = NULL, size = "l", easyClose = TRUE,
-    div(class = "mu-root",
-      div(class = "mu-head",
-          div(class = "mu-head-titles",
-              div(class = "mu-title",
-                  HTML('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'),
-                  span("User management")),
-              div(class = "mu-sub",
-                  "Access and credentials across the portfolio")),
-          div(class = "mu-head-actions",
-              div(class = "mu-search",
-                  HTML('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>'),
-                  tags$input(type = "text", id = "mu_search",
-                             class = "mu-search-input",
-                             placeholder = "Search users…",
-                             oninput = "Shiny.setInputValue('mu_search', this.value)")),
-              tags$button(type = "button", class = "mu-btn mu-btn-navy mu-add-btn",
-                          onclick = "Shiny.setInputValue('mu_new_user', Math.random(), {priority:'event'})",
-                          HTML("&#43; New user")))),
-      div(class = "mu-body",
-          div(class = "mu-list", uiOutput("mu_user_list_ui")),
-          div(class = "mu-detail", uiOutput("mu_detail_ui"))),
-      div(class = "mu-foot",
-          span(class = "mu-foot-note",
-               HTML('&#128274; Passwords are encrypted — they can never be viewed, only reset or set.')),
-          modalButton("Close"))
-    )
-  )
-}

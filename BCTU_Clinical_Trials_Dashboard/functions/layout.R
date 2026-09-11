@@ -25,6 +25,7 @@ build_app_ui <- function() {
       tags$link(rel = "stylesheet", type = "text/css", href = .asset("trial_health.css")),
       tags$link(rel = "stylesheet", type = "text/css", href = .asset("settings.css")),
       tags$link(rel = "stylesheet", type = "text/css", href = .asset("reports.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("people.css")),
       tags$script(src = .asset("trial_replay.js"), defer = NA),
       tags$script(src = .asset("trial_health.js"), defer = NA),
       tags$script(HTML("
@@ -110,8 +111,6 @@ build_app_ui <- function() {
         actionButton("go_upload",         "Data / Export",     class = "sidebar-nav-btn"),
         div(id = "go_postal_wrap",
             actionButton("go_postal",     "Postal Tracking",   class = "sidebar-nav-btn")),
-        div(id = "accounts_nav",
-            actionButton("go_accounts",   "Accounts",          class = "sidebar-nav-btn")),
         div(id = "settings_nav",
             actionButton("go_settings",   "Trial Settings",    class = "sidebar-nav-btn")),
         # Binding for the "All trials" home control rendered in the tab bar.
@@ -245,8 +244,7 @@ build_app_ui <- function() {
                           upload_tab_ui(),
                           return_rates_tab_ui(),
                           postal_tracking_tab_ui(),
-                          trial_settings_tab_ui(),
-                          accounts_tab_ui()
+                          trial_settings_tab_ui()
               )
           )
         )

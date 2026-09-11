@@ -1,0 +1,153 @@
+/* =============================================================================
+   PEOPLE & ACCESS — home-screen admin workspace (modules/people.R) and the
+   "Team & access" card in trial Settings. University of Birmingham palette:
+   black, white and gold, with semantic amber / red only for states.
+   ========================================================================== */
+.pp-root { display: flex; flex-direction: column; gap: 14px; padding-bottom: 32px; }
+.pp-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.pp-title { font-size: 22px; font-weight: 700; color: #1B1B1B; letter-spacing: -.3px; }
+.pp-sub { font-size: 13px; color: #58595B; margin-top: 2px; }
+
+.pp-btn { font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+  border: 1px solid #E3E3E3; background: #fff; color: #1B1B1B; cursor: pointer; }
+.pp-btn:hover { border-color: #1B1B1B; }
+.pp-btn-primary { background: #1B1B1B; border-color: #1B1B1B; color: #fff; }
+.pp-btn-primary:hover { background: #000; color: #fff; }
+.pp-btn-danger { background: #fff; border-color: #F3C2C8; color: #C20019; }
+.pp-btn-danger:hover { background: #C20019; border-color: #C20019; color: #fff; }
+.pp-btn[disabled] { opacity: .45; cursor: not-allowed; }
+.pp-btn:focus-visible, .pp-chip:focus-visible, .pp-seg:focus-visible, .pp-item:focus-visible,
+.pp-kpi:focus-visible, .pp-seg-btn:focus-visible, .pp-link:focus-visible { outline: 2px solid #C59A00; outline-offset: 2px; }
+
+/* Summary tiles double as filters */
+.pp-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.pp-kpi { text-align: left; background: #fff; border: 1px solid #E3E3E3; border-radius: 10px; padding: 12px 14px;
+  cursor: pointer; font-family: inherit; }
+.pp-kpi:hover { border-color: #1B1B1B; }
+.pp-kpi-v { font-size: 24px; font-weight: 700; color: #1B1B1B; font-variant-numeric: tabular-nums; letter-spacing: -.4px; }
+.pp-kpi-l { font-size: 11.5px; color: #58595B; margin-top: 2px; }
+.pp-kpi.warn { border-color: #F2D48A; background: #FFFBF0; }
+.pp-kpi.warn .pp-kpi-v { color: #7A5B00; }
+
+/* Toolbar */
+.pp-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pp-search { flex: 1 1 260px; }
+.pp-search input { width: 100%; padding: 8px 12px; border: 1px solid #E3E3E3; border-radius: 8px; font: 500 13px inherit;
+  font-family: inherit; background: #fff; }
+.pp-search input:focus { outline: none; border-color: #1B1B1B; box-shadow: 0 0 0 3px rgba(197,154,0,.22); }
+.pp-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.pp-chip { padding: 6px 11px; border-radius: 999px; border: 1px solid #E3E3E3; background: #fff; font: 500 12px inherit;
+  font-family: inherit; color: #3C3C3B; cursor: pointer; }
+.pp-chip.on { background: #1B1B1B; border-color: #1B1B1B; color: #fff; }
+.pp-view { display: inline-flex; background: #F2F2F2; border-radius: 8px; padding: 2px; gap: 2px; }
+.pp-seg { border: none; background: transparent; padding: 6px 12px; border-radius: 6px; font: 600 12px inherit;
+  font-family: inherit; color: #58595B; cursor: pointer; }
+.pp-seg.on { background: #fff; color: #1B1B1B; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+/* People view: list + detail */
+.pp-body { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 14px; align-items: start; }
+.pp-list { background: #fff; border: 1px solid #E3E3E3; border-radius: 12px; padding: 6px; max-height: 70vh; overflow-y: auto; }
+.pp-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 10px;
+  border: none; background: transparent; border-radius: 8px; cursor: pointer; font-family: inherit; }
+.pp-item:hover { background: #F7F7F7; }
+.pp-item.on { background: #F4F4F4; box-shadow: inset 3px 0 0 #C59A00; }
+.pp-item-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pp-item-name { font-size: 13px; font-weight: 600; color: #1B1B1B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-item-sub { font-size: 11px; color: #58595B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-flag { width: 18px; height: 18px; border-radius: 50%; background: #FBF3D9; color: #7A5B00; font-size: 11px; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pp-avatar { width: 32px; height: 32px; border-radius: 50%; background: #1B1B1B; color: #fff; font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pp-avatar.lg { width: 48px; height: 48px; font-size: 16px; }
+.pp-avatar.sm { width: 24px; height: 24px; font-size: 10px; }
+.pp-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; padding: 2px 7px; border-radius: 999px;
+  background: #FBF3D9; color: #7A5B00; margin-left: 6px; vertical-align: middle; white-space: nowrap; }
+.pp-you { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 999px; background: #F2F2F2; color: #58595B; margin-left: 6px; }
+.pp-empty { padding: 28px 16px; text-align: center; color: #8A8A8C; font-size: 12.5px; }
+
+.pp-card { background: #fff; border: 1px solid #E3E3E3; border-radius: 12px; padding: 18px 22px; }
+.pp-card-head { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; }
+.pp-name { font-size: 18px; font-weight: 700; color: #1B1B1B; letter-spacing: -.2px; }
+.pp-meta { font-size: 12px; color: #58595B; margin-top: 2px; }
+.pp-section { padding: 14px 0; border-top: 1px solid #EFEFEF; }
+.pp-label { font-size: 10.5px; font-weight: 700; color: #1B1B1B; text-transform: uppercase; letter-spacing: .7px; margin-bottom: 10px; }
+.pp-label-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.pp-hint { font-size: 11.5px; color: #58595B; line-height: 1.5; margin-top: 6px; }
+.pp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.pp-field label { font-size: 11.5px; font-weight: 600; color: #3C3C3B; margin-bottom: 4px; display: block; }
+.pp-field .form-group, .pp-inline .form-group { margin-bottom: 10px; }
+.pp-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.pp-inline { flex: 1 1 200px; }
+.pp-inline .form-group { margin: 0; }
+.pp-or { font-size: 11.5px; color: #8A8A8C; }
+.pp-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid #EFEFEF; }
+
+.pp-seg-group { display: inline-flex; background: #F2F2F2; border-radius: 8px; padding: 2px; gap: 2px; }
+.pp-seg-btn { border: none; background: transparent; padding: 6px 16px; border-radius: 6px; font: 600 12.5px inherit;
+  font-family: inherit; color: #58595B; cursor: pointer; }
+.pp-seg-btn.on { background: #1B1B1B; color: #fff; }
+.pp-seg-btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+.pp-bulk { display: flex; gap: 12px; }
+.pp-link { border: none; background: none; padding: 0; font: 600 11.5px inherit; font-family: inherit; color: #1B1B1B;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.pp-trials { display: flex; flex-direction: column; gap: 6px; }
+.pp-trial { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px;
+  border: 1px solid #EFEFEF; border-radius: 8px; }
+.pp-trial.has { border-color: #E3E3E3; background: #FAFAFA; }
+.pp-trial-name { min-width: 0; display: flex; flex-direction: column; }
+.pp-trial-name b { font-size: 12.5px; color: #1B1B1B; }
+.pp-trial-name span { font-size: 11px; color: #8A8A8C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-select { font-family: inherit; font-size: 12.5px; padding: 5px 8px; border: 1px solid #E3E3E3; border-radius: 6px;
+  background: #fff; color: #1B1B1B; min-width: 132px; }
+
+.pp-pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.pp-pill.ok { background: #E6F4EA; color: #007838; }
+.pp-pill.warn { background: #FBF3D9; color: #7A5B00; }
+.pp-temp { margin-top: 10px; padding: 12px 14px; border: 1.5px dashed #C59A00; border-radius: 10px; background: #FFFBF0; }
+.pp-temp-l, .pp-temp-n { font-size: 11.5px; color: #58595B; }
+.pp-temp-pw { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 20px; font-weight: 700;
+  color: #1B1B1B; letter-spacing: 1px; margin: 6px 0; user-select: all; }
+
+.pp-act { display: grid; grid-template-columns: 86px 1fr; gap: 10px; padding: 5px 0; font-size: 12px; color: #3C3C3B; }
+.pp-act-t { color: #8A8A8C; font-size: 11.5px; }
+.pp-act-trial { margin-left: 6px; font-size: 10px; font-weight: 700; color: #58595B; background: #F2F2F2; padding: 1px 6px; border-radius: 4px; }
+.pp-danger .pp-label { color: #C20019; }
+
+/* Access matrix */
+.pp-matrix-note { font-size: 12px; color: #58595B; margin-bottom: 8px; }
+.pp-matrix { overflow-x: auto; background: #fff; border: 1px solid #E3E3E3; border-radius: 12px; }
+.pp-matrix table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.pp-matrix th, .pp-matrix td { padding: 7px 10px; border-bottom: 1px solid #EFEFEF; text-align: left; white-space: nowrap; }
+.pp-matrix thead th { position: sticky; top: 0; background: #FAFAFA; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .5px; color: #58595B; font-weight: 700; }
+.pp-mx-person { position: sticky; left: 0; background: #fff; z-index: 1; font-weight: 600; color: #1B1B1B; }
+.pp-mx-person .pp-avatar { margin-right: 8px; vertical-align: middle; }
+.pp-matrix thead .pp-mx-person { background: #FAFAFA; z-index: 2; }
+.pp-mx-select { font-family: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid #E3E3E3; border-radius: 6px; background: #fff; }
+.pp-mx.r-manager .pp-mx-select { border-color: #1B1B1B; font-weight: 600; }
+.pp-mx.r-none .pp-mx-select { color: #8A8A8C; }
+.pp-mx-admin { font-size: 11px; font-weight: 700; color: #7A5B00; }
+
+/* Role guide */
+.pp-guide { background: #fff; border: 1px solid #E3E3E3; border-radius: 12px; padding: 12px 16px; }
+.pp-guide summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: #1B1B1B; }
+.pp-guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin-top: 12px; }
+.pp-guide-grid b { display: block; font-size: 12.5px; color: #1B1B1B; }
+.pp-guide-grid span { font-size: 12px; color: #58595B; line-height: 1.5; }
+
+/* Settings → Trial profile → Team & access */
+.team-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.team-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid #F2F2F2; }
+.team-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: #1B1B1B; }
+.team-role { font-size: 12px; color: #58595B; }
+.team-remove { width: 28px; height: 28px; border-radius: 6px; border: 1px solid #E3E3E3; background: #fff; color: #8A8A8C; cursor: pointer; }
+.team-remove:hover { border-color: #C20019; color: #C20019; }
+.team-add { display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; gap: 8px; align-items: start; }
+.team-add .form-group { margin: 0; }
+
+@media (max-width: 1100px) {
+  .pp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pp-body { grid-template-columns: 1fr; }
+  .pp-grid, .pp-guide-grid { grid-template-columns: 1fr; }
+}

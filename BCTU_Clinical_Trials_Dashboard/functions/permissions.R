@@ -453,6 +453,54 @@ list_user_memberships_for <- function(fullname) {
                                    granted_at = character()))
 }
 
+# ── People & access helpers (modules/people_server.R) ───────────────────────
+# Every user with sign-in status, without ever returning password material.
+list_all_users_detail <- function() {
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  cols <- tryCatch(dbGetQuery(con, "PRAGMA table_info(profiles)")$name, error = function(e) character(0))
+  want <- intersect(c("fullname", "role", "portfolio_role", "created", "email",
+                      "password_hash", "password_reset_required"), cols)
+  d <- tryCatch(dbGetQuery(con, sprintf("SELECT %s FROM profiles ORDER BY fullname",
+                                        paste(want, collapse = ", "))),
+                error = function(e) data.frame(fullname = character()))
+  d$has_password   <- if ("password_hash" %in% names(d)) !is.na(d$password_hash) & nzchar(d$password_hash %||% "") else rep(FALSE, nrow(d))
+  d$password_hash  <- NULL
+  d$reset_required <- if ("password_reset_required" %in% names(d))
+    !is.na(d$password_reset_required) & as.integer(d$password_reset_required) == 1L else rep(FALSE, nrow(d))
+  d$password_reset_required <- NULL
+  if (!"email" %in% names(d)) d$email <- rep(NA_character_, nrow(d))
+  d
+}
+
+# All memberships in one query, for the access matrix.
+list_all_memberships <- function() {
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  tryCatch(dbGetQuery(con, "SELECT fullname, trial_code, trial_role FROM trial_memberships"),
+           error = function(e) data.frame(fullname = character(), trial_code = character(),
+                                          trial_role = character()))
+}
+
+# The profile's `role` column holds the person's job title.
+set_job_title <- function(fullname, title) {
+  title <- trimws(title %||% "")
+  if (!nzchar(title)) return(invisible(FALSE))
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  dbExecute(con, "UPDATE profiles SET role = ? WHERE fullname = ?", params = list(title, fullname))
+  invisible(TRUE)
+}
+
+# Remove a person and every trial membership they hold. Their past activity
+# stays in the activity log. Callers must stop an admin removing themselves or
+# the last admin.
+delete_profile <- function(fullname) {
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  dbWithTransaction(con, {
+    dbExecute(con, "DELETE FROM trial_memberships WHERE fullname = ?", params = list(fullname))
+    dbExecute(con, "DELETE FROM profiles WHERE fullname = ?", params = list(fullname))
+  })
+  invisible(TRUE)
+}
+
 list_trial_members <- function(trial_code) {
   con <- shared_db_connect(); on.exit(dbDisconnect(con))
   dbGetQuery(con,

@@ -216,7 +216,6 @@ init_app_state <- function(input, output, session) {
   observeEvent(input$go_participants,   switch_tab("participants", "go_participants"))
   observeEvent(input$go_sites,          switch_tab("sites", "go_sites"))
   observeEvent(input$go_upload,         switch_tab("upload", "go_upload"))
-  observeEvent(input$go_accounts,       switch_tab("accounts", "go_accounts"))
   observeEvent(input$go_settings,       switch_tab("settings", "go_settings"))
   observeEvent(input$go_postal,         switch_tab("postal_panel", "go_postal"))
   observeEvent(input$go_returns,        switch_tab("returns_panel", "go_returns"))

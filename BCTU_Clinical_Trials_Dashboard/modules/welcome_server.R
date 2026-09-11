@@ -344,11 +344,9 @@ apply_trial_role_visibility <- function(trial_role) {
   if (is_manager) {
     shinyjs::runjs("$('.tm-only').show()")
     shinyjs::runjs("$('.dl-data-btn').show()")
-    shinyjs::show("accounts_nav")
   } else {
     shinyjs::runjs("$('.tm-only').hide()")
     shinyjs::runjs("$('.dl-data-btn').hide()")
-    shinyjs::hide("accounts_nav")
   }
 }
 
