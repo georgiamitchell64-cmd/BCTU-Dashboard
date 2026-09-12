@@ -1,0 +1,194 @@
+/* =============================================================================
+   RETURN RATES — the Returns tab (modules/return_rates_ui.R, _server.R)
+   Built on the trial-health sections, KPIs and pills (.th-*), with its own
+   rate colours: on target at 90% or more, caution from 70%, below that the
+   forms need chasing. Grey is "nothing due yet".
+   ========================================================================== */
+
+.rt-shell {
+  --rt-ink: #1B1B1B; --rt-ink2: #3C3C3B; --rt-muted: #58595B; --rt-faint: #8A8A8C;
+  --rt-line: #E6E6E6; --rt-line2: #EFEFEF; --rt-soft: #F6F6F6;
+  --rt-good: #00ACA9; --rt-good-bg: #DDF2F1; --rt-good-fg: #00606B;
+  --rt-warn: #F07F3C; --rt-warn-bg: #FDEADF; --rt-warn-fg: #9A4312;
+  --rt-bad:  #E30513; --rt-bad-bg:  #FCE3E5; --rt-bad-fg:  #A1000E;
+  --rt-none-bg: #F2F2F2; --rt-none-fg: #8A8A8C;
+  font-size: 13px; color: var(--rt-ink);
+}
+
+/* ── Title and source ── */
+.rt-top {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.rt-top-l { flex: 1 1 420px; min-width: 0; }
+.rt-title { font-size: 22px; font-weight: 700; letter-spacing: -.3px; margin: 0; color: var(--rt-ink); }
+.rt-src {
+  font-size: 12px; color: var(--rt-muted); margin-top: 5px;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; line-height: 1.5;
+}
+.rt-src-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+  color: var(--rt-ink2); background: var(--rt-soft); border: 1px solid var(--rt-line);
+  border-radius: 20px; padding: 2px 10px; white-space: nowrap;
+}
+.rt-src-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--rt-good); }
+.rt-src-chip.stale::before { background: var(--rt-warn); }
+.rt-stale { color: var(--rt-warn-fg); font-weight: 600; }
+.rt-top-r { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ── Filters ── */
+.rt-filters { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-bottom: 16px; }
+.rt-fgroup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rt-flabel {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .7px; color: var(--rt-muted);
+}
+.rt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.rt-chip {
+  font-family: inherit; font-size: 12px; font-weight: 600; padding: 4px 11px;
+  border-radius: 20px; border: 1px solid var(--rt-line); background: #fff;
+  color: var(--rt-faint); cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+}
+.rt-chip::before {
+  content: ""; width: 9px; height: 9px; border-radius: 3px;
+  border: 1.5px solid currentColor; box-sizing: border-box;
+}
+.rt-chip.on { color: var(--rt-ink); border-color: #BDBDBD; }
+.rt-chip.on::before { background: var(--rt-ink); border-color: var(--rt-ink); }
+.rt-chip:hover { border-color: #9A9A9A; }
+.rt-chip:focus-visible, .rt-row:focus-visible, .rt-sort:focus-visible {
+  outline: 2px solid var(--rt-good); outline-offset: 2px;
+}
+
+/* ── KPI strip (th-kpis) accents ── */
+.th-kpi.rt-good .th-kpi-v { color: var(--rt-good-fg); }
+.th-kpi.rt-warn .th-kpi-v { color: var(--rt-warn-fg); }
+.th-kpi.rt-bad  .th-kpi-v { color: var(--rt-bad-fg); }
+.th-kpi-v.rt-txt { font-size: 16px; line-height: 1.3; margin-top: 5px; overflow-wrap: anywhere; }
+.rt-kpi-bar { position: relative; height: 5px; border-radius: 3px; background: var(--rt-line2); margin: 7px 0 6px; }
+.rt-kpi-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.rt-mark {
+  position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px;
+  background: var(--rt-ink); border-radius: 1px;
+}
+
+/* Rate colours as fills and text */
+.rt-f-good { background: var(--rt-good); }
+.rt-f-warn { background: var(--rt-warn); }
+.rt-f-bad  { background: var(--rt-bad); }
+.rt-f-none { background: #CFCFCF; }
+.rt-t-good { color: var(--rt-good-fg); }
+.rt-t-warn { color: var(--rt-warn-fg); }
+.rt-t-bad  { color: var(--rt-bad-fg); }
+.rt-t-none { color: var(--rt-faint); }
+
+/* ── Timepoint cards ── */
+.rt-tps { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.rt-tp {
+  border: 1px solid var(--rt-line); border-radius: 12px; padding: 14px 16px 12px;
+  background: #fff; min-width: 0;
+}
+.rt-tp-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rt-tp-n { font-size: 12.5px; font-weight: 700; color: var(--rt-ink); }
+.rt-tp-open { font-size: 11px; color: var(--rt-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rt-tp-v {
+  font-size: 30px; font-weight: 700; letter-spacing: -.6px; line-height: 1.05;
+  font-variant-numeric: tabular-nums; margin-top: 6px;
+}
+.rt-tp-v.none { font-size: 17px; letter-spacing: 0; color: var(--rt-faint); padding: 7px 0 3px; }
+.rt-tp-bar { position: relative; height: 8px; background: var(--rt-line2); border-radius: 4px; margin: 10px 0 8px; }
+.rt-tp-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.rt-tp-s {
+  display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--rt-muted); font-variant-numeric: tabular-nums;
+}
+.rt-tp-s b { color: var(--rt-ink); }
+.rt-tp-miss { color: var(--rt-bad-fg); font-weight: 600; }
+
+/* ── Key ── */
+.rt-key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--rt-muted); margin-top: 12px; }
+.rt-key span { display: inline-flex; align-items: center; gap: 6px; }
+.rt-key i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.rt-key .mk { width: 2px; height: 12px; border-radius: 1px; background: var(--rt-ink); }
+
+/* ── Rate cells (site table, form matrix) ── */
+.rt-cell {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 66px; padding: 4px 8px; border-radius: 7px; line-height: 1.2;
+  font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.rt-cell small { font-size: 10.5px; font-weight: 500; opacity: .85; }
+.rt-cell.good { background: var(--rt-good-bg); color: var(--rt-good-fg); }
+.rt-cell.warn { background: var(--rt-warn-bg); color: var(--rt-warn-fg); }
+.rt-cell.bad  { background: var(--rt-bad-bg);  color: var(--rt-bad-fg); }
+.rt-cell.none { background: var(--rt-none-bg); color: var(--rt-none-fg); font-weight: 600; font-size: 11.5px; }
+.rt-cell.blank { color: #C9C9C9; font-weight: 500; }
+
+/* ── Tables ── */
+.rt-table-wrap { overflow-x: auto; }
+.rt-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rt-table th {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--rt-muted); padding: 8px 10px; border-bottom: 1px solid var(--rt-line);
+  text-align: center; white-space: nowrap;
+}
+.rt-table td {
+  padding: 6px 10px; border-bottom: 1px solid var(--rt-line2); text-align: center;
+  vertical-align: middle; font-variant-numeric: tabular-nums;
+}
+.rt-table th.l, .rt-table td.l { text-align: left; }
+.rt-table th.r, .rt-table td.r { text-align: right; }
+.rt-row { cursor: pointer; }
+.rt-row:hover td { background: #FAFAFA; }
+.rt-row.open td { background: #F4F4F4; border-bottom-color: transparent; }
+.rt-site { font-weight: 650; color: var(--rt-ink); white-space: nowrap; }
+.rt-chev { display: inline-block; width: 14px; color: var(--rt-faint); transition: transform .15s; }
+.rt-row.open .rt-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .rt-chev { transition: none; } }
+.rt-rate { display: flex; align-items: center; gap: 10px; min-width: 200px; }
+.rt-rate-bar { position: relative; flex: 1; height: 8px; background: var(--rt-line2); border-radius: 4px; }
+.rt-rate-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.rt-rate-v { width: 44px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rt-miss { font-weight: 700; color: var(--rt-bad-fg); }
+.rt-zero { color: var(--rt-faint); }
+.rt-sub { font-size: 11px; color: var(--rt-faint); font-weight: 500; }
+.rt-detail > td { background: #F4F4F4; padding: 4px 14px 16px; text-align: left; }
+.rt-detail .rt-table { background: #fff; border-radius: 10px; }
+.rt-detail-h { font-size: 11.5px; color: var(--rt-muted); margin: 2px 0 8px; }
+.rt-form { font-weight: 600; color: var(--rt-ink); }
+.rt-kind {
+  display: inline-block; font-size: 9.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--rt-ink2); background: var(--rt-soft); border: 1px solid var(--rt-line);
+  border-radius: 10px; padding: 0 7px; margin-left: 7px; vertical-align: 1px;
+}
+.rt-table tr.rt-total td { font-weight: 700; border-top: 1.5px solid var(--rt-ink); border-bottom: none; }
+
+/* Sort buttons in the Sites header */
+.rt-sort { font-family: inherit; }
+
+/* ── Trend ── */
+.rt-trend svg { width: 100%; height: auto; display: block; overflow: visible; }
+.rt-trend text { font-family: inherit; font-size: 11px; fill: var(--rt-muted); }
+.rt-trend .grid { stroke: var(--rt-line2); stroke-width: 1; }
+.rt-trend .axis { stroke: #D0D0D0; stroke-width: 1; }
+.rt-trend .target { stroke: var(--rt-good); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.rt-trend .target-l { fill: var(--rt-good-fg); font-weight: 600; }
+.rt-trend .area { fill: rgba(27, 27, 27, .05); stroke: none; }
+.rt-trend .all { fill: none; stroke: var(--rt-ink); stroke-width: 2.5; stroke-linejoin: round; }
+.rt-trend .dot { fill: #fff; stroke: var(--rt-ink); stroke-width: 2; }
+.rt-trend .tp { fill: none; stroke-width: 1.6; stroke-linejoin: round; }
+.rt-trend .end-l { font-weight: 600; }
+.rt-trend .end-all { font-weight: 700; fill: var(--rt-ink); }
+
+/* ── Participants still to return ── */
+.rt-st { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
+.rt-st.overdue { background: var(--rt-bad-bg); color: var(--rt-bad-fg); }
+.rt-st.due { background: var(--rt-warn-bg); color: var(--rt-warn-fg); }
+
+/* ── Nothing to show ── */
+.rt-empty {
+  background: #fff; border: 1px dashed #CFCFCF; border-radius: 14px;
+  padding: 38px 28px; text-align: center; color: var(--rt-muted);
+}
+.rt-empty h3 { font-size: 16px; color: var(--rt-ink); margin: 0 0 8px; font-weight: 700; }
+.rt-empty p { max-width: 580px; margin: 0 auto; line-height: 1.6; font-size: 12.5px; }

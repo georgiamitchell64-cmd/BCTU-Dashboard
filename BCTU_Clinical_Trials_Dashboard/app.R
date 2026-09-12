@@ -158,7 +158,9 @@ server <- function(input, output, session) {
       trial_code = state$rv$trial_code
     )
   })
-  tryCatch(return_rates_server("rr", rr_data = rr_data),
+  # The REDCap export is the fallback source (and lists who still owes a form)
+  tryCatch(return_rates_server("rr", rr_data = rr_data, health = state$health,
+                               trial_code = reactive(state$rv$trial_code)),
            error = function(e) message("RETURN RATES: ", e$message))
 
   tryCatch(

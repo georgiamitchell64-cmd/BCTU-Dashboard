@@ -219,7 +219,7 @@ trial_settings_tab_ui <- function() {
                   .st_feat("set_feat_baseline", "Baseline characteristics", "Table 1 from REDCap fields, for reports."),
                   .st_feat("set_feat_pilot", "Pilot progression criteria", "Stop–go thresholds for the internal pilot."),
                   .st_feat("set_feat_postal", "Postal tracking", "A tab to log questionnaires sent and received."),
-                  .st_feat("set_feat_returns", "Return rates", "A tab for per-site and per-form return percentages."),
+                  .st_feat("set_feat_returns", "Return rates", "A tab for return rates by timepoint, site and form, from return-rate files or the REDCap export."),
                   .st_feat("set_feat_questionnaires", "Patient questionnaires (PROMs)",
                            "Show questionnaire completion on the Data tab. Turn off for trials without PROMs.", TRUE)))
           ),
@@ -238,7 +238,7 @@ trial_settings_tab_ui <- function() {
                 HTML("This trial has several work packages, so there is no single REDCap folder. Upload one export per work package under <strong>Work packages</strong> below."))),
               .st_field("Return-rate CSV folder",
                         textInput("set_rr_dir", NULL, "", width = "100%", placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/ReturnRates"),
-                        "Leave blank if the trial doesn't use return-rate exports."),
+                        "Leave blank to work the rates out from the REDCap export. Earlier files in the folder show as a trend."),
               .st_field("Trial logo file",
                         textInput("set_logo_path", NULL, "", width = "100%", placeholder = "K:/BCTU/Teams/MyTeam/MyTrial/logo.png"),
                         "A .png or .jpg shown in the top bar and on reports.")),
