@@ -1,6 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Reports — report builder in three panels:
-#   set up (left) · live preview (centre) · readiness and generate (right)
+# Reports — report builder in two panels:
+#   set up and generate (left) · live preview (right). Reports always cover
+#   the whole trial, so there is no reporting-period step.
 # Styles: www/reports.css. Server: modules/reports_server.R.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -28,19 +29,11 @@ reports_tab_ui <- function() {
 
           .rb_step(1, "Report type", uiOutput("rb_type_cards")),
 
-          .rb_step(2, "Reporting period",
-            div(class = "rb-presets", role = "group", `aria-label` = "Reporting period",
-              lapply(list(c("3m", "Last 3 months"), c("6m", "Last 6 months"),
-                          c("12m", "Last 12 months"), c("all", "Whole trial")), function(p)
-                tags$button(type = "button", class = paste("rb-preset", if (p[1] == "3m") "on"),
-                            `data-p` = p[1], p[2]))),
-            dateRangeInput("rb_dates", "From – to",
-                           start = Sys.Date() %m-% months(3), end = Sys.Date(),
-                           format = "d M yyyy", separator = "to"),
-            shinyWidgets::pickerInput("rb_sites", "Sites", choices = NULL, multiple = TRUE,
-              options = list(`none-selected-text` = "All sites", `actions-box` = TRUE,
-                             `live-search` = TRUE, `selected-text-format` = "count > 2")),
-            note = "“Whole trial” ignores the dates and site filter."),
+          .rb_step(2, "Generate",
+            div(class = "rb-ready", uiOutput("rb_readiness")),
+            uiOutput("rb_format_ui"),
+            downloadButton("rb_download", "Generate report", class = "rb-generate"),
+            uiOutput("rb_gen_note")),
 
           .rb_step(3, "Options", id = "rb_opts_step",
             checkboxInput("include_withdrawn", "Include withdrawn participants", FALSE),
@@ -53,7 +46,9 @@ reports_tab_ui <- function() {
             textInput("prepared_by", "Prepared by", ""),
             textInput("reviewed_by", "Reviewed by", "")),
 
-          .rb_step(5, "Content", uiOutput("rb_content_ui"))
+          .rb_step(5, "Content", uiOutput("rb_content_ui")),
+
+          .rb_step(6, "Recent reports", uiOutput("rb_recent_ui"))
         ),
 
         # ═══ Preview ══════════════════════════════════════════════════════
@@ -81,21 +76,7 @@ reports_tab_ui <- function() {
                 tags$button(id = "rb_panel_close", class = "rb-panel-close", type = "button",
                             `aria-label` = "Close editor", HTML("&times;"))),
             div(class = "rb-panel-body", uiOutput("rb_builder_body")))
-        ),
-
-        # ═══ Generate ═════════════════════════════════════════════════════
-        tags$aside(class = "rb-side", `aria-label` = "Generate report",
-          div(class = "rb-side-block",
-              div(class = "rb-side-h", "Ready to generate"),
-              uiOutput("rb_readiness")),
-          div(class = "rb-side-block",
-              div(class = "rb-side-h", "Output"),
-              uiOutput("rb_format_ui"),
-              downloadButton("rb_download", "Generate report", class = "rb-generate"),
-              uiOutput("rb_gen_note")),
-          div(class = "rb-side-block",
-              div(class = "rb-side-h", "Recent reports"),
-              uiOutput("rb_recent_ui")))
+        )
       )
     ),
 
@@ -126,18 +107,6 @@ reports_tab_ui <- function() {
         $('.rb-btab').removeClass('active');
         $('#rb_panel').removeClass('open');
         Shiny.setInputValue('rb_active_btab', null, { priority: 'event' });
-      });
-      // Period presets; editing the dates by hand switches to a custom period
-      var rbPresetAt = 0;
-      $(document).on('click', '.rb-preset', function() {
-        $('.rb-preset').removeClass('on'); $(this).addClass('on');
-        rbPresetAt = Date.now();
-        Shiny.setInputValue('rb_preset', $(this).data('p'), { priority: 'event' });
-      });
-      $(document).on('change', '#rb_dates input', function() {
-        if (Date.now() - rbPresetAt < 1500) return;
-        $('.rb-preset').removeClass('on');
-        Shiny.setInputValue('rb_preset', 'custom', { priority: 'event' });
       });
       // Jump to Settings → Reports & admin (report text and templates)
       function rbOpenReportSettings() {

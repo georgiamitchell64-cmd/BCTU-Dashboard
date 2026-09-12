@@ -28,6 +28,14 @@ randomisations_tab_ui <- function() {
           withSpinner(echarts4rOutput("rand_monthly_chart", height = "300px"),
                       type = 4, color = col_teal))),
 
+      # ── Out-of-hours recruitment by site ─────────────────────────────
+      div(class = "th-section",
+        div(class = "th-section-head",
+          div(tags$h3("Out-of-hours recruitment by site"),
+              div(class = "th-sub-t",
+                  "Which sites randomise outside working hours, most first. Bar length is the site's total; click a site for its details."))),
+        uiOutput("rand_ooh_sites_ui")),
+
       # ── Recruitment by site ──────────────────────────────────────────
       div(class = "th-section",
         div(class = "th-section-head",

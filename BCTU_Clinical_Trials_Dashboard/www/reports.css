@@ -638,8 +638,9 @@
 /* =============================================================================
    Part 2 — workspace: setup (left) · preview (centre) · generate (right)
    ========================================================================== */
-.rb-work3 { display: grid; grid-template-columns: 300px minmax(0, 1fr) 320px; height: 100%; }
-@media (max-width: 1280px) { .rb-work3 { grid-template-columns: 272px minmax(0, 1fr) 292px; } }
+.rb-work3 { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 100%; }
+@media (max-width: 1280px) { .rb-work3 { grid-template-columns: 292px minmax(0, 1fr); } }
+.rb-ready { margin-bottom: 12px; }
 
 .rb-setup, .rb-side { background: #FFFFFF; overflow-y: auto; padding: 14px 16px 40px; min-width: 0; }
 .rb-setup { border-right: 1px solid var(--rb-line); }
@@ -723,16 +724,16 @@
 .rb-raise-h { font-size: 11px; font-weight: 700; color: var(--rb-ink); margin-bottom: 4px; }
 .rb-raise ul { margin: 0; padding-left: 16px; font-size: 11.5px; color: var(--rb-ink-2); line-height: 1.55; }
 
-.rb-formats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+.rb-formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; gap: 6px; margin-bottom: 10px; }
 .rb-fmt { padding: 8px 6px; border: 1px solid var(--rb-line); border-radius: 8px; background: #fff; cursor: pointer;
   text-align: center; font-family: inherit; }
 .rb-fmt b { display: block; font: 700 12px var(--rb-mono); color: var(--rb-ink); }
 .rb-fmt small { display: block; font-size: 10px; color: var(--rb-muted); margin-top: 2px; }
 .rb-fmt.on { border-color: var(--rb-ink); box-shadow: inset 0 -3px 0 #C59A00; }
 .rb-fmt[disabled] { opacity: .4; cursor: not-allowed; }
-.rb-side .rb-generate.btn { width: 100%; background: var(--rb-ink); color: #fff; border: none; border-radius: 8px;
+.rb-generate.btn { width: 100%; background: var(--rb-ink); color: #fff; border: none; border-radius: 8px;
   padding: 11px 14px; font-size: 13px; font-weight: 700; }
-.rb-side .rb-generate.btn:hover, .rb-side .rb-generate.btn:focus { background: #000; color: #fff; }
+.rb-generate.btn:hover, .rb-generate.btn:focus { background: #000; color: #fff; }
 .rb-gen-note { font-size: 11px; color: var(--rb-muted); margin-top: 8px; line-height: 1.45; }
 
 .rb-recent-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-bottom: 1px solid var(--rb-line-2); font-size: 12px; }

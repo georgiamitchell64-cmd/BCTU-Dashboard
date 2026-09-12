@@ -314,6 +314,13 @@ participants_server <- function(input, output, session, state) {
   po_df     <- reactive({ preg_out_events(redcap_wp()) })  %>% bindCache(fp())
   comp_df   <- reactive({ complication_events(redcap_wp()) }) %>% bindCache(fp())
 
+  # Withdrawals & change of status: one summary feeds the tile, the panel and
+  # the drill-down. cos_filter narrows the drill-down to one type or site.
+  cos <- reactive({
+    change_of_status_summary(redcap_wp(), rv$trial_config, wd = wd_df())
+  })
+  cos_filter <- reactiveVal(NULL)
+
   # Combined pregnancy view for the drill-down (notif + outcome).
   preg_df   <- reactive({ dplyr::bind_rows(pn_df(), po_df()) })
 
@@ -342,11 +349,10 @@ participants_server <- function(input, output, session, state) {
               active = identical(active_drill(), "dev"))
   })
   output$safety_tile_wd_body <- renderUI({
-    df <- wd_df()
-    n <- nrow(df)
-    pct <- if (total_p() > 0) round(100 * n / total_p(), 1) else 0
-    tile_body(HTML("&#8633; Withdrawals"), n,
-              sprintf("%.1f%% of randomised", pct),
+    s <- cos()
+    tile_body(HTML("&#8633; Change of status"), s$n_changed,
+              if (s$n_rand > 0) sprintf("%.1f%% of randomised", 100 * s$overall)
+              else "participants",
               active = identical(active_drill(), "wd"))
   })
   output$safety_tile_preg_body <- renderUI({
@@ -372,7 +378,7 @@ participants_server <- function(input, output, session, state) {
   }
   observeEvent(input$safety_tile_sae,  set_drill("sae"))
   observeEvent(input$safety_tile_dev,  set_drill("dev"))
-  observeEvent(input$safety_tile_wd,   set_drill("wd"))
+  observeEvent(input$safety_tile_wd,   { cos_filter(NULL); set_drill("wd") })
   observeEvent(input$safety_tile_preg, set_drill("preg"))
   observeEvent(input$safety_tile_comp, set_drill("comp"))
 
@@ -397,6 +403,8 @@ participants_server <- function(input, output, session, state) {
   output$safety_drill_ui <- renderUI({
     key <- active_drill()
     if (is.null(key)) return(NULL)
+    # Withdrawals have their own columns (no severity, lag or status)
+    if (identical(key, "wd")) return(cos_drill_ui())
 
     df <- switch(key,
       sae  = sae_df(),
@@ -498,65 +506,192 @@ participants_server <- function(input, output, session, state) {
 
   observeEvent(input$safety_drill_close, { active_drill(NULL) })
 
-  # ── Withdrawal donut ──────────────────────────────────────────────────
-  output$withdrawal_donut_ui <- renderUI({
-    df <- wd_df()
-    if (nrow(df) == 0) {
-      return(div(style = "padding:18px;text-align:center;color:#58595B;font-style:italic;font-size:12px;",
-                 "No withdrawals recorded."))
-    }
-    counts <- as.data.frame(table(code = df$severity), stringsAsFactors = FALSE)
-    names(counts) <- c("code", "n")
-    counts$label <- if (exists("cos_type_labels"))
-      vapply(counts$code, function(c) {
-        key <- as.character(c)
-        # cos_type_labels is a named atomic vector — `[[` on a name that isn't
-        # present throws "subscript out of bounds" (e.g. an NA/blank or unmapped
-        # withdrawal code), so check membership before indexing.
-        if (!is.na(key) && key %in% names(cos_type_labels)) cos_type_labels[[key]]
-        else paste("Code:", c)
-      }, character(1))
-    else counts$code
-
-    palette <- c("#C20019", "#F07F3C", "#2581C4", "#C59A00", "#58595B",
-                 "#00788E", "#E30513")
-    total <- sum(counts$n)
-    circ  <- 314  # 2 * pi * 50
-    offset <- 0
-    arcs <- lapply(seq_len(nrow(counts)), function(i) {
-      dash <- round(circ * counts$n[i] / total, 1)
-      arc <- sprintf(
-'<circle cx="60" cy="60" r="50" stroke="%s" stroke-width="16" fill="none"
-         stroke-dasharray="%s %s" stroke-dashoffset="%s"/>',
-        palette[((i - 1) %% length(palette)) + 1], dash, circ, -offset)
-      offset <<- offset + dash
-      arc
-    })
-
-    legend <- lapply(seq_len(nrow(counts)), function(i) {
-      div(class = "wd-lr",
-        div(class = "wd-l",
-          div(class = "wd-dot",
-              style = sprintf("background:%s",
-                              palette[((i - 1) %% length(palette)) + 1])),
-          span(counts$label[i])),
-        span(class = "wd-n", counts$n[i])
-      )
-    })
-
-    div(class = "wd-card",
-      div(class = "wd-donut",
-        HTML(sprintf(
-'<svg viewBox="0 0 120 120" width="120" height="120" style="transform:rotate(-90deg)">
-  <circle cx="60" cy="60" r="50" stroke="#FEE2E2" stroke-width="16" fill="none"/>
-  %s
-</svg>
-<div class="wd-ctr"><b>%d</b><small>WITHDRAWN</small></div>',
-          paste(unlist(arcs), collapse = "\n"), total))
-      ),
-      div(class = "wd-legend", legend)
-    )
+  # ── Withdrawals & change of status panel──────────────────────────────────────────────────
+  output$cos_meta <- renderText({
+    s <- cos()
+    if (!s$n_rand) return("")
+    sprintf("of %d randomised · click a type or site to list the participants", s$n_rand)
   })
+
+  output$cos_panel_ui <- renderUI({
+    s <- cos()
+    if (!isTRUE(s$has_form))
+      return(div(class = "cs-note cs-empty",
+                 "This export has no change-of-status form. Map its columns in Settings → Data & mapping."))
+    jsq  <- function(x) gsub("'", "\\\\'", gsub("\\\\", "\\\\\\\\", as.character(x)))
+    pick <- function(kind, value) sprintf(
+      "Shiny.setInputValue('cos_pick',{kind:'%s',value:'%s',n:Math.random()},{priority:'event'})",
+      kind, jsq(value))
+    pct <- function(x) if (s$n_rand > 0) sprintf("%.1f%%", 100 * x / s$n_rand) else "—"
+    kpi <- function(l, v, sub, cls = NULL, of = NULL)
+      div(class = paste(c("cs-kpi", cls), collapse = " "),
+          div(class = "cs-kpi-l", l),
+          div(class = "cs-kpi-v", v, if (!is.null(of)) span(class = "cs-kpi-of", of)),
+          div(class = "cs-kpi-s", sub))
+
+    # ── Headline figures ──
+    trend <- if (s$n_last30 > s$n_prev30) "up" else if (s$n_last30 < s$n_prev30) "down" else "flat"
+    arrow <- c(up = "&#9650;", down = "&#9660;", flat = "&#8211;")[[trend]]
+    kpis <- div(class = "cs-kpis",
+      kpi("Still in follow-up", s$n_active, sprintf("%s of randomised", pct(s$n_active)),
+          "good", sprintf("/ %d", s$n_rand)),
+      kpi("Any change of status", s$n_changed,
+          sprintf("%s of randomised · %d record%s", pct(s$n_changed), s$n_events,
+                  if (s$n_events == 1) "" else "s")),
+      kpi("Left follow-up", s$n_ended,
+          if (length(s$ending_labels)) paste(s$ending_labels, collapse = " · ")
+          else "No status type is marked as ending follow-up",
+          if (s$n_ended > 0) "warn"),
+      kpi("Last 30 days", s$n_last30,
+          HTML(sprintf("%s %d in the 30 days before%s", arrow, s$n_prev30,
+                       if (!is.na(s$latest)) sprintf(" · latest %s", format(s$latest, "%d %b %Y")) else "")),
+          c("trend", trend)))
+
+    # ── By type, with reasons underneath ──
+    ty <- s$types
+    mx <- max(c(ty$people, 1))
+    type_ui <- if (!nrow(ty)) div(class = "cs-note", "No change-of-status types are configured.") else
+      lapply(seq_len(nrow(ty)), function(i) {
+        r <- ty[i, ]
+        tags$button(type = "button", class = paste("cs-row", if (r$people == 0) "zero"),
+          title = if (nzchar(r$description)) r$description else r$label,
+          onclick = pick("type", r$code), disabled = if (r$people == 0) NA else NULL,
+          span(class = "cs-row-l", r$label,
+               if (isTRUE(r$ends)) span(class = "cs-tag", "ends follow-up")),
+          span(class = "cs-bar", span(class = "cs-bar-f", style = sprintf("width:%.1f%%;", 100 * r$people / mx))),
+          span(class = "cs-row-n", r$people),
+          span(class = "cs-row-p", pct(r$people)))
+      })
+    rs <- s$reasons
+    reason_ui <- if (nrow(rs$table)) {
+      top <- utils::head(rs$table, 5)
+      div(class = "cs-sub", div(class = "cs-sub-t", "Most common reasons"),
+          lapply(seq_len(nrow(top)), function(i)
+            div(class = "cs-rsn", span(class = "cs-rsn-l", top$reason[i]),
+                span(class = "cs-rsn-n", top$n[i]))))
+    } else div(class = "cs-note",
+      if (is.null(rs$field))
+        "Reasons for withdrawal aren't mapped. Add the reason column under Settings → Data & mapping → Detail fields to see why people leave."
+      else sprintf("No reasons recorded in this export yet (read from “%s”).", rs$field))
+
+    # ── Per month ──
+    mo <- s$months
+    time_ui <- if (!s$n_events) div(class = "cs-note", "No changes of status recorded yet.") else {
+      W <- 300; H <- 96; n <- nrow(mo); bw <- W / n; top <- max(c(mo$n, 1))
+      marks <- vapply(seq_len(n), function(i) {
+        h <- if (mo$n[i] > 0) max(3, mo$n[i] / top * (H - 18)) else 0
+        x <- (i - 1) * bw
+        paste0(sprintf('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2" class="cs-mbar"><title>%s: %d</title></rect>',
+                       x + bw * 0.18, H - h, bw * 0.64, h, format(mo$month[i], "%B %Y"), mo$n[i]),
+               if (mo$n[i] > 0) sprintf('<text x="%.1f" y="%.1f" class="cs-mval">%d</text>',
+                                        x + bw / 2, H - h - 4, mo$n[i]) else "")
+      }, character(1))
+      tagList(
+        HTML(sprintf('<svg class="cs-chart" viewBox="0 0 %d %d" role="img" aria-label="Changes of status per month">%s<line x1="0" x2="%d" y1="%d" y2="%d" class="cs-base"/></svg>',
+                     W, H, paste(marks, collapse = ""), W, H, H)),
+        div(class = "cs-months", style = sprintf("grid-template-columns:repeat(%d,1fr);", n),
+            lapply(seq_len(n), function(i)
+              span(if (n <= 8 || (n - i) %% 2 == 0) format(mo$month[i], "%b") else ""))),
+        div(class = "cs-foot",
+            if (!is.na(s$median_days)) sprintf("Median %d days from randomisation to the change. ", s$median_days),
+            if (s$n_undated) sprintf("%d record%s without a date not shown.", s$n_undated,
+                                     if (s$n_undated == 1) "" else "s")))
+    }
+
+    # ── By site: each site's share of its own randomised participants ──
+    st <- s$sites
+    site_ui <- if (is.null(st) || nrow(st) < 2)
+      div(class = "cs-note", "The site comparison appears once more than one site has randomised.") else {
+      top <- utils::head(st, 8)
+      mxs <- max(c(top$rate, s$overall, 0.01))
+      tagList(
+        lapply(seq_len(nrow(top)), function(i) {
+          r <- top[i, ]
+          tags$button(type = "button",
+            class = paste("cs-row", if (isTRUE(r$high)) "high", if (r$n_changed == 0) "zero"),
+            title = sprintf("%s: %d of %d randomised (%.0f%%)", r$site, r$n_changed, r$n_rand, 100 * r$rate),
+            onclick = pick("site", r$site), disabled = if (r$n_changed == 0) NA else NULL,
+            span(class = "cs-row-l", r$site),
+            span(class = "cs-bar",
+                 span(class = "cs-bar-f", style = sprintf("width:%.1f%%;", 100 * r$rate / mxs)),
+                 span(class = "cs-bar-avg", style = sprintf("left:%.1f%%;", 100 * s$overall / mxs))),
+            span(class = "cs-row-n", sprintf("%d/%d", r$n_changed, r$n_rand)),
+            span(class = "cs-row-p", sprintf("%.0f%%", 100 * r$rate)))
+        }),
+        div(class = "cs-foot",
+            sprintf("The line marks the trial-wide rate, %.0f%%.", 100 * s$overall),
+            if (any(top$high)) " Amber sites are above it with at least 2 participants.",
+            if (nrow(st) > 8) sprintf(" %d more site%s not shown.", nrow(st) - 8,
+                                      if (nrow(st) - 8 == 1) "" else "s")))
+    }
+
+    div(class = "cs-panel", kpis,
+        div(class = "cs-grid",
+            div(class = "cs-col", div(class = "cs-col-t", "By type"), type_ui, reason_ui),
+            div(class = "cs-col", div(class = "cs-col-t", "Per month"), time_ui),
+            div(class = "cs-col", div(class = "cs-col-t", "By site"), site_ui)))
+  })
+
+  observeEvent(input$cos_pick, {
+    p <- input$cos_pick
+    ty <- cos()$types
+    lab <- if (identical(p$kind, "type")) ty$label[ty$code == p$value][1] else p$value
+    cos_filter(list(kind = p$kind, value = p$value, label = if (is.na(lab)) p$value else lab))
+    active_drill("wd")
+    shinyjs::runjs("setTimeout(function(){var d=document.querySelector('.safety-drill');if(d)d.scrollIntoView({behavior:'smooth',block:'start'});},300);")
+  })
+  observeEvent(input$cos_clear, cos_filter(NULL))
+
+  # Drill-down for withdrawals: the columns that mean something for a change
+  # of status, newest first, optionally narrowed to one type or site.
+  cos_drill_ui <- function() {
+    s <- cos(); ev <- s$events; f <- cos_filter()
+    if (nrow(ev) && !is.null(f))
+      ev <- if (identical(f$kind, "type")) ev[as.character(ev$severity) == f$value, , drop = FALSE]
+            else ev[!is.na(ev$site) & ev$site == f$value, , drop = FALSE]
+    em   <- HTML('<span class="cs-dash">&mdash;</span>')
+    cell <- function(v) if (is.null(v) || !length(v) || is.na(v) || !nzchar(trimws(as.character(v)))) em else as.character(v)
+    xcols <- grep("^x__", names(ev), value = TRUE)
+    xcols <- xcols[vapply(xcols, function(c) any(!is.na(ev[[c]]) & nzchar(trimws(ev[[c]]))), logical(1))]
+    show_reason <- "narrative" %in% names(ev) && any(!is.na(ev$narrative) & nzchar(trimws(ev$narrative)))
+    if (nrow(ev)) ev <- ev[order(ev$onset_date, decreasing = TRUE, na.last = TRUE), , drop = FALSE]
+    n_people <- length(unique(ev$record_id))
+
+    head_cells <- c(list(tags$th("Participant"), tags$th("Site"), tags$th("Change of status"),
+                         tags$th("Date"), tags$th("Time in trial")),
+                    lapply(xcols, function(c) tags$th(sub("^x__", "", c))),
+                    if (show_reason) list(tags$th("Reason / notes")))
+    body <- lapply(seq_len(nrow(ev)), function(i) {
+      r <- ev[i, ]
+      do.call(tags$tr, c(
+        list(tags$td(class = "id", r$record_id), tags$td(cell(r$site)),
+             tags$td(span(class = paste("cs-pill", if (isTRUE(r$ends)) "ends"), r$term)),
+             tags$td(if (!is.na(r$onset_date)) format(r$onset_date, "%d %b %Y") else em),
+             tags$td(if (!is.na(r$days_in)) sprintf("%d days", r$days_in) else em)),
+        lapply(xcols, function(c) tags$td(cell(r[[c]]))),
+        if (show_reason) list(tags$td(style = "max-width:280px;", cell(r$narrative)))))
+    })
+
+    div(class = "safety-drill",
+      div(class = "safety-drill-head",
+        div(class = "safety-drill-title",
+            span(class = "ic", HTML("&larr;")),
+            span(sprintf("Withdrawals & change of status · %d participant%s", n_people,
+                         if (n_people == 1) "" else "s")),
+            if (!is.null(f))
+              span(class = "cs-chip", f$label,
+                   actionLink("cos_clear", HTML("&times;"), class = "cs-chip-x", title = "Show everyone"))),
+        div(class = "safety-drill-actions",
+            actionLink("safety_drill_close", HTML("&times;"), class = "safety-drill-close", title = "Close"))),
+      if (!nrow(ev)) div(class = "cs-note cs-empty", "No changes of status recorded.")
+      else tags$table(class = "safety-drill-tbl",
+                      tags$thead(do.call(tags$tr, head_cells)), tags$tbody(body)),
+      div(class = "safety-drill-foot",
+          span(sprintf("%d record%s%s", nrow(ev), if (nrow(ev) == 1) "" else "s",
+                       if (!is.na(s$median_days))
+                         sprintf(" · median %d days from randomisation to the change", s$median_days) else "")),
+          span(class = "cs-muted", "Source: REDCap export · change-of-status form")))
+  }
 
   # ── Demographic breakdowns (preserves existing config-driven machinery) ─
   # Column detection runs against the full export (column set is the same across
@@ -582,7 +717,7 @@ participants_server <- function(input, output, session, state) {
 
   output$demo_n_label <- renderText({
     n <- total_p()
-    if (n == 0) "—" else sprintf("n = %d", n)
+    if (n == 0) "—" else sprintf("at baseline · %d participants", n)
   })
 
   output$breakdowns_summary_txt <- renderText({
@@ -602,8 +737,12 @@ participants_server <- function(input, output, session, state) {
     if (!length(sel))
       return(div(class = "info-box-tonic",
                  "No breakdowns configured. Click ‘Configure’ above to pick which demographic columns to show."))
-    breakdowns <- lapply(sel, function(c) compute_breakdown(raw, c, cfg))
-    render_breakdowns_grid(breakdowns)
+    # Round-number bands on the Data tab. A column saved as a breakdown but
+    # missing from this export gets a placeholder card instead of vanishing.
+    breakdowns <- lapply(sel, function(c)
+      compute_breakdown(raw, c, cfg, numeric_bins = "pretty") %||%
+        list(type = "absent", label = .pretty_label(c), column = c))
+    tagList(render_demographics_strip(breakdowns), render_breakdowns_grid(breakdowns))
   })
 
   # Configure-modal handlers (unchanged from previous implementation)
@@ -713,7 +852,7 @@ participants_server <- function(input, output, session, state) {
     # can pick it up; also click the hidden go_returns button if present.
     shinyjs::runjs("if(document.getElementById('go_returns')) document.getElementById('go_returns').click();")
   })
-  observeEvent(input$qa_review_wd, { active_drill("wd") })
+  observeEvent(input$qa_review_wd, { cos_filter(NULL); active_drill("wd") })
 
   # ── Downloads ──────────────────────────────────────────────────────────
   output$dl_participants <- xlsx_download(

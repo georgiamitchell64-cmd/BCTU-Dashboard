@@ -1087,33 +1087,15 @@ reports_server <- function(input, output, session, state) {
   # ════════════════════════════════════════════════════════════════════════
   RB_RMD      <- c("TMG", "iTMG", "TSC", "TSC Interim")   # built from the trial's Rmd templates
   RB_FORMATS  <- list(TMG = c("pdf", "docx", "html"), iTMG = c("pdf", "docx", "html"),
-                      TSC = "docx", "TSC Interim" = c("pdf", "docx", "html"),
+                      TSC = "docx", "TSC Interim" = "docx",   # TSC reports are Word only
                       NIHR = c("docx", "pdf", "html"),
                       Portfolio = c("docx", "pdf", "html"))
   RB_FMT_DESC <- c(pdf = "Print-ready", docx = "Editable Word", html = "Web archive")
 
   rb_export_format <- reactiveVal("docx")
-  rb_scope         <- reactiveVal("filtered")   # "full" = whole trial, no filters
   rb_log_nonce     <- reactiveVal(0L)
 
   observeEvent(input$rb_set_format, rb_export_format(input$rb_set_format))
-
-  # Period presets; editing the dates by hand sends "custom"
-  observeEvent(input$rb_preset, {
-    p <- input$rb_preset
-    rb_scope(if (identical(p, "all")) "full" else "filtered")
-    m <- switch(p, "3m" = 3, "6m" = 6, "12m" = 12, NULL)
-    if (!is.null(m))
-      updateDateRangeInput(session, "rb_dates", start = Sys.Date() %m-% months(m), end = Sys.Date())
-  })
-
-  observe({
-    s  <- rv$sites
-    ch <- if (!is.null(s) && "site_name" %in% names(s))
-      sort(unique(stats::na.omit(as.character(s$site_name)))) else character(0)
-    shinyWidgets::updatePickerInput(session, "rb_sites", choices = ch,
-                                    selected = intersect(isolate(input$rb_sites), ch))
-  })
 
   observeEvent(rv$username, {
     if (!nzchar(trimws(isolate(input$prepared_by) %||% "")))
@@ -1133,21 +1115,10 @@ reports_server <- function(input, output, session, state) {
     shinyjs::runjs("$('#rb_panel').removeClass('open'); $('.rb-btab').removeClass('active');")
   }, ignoreInit = TRUE)
 
-  rb_filters <- reactive({
-    full  <- identical(rb_scope(), "full")
-    d     <- input$rb_dates
-    has_d <- !full && length(d) == 2 && !anyNA(d)
-    list(full  = full,
-         sites = if (full || !length(input$rb_sites)) NULL else input$rb_sites,
-         from  = if (has_d) as.Date(d[1]) else NULL,
-         to    = if (has_d) as.Date(d[2]) else NULL)
-  })
-  rb_period_label <- reactive({
-    f <- rb_filters()
-    if (f$full) "Whole trial"
-    else if (is.null(f$from)) "No period set"
-    else sprintf("%s – %s", format(f$from, "%d %b %Y"), format(f$to, "%d %b %Y"))
-  })
+  # Every report covers the whole trial: all sites, from the first participant
+  # up to today. The period and site filters were removed from the Set up panel.
+  rb_filters <- reactive(list(full = TRUE, sites = NULL, from = NULL, to = NULL))
+  rb_period_label <- reactive(sprintf("Whole trial to %s", format(Sys.Date(), "%d %b %Y")))
   rb_sites_label <- reactive({
     s <- rb_filters()$sites
     if (is.null(s)) "All sites"
@@ -1329,12 +1300,8 @@ reports_server <- function(input, output, session, state) {
         tags$button(type = "button", class = paste("rb-type", if (on) "on"),
                     role = "radio", `aria-checked` = if (on) "true" else "false",
                     onclick = sprintf("Shiny.setInputValue('rb_pick_template','%s',{priority:'event'})", k),
-                    span(class = "rb-type-name", if (length(m) == 3) m[2] else t$label),
-                    span(class = "rb-type-fmt",
-                         paste(c(pdf = "PDF", docx = "Word", html = "HTML")[RB_FORMATS[[k]] %||% "docx"],
-                               collapse = " · ")),
-                    span(class = "rb-type-desc",
-                         if (length(m) == 3) paste0(m[3], ". ", t$description) else t$description))
+                    title = if (length(m) == 3) m[3] else NULL,
+                    span(class = "rb-type-name", if (length(m) == 3) m[2] else t$label))
       }))
   })
 
@@ -1381,8 +1348,7 @@ reports_server <- function(input, output, session, state) {
       if (ok_data) chk("ok", sprintf("Data loaded · %s participants", format(n, big.mark = ",")),
                        rv$loaded_file %||% NULL)
       else chk("bad", "No REDCap export loaded", "Upload one on the Upload tab first."),
-      chk(if (identical(rb_period_label(), "No period set")) "warn" else "ok",
-          rb_period_label(), rb_sites_label()),
+      chk("ok", rb_period_label(), "All sites, from the first participant"),
       if (nzchar(trimws(input$prepared_by %||% ""))) chk("ok", "Prepared by", input$prepared_by)
       else chk("warn", "Who prepared the report?", "Add a name under People."))
     if (identical(t, "TSC") && !nzchar(trimws(input$reviewed_by %||% "")))
@@ -1452,22 +1418,22 @@ reports_server <- function(input, output, session, state) {
     t   <- rb_template_choice()
     fm  <- RB_FORMATS[[t]] %||% "docx"
     cur <- rb_export_format()
+    # Only the formats this report type can produce (TSC reports: Word only)
+    fm <- intersect(c("pdf", "docx", "html"), fm)
     div(class = "rb-formats", role = "radiogroup", `aria-label` = "Output format",
-      lapply(c("pdf", "docx", "html"), function(f) {
-        ok <- f %in% fm
-        on <- ok && identical(f, cur)
+      lapply(fm, function(f) {
+        on <- identical(f, cur)
         tags$button(type = "button", class = paste("rb-fmt", if (on) "on"),
-                    disabled = if (!ok) NA, role = "radio", `aria-checked` = if (on) "true" else "false",
-                    title = if (!ok) "Not available for this report type",
-                    onclick = if (ok) sprintf("Shiny.setInputValue('rb_set_format','%s',{priority:'event'})", f),
+                    role = "radio", `aria-checked` = if (on) "true" else "false",
+                    onclick = sprintf("Shiny.setInputValue('rb_set_format','%s',{priority:'event'})", f),
                     tags$b(paste0(".", f)), tags$small(RB_FMT_DESC[[f]]))
       }))
   })
 
   output$rb_gen_note <- renderUI({
     div(class = "rb-gen-note", switch(rb_template_choice(),
-      TSC  = "TSC reports are Word documents, built from the trial's TSC template.",
-      TMG  = , iTMG = , "TSC Interim" = "PDF matches the preview exactly. Word keeps the text, tables and charts editable.",
+      TSC  = , "TSC Interim" = "TSC reports are Word documents, built from the trial's TSC template.",
+      TMG  = , iTMG = "PDF matches the preview exactly. Word keeps the text, tables and charts editable.",
       "Built from the pages shown in the preview."))
   })
 

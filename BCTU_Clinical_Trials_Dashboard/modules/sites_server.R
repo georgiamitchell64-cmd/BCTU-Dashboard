@@ -23,6 +23,27 @@ sites_server <- function(input, output, session, state) {
         th_site_cards(H)))
   })
 
+  # Open date per site: the Sites tab's, or — for a site that has recruited but
+  # has none recorded, usually one created from REDCap — its first
+  # randomisation, flagged as an estimate. The same rule as the TMG report.
+  .open_dates <- function(df) {
+    od  <- suppressWarnings(as.Date(df$site_open_date))
+    est <- rep(FALSE, nrow(df))
+    H <- tryCatch(state$health(), error = function(e) NULL)
+    P <- if (is.null(H)) NULL else H$participants
+    if (!is.null(P) && nrow(P)) {
+      n <- suppressWarnings(as.numeric(df$randomised))
+      for (i in which(is.na(od) & !is.na(n) & n > 0 & !is.na(df$site_name))) {
+        r <- P$rand[!is.na(P$site) & P$site == df$site_name[i]]
+        if (length(r)) {
+          od[i]  <- as.Date(as.POSIXct(min(r), origin = "1970-01-01", tz = "UTC"))
+          est[i] <- TRUE
+        }
+      }
+    }
+    list(date = od, est = est)
+  }
+
   # ── Summary stats tiles ─────────────────────────────────────────────────
   output$sites_summary_stats <- renderUI({
     df <- rv$sites
@@ -45,7 +66,7 @@ sites_server <- function(input, output, session, state) {
     # the months it has been open, averaged across the sites that have an open
     # date recorded. A site without one has no denominator, so it is left out
     # rather than counted as zero.
-    per_site_rates <- .actual_monthly_per_site(df$randomised, df$site_open_date)
+    per_site_rates <- .actual_monthly_per_site(df$randomised, .open_dates(df)$date)
     avg_per_site   <- if (any(!is.na(per_site_rates)))
                         mean(per_site_rates, na.rm = TRUE) else NA_real_
     avg_label      <- if (is.na(avg_per_site)) "—" else
@@ -65,6 +86,120 @@ sites_server <- function(input, output, session, state) {
         make_stat(avg_label,     "Avg recruits / site / month", "#00788E"),
         make_stat(total_rand, recruit_term("Past", rv$trial_config), "#1B1B1B"),
         if (n_flagged > 0) make_stat(n_flagged, "Incomplete", "#C20019"))
+  })
+
+  # ── Monthly recruitment per site ────────────────────────────────────────
+  # Each site's randomisations per month since it opened — the same figure as
+  # the "Avg recruits / site / month" tile and the TMG report's monthly-average
+  # column (.actual_monthly_per_site) — against its monthly target, with the
+  # last 90 days alongside so a site that is slowing down shows up.
+  output$sites_monthly_ui <- renderUI({
+    df <- rv$sites
+    if (is.null(df) || !nrow(df)) return(NULL)
+    section <- function(...) div(class = "th-section",
+      div(class = "th-section-head",
+        div(tags$h3("Monthly recruitment per site"),
+            div(class = "th-sub-t",
+                "Randomisations per month since each site opened, against its monthly target, with the last 90 days alongside. Click a site for its details."))),
+      ...)
+    jsq  <- function(x) gsub("'", "\\\\'", gsub("\\\\", "\\\\\\\\", as.character(x)))
+    num1 <- function(x) if (is.na(x)) "—" else formatC(x, format = "f", digits = 1)
+    H <- tryCatch(state$health(), error = function(e) NULL)
+    P <- if (is.null(H)) NULL else H$participants
+
+    name <- as.character(df$site_name)
+    opn  <- .open_dates(df)
+    od   <- opn$date
+    rate <- .actual_monthly_per_site(df$randomised, od)
+    tgt  <- suppressWarnings(as.numeric(df$monthly_target))
+    days_open <- as.numeric(Sys.Date() - od)
+    last90 <- if (is.null(P) || !nrow(P)) rep(NA_integer_, nrow(df)) else {
+      from <- .th_today_s(H$today) - 90 * .TH_DAY
+      vapply(name, function(s) sum(P$site == s & P$rand > from), integer(1), USE.NAMES = FALSE)
+    }
+    # Pace over the last 90 days, or since opening for a site open less than that
+    recent <- ifelse(!is.na(days_open) & days_open >= 30 & !is.na(last90),
+                     last90 / (pmin(days_open, 90) / 30.44), NA_real_)
+
+    ok <- !is.na(rate)
+    if (!any(ok)) return(section(th_empty_note(
+      "Add an open date to each site to see its monthly recruitment.")))
+    d <- data.frame(site = name, status = as.character(df$status), rate = rate, target = tgt,
+                    recent = recent, last90 = last90, est = opn$est,
+                    stringsAsFactors = FALSE)[ok, , drop = FALSE]
+    d$ratio <- ifelse(!is.na(d$target) & d$target > 0, d$rate / d$target, NA_real_)
+    d <- d[order(-d$rate, d$site), , drop = FALSE]
+
+    # ── Headline figures ──
+    avg_rate   <- mean(d$rate)
+    avg_target <- if (any(!is.na(d$target))) mean(d$target, na.rm = TRUE) else NA_real_
+    avg_recent <- if (any(!is.na(d$recent))) mean(d$recent, na.rm = TRUE) else NA_real_
+    n_tgt <- sum(!is.na(d$ratio)); n_met <- sum(d$ratio >= 1, na.rm = TRUE)
+    low   <- d$site[!is.na(d$ratio) & d$ratio < 0.6]
+    open_now <- df$status %in% c("Open", "Recruiting")
+    trial_pace <- if (all(is.na(last90))) NA_real_ else sum(last90, na.rm = TRUE) / (90 / 30.44)
+    trial_tgt  <- sum(tgt[open_now], na.rm = TRUE)
+    kpi <- function(l, v, s, cls = NULL) div(class = paste(c("sm-kpi", cls), collapse = " "),
+      div(class = "sm-kpi-l", l), div(class = "sm-kpi-v", v), div(class = "sm-kpi-s", s))
+    kpis <- div(class = "sm-kpis",
+      kpi("Average per site", num1(avg_rate),
+          if (is.na(avg_target)) "per month since opening"
+          else sprintf("per month since opening · target %s", num1(avg_target))),
+      kpi("Last 90 days", num1(avg_recent),
+          if (is.na(avg_recent)) "no recent data"
+          else HTML(sprintf("<span class='%s'>%s</span> per site per month",
+                            if (avg_recent >= avg_rate) "sm-up" else "sm-down",
+                            if (avg_recent >= avg_rate) "&#9650; faster than overall" else "&#9660; slower than overall"))),
+      kpi("At or above target", if (n_tgt) sprintf("%d of %d", n_met, n_tgt) else "—",
+          if (length(low)) sprintf("%d well below (under 60%%): %s", length(low),
+                                   paste(utils::head(low, 3), collapse = ", "))
+          else "no site is well below target",
+          if (length(low)) "warn"),
+      kpi("Whole trial, last 90 days", num1(trial_pace),
+          if (trial_tgt > 0) sprintf("per month · open sites' targets add up to %s", num1(trial_tgt))
+          else "per month"))
+
+    # ── One row per site: bar = rate, line = target, ring = last 90 days ──
+    mx <- max(c(d$rate, d$target, d$recent), na.rm = TRUE)
+    if (!is.finite(mx) || mx <= 0) mx <- 1
+    at <- function(v) sprintf("%.1f%%", 100 * min(v, mx) / mx)
+    rows <- lapply(seq_len(nrow(d)), function(i) {
+      r <- d[i, ]
+      cls <- if (is.na(r$ratio)) "" else if (r$ratio >= 1) "met" else if (r$ratio < 0.6) "low" else "near"
+      tags$button(type = "button", class = paste("sm-row", cls),
+        onclick = sprintf("Shiny.setInputValue('th_site_open',{site:'%s',n:Math.random()},{priority:'event'})",
+                          jsq(r$site)),
+        title = sprintf("%s: %s a month since opening%s%s", r$site, num1(r$rate),
+                        if (!is.na(r$target)) sprintf(" (target %s)", num1(r$target)) else "",
+                        if (!is.na(r$recent)) sprintf(", %s over the last 90 days", num1(r$recent)) else ""),
+        span(class = "sm-site", r$site,
+             span(class = "sm-status", if (isTRUE(r$est)) paste(r$status, "· open date estimated*") else r$status)),
+        span(class = "sm-bar",
+             span(class = "sm-bar-f", style = sprintf("width:%s;", at(r$rate))),
+             if (!is.na(r$target)) span(class = "sm-tgt", style = sprintf("left:%s;", at(r$target))),
+             if (!is.na(r$recent)) span(class = "sm-rec", style = sprintf("left:%s;", at(r$recent)))),
+        span(class = "sm-v", num1(r$rate),
+             if (!is.na(r$target)) span(class = "sm-of", sprintf(" / %s", num1(r$target)))),
+        span(class = "sm-r", num1(r$recent)))
+    })
+    n_skip <- sum(!ok & df$status %in% c("Open", "Recruiting", "Paused", "Closed"))
+    section(
+      kpis,
+      div(class = "sm-legend",
+          span(span(class = "sm-lg-bar"), "per month since opening"),
+          span(span(class = "sm-lg-tgt"), "monthly target"),
+          span(span(class = "sm-lg-rec"), "last 90 days"),
+          span(span(class = "sm-lg-bar low"), "under 60% of target"),
+          span(span(class = "sm-lg-bar near"), "60–99%")),
+      div(class = "sm-rows",
+          div(class = "sm-row sm-head", span("Site"), span("Per month"),
+              span(class = "sm-v", "Rate / target"), span(class = "sm-r", "Last 90 days")),
+          rows),
+      div(class = "sm-foot",
+          "Per month is randomisations divided by the calendar months a site has been open, counting its opening month — the same figure as the TMG report.",
+          if (any(d$est)) " * No open date on the Sites tab, so the first randomisation is used — add the real date to correct it.",
+          if (n_skip) sprintf(" %d open site%s without an open date %s left out.", n_skip,
+                              if (n_skip == 1) "" else "s", if (n_skip == 1) "is" else "are")))
   })
 
   # ── Filtered view (search box + status chips, both wired from sites.R JS) ─
@@ -106,7 +241,6 @@ sites_server <- function(input, output, session, state) {
                 div(class = "sr-sub",
                     paste0(sid, if (nzchar(loc)) paste0("  ·  ", loc) else "")))),
         div(class = "sr-metrics",
-            if (isTRUE(s$siv_booked)) span(class = "sr-siv", "SIV booked"),
             metric(gv(s$randomised, 0), "randomised"),
             metric(gv(s$monthly_target), "mo. target"),
             metric(gv(s$target), "overall")),
@@ -141,9 +275,9 @@ sites_server <- function(input, output, session, state) {
     }
     tagList(
       grp('<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
-          "Manually added", "Sites you entered by hand", manual),
+          "Added on the Sites tab", "Entered by hand — usually identified or in set-up, and not in the REDCap export yet", manual),
       grp('<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>',
-          "Auto-populated from REDCap", "Created from the data access groups in your export", auto)
+          "From the REDCap export", "Created automatically from the export's data access groups", auto)
     )
   })
 
@@ -226,8 +360,6 @@ sites_server <- function(input, output, session, state) {
       country        = if (nzchar(country)) country else NA_character_,
       status         = input$se_status %||% "Identified",
       site_open_date = as_d(input$se_open),
-      siv_booked     = isTRUE(input$se_siv_booked),
-      siv_date       = as_d(input$se_siv_date),
       monthly_target = as.integer(input$se_mo_tgt %||% 0),
       target         = as.integer(input$se_tgt %||% 0),
       randomised     = as.integer(input$se_rand %||% 0),

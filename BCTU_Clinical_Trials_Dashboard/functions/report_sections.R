@@ -882,8 +882,8 @@ REPORT_TEMPLATES <- list(
                  "custom_text")
   ),
   iTMG = list(
-    label = "iTMG (Independent Trial Management Group)",
-    description = "Independent management report — same content as the TMG report, labelled iTMG.",
+    label = "iTMG (Internal Trial Management Group)",
+    description = "Internal management report — same content as the TMG report, headed Internal Trial Management Group.",
     sections = c("header", "recruitment_summary", "smart_insights",
                  "consort", "site_summary", "safety_summary", "complications",
                  "custom_text")

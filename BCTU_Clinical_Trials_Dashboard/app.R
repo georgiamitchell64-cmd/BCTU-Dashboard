@@ -57,6 +57,7 @@ source("functions/return_rates_data.R", local = TRUE)
 source("functions/projection_math.R",   local = TRUE)
 source("functions/postal_tracking_data.R", local = TRUE)
 source("functions/safety_events.R",      local = TRUE)
+source("functions/change_of_status.R",   local = TRUE)
 
 source("modules/registry.R",            local = TRUE)
 source("modules/welcome.R",             local = TRUE)

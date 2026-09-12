@@ -79,6 +79,13 @@
   sprintf("%.1f (%.1f)", mean(x), sd(x))
 }
 
+.fmt_median_iqr <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0) return("—")
+  q <- stats::quantile(x, c(.25, .5, .75), names = FALSE)
+  sprintf("%.1f (%.1f, %.1f)", q[2], q[1], q[3])
+}
+
 .fmt_range <- function(x) {
   x <- x[!is.na(x)]
   if (length(x) == 0) return("\u2014")
@@ -167,6 +174,8 @@ baseline_characteristics_df <- function(rd) {
     age <- suppressWarnings(as.numeric(df[[c_age]]))
     add("Participant demographics", "Age (years)", "Mean (SD)",
         .fmt_mean_sd(age))
+    add("Participant demographics", "Age (years)", "Median (IQR)",
+        .fmt_median_iqr(age))
     add("Participant demographics", "Age (years)", "Range (min, max)",
         .fmt_range(age))
     add("Participant demographics", "Age (years)", "Missing",
@@ -331,71 +340,92 @@ baseline_characteristics_flextable <- function(df, total_n = NULL) {
   if (nrow(df) == 0) return(NULL)
 
   if (is.null(total_n)) total_n <- df$total_n[1]
+  ink <- "#1B1B1B"; muted <- "#6B6B6D"
 
-  # Deduplicate labels within section groups
-  df_disp <- df
-  df_disp$label_show <- df_disp$label
-  for (i in seq_len(nrow(df_disp))) {
-    if (i > 1 && df_disp$label_show[i] == df_disp$label_show[i - 1] &&
-        df_disp$section[i] == df_disp$section[i - 1]) {
-      df_disp$label_show[i] <- ""
+  # A standard "Table 1": each characteristic on a bold row with its
+  # categories indented beneath, grouped under full-width section rows, and
+  # one Total column. ", n (%)" moves into the footnote.
+  rows <- list(); kind <- character(0)
+  push <- function(a, b, k) {
+    rows[[length(rows) + 1]] <<- data.frame(char = a, val = b, stringsAsFactors = FALSE)
+    kind <<- c(kind, k)
+  }
+  for (sec in unique(df$section)) {
+    push(sec, "", "section")
+    s <- df[df$section == sec, , drop = FALSE]
+    for (lab in unique(s$label)) {
+      r <- s[s$label == lab, , drop = FALSE]
+      push(sub(",\\s*n \\(%\\)$", "", lab), "", "label")
+      for (i in seq_len(nrow(r))) {
+        # "Missing 0" is noise; only show missing counts that exist
+        if (identical(r$sublabel[i], "Missing") && identical(trimws(r$stat[i]), "0")) next
+        push(r$sublabel[i], r$stat[i], if (identical(r$sublabel[i], "Missing")) "missing" else "item")
+      }
     }
   }
+  tbl <- do.call(rbind, rows)
+  rows_of <- function(k) which(kind == k)
 
-  # Interleave section-header rows with data rows
-  build_rows <- list()
-  for (sec in unique(df_disp$section)) {
-    # Section header row (label spans the first two columns via merging later)
-    build_rows[[length(build_rows) + 1]] <- data.frame(
-      Characteristic = sec, Category = "", Value = "",
-      is_section = TRUE, stringsAsFactors = FALSE
-    )
-    sec_rows <- df_disp[df_disp$section == sec, , drop = FALSE]
-    for (i in seq_len(nrow(sec_rows))) {
-      build_rows[[length(build_rows) + 1]] <- data.frame(
-        Characteristic = sec_rows$label_show[i],
-        Category       = sec_rows$sublabel[i],
-        Value          = sec_rows$stat[i],
-        is_section     = FALSE,
-        stringsAsFactors = FALSE
-      )
-    }
+  ft <- flextable::flextable(tbl, col_keys = c("char", "val"))
+  ft <- flextable::set_header_labels(ft, char = "Characteristic",
+          val = sprintf("Total\n(N = %s)", format(total_n, big.mark = ",")))
+  ft <- flextable::font(ft, fontname = "Arial", part = "all")
+  ft <- flextable::fontsize(ft, size = 9, part = "all")
+  ft <- flextable::bold(ft, part = "header")
+  ft <- flextable::color(ft, color = ink, part = "all")
+  ft <- flextable::align(ft, j = "val", align = "right", part = "all")
+  ft <- flextable::valign(ft, valign = "bottom", part = "header")
+  ft <- flextable::padding(ft, padding.top = 2, padding.bottom = 2,
+                           padding.left = 4, padding.right = 4, part = "all")
+
+  # Section rows span the table, shaded
+  for (i in rows_of("section")) ft <- flextable::merge_at(ft, i = i, j = 1:2, part = "body")
+  ft <- flextable::bg(ft, i = rows_of("section"), bg = "#F2F2F2", part = "body")
+  ft <- flextable::bold(ft, i = rows_of("section"), part = "body")
+  ft <- flextable::padding(ft, i = rows_of("section"), padding.top = 4, padding.bottom = 3, part = "body")
+  # Characteristics bold; categories indented; missing counts muted
+  ft <- flextable::bold(ft, i = rows_of("label"), j = "char", part = "body")
+  ft <- flextable::padding(ft, i = c(rows_of("item"), rows_of("missing")), j = "char",
+                           padding.left = 16, part = "body")
+  if (length(rows_of("missing"))) {
+    ft <- flextable::italic(ft, i = rows_of("missing"), part = "body")
+    ft <- flextable::color(ft, i = rows_of("missing"), color = muted, part = "body")
   }
 
-  tbl <- do.call(rbind, build_rows)
-  section_idx <- which(tbl$is_section)
+  # Horizontal rules only: heavy above the header and at the foot, thin under
+  # the header, hairlines between sections — no vertical lines
+  ft <- flextable::border_remove(ft)
+  ft <- flextable::hline_top(ft, border = officer::fp_border(color = ink, width = 1.25), part = "header")
+  ft <- flextable::hline_bottom(ft, border = officer::fp_border(color = ink, width = 0.75), part = "header")
+  ft <- flextable::hline_bottom(ft, border = officer::fp_border(color = ink, width = 1.25), part = "body")
+  between <- rows_of("section")[rows_of("section") > 1] - 1
+  if (length(between))
+    ft <- flextable::hline(ft, i = between, border = officer::fp_border(color = "#BFBFBF", width = 0.5),
+                           part = "body")
 
-  # Rename the value column to show total n
-  names(tbl)[3] <- paste0("n = ", total_n)
+  ft <- flextable::width(ft, j = "char", width = 4.6)
+  ft <- flextable::width(ft, j = "val",  width = 1.7)
+  ft <- flextable::set_table_properties(ft, layout = "fixed")
 
-  ft <- flextable::flextable(tbl[, 1:3])
-  ft <- flextable::bg(ft,     part = "header", bg = "#1B1B1B")
-  ft <- flextable::color(ft,  part = "header", color = "white")
-  ft <- flextable::bold(ft,   part = "header")
-  ft <- flextable::fontsize(ft, part = "header", size = 10)
-  ft <- flextable::fontsize(ft, part = "body",   size = 9)
-  ft <- flextable::padding(ft, padding = 4)
-  ft <- flextable::align(ft,  j = 3,  align = "right", part = "all")
-  ft <- flextable::bold(ft,   j = 1,  part = "body")
-  ft <- flextable::color(ft,  j = 1,  color = "#1B1B1B", part = "body")
+  # Keep each characteristic with its categories across a page break
+  if ("keep_with_next" %in% getNamespaceExports("flextable"))
+    ft <- flextable::keep_with_next(ft, i = c(rows_of("section"), rows_of("label")),
+                                    value = TRUE, part = "body")
 
-  # Style the section-header rows
-  for (i in section_idx) {
-    ft <- flextable::bg(ft,   i = i, bg = "#F4F6F8")
-    ft <- flextable::bold(ft, i = i, bold = TRUE)
-    ft <- flextable::color(ft, i = i, color = "#1B1B1B")
-    # Merge the three cells into one
-    ft <- flextable::merge_at(ft, i = i, j = 1:3)
-  }
-
-  ft <- flextable::border_outer(ft,
-          border = officer::fp_border(color = "#CFCFCF", width = 0.5))
-  ft <- flextable::border_inner_h(ft,
-          border = officer::fp_border(color = "#E3E3E3", width = 0.5))
-
-  ft <- flextable::width(ft, j = 1, width = 2.1)
-  ft <- flextable::width(ft, j = 2, width = 2.4)
-  ft <- flextable::width(ft, j = 3, width = 1.4)
-
+  # Footnote: what the figures are, and the abbreviations the table uses
+  abbr <- c(NELA = "National Emergency Laparotomy Audit", NRS = "Nutritional Risk Screening",
+            MUST = "Malnutrition Universal Screening Tool", SD = "standard deviation",
+            IQR = "interquartile range")
+  txt  <- paste(tbl$char, collapse = " ")
+  used <- names(abbr)[vapply(names(abbr), function(a) grepl(paste0("\\b", a, "\\b"), txt, perl = TRUE),
+                             logical(1))]
+  note <- paste0("Data are n (%) unless stated otherwise. Percentages are of participants with a ",
+                 "recorded value; missing values are shown separately.",
+                 if (length(used)) paste0(" ", paste(sprintf("%s, %s", used, abbr[used]), collapse = "; "), "."))
+  ft <- flextable::add_footer_lines(ft, note)
+  ft <- flextable::font(ft, fontname = "Arial", part = "footer")
+  ft <- flextable::fontsize(ft, size = 7.5, part = "footer")
+  ft <- flextable::color(ft, color = muted, part = "footer")
+  ft <- flextable::padding(ft, padding.top = 4, part = "footer")
   ft
 }

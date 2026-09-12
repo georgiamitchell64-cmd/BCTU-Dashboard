@@ -752,6 +752,21 @@ prepare_report_data <- function(df,
                              ifelse(!is.na(site_reg$n_register), site_reg$n_register, 0L))
   site_reg$randomisations <- as.integer(site_reg$randomisations)
 
+  # A site that has recruited but has no open date on the Sites tab (usually
+  # one created from a REDCap data access group) takes its first randomisation
+  # as the open date, flagged so the report can mark it as an estimate.
+  site_reg$open_estimated <- FALSE
+  if (all(c("rand_date", "site_name") %in% names(ptcp_randomised)) && nrow(ptcp_randomised)) {
+    rd <- tryCatch(as.Date(ptcp_randomised$rand_date), error = function(e) as.Date(rep(NA, nrow(ptcp_randomised))))
+    first_rand <- vapply(split(rd, ptcp_randomised$site_name), function(x) {
+      x <- x[!is.na(x)]; if (length(x)) format(min(x), "%Y-%m-%d") else NA_character_
+    }, character(1))
+    miss <- (is.na(site_reg$open_date) | !nzchar(site_reg$open_date)) & site_reg$randomisations > 0
+    fill <- unname(first_rand[site_reg$site_name[miss]])
+    site_reg$open_date[miss]      <- fill
+    site_reg$open_estimated[miss] <- !is.na(fill)
+  }
+
   # Status: the Sites tab wins, because Paused / Closed / Set-up are manual
   # decisions the export cannot express. Only infer when none is recorded.
   site_reg$stage <- ifelse(
@@ -766,7 +781,7 @@ prepare_report_data <- function(df,
 
   site_status_table <- if (nrow(pipeline_combined) > 0) {
     st <- pipeline_combined[, c("site_name","stage","target","monthly_target",
-                                "randomisations","open_date"), drop=FALSE]
+                                "randomisations","open_date","open_estimated"), drop=FALSE]
     st$randomisations[is.na(st$randomisations)] <- 0
     st$progress_pct <- ifelse(st$target > 0,
                               round(st$randomisations / st$target * 100, 1), NA_real_)

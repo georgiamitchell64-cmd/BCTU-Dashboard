@@ -72,10 +72,19 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
   do.call(rbind, rows)
 }
 
+# Common REDCap abbreviations, spelled out in card titles and labels.
+.PB_ABBREVIATIONS <- c(gp = "group", grp = "group", mort = "mortality", nela = "NELA",
+                       bmi = "BMI", asa = "ASA", nrs = "NRS", pts = "points",
+                       yrs = "years", rand = "randomisation", imd = "IMD", eq5d = "EQ-5D")
+
 .pretty_label <- function(col) {
-  # base_age_at_rand → Age at rand
+  # base_age_at_rand → Age at randomisation; base_ethnic_gp → Ethnic group
   s <- gsub("[._]", " ", col)
   s <- sub("^(dem|cae|base|baseline)\\s+", "", s, ignore.case = TRUE)
+  w <- strsplit(s, "\\s+")[[1]]
+  hit <- tolower(w) %in% names(.PB_ABBREVIATIONS)
+  w[hit] <- .PB_ABBREVIATIONS[tolower(w[hit])]
+  s <- paste(w, collapse = " ")
   paste0(toupper(substring(s, 1, 1)), substring(s, 2))
 }
 
@@ -335,12 +344,38 @@ detect_coded_columns <- function(raw, cfg = NULL, max_codes = 25) {
   unname(out)
 }
 
+# Minimisation cut-off for a numeric breakdown, or NULL. The default matches
+# the baseline table's minimisation block (functions/baseline_table.R): NELA
+# predicted mortality splits into <5% and ≥5%. A trial can add or replace
+# cut-offs with cfg$breakdown_cuts = list(<column> = list(cut = 5, unit = "%")).
+breakdown_cut <- function(col, cfg = NULL) {
+  own <- cfg$breakdown_cuts[[col]]
+  if (!is.null(own) && !is.null(own$cut))
+    return(list(cut = as.numeric(own$cut), unit = as.character(own$unit %||% "")))
+  nela <- if (exists("fld", mode = "function"))
+    tryCatch(fld("nela_score", default = "base_nela_score_mort"), error = function(e) "base_nela_score_mort")
+  else "base_nela_score_mort"
+  if (identical(col, nela)) return(list(cut = 5, unit = "%"))
+  NULL
+}
+
+# Counts either side of a cut-off: under = x < cut, over = x >= cut
+.breakdown_split <- function(vals, cut) {
+  if (is.null(cut)) return(NULL)
+  list(cut = cut$cut, unit = cut$unit, n = length(vals),
+       under = sum(vals < cut$cut), over = sum(vals >= cut$cut))
+}
+
 # Compute breakdown data for one column.
 # Returns a list with: type, label, total, missing, headline, segments
 # (list of {label, n, pct}).
+#   numeric_bins – "quartile" (the report's bands) or "pretty" (round-number
+#                  bands, used on the Data tab so the spread actually shows).
 compute_breakdown <- function(raw, col, cfg = NULL,
                               numeric_breaks = NULL,
-                              max_segments = 8) {
+                              max_segments = 8,
+                              numeric_bins = c("quartile", "pretty")) {
+  numeric_bins <- match.arg(numeric_bins)
   if (is.null(raw) || !nrow(raw) || !col %in% names(raw)) return(NULL)
 
   base <- baseline_rows(raw, cfg)
@@ -356,9 +391,11 @@ compute_breakdown <- function(raw, col, cfg = NULL,
 
   if (is_numeric_like) {
     vals <- v_num[!is.na(v_num)]
-    breaks <- numeric_breaks %||% c(-Inf,
-                                    quantile(vals, c(.25, .5, .75), names = FALSE),
-                                    Inf)
+    # Quartile bands hold ~25% each by construction; round-number bands show
+    # where participants actually sit.
+    breaks <- numeric_breaks %||% switch(numeric_bins,
+      quartile = c(-Inf, quantile(vals, c(.25, .5, .75), names = FALSE), Inf),
+      pretty   = pretty(range(vals), n = 5))
     breaks <- sort(unique(breaks))
     bins <- cut(vals, breaks = breaks, include.lowest = TRUE, right = FALSE,
                 dig.lab = 4)
@@ -369,16 +406,25 @@ compute_breakdown <- function(raw, col, cfg = NULL,
            pct = if (length(vals)) tab[i] / length(vals) else 0)
     })
     headline <- sprintf("Median %.1f · Mean %.1f", median(vals), mean(vals))
+    hb <- pretty(range(vals), n = 10)
+    hc <- as.integer(table(cut(vals, breaks = hb, include.lowest = TRUE, right = FALSE)))
     return(list(type = "numeric", label = .pretty_label(col),
                 column = col, total = total, missing = missing,
                 headline = headline, segments = segments,
-                values_min = min(vals), values_max = max(vals)))
+                values_min = min(vals), values_max = max(vals),
+                stats = list(n = length(vals), median = stats::median(vals),
+                             q1 = stats::quantile(vals, .25, names = FALSE),
+                             q3 = stats::quantile(vals, .75, names = FALSE),
+                             min = min(vals), max = max(vals), mean = mean(vals)),
+                hist = list(breaks = hb, counts = hc),
+                mini = .breakdown_split(vals, breakdown_cut(col, cfg))))
   }
 
   # Categorical
-  vals <- v[!is.na(v)]
-  vals <- as.character(vals)
-  vals <- .resolve_value_labels(vals, col, cfg)
+  raw_vals <- as.character(v[!is.na(v)])
+  vals <- .resolve_value_labels(raw_vals, col, cfg)
+  # Coded values the labels don't cover (e.g. only 4 of a 19-code scheme named)
+  unlabelled <- unique(raw_vals[vals == raw_vals & grepl("^-?[0-9]+$", raw_vals)])
   tab  <- sort(table(vals), decreasing = TRUE)
   if (length(tab) > max_segments) {
     top <- tab[seq_len(max_segments - 1)]
@@ -396,7 +442,9 @@ compute_breakdown <- function(raw, col, cfg = NULL,
                      length(vals))
   list(type = "categorical", label = .pretty_label(col),
        column = col, total = total, missing = missing,
-       headline = headline, segments = segments)
+       headline = headline, segments = segments,
+       unlabelled = unlabelled,
+       partly_labelled = length(unlabelled) > 0 && any(vals != raw_vals))
 }
 
 # Pick sensible defaults if the user hasn't configured anything yet.
@@ -414,56 +462,187 @@ default_breakdown_cols <- function(detected) {
 .bd_palette <- c("#0057BF", "#1B1B1B", "#00ACA9", "#3AAA35",
                  "#F07F3C", "#C59A00", "#2581C4", "#84CC16")
 
+# Demographic cards are trial charts, so they take the trial's colours: its
+# three brand colours, then lighter tints of them, then grey for "Other".
+.bd_colours <- function(n) {
+  pal <- tryCatch(trial_palette(),
+                  error = function(e) c(primary = "#1B1B1B", secondary = "#00788E", accent = "#C59A00"))
+  tint <- function(hex, w) {
+    c <- grDevices::col2rgb(hex)[, 1]
+    grDevices::rgb(c[1] + (255 - c[1]) * w, c[2] + (255 - c[2]) * w,
+                   c[3] + (255 - c[3]) * w, maxColorValue = 255)
+  }
+  base <- c(pal[["primary"]], pal[["secondary"]], pal[["accent"]],
+            tint(pal[["primary"]], .45), tint(pal[["secondary"]], .45), tint(pal[["accent"]], .45),
+            tint(pal[["primary"]], .7), "#9A9A9C")
+  rep_len(base, n)
+}
+
+# Whole numbers without decimals, everything else to one place
+.bd_num <- function(x) {
+  if (is.null(x) || !length(x) || is.na(x)) return("—")
+  if (abs(x - round(x)) < 1e-9) format(round(x), big.mark = ",") else sprintf("%.1f", x)
+}
+
+# A coded value with no name reads as "Code 7" rather than a bare number
+.bd_seg_label <- function(s, bd) {
+  if (isTRUE(bd$partly_labelled) && s$label %in% (bd$unlabelled %||% character(0)))
+    paste("Code", s$label) else s$label
+}
+
+# One headline figure per breakdown, shown above the cards.
+render_demographics_strip <- function(breakdowns) {
+  bds <- Filter(function(b) !is.null(b) && b$type %in% c("numeric", "categorical"), breakdowns)
+  if (!length(bds)) return(NULL)
+  kpi <- function(bd) {
+    if (identical(bd$type, "numeric") && !is.null(bd$mini)) {
+      # A minimisation variable leads with its groups, not its median
+      m <- bd$mini; cut <- paste0(.bd_num(m$cut), m$unit)
+      div(class = "dm-kpi",
+          div(class = "dm-kpi-l", bd$label),
+          div(class = "dm-kpi-v", sprintf("%.0f%%", 100 * m$over / max(1, m$n)),
+              span(class = "dm-kpi-u", paste0("≥", cut))),
+          div(class = "dm-kpi-s", sprintf("%d under %s · median %s", m$under, cut,
+                                          .bd_num(bd$stats$median))))
+    } else if (identical(bd$type, "numeric")) {
+      st <- bd$stats
+      div(class = "dm-kpi",
+          div(class = "dm-kpi-l", bd$label),
+          div(class = "dm-kpi-v", .bd_num(st$median), span(class = "dm-kpi-u", "median")),
+          div(class = "dm-kpi-s", sprintf("IQR %s–%s · range %s–%s", .bd_num(st$q1),
+                                          .bd_num(st$q3), .bd_num(st$min), .bd_num(st$max))))
+    } else {
+      top <- bd$segments[[1]]
+      lab <- .bd_seg_label(top, bd)
+      div(class = "dm-kpi",
+          div(class = "dm-kpi-l", bd$label),
+          div(class = "dm-kpi-v", sprintf("%.0f%%", 100 * top$pct)),
+          div(class = "dm-kpi-s", title = lab, lab))
+    }
+  }
+  div(class = "dm-kpis", lapply(bds, kpi))
+}
+
+.bd_categorical_body <- function(bd) {
+  segs <- bd$segments
+  cols <- .bd_colours(length(segs))
+  lab  <- function(s) .bd_seg_label(s, bd)
+  stack <- div(class = "dm-stack", role = "img",
+    `aria-label` = paste(vapply(segs, function(s) sprintf("%s %.0f%%", lab(s), 100 * s$pct), ""),
+                         collapse = ", "),
+    lapply(seq_along(segs), function(i) {
+      s <- segs[[i]]
+      span(class = "dm-stack-seg", title = sprintf("%s: %d (%.0f%%)", lab(s), s$n, 100 * s$pct),
+           style = sprintf("width:%.2f%%;background:%s;", 100 * max(0, min(1, s$pct)), cols[i]))
+    }))
+  rows <- lapply(seq_along(segs), function(i) {
+    s <- segs[[i]]
+    no_name <- isTRUE(bd$partly_labelled) && s$label %in% bd$unlabelled
+    div(class = "dm-row",
+        span(class = "dm-sw", style = sprintf("background:%s;", cols[i])),
+        span(class = "dm-row-l", title = lab(s), lab(s), if (no_name) span(class = "dm-tag", "no name")),
+        span(class = "dm-row-n", s$n),
+        span(class = "dm-row-p", sprintf("%.0f%%", 100 * s$pct)))
+  })
+  n_unl <- if (isTRUE(bd$partly_labelled)) length(bd$unlabelled) else 0
+  tagList(stack, div(class = "dm-rows", rows),
+          if (n_unl > 0)
+            div(class = "dm-foot",
+                sprintf("%d code%s here %s no name yet. ", n_unl, if (n_unl == 1) "" else "s",
+                        if (n_unl == 1) "has" else "have"),
+                tags$a(href = "#", class = "dm-link",
+                       onclick = "document.getElementById('configure_breakdowns').click(); return false;",
+                       "Name them")))
+}
+
+.bd_numeric_body <- function(bd) {
+  st <- bd$stats; br <- bd$hist$breaks; cn <- bd$hist$counts
+  W <- 300; H <- 72
+  x_at <- function(x) (x - br[1]) / (br[length(br)] - br[1]) * W
+  top  <- max(cn, 1)
+  col  <- .bd_colours(1)[1]
+  bars <- vapply(seq_along(cn), function(i) {
+    h <- if (cn[i] > 0) max(2, cn[i] / top * (H - 4)) else 0
+    x0 <- x_at(br[i]); x1 <- x_at(br[i + 1])
+    sprintf('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"><title>%s to %s: %d</title></rect>',
+            x0 + 1, H - h, max(0, x1 - x0 - 2), h, col, .bd_num(br[i]), .bd_num(br[i + 1]), cn[i])
+  }, "")
+  # Minimisation groups: the split itself, and a line on the histogram at the cut
+  m <- bd$mini
+  in_range <- !is.null(m) && m$cut >= br[1] && m$cut <= br[length(br)]
+  cut_txt  <- if (!is.null(m)) paste0(.bd_num(m$cut), m$unit) else ""
+  cut_line <- if (in_range)
+    sprintf('<line class="dm-cut" x1="%.1f" x2="%.1f" y1="0" y2="%d" vector-effect="non-scaling-stroke"/>',
+            x_at(m$cut), x_at(m$cut), H) else ""
+  cut_lbl  <- if (in_range)
+    span(class = "dm-cut-lbl", style = sprintf("left:%.2f%%;", 100 * x_at(m$cut) / W),
+         paste(cut_txt, "cut-off"))
+  mini_ui  <- if (!is.null(m)) {
+    grp  <- list(list(label = paste("Under", cut_txt),   n = m$under),
+                 list(label = paste(cut_txt, "or over"), n = m$over))
+    cols <- .bd_colours(2)[2:1]
+    share <- function(n) 100 * n / max(1, m$n)
+    div(class = "dm-mini",
+        div(class = "dm-mini-t", "Minimisation groups"),
+        div(class = "dm-stack", role = "img",
+            `aria-label` = sprintf("Under %s: %d, %s or over: %d", cut_txt, m$under, cut_txt, m$over),
+            lapply(1:2, function(i)
+              span(class = "dm-stack-seg",
+                   title = sprintf("%s: %d (%.0f%%)", grp[[i]]$label, grp[[i]]$n, share(grp[[i]]$n)),
+                   style = sprintf("width:%.2f%%;background:%s;", share(grp[[i]]$n), cols[i])))),
+        div(class = "dm-rows", lapply(1:2, function(i)
+          div(class = "dm-row",
+              span(class = "dm-sw", style = sprintf("background:%s;", cols[i])),
+              span(class = "dm-row-l", grp[[i]]$label),
+              span(class = "dm-row-n", grp[[i]]$n),
+              span(class = "dm-row-p", sprintf("%.0f%%", share(grp[[i]]$n)))))))
+  }
+  svg <- sprintf(paste0(
+    '<svg class="dm-hist" viewBox="0 0 %d %d" preserveAspectRatio="none" role="img" aria-label="%s">',
+    '<rect class="dm-iqr" x="%.1f" y="0" width="%.1f" height="%d"/>%s',
+    '<line class="dm-med" x1="%.1f" x2="%.1f" y1="0" y2="%d" vector-effect="non-scaling-stroke"/>%s</svg>'),
+    W, H, htmltools::htmlEscape(sprintf("%s: median %s, middle half %s to %s", bd$label,
+                                        .bd_num(st$median), .bd_num(st$q1), .bd_num(st$q3))),
+    x_at(st$q1), x_at(st$q3) - x_at(st$q1), H, paste(bars, collapse = ""),
+    x_at(st$median), x_at(st$median), H, cut_line)
+  ticks <- if (length(br) > 7) br[seq(1, length(br), by = 2)] else br
+  stat  <- function(l, v) div(class = "dm-stat", div(class = "dm-stat-v", v), div(class = "dm-stat-l", l))
+  tagList(
+    mini_ui,
+    div(class = "dm-hist-wrap", HTML(svg), cut_lbl,
+        div(class = "dm-axis", lapply(ticks, function(t)
+          span(style = sprintf("left:%.2f%%;", 100 * x_at(t) / W), .bd_num(t))))),
+    div(class = "dm-legend", span(class = "dm-lg-iqr"), "middle half",
+        span(class = "dm-lg-med"), "median"),
+    div(class = "dm-stats",
+        stat("Median", .bd_num(st$median)),
+        stat("IQR", sprintf("%s–%s", .bd_num(st$q1), .bd_num(st$q3))),
+        stat("Range", sprintf("%s–%s", .bd_num(st$min), .bd_num(st$max))),
+        stat("Mean", .bd_num(st$mean))))
+}
+
 render_breakdown_card <- function(bd) {
   if (is.null(bd)) return(NULL)
-  segs <- bd$segments
-
-  # Bars
-  bar_rows <- lapply(seq_along(segs), function(i) {
-    s <- segs[[i]]
-    col <- .bd_palette[((i - 1) %% length(.bd_palette)) + 1]
-    pct <- max(0, min(1, s$pct))
-    div(style = "margin-bottom:8px;",
-        div(style = "display:flex;justify-content:space-between;font-size:11.5px;
-                     color:#4A4A4A;margin-bottom:3px;",
-            span(style = "font-weight:500;color:#1B1B1B;", s$label),
-            span(sprintf("%d  ·  %.0f%%", s$n, pct * 100))),
-        div(style = "height:7px;background:#F2F2F2;border-radius:999px;
-                     overflow:hidden;",
-            div(style = sprintf("height:100%%;width:%.1f%%;background:%s;
-                                 border-radius:999px;transition:width .3s;",
-                                pct * 100, col))))
-  })
-
-  div(style = "background:#FFFFFF;border:1px solid #F4F4F4;border-radius:12px;
-               padding:16px 18px;",
-      div(style = "display:flex;justify-content:space-between;align-items:baseline;
-                   margin-bottom:4px;",
-          div(style = "font-weight:600;color:#1B1B1B;font-size:14px;
-                       letter-spacing:-0.1px;",
-              bd$label),
-          span(style = "font-size:10px;text-transform:uppercase;letter-spacing:.5px;
-                        color:#8A8A8C;font-weight:600;", bd$type)),
-      div(style = "font-size:11.5px;color:#58595B;margin-bottom:14px;",
-          bd$headline,
-          if (bd$missing > 0)
-            span(style = "color:#8A8A8C;",
-                 sprintf("  ·  %d missing", bd$missing))),
-      div(bar_rows))
+  if (identical(bd$type, "absent"))
+    return(div(class = "dm-card dm-card-absent",
+               div(class = "dm-card-head", div(class = "dm-card-t", bd$label)),
+               div(class = "dm-empty", sprintf("The column “%s” isn't in this export.", bd$column))))
+  n_ok <- bd$total - bd$missing
+  div(class = "dm-card",
+      div(class = "dm-card-head",
+          div(class = "dm-card-t", bd$label),
+          div(class = "dm-card-n", sprintf("n = %d", n_ok),
+              if (bd$missing > 0)
+                span(class = "dm-miss", sprintf(" · %d missing (%.0f%%)", bd$missing,
+                                                100 * bd$missing / max(1, bd$total))))),
+      if (identical(bd$type, "numeric")) .bd_numeric_body(bd) else .bd_categorical_body(bd))
 }
 
 render_breakdowns_grid <- function(breakdowns) {
   breakdowns <- Filter(Negate(is.null), breakdowns)
-  if (!length(breakdowns)) {
-    return(div(style = "padding:30px 20px;text-align:center;color:#8A8A8C;
-                        font-size:13px;font-style:italic;",
-               div(style = "font-size:24px;margin-bottom:8px;opacity:.4;",
-                   HTML("&#x1F4CA;")),
+  if (!length(breakdowns))
+    return(div(class = "dm-none",
                div("No demographic breakdowns selected."),
-               div(style = "font-size:11px;margin-top:4px;",
-                   "Click “Configure” to pick columns from the uploaded CSV.")))
-  }
-  div(style = "display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
-               gap:14px;",
-      lapply(breakdowns, render_breakdown_card))
+               div(class = "dm-none-s", "Use “Configure” below to pick columns from the export.")))
+  div(class = "dm-grid", lapply(breakdowns, render_breakdown_card))
 }

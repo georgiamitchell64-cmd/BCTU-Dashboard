@@ -71,6 +71,9 @@ sites_tab_ui <- function() {
         # ── Summary stats ──────────────────────────────────────────────
         uiOutput("sites_summary_stats"),
 
+        # ── Monthly recruitment per site, against target ───────────────
+        uiOutput("sites_monthly_ui"),
+
         # ── Site health: funnel plot + scorecards ──────────────────────
         uiOutput("site_health_ui"),
 
@@ -131,9 +134,12 @@ site_edit_modal <- function(row = NULL, is_new = FALSE) {
       div(class = "se-grid",
         div(class = "se-field se-span2",
             tags$label("Site / Trust name"),
+            # The site's own name first, and only once: a REDCap site named
+            # after a listed hospital was offered twice, and the second
+            # (unselected) copy emptied the box when the modal opened.
             selectizeInput("se_name", label = NULL,
-                           choices  = c(stats::setNames(g("site_name", ""), g("site_name", "")), get_hospital_names()),
-                           selected = g("site_name", ""), width = "100%",
+                           choices  = unique(c(as.character(g("site_name", "")), get_hospital_names())),
+                           selected = as.character(g("site_name", "")), width = "100%",
                            options  = list(create = TRUE, placeholder = "Type or select hospital…",
                                            createOnBlur = TRUE))),
         div(class = "se-field",
@@ -159,13 +165,11 @@ site_edit_modal <- function(row = NULL, is_new = FALSE) {
                         choices = c("Identified", "Set-up", "Open", "Recruiting", "Paused", "Closed"),
                         selected = g("status", "Identified"), width = "100%")),
         div(class = "se-field", tags$label("Open date"),
-            dateInput("se_open", label = NULL, value = gd("site_open_date"), width = "100%")),
-        div(class = "se-field", tags$label("SIV date"),
-            dateInput("se_siv_date", label = NULL, value = gd("siv_date"), width = "100%"))
+            # NA leaves the box empty; NULL would fill in today's date
+            dateInput("se_open", label = NULL, value = gd("site_open_date") %||% NA, width = "100%")),
+        div(class = "se-field se-hint", style = "align-self:end;",
+            "Leave the open date blank until the site opens.")
       ),
-      div(class = "se-field se-check",
-          checkboxInput("se_siv_booked", "Site initiation visit (SIV) booked",
-                        value = isTRUE(g("siv_booked", FALSE)))),
 
       div(class = "se-group-label", "Recruitment"),
       div(class = "se-grid se-grid3",

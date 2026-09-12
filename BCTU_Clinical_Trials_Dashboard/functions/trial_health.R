@@ -587,6 +587,12 @@ th_rand_patterns <- function(P, cfg, today = Sys.Date(), st = th_settings(cfg)) 
          in_hours_pct = if (tm) 100 * sum(cat[ix] == "In hours") / tm else NA_real_,
          ooh_pct      = if (tm) 100 * sum(ooh) / tm else NA_real_,
          weekend_pct  = 100 * mean(cat[ix] %in% c("Weekend", "Bank holiday")),
+         # Counts behind the percentages (Randomisations → out of hours by site)
+         in_hours_n   = sum(cat[ix] == "In hours"),
+         wd_ooh_n     = sum(cat[ix] == "Weekday out of hours"),
+         weekend_n    = sum(cat[ix] %in% c("Weekend", "Bank holiday")),
+         untimed_n    = sum(!timed[ix]),
+         ooh_n        = sum(ooh),
          monthly      = as.integer(table(factor(mon[ix], months))))
   })
 

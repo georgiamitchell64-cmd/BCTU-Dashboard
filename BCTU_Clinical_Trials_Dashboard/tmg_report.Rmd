@@ -664,6 +664,14 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+/* Site performance — headline figures */
+.sk-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
+.sk{border:1px solid var(--line);border-top:3px solid var(--navy);border-radius:4px;padding:7px 10px 8px;background:#fff}
+.sk-open{border-top-color:var(--green)} .sk-setup{border-top-color:var(--amber)}
+.sk-ident{border-top-color:#0c558a} .sk-rate{border-top-color:var(--teal)}
+.sk-l{font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.sk-v{font-family:'Source Serif 4',serif;font-size:18pt;font-weight:700;color:var(--ink);line-height:1.1;margin-top:2px;font-variant-numeric:tabular-nums}
+.sk-s{font-size:7.5pt;color:var(--muted);line-height:1.35;margin-top:2px}
 /* Demographics: ethnicity carries a bar plus a legend of long category
    labels, while age and NELA hold two chips each. Give ethnicity roughly
    half the row so its labels stop wrapping and the other two stop
@@ -770,14 +778,17 @@ ph_header <- function(page_label) {
     sprintf('<b>%s</b> · <span style="color:var(--teal);font-weight:600">Confidential</span>',
             esc(report_date_str))
 
+  # An iTMG report goes to the Internal Trial Management Group
+  group_name <- if (identical(safe(params$report_type, "TMG"), "iTMG"))
+    "Internal Trial Management Group" else "Trial Management Group"
   cat(sprintf(
 '<header class="ph">
   <div class="brand">%s
-    <div class="tag"><b>%s</b>Trial Management Group · Progress Report</div>
+    <div class="tag"><b>%s</b>%s · Progress Report</div>
   </div>
   <div class="meta">%s<div>%s</div></div>
 </header>',
-    trial_logo_html, esc(trial_title), bctu_logo_html, meta_line))
+    trial_logo_html, esc(trial_title), esc(group_name), bctu_logo_html, meta_line))
 }
 pf_footer <- function(n_page, n_total = 6) {
   rt <- safe(params$report_type, "TMG")
@@ -1093,33 +1104,27 @@ ph_header("Page 3 — Site performance")
 
 </h2>
 
-<div class="row3" style="margin-top:2px">
-<div class="card" style="text-align:center;background:var(--green-tint);border-color:#bce6cf">
-<div class="ct" style="color:var(--green)">Open · recruiting</div>
-<div style="font-size:22pt;font-weight:700;color:var(--green);font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_open_sites)`</div>
-<div class="note" style="margin-top:2px">
-
-```{r open-sites-note}
-open_names <- if (nrow(pipeline) && "stage" %in% names(pipeline))
-  pipeline$site_name[is_open(pipeline$stage)] else character(0)
-cat(esc(if (length(open_names)) paste(open_names, collapse = " · ") else "—"))
+```{r site-kpis, results='asis'}
+# Four headline figures in one quiet row. The sites are named in the table
+# below, so they are not listed here.
+.open_ss <- if (nrow(site_status) && all(c("stage", "actual_monthly") %in% names(site_status)))
+  site_status[is_open(site_status$stage), , drop = FALSE] else site_status[0, , drop = FALSE]
+.am  <- suppressWarnings(as.numeric(.open_ss$actual_monthly)); .am <- .am[!is.na(.am)]
+.avg <- if (length(.am)) mean(.am) else NA_real_
+.met <- if (length(.am) && !is.na(site_rate_target)) sum(.am >= site_rate_target) else NA_integer_
+sk <- function(cls, label, value, sub)
+  sprintf('<div class="sk %s"><div class="sk-l">%s</div><div class="sk-v">%s</div><div class="sk-s">%s</div></div>',
+          cls, label, value, sub)
+cat('<div class="sk-row">',
+    sk("sk-open", "Recruiting", fmt_int(n_open_sites), sprintf("of %s sites", fmt_int(n_sites_total))),
+    sk("sk-setup", "In set-up", fmt_int(n_setup_sites), "capacity &amp; capability in progress"),
+    sk("sk-ident", "Identified", fmt_int(n_ident_sites), "feasibility &amp; local information pack"),
+    sk("sk-rate", "Average per recruiting site", if (is.na(.avg)) "—" else fmt_rate(.avg),
+       if (is.na(.avg)) "no open dates recorded"
+       else sprintf("recruits a month · %s of %d at or above the %s benchmark",
+                    fmt_int(.met), length(.am), fmt_rate(site_rate_target, 0))),
+    '</div>', sep = "")
 ```
-
-</div>
-</div>
-
-<div class="card" style="text-align:center;background:var(--amber-tint);border-color:#f0d6a4">
-<div class="ct" style="color:var(--amber)">In set-up</div>
-<div style="font-size:22pt;font-weight:700;color:var(--amber);font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_setup_sites)`</div>
-<div class="note" style="margin-top:2px">Capacity &amp; capability in progress</div>
-</div>
-
-<div class="card" style="text-align:center;background:#e6effa;border-color:#bcd2ec">
-<div class="ct" style="color:#0c558a">Identified — pending</div>
-<div style="font-size:22pt;font-weight:700;color:#0c558a;font-family:'Source Serif 4',serif;line-height:1">`r fmt_int(n_ident_sites)`</div>
-<div class="note" style="margin-top:2px">Feasibility &amp; local info pack</div>
-</div>
-</div>
 
 <p class="lab" style="margin-top:10px">
 
@@ -1179,6 +1184,8 @@ if (nrow(ss) > 0) {
                  if (is_ident(r$stage)) "Identified" else as.character(r$stage)
     opened <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date)))
                 fmt_date(r$open_date, "%b %Y") else "—"
+    # No open date on the Sites tab: first randomisation used, marked *
+    if (isTRUE(as.logical(r$open_estimated %||% FALSE))) opened <- paste0(opened, "*")
     rand <- as.integer(safe(r$randomisations, 0))
     tgt  <- suppressWarnings(as.integer(safe(r$target, NA)))
     has_tgt <- length(tgt) == 1 && !is.na(tgt) && tgt > 0
@@ -1209,7 +1216,7 @@ if (nrow(ss) > 0) {
 ```
   </tbody>
 </table>
-<p class="note">Monthly Average Recruits — the average monthly recruits each site has actually delivered: its randomisations divided by the months it has been open, counting the opening month and the current one. Coloured against the protocol benchmark of `r fmt_rate(site_rate_target, 0)` per site per month — green at or above it, amber from half the benchmark up, red below. Sites with no <b>Opened</b> date recorded show “—”: without an open date there is no number of months to divide by. Open dates are taken from the Sites tab.</p>
+<p class="note">Monthly Average Recruits — the average monthly recruits each site has actually delivered: its randomisations divided by the months it has been open, counting the opening month and the current one. Coloured against the protocol benchmark of `r fmt_rate(site_rate_target, 0)` per site per month — green at or above it, amber from half the benchmark up, red below. Open dates are taken from the Sites tab. * No open date recorded there, so the site's first randomisation is used instead. Sites with neither show “—”: without an open date there is no number of months to divide by.</p>
 
 ```{r page3-footer}
 pf_footer(3)

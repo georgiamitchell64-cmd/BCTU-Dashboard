@@ -26,8 +26,10 @@ build_app_ui <- function() {
       tags$link(rel = "stylesheet", type = "text/css", href = .asset("settings.css")),
       tags$link(rel = "stylesheet", type = "text/css", href = .asset("reports.css")),
       tags$link(rel = "stylesheet", type = "text/css", href = .asset("people.css")),
+      tags$link(rel = "stylesheet", type = "text/css", href = .asset("data_kpis.css")),
       tags$script(src = .asset("trial_replay.js"), defer = NA),
       tags$script(src = .asset("trial_health.js"), defer = NA),
+      tags$script(src = .asset("chart_export.js"), defer = NA),
       tags$script(HTML("
         (function() {
           try {

@@ -52,7 +52,7 @@ participants_tab_ui <- function() {
       div(class = "data-safety-head",
         span(class = "data-safety-title", "Safety & regulatory"),
         span(class = "data-safety-meta",
-             "click a tile to drill down · past 90 days")
+             "click a tile to see the records")
       ),
       div(class = "data-safety-tiles",
         actionButton("safety_tile_sae",  label = NULL,
@@ -97,37 +97,20 @@ participants_tab_ui <- function() {
                      style = "color:#1B1B1B;font-weight:600;font-size:11px;"))
     ),
 
-    # ── Row 4: Withdrawals + Quick actions side by side ─────────────────
-    div(class = "data-bottom-row data-bottom-row-2col",
-
-      # Withdrawals donut
-      div(class = "data-panel",
-        div(class = "data-panel-head",
-          span(class = "data-panel-title", "Withdrawals by reason"),
-          span(class = "data-panel-meta", "COS codes")
-        ),
-        uiOutput("withdrawal_donut_ui")
+    # ── Row 4: Withdrawals & change of status — retention, type, month, site
+    div(class = "data-panel",
+      div(class = "data-panel-head",
+        span(class = "data-panel-title", "Withdrawals & change of status"),
+        span(class = "data-panel-meta", textOutput("cos_meta", inline = TRUE))
       ),
+      uiOutput("cos_panel_ui")
+    ),
 
-      # Quick actions
-      div(class = "data-panel data-quick-actions",
-        div(class = "data-panel-head",
-          span(class = "data-panel-title",
-               style = "color:#00788E;", "Quick actions")
-        ),
-        actionButton("qa_open_returns", label = HTML(
-          paste0("&#8599; Open Returns tab",
-                 "<span style='float:right;color:#58595B;font-weight:400;'>",
-                 "completeness</span>")),
-          class = "qa-btn"),
-        actionButton("qa_review_wd", label = HTML(
-          paste0("&#8599; Review withdrawals",
-                 "<span style='float:right;color:#58595B;font-weight:400;' ",
-                 "id='qa_wd_n'></span>")),
-          class = "qa-btn"),
-        downloadButton("qa_export_full", HTML("&darr; Export full dataset"),
-                       class = "qa-btn")
-      )
+    # ── Row 5: Quick actions ─────────────────────────────────────────────
+    div(class = "data-quick-row",
+      actionButton("qa_open_returns", HTML("&#8599; Open Returns tab"), class = "qa-btn"),
+      actionButton("qa_review_wd", HTML("&#8599; List every change of status"), class = "qa-btn"),
+      downloadButton("qa_export_full", HTML("&darr; Export full dataset"), class = "qa-btn")
     )
   )
 }
