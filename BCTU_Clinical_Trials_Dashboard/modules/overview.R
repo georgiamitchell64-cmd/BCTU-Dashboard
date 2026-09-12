@@ -80,15 +80,6 @@ overview_tab_ui <- function() {
       # ── Work-package summary (multi-WP trials, "all WPs" view only) ──
       uiOutput("wp_summary_ui"),
 
-      # ── Smart Insights ───────────────────────────────────────────────
-      tags$section(class = "pov-card",
-        div(class = "pov-card-head",
-            tags$h3("Smart Insights"),
-            span(class = "pov-card-tool-note",
-                 "Auto-generated from trial data")),
-        uiOutput("smart_insights_ui")
-      ),
-
       # ── Recruitment projection (full width) ─────────────────────────
       tags$section(class = "pov-card",
         div(class = "pov-card-head",

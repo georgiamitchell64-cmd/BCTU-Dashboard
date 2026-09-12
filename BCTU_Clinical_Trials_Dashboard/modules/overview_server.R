@@ -8,33 +8,6 @@ overview_server <- function(input, output, session, state) {
   sites_wp  <- state$sites_wp
   parts_wp  <- state$parts_wp
 
-  # ── Smart Insights ──────────────────────────────────────────────────────
-  # compute_insights() walks raw REDCap + sites every render; without caching
-  # it re-runs whenever anything in the overview reactive graph fires. Cache
-  # on a fingerprint of the inputs so it only recomputes when data changes.
-  insights_cached <- reactive({
-    cfg <- rv$trial_config
-    req(cfg)
-    tryCatch(
-      compute_insights(redcap_wp(), sites_wp(), cfg),
-      error = function(e) {
-        message("Smart insights error: ", e$message)
-        list()
-      }
-    )
-  }) %>% bindCache(
-    rv$trial_config$code %||% "",
-    rv$active_wp %||% 0L,
-    nrow(redcap_wp() %||% data.frame()),
-    nrow(sites_wp() %||% data.frame()),
-    digest::digest(sites_wp()$randomised)
-  )
-
-  output$smart_insights_ui <- renderUI({
-    if (is.null(rv$trial_config)) return(NULL)
-    render_insights_panel(insights_cached())
-  })
-
   # ── Trial replay (only when the trial's trial_replay feature is on) ───────
   # Living CONSORT + site race + pace vs target, animated by
   # www/trial_replay.js. Follows the WP picker and supersedes the static
