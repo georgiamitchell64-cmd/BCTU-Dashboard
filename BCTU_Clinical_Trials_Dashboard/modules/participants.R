@@ -84,17 +84,14 @@ participants_tab_ui <- function() {
     div(class = "data-panel",
       div(class = "data-panel-head",
         span(class = "data-panel-title", "Demographics"),
-        span(class = "data-panel-meta",
-             textOutput("demo_n_label", inline = TRUE))
+        div(class = "dm-head-r",
+            span(class = "data-panel-meta", textOutput("demo_n_label", inline = TRUE)),
+            # A real click opens on the first column; "Name them" clicks this in
+            # code (not trusted) after choosing its column, so that is kept
+            actionButton("configure_breakdowns", HTML("&#9881; Customise"), class = "dm-cfg-btn",
+                         onclick = "if (event.isTrusted) Shiny.setInputValue('bd_cfg_focus', null);"))
       ),
-      uiOutput("participant_breakdowns_ui"),
-      div(style = "font-size:11px;color:#58595B;font-style:italic;
-                   padding-top:8px;margin-top:8px;border-top:1px dashed #E3E3E3;
-                   display:flex;justify-content:space-between;align-items:center;",
-          span(textOutput("breakdowns_summary_txt", inline = TRUE)),
-          actionLink("configure_breakdowns",
-                     HTML("&#x2699; Configure"),
-                     style = "color:#1B1B1B;font-weight:600;font-size:11px;"))
+      uiOutput("participant_breakdowns_ui")
     ),
 
     # ── Row 4: Withdrawals & change of status — retention, type, month, site
@@ -111,6 +108,24 @@ participants_tab_ui <- function() {
       actionButton("qa_open_returns", HTML("&#8599; Open Returns tab"), class = "qa-btn"),
       actionButton("qa_review_wd", HTML("&#8599; List every change of status"), class = "qa-btn"),
       downloadButton("qa_export_full", HTML("&darr; Export full dataset"), class = "qa-btn")
-    )
+    ),
+
+    # Customise demographics dialog: search, and edits sent as
+    # {col, field, code, value} so each column's settings stay its own
+    tags$script(HTML("
+      function bdcFilter(q) {
+        q = (q || '').toLowerCase();
+        document.querySelectorAll('.bdc-col').forEach(function (r) {
+          r.style.display = (r.getAttribute('data-q') || '').indexOf(q) >= 0 ? '' : 'none';
+        });
+      }
+      $(document).off('.bdc').on('input.bdc change.bdc', 'input.bdc-in', function (e) {
+        if (this.type === 'checkbox' ? e.type !== 'change' : e.type !== 'input') return;
+        Shiny.setInputValue('bd_cfg_field', {
+          col: this.dataset.col, field: this.dataset.field, code: this.dataset.code || null,
+          value: this.type === 'checkbox' ? this.checked : this.value, n: Math.random()
+        }, { priority: 'event' });
+      });
+    "))
   )
 }

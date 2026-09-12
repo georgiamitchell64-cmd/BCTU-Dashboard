@@ -178,6 +178,17 @@ baseline_characteristics_df <- function(rd) {
         .fmt_median_iqr(age))
     add("Participant demographics", "Age (years)", "Range (min, max)",
         .fmt_range(age))
+    # Age groups, the same as on the Data tab (under / over 75 unless the
+    # trial sets its own in Customise demographics)
+    ag <- if (exists("breakdown_cut", mode = "function"))
+      tryCatch(breakdown_cut(c_age, tryCatch(current_trial_config(), error = function(e) NULL)),
+               error = function(e) NULL)
+    if (!is.null(ag) && any(!is.na(age))) {
+      sp <- .breakdown_split(age[!is.na(age)], ag)
+      for (i in seq_along(sp$labels))
+        add("Participant demographics", "Age (years)", sp$labels[i],
+            .fmt_n_pct(sp$counts[i], sp$n))
+    }
     add("Participant demographics", "Age (years)", "Missing",
         .fmt_missing(age))
   }

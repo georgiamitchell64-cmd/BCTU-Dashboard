@@ -88,6 +88,12 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
   paste0(toupper(substring(s, 1, 1)), substring(s, 2))
 }
 
+# A breakdown's title: the trial's own name for it, else the worked-out one
+.bd_title <- function(col, cfg = NULL) {
+  t <- as.character(unlist(cfg$breakdown_titles[[col]]))
+  if (length(t) && !is.na(t[1]) && nzchar(trimws(t[1]))) trimws(t[1]) else .pretty_label(col)
+}
+
 # Format a cut() bin label like "[-Inf,35)" into "< 35", "35–55", "68+".
 .format_bin_label <- function(lbl) {
   lbl <- as.character(lbl)
@@ -344,26 +350,48 @@ detect_coded_columns <- function(raw, cfg = NULL, max_codes = 25) {
   unname(out)
 }
 
-# Minimisation cut-off for a numeric breakdown, or NULL. The default matches
-# the baseline table's minimisation block (functions/baseline_table.R): NELA
-# predicted mortality splits into <5% and ≥5%. A trial can add or replace
-# cut-offs with cfg$breakdown_cuts = list(<column> = list(cut = 5, unit = "%")).
+# Grouping for a numeric breakdown, or NULL. Defaults: NELA predicted
+# mortality splits at 5% (the minimisation groups in functions/baseline_table.R)
+# and age at 75. "Customise demographics" on the Data tab saves a trial's own
+# choices as cfg$breakdown_cuts = list(<column> = list(cut = c(...), unit, title));
+# an entry with no cut switches grouping off for that column.
+.parse_cuts <- function(x) {
+  v <- suppressWarnings(as.numeric(unlist(strsplit(as.character(unlist(x)), "[,;[:space:]]+"))))
+  sort(unique(v[!is.na(v)]))
+}
+.role_col <- function(role, default) {
+  if (!exists("fld", mode = "function")) return(default)
+  tryCatch(fld(role, default = default), error = function(e) default)
+}
+
 breakdown_cut <- function(col, cfg = NULL) {
   own <- cfg$breakdown_cuts[[col]]
-  if (!is.null(own) && !is.null(own$cut))
-    return(list(cut = as.numeric(own$cut), unit = as.character(own$unit %||% "")))
-  nela <- if (exists("fld", mode = "function"))
-    tryCatch(fld("nela_score", default = "base_nela_score_mort"), error = function(e) "base_nela_score_mort")
-  else "base_nela_score_mort"
-  if (identical(col, nela)) return(list(cut = 5, unit = "%"))
+  if (!is.null(own)) {
+    cuts <- .parse_cuts(own$cut)
+    if (!length(cuts)) return(NULL)
+    u <- as.character(unlist(own$unit)); t <- as.character(unlist(own$title))
+    return(list(cut = cuts, unit = if (length(u) && !is.na(u[1])) u[1] else "",
+                title = if (length(t) && !is.na(t[1]) && nzchar(t[1])) t[1] else "Groups"))
+  }
+  if (identical(col, .role_col("nela_score", "base_nela_score_mort")))
+    return(list(cut = 5, unit = "%", title = "Minimisation groups"))
+  if (identical(col, .role_col("age", "cae_age")))
+    return(list(cut = 75, unit = "", title = "Age groups"))
   NULL
 }
 
-# Counts either side of a cut-off: under = x < cut, over = x >= cut
-.breakdown_split <- function(vals, cut) {
-  if (is.null(cut)) return(NULL)
-  list(cut = cut$cut, unit = cut$unit, n = length(vals),
-       under = sum(vals < cut$cut), over = sum(vals >= cut$cut))
+# Counts in each group: one cut makes "Under x" and "x or over" (x < cut,
+# x >= cut); several make "a to under b" bands between them.
+.breakdown_split <- function(vals, spec) {
+  if (is.null(spec) || !length(spec$cut)) return(NULL)
+  cuts <- spec$cut; u <- spec$unit %||% ""; k <- length(cuts)
+  f <- function(x) paste0(.bd_num(x), u)
+  counts <- as.integer(table(cut(vals, c(-Inf, cuts, Inf), right = FALSE)))
+  labels <- c(paste("Under", f(cuts[1])),
+              if (k > 1) sprintf("%s to under %s", vapply(cuts[-k], f, ""), vapply(cuts[-1], f, "")),
+              paste(f(cuts[k]), "or over"))
+  list(cut = cuts, unit = u, title = spec$title %||% "Groups", n = length(vals),
+       labels = labels, counts = counts, under = counts[1], over = counts[length(counts)])
 }
 
 # Compute breakdown data for one column.
@@ -408,7 +436,7 @@ compute_breakdown <- function(raw, col, cfg = NULL,
     headline <- sprintf("Median %.1f · Mean %.1f", median(vals), mean(vals))
     hb <- pretty(range(vals), n = 10)
     hc <- as.integer(table(cut(vals, breaks = hb, include.lowest = TRUE, right = FALSE)))
-    return(list(type = "numeric", label = .pretty_label(col),
+    return(list(type = "numeric", label = .bd_title(col, cfg),
                 column = col, total = total, missing = missing,
                 headline = headline, segments = segments,
                 values_min = min(vals), values_max = max(vals),
@@ -440,7 +468,7 @@ compute_breakdown <- function(raw, col, cfg = NULL,
   headline <- sprintf("%d categories · %d records",
                      min(length(unique(v[!is.na(v)])), 99),
                      length(vals))
-  list(type = "categorical", label = .pretty_label(col),
+  list(type = "categorical", label = .bd_title(col, cfg),
        column = col, total = total, missing = missing,
        headline = headline, segments = segments,
        unlabelled = unlabelled,
@@ -495,8 +523,8 @@ render_demographics_strip <- function(breakdowns) {
   bds <- Filter(function(b) !is.null(b) && b$type %in% c("numeric", "categorical"), breakdowns)
   if (!length(bds)) return(NULL)
   kpi <- function(bd) {
-    if (identical(bd$type, "numeric") && !is.null(bd$mini)) {
-      # A minimisation variable leads with its groups, not its median
+    if (identical(bd$type, "numeric") && !is.null(bd$mini) && length(bd$mini$cut) == 1) {
+      # A single split (NELA 5%, age 75) leads with the share at or above it
       m <- bd$mini; cut <- paste0(.bd_num(m$cut), m$unit)
       div(class = "dm-kpi",
           div(class = "dm-kpi-l", bd$label),
@@ -551,7 +579,9 @@ render_demographics_strip <- function(breakdowns) {
                 sprintf("%d code%s here %s no name yet. ", n_unl, if (n_unl == 1) "" else "s",
                         if (n_unl == 1) "has" else "have"),
                 tags$a(href = "#", class = "dm-link",
-                       onclick = "document.getElementById('configure_breakdowns').click(); return false;",
+                       # Opens Customise demographics on this column
+                       onclick = sprintf("Shiny.setInputValue('bd_cfg_focus','%s'); document.getElementById('configure_breakdowns').click(); return false;",
+                                         gsub("'", "\\\\'", bd$column)),
                        "Name them")))
 }
 
@@ -567,35 +597,34 @@ render_demographics_strip <- function(breakdowns) {
     sprintf('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"><title>%s to %s: %d</title></rect>',
             x0 + 1, H - h, max(0, x1 - x0 - 2), h, col, .bd_num(br[i]), .bd_num(br[i + 1]), cn[i])
   }, "")
-  # Minimisation groups: the split itself, and a line on the histogram at the cut
+  # Groups (NELA <5% / ≥5%, age under / over 75, or a trial's own bands): the
+  # split itself, and a line on the histogram at each cut
   m <- bd$mini
-  in_range <- !is.null(m) && m$cut >= br[1] && m$cut <= br[length(br)]
-  cut_txt  <- if (!is.null(m)) paste0(.bd_num(m$cut), m$unit) else ""
-  cut_line <- if (in_range)
+  cuts_in  <- if (is.null(m)) numeric(0) else m$cut[m$cut >= br[1] & m$cut <= br[length(br)]]
+  cut_line <- paste(vapply(cuts_in, function(cv)
     sprintf('<line class="dm-cut" x1="%.1f" x2="%.1f" y1="0" y2="%d" vector-effect="non-scaling-stroke"/>',
-            x_at(m$cut), x_at(m$cut), H) else ""
-  cut_lbl  <- if (in_range)
+            x_at(cv), x_at(cv), H), ""), collapse = "")
+  cut_lbl  <- if (!is.null(m) && length(m$cut) == 1 && length(cuts_in))
     span(class = "dm-cut-lbl", style = sprintf("left:%.2f%%;", 100 * x_at(m$cut) / W),
-         paste(cut_txt, "cut-off"))
+         paste(paste0(.bd_num(m$cut), m$unit), "cut-off"))
   mini_ui  <- if (!is.null(m)) {
-    grp  <- list(list(label = paste("Under", cut_txt),   n = m$under),
-                 list(label = paste(cut_txt, "or over"), n = m$over))
-    cols <- .bd_colours(2)[2:1]
+    k <- length(m$counts)
+    cols  <- if (k == 2) .bd_colours(2)[2:1] else .bd_colours(k)
     share <- function(n) 100 * n / max(1, m$n)
     div(class = "dm-mini",
-        div(class = "dm-mini-t", "Minimisation groups"),
+        div(class = "dm-mini-t", m$title),
         div(class = "dm-stack", role = "img",
-            `aria-label` = sprintf("Under %s: %d, %s or over: %d", cut_txt, m$under, cut_txt, m$over),
-            lapply(1:2, function(i)
+            `aria-label` = paste(sprintf("%s: %d", m$labels, m$counts), collapse = ", "),
+            lapply(seq_len(k), function(i)
               span(class = "dm-stack-seg",
-                   title = sprintf("%s: %d (%.0f%%)", grp[[i]]$label, grp[[i]]$n, share(grp[[i]]$n)),
-                   style = sprintf("width:%.2f%%;background:%s;", share(grp[[i]]$n), cols[i])))),
-        div(class = "dm-rows", lapply(1:2, function(i)
+                   title = sprintf("%s: %d (%.0f%%)", m$labels[i], m$counts[i], share(m$counts[i])),
+                   style = sprintf("width:%.2f%%;background:%s;", share(m$counts[i]), cols[i])))),
+        div(class = "dm-rows", lapply(seq_len(k), function(i)
           div(class = "dm-row",
               span(class = "dm-sw", style = sprintf("background:%s;", cols[i])),
-              span(class = "dm-row-l", grp[[i]]$label),
-              span(class = "dm-row-n", grp[[i]]$n),
-              span(class = "dm-row-p", sprintf("%.0f%%", share(grp[[i]]$n)))))))
+              span(class = "dm-row-l", m$labels[i]),
+              span(class = "dm-row-n", m$counts[i]),
+              span(class = "dm-row-p", sprintf("%.0f%%", share(m$counts[i])))))))
   }
   svg <- sprintf(paste0(
     '<svg class="dm-hist" viewBox="0 0 %d %d" preserveAspectRatio="none" role="img" aria-label="%s">',

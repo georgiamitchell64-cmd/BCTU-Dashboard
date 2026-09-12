@@ -235,9 +235,10 @@ trial_settings_server <- function(input, output, session, state) {
                      type = "message", duration = 5)
   })
   
-  # ── Demographic groupings editor (mirrors the Data-tab Configure modal) ──
-  # Uses set_bd_choice / setlbl_* input IDs so it never collides with the
-  # Data-tab modal (breakdowns_choice / codelbl_*); both write the same overrides.
+  # ── Demographic groupings editor ─────────────────────────────────────────
+  # Writes the same overrides (participant_breakdowns, column_labels) as the
+  # Data tab's Customise demographics dialog, which also sets names and number
+  # groups (breakdown_titles, breakdown_cuts). set_bd_choice / setlbl_* IDs.
   output$settings_demographics_ui <- renderUI({
     rv$settings_changed                      # refresh after a save
     cfg <- rv$trial_config

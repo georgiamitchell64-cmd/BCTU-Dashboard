@@ -720,12 +720,6 @@ participants_server <- function(input, output, session, state) {
     if (n == 0) "—" else sprintf("at baseline · %d participants", n)
   })
 
-  output$breakdowns_summary_txt <- renderText({
-    sel <- selected_breakdowns()
-    if (is.null(sel) || !length(sel)) return("None selected")
-    paste(length(sel), if (length(sel) == 1) "breakdown" else "breakdowns")
-  })
-
   output$participant_breakdowns_ui <- renderUI({
     raw <- redcap_wp()
     cfg <- rv$trial_config
@@ -741,109 +735,304 @@ participants_server <- function(input, output, session, state) {
     # missing from this export gets a placeholder card instead of vanishing.
     breakdowns <- lapply(sel, function(c)
       compute_breakdown(raw, c, cfg, numeric_bins = "pretty") %||%
-        list(type = "absent", label = .pretty_label(c), column = c))
+        list(type = "absent", label = .bd_title(c, cfg), column = c))
     tagList(render_demographics_strip(breakdowns), render_breakdowns_grid(breakdowns))
   })
 
-  # Configure-modal handlers (unchanged from previous implementation)
+  # ── Customise demographics (dialog) ───────────────────────────────────────
+  # Which columns appear, in what order, what they are called, what each coded
+  # value means, and how numeric ones are grouped (e.g. age under / over 75),
+  # with a live preview. Edits go to a working copy (bdc) and are saved only on
+  # Save. The dialog's own inputs send {col, field, value} events (see the
+  # script in participants.R), so switching column never mixes their values.
+  bdc <- reactiveValues(selected = character(0), titles = list(), cuts = list(),
+                        labels = list(), active = NULL, nonce = 0)
+  .s1   <- function(x) { x <- as.character(unlist(x)); if (!length(x) || is.na(x[1])) "" else x[1] }
+  .bdcq <- function(x) gsub("'", "\\\\'", gsub("\\\\", "\\\\\\\\", as.character(x)))
+  .bdc_ev <- function(id, col, extra = "")
+    sprintf("Shiny.setInputValue('%s',{col:'%s'%s,n:Math.random()},{priority:'event'})", id, .bdcq(col), extra)
+  .bdc_suggested <- function(cols)
+    grepl("(?i)age|sex|gender|ethnic|nela|bmi|asa|frail|residence|smok", cols, perl = TRUE)
+
+  # The values a column takes at baseline, most common first (numeric codes in order)
+  .bdc_values <- function(col) {
+    base <- baseline_rows(redcap_wp(), rv$trial_config)
+    v <- if (col %in% names(base)) trimws(as.character(base[[col]])) else character(0)
+    v <- v[!is.na(v) & nzchar(v)]
+    tab <- table(v)
+    out <- data.frame(code = names(tab), n = as.integer(tab), stringsAsFactors = FALSE)
+    num <- suppressWarnings(as.numeric(out$code))
+    out[if (all(!is.na(num))) order(num) else order(-out$n), , drop = FALSE]
+  }
+
+  # A column's grouping in editable form: being edited, else saved, else default
+  .bdc_cut_edit <- function(col) {
+    e <- bdc$cuts[[col]]
+    if (!is.null(e) && !is.null(e$on)) return(e)
+    ct <- breakdown_cut(col, rv$trial_config)
+    if (is.null(ct)) list(on = FALSE, cut = "", unit = "", title = "Groups")
+    else list(on = TRUE, cut = paste(as.character(ct$cut), collapse = ", "), unit = ct$unit, title = ct$title)
+  }
+  # Edited groupings back to the saved form (grouping off = no cut)
+  .bdc_cuts_for_cfg <- function(cuts) {
+    out <- list()
+    for (col in names(cuts)) {
+      e <- cuts[[col]]
+      out[[col]] <- if (is.null(e$on)) e else
+        list(cut = if (isTRUE(e$on)) .parse_cuts(e$cut) else numeric(0),
+             unit = trimws(.s1(e$unit)),
+             title = if (nzchar(trimws(.s1(e$title)))) trimws(.s1(e$title)) else "Groups")
+    }
+    out
+  }
+
   observeEvent(input$configure_breakdowns, {
-    det <- detected_breakdowns()
-    sel <- selected_breakdowns() %||% character(0)
-    raw <- rv$raw_redcap
-    cfg <- rv$trial_config
-    if (!nrow(det)) {
-      showNotification("No usable columns detected — upload a CSV first.",
+    det <- detected_breakdowns(); cfg <- rv$trial_config
+    if (is.null(cfg) || is.null(det) || !nrow(det)) {
+      showNotification("Load a REDCap export first: the columns to choose from come from it.",
                        type = "warning", duration = 5)
       return()
     }
-    editable <- find_editable_code_cols(raw, cfg, det)
-    labels_section <- if (length(editable) > 0) {
-      div(style = "margin-top:22px;border-top:1px solid #F4F4F4;padding-top:16px;",
-          div(style = "font-weight:600;color:#1B1B1B;font-size:13px;margin-bottom:3px;",
-              HTML("&#127991; Value labels &mdash; edit to rename")),
-          div(style = "font-size:12px;color:#58595B;margin-bottom:14px;",
-              "Give each coded value a readable name. These are the group names shown in the demographic cards — edit any field to rename a grouping. Existing names are pre-filled."),
-          lapply(editable, function(ci) {
-            div(class = "dg-col",
-                div(class = "dg-col-head",
-                    span(class = "dg-col-title", ci$label),
-                    span(class = "dg-col-var", paste0("(", ci$col, ")")),
-                    if (isTRUE(ci$labelled))
-                      span(class = "mu-pill mu-pill-ok", style = "margin-left:auto;", "Labelled")),
-                lapply(ci$values, function(v) {
-                  input_id <- paste0("codelbl_", ci$col, "___", v)
-                  div(class = "dg-row",
-                      span(class = "dg-code", paste0(v, " =")),
-                      textInput(input_id, label = NULL,
-                                value = ci$suggested[[v]] %||% "",
-                                placeholder = paste0("Name for code ", v),
-                                width = "100%"))
-                }))
-          }))
-    } else NULL
+    sel <- intersect(selected_breakdowns() %||% character(0), det$column)
+    bdc$selected <- sel
+    bdc$titles   <- cfg$breakdown_titles %||% list()
+    bdc$cuts     <- cfg$breakdown_cuts   %||% list()
+    bdc$labels   <- cfg$column_labels    %||% list()
+    focus <- isolate(input$bd_cfg_focus)
+    bdc$active <- if (!is.null(focus) && focus %in% det$column) focus
+                  else if (length(sel)) sel[1] else det$column[1]
+    bdc$nonce <- isolate(bdc$nonce) + 1
     showModal(modalDialog(
-      title = div(style = "display:flex;align-items:center;gap:10px;",
-                  span(style = "font-size:18px;color:#0057BF;", HTML("&#x2699;")),
-                  span("Configure demographic breakdowns")),
-      size = "l", easyClose = TRUE,
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("save_breakdowns", "Save",
-                     class = "btn btn-primary",
-                     style = "background:#1B1B1B;border-color:#1B1B1B;font-weight:600;")
-      ),
-      div(style = "font-size:12.5px;color:#58595B;margin-bottom:14px;line-height:1.6;",
-          HTML(sprintf("Detected <strong>%d</strong> columns suitable for breakdowns from the latest CSV. Tick the ones you want to display.",
-                       nrow(det)))),
-      checkboxGroupInput(
-        "breakdowns_choice", label = NULL,
-        choiceNames = lapply(seq_len(nrow(det)), function(i) {
-          r <- det[i, ]
-          tagList(
-            span(style = "font-weight:600;color:#1B1B1B;", r$label),
-            span(style = "font-size:10.5px;color:#8A8A8C;margin-left:6px;text-transform:uppercase;letter-spacing:.4px;",
-                 r$type),
-            span(style = "font-size:11px;color:#58595B;margin-left:6px;",
-                 sprintf("· %s · %d unique%s", r$column, r$n_unique,
-                         if (r$n_missing > 0) sprintf(" · %d missing", r$n_missing) else ""))
-          )
-        }),
-        choiceValues = det$column,
-        selected = intersect(sel, det$column)),
-      labels_section
+      title = NULL, footer = NULL, size = "xl", easyClose = FALSE,
+      div(class = "bdc",
+        div(class = "bdc-head",
+          div(div(class = "bdc-title", "Customise demographics"),
+              div(class = "bdc-sub",
+                  "Choose which columns appear on the Data tab and in what order, what they are called, what each coded value means, and how numbers are grouped. The preview updates as you go; nothing is saved until you press Save.")),
+          div(class = "bdc-head-actions",
+              modalButton("Cancel"),
+              actionButton("bd_cfg_save", "Save", class = "bdc-save"))),
+        div(class = "bdc-body",
+          tags$aside(class = "bdc-side",
+            div(class = "bdc-h", "On the Data tab, in this order"),
+            uiOutput("bd_cfg_order"),
+            div(class = "bdc-h", "Columns in the export"),
+            tags$input(type = "search", class = "bdc-search", placeholder = "Search columns",
+                       `aria-label` = "Search columns", oninput = "bdcFilter(this.value)"),
+            uiOutput("bd_cfg_list")),
+          tags$section(class = "bdc-main",
+            uiOutput("bd_cfg_editor"),
+            div(class = "bdc-h", "Preview"),
+            uiOutput("bd_cfg_preview"))))
     ))
   })
 
-  observeEvent(input$save_breakdowns, {
+  # Working settings as a trial config, for the preview (debounced while typing)
+  bdc_cfg <- reactive({
+    cfg <- rv$trial_config; req(cfg)
+    cfg$column_labels    <- bdc$labels
+    cfg$breakdown_titles <- bdc$titles
+    cfg$breakdown_cuts   <- .bdc_cuts_for_cfg(bdc$cuts)
+    cfg
+  })
+  bdc_cfg_d <- debounce(bdc_cfg, 350)
+
+  .bdc_name <- function(col, det) {
+    t <- .s1(bdc$titles[[col]])
+    if (nzchar(trimws(t))) trimws(t) else det$label[match(col, det$column)]
+  }
+
+  output$bd_cfg_order <- renderUI({
+    s <- bdc$selected; a <- bdc$active; det <- detected_breakdowns()
+    if (!length(s)) return(div(class = "bdc-empty", "Nothing chosen yet. Tick columns below to add them."))
+    tags$ol(class = "bdc-order", lapply(seq_along(s), function(i) {
+      col <- s[i]; nm <- .bdc_name(col, det)
+      tags$li(class = paste("bdc-ord", if (identical(col, a)) "on"),
+        tags$button(type = "button", class = "bdc-ord-name", title = nm,
+                    onclick = .bdc_ev("bd_cfg_pick", col), nm),
+        tags$button(type = "button", class = "bdc-ic", `aria-label` = paste("Move", nm, "up"),
+                    disabled = if (i == 1) NA, onclick = .bdc_ev("bd_cfg_move", col, ",dir:'up'"), HTML("&uarr;")),
+        tags$button(type = "button", class = "bdc-ic", `aria-label` = paste("Move", nm, "down"),
+                    disabled = if (i == length(s)) NA, onclick = .bdc_ev("bd_cfg_move", col, ",dir:'down'"), HTML("&darr;")),
+        tags$button(type = "button", class = "bdc-ic", `aria-label` = paste("Remove", nm),
+                    onclick = .bdc_ev("bd_cfg_toggle", col), HTML("&times;")))
+    }))
+  })
+
+  output$bd_cfg_list <- renderUI({
+    det <- detected_breakdowns(); s <- bdc$selected; a <- bdc$active; bdc$titles
+    base_n <- nrow(baseline_rows(redcap_wp(), rv$trial_config))
+    sug <- .bdc_suggested(det$column)
+    ord <- order(!sug, tolower(det$label))
+    tagList(
+      lapply(ord, function(i) {
+        r <- det[i, ]; on <- r$column %in% s; nm <- .bdc_name(r$column, det)
+        pct <- if (base_n > 0) max(0, min(100, 100 * (base_n - r$n_missing) / base_n)) else 0
+        div(class = paste("bdc-col", if (on) "is-on", if (identical(r$column, a)) "is-active"),
+            `data-q` = tolower(paste(nm, r$label, r$column)),
+            tags$button(type = "button", class = "bdc-check", role = "checkbox",
+                        `aria-checked` = if (on) "true" else "false",
+                        `aria-label` = sprintf("Show %s on the Data tab", nm),
+                        onclick = .bdc_ev("bd_cfg_toggle", r$column), if (on) HTML("&#10003;")),
+            tags$button(type = "button", class = "bdc-col-main", onclick = .bdc_ev("bd_cfg_pick", r$column),
+                        span(class = "bdc-col-name", nm, if (sug[i]) span(class = "bdc-tag", "suggested")),
+                        span(class = "bdc-col-meta",
+                             sprintf("%s · %s", r$column,
+                                     if (r$type == "numeric") "numbers" else sprintf("%d values", r$n_unique))),
+                        span(class = "bdc-bar", span(class = "bdc-bar-f", style = sprintf("width:%.0f%%;", pct))),
+                        span(class = "bdc-col-pct", sprintf("%.0f%% recorded", pct))))
+      }),
+      # keep the search applied when the list redraws
+      tags$script(HTML("var s=document.querySelector('.bdc-search'); if (s && window.bdcFilter) bdcFilter(s.value);")))
+  })
+
+  output$bd_cfg_editor <- renderUI({
+    col <- bdc$active; bdc$nonce; sel <- bdc$selected
+    req(col)
+    det <- detected_breakdowns(); r <- det[det$column == col, , drop = FALSE]
+    if (!nrow(r)) return(div(class = "bdc-empty", "Choose a column on the left."))
+    isolate({
+      on <- col %in% sel
+      title <- trimws(.s1(bdc$titles[[col]]))
+      inp <- function(field, value, placeholder = "", code = NULL, id = NULL)
+        tags$input(type = "text", class = "bdc-in form-control", id = id, value = value,
+                   placeholder = placeholder, autocomplete = "off",
+                   `data-col` = col, `data-field` = field, `data-code` = code)
+      head <- div(class = "bdc-ed-head",
+        div(div(class = "bdc-ed-t", if (nzchar(title)) title else r$label),
+            div(class = "bdc-ed-m", sprintf("%s · %s · %s", col,
+                if (r$type == "numeric") "numbers" else sprintf("%d different values", r$n_unique),
+                if (r$n_missing > 0) sprintf("%d missing", r$n_missing) else "none missing"))),
+        tags$button(type = "button", class = paste("bdc-toggle", if (on) "on"),
+                    onclick = .bdc_ev("bd_cfg_toggle", col),
+                    if (on) HTML("&#10003; On the Data tab") else HTML("&#43; Add to the Data tab")))
+      name_ui <- div(class = "bdc-fld",
+        tags$label(`for` = "bdc_title", "Name"),
+        inp("title", title, r$label, id = "bdc_title"),
+        div(class = "bdc-hint", "Shown on the card and in reports. Leave blank to use the name worked out from the column."))
+
+      body <- if (identical(r$type, "numeric")) {
+        ce <- .bdc_cut_edit(col)
+        div(class = "bdc-sec2",
+          div(class = "bdc-sec2-h", "Groups"),
+          tags$label(class = "bdc-switch",
+                     tags$input(type = "checkbox", class = "bdc-in", `data-col` = col, `data-field` = "group_on",
+                                checked = if (isTRUE(ce$on)) NA),
+                     "Show groups as well as the spread"),
+          if (isTRUE(ce$on)) div(class = "bdc-grid3",
+            div(class = "bdc-fld", tags$label("Split at"), inp("cut", .s1(ce$cut), "e.g. 75, or 40, 60, 75")),
+            div(class = "bdc-fld", tags$label("Unit (optional)"), inp("unit", .s1(ce$unit), "e.g. %")),
+            div(class = "bdc-fld", tags$label("Heading"), inp("group_title", .s1(ce$title), "Groups"))),
+          div(class = "bdc-hint",
+              "One number makes two groups: under it, and it or over. For age, 75 gives “Under 75” and “75 or over”. Several numbers make more groups."))
+      } else {
+        vals <- .bdc_values(col)
+        cur  <- bdc$labels[[col]] %||% list()
+        cfg0 <- rv$trial_config; cfg0$column_labels[[col]] <- NULL
+        sug  <- if (nrow(vals)) as.character(.resolve_value_labels(vals$code, col, cfg0)) else character(0)
+        show <- utils::head(seq_len(nrow(vals)), 40)
+        div(class = "bdc-sec2",
+          div(class = "bdc-sec2-h", "What each value means",
+              if (any(sug != vals$code))
+                tags$button(type = "button", class = "bdc-link", onclick = .bdc_ev("bd_cfg_suggest", col),
+                            "Fill in suggested names")),
+          div(class = "bdc-hint",
+              "Exports often store a number for each answer. Give each one a name; leave it blank to show the value as it is."),
+          tags$table(class = "bdc-vals",
+            tags$thead(tags$tr(tags$th("Value"), tags$th(class = "bdc-n", "Count"), tags$th("Shown as"))),
+            tags$tbody(lapply(show, function(i) {
+              code <- vals$code[i]
+              tags$tr(tags$td(class = "bdc-code", code), tags$td(class = "bdc-n", vals$n[i]),
+                      tags$td(inp("label", .s1(cur[[code]]), if (sug[i] != code) sug[i] else code, code = code)))
+            }))),
+          if (nrow(vals) > 40)
+            div(class = "bdc-hint", sprintf("Showing the 40 most common of %d values.", nrow(vals))))
+      }
+      tagList(head, name_ui, body)
+    })
+  })
+
+  output$bd_cfg_preview <- renderUI({
+    cfg <- bdc_cfg_d(); col <- bdc$active; req(cfg, col)
+    bd <- tryCatch(compute_breakdown(redcap_wp(), col, cfg, numeric_bins = "pretty"),
+                   error = function(e) NULL)
+    if (is.null(bd)) return(div(class = "bdc-empty", "This column has no values in the current data."))
+    div(class = "bdc-preview", render_demographics_strip(list(bd)), render_breakdown_card(bd))
+  })
+
+  observeEvent(input$bd_cfg_pick, bdc$active <- input$bd_cfg_pick$col)
+
+  observeEvent(input$bd_cfg_toggle, {
+    col <- input$bd_cfg_toggle$col; s <- bdc$selected
+    if (col %in% s) bdc$selected <- setdiff(s, col)
+    else { bdc$selected <- c(s, col); bdc$active <- col }
+  })
+
+  observeEvent(input$bd_cfg_move, {
+    m <- input$bd_cfg_move; s <- bdc$selected; i <- match(m$col, s)
+    if (is.na(i)) return()
+    j <- if (identical(m$dir, "up")) i - 1L else i + 1L
+    if (j < 1 || j > length(s)) return()
+    s[c(i, j)] <- s[c(j, i)]; bdc$selected <- s
+  })
+
+  observeEvent(input$bd_cfg_field, {
+    f <- input$bd_cfg_field; col <- f$col
+    if (is.null(col) || !nzchar(col)) return()
+    v <- f$value
+    if (identical(f$field, "title")) {
+      t <- bdc$titles; t[[col]] <- if (nzchar(trimws(.s1(v)))) trimws(.s1(v)) else NULL; bdc$titles <- t
+    } else if (identical(f$field, "label")) {
+      l <- bdc$labels; m <- l[[col]] %||% list()
+      m[[f$code]] <- if (nzchar(trimws(.s1(v)))) trimws(.s1(v)) else NULL
+      l[[col]] <- m; bdc$labels <- l
+    } else if (f$field %in% c("group_on", "cut", "unit", "group_title")) {
+      cuts <- bdc$cuts
+      cur  <- cuts[[col]]
+      if (is.null(cur) || is.null(cur$on)) cur <- isolate(.bdc_cut_edit(col))
+      if (identical(f$field, "group_on")) cur$on <- isTRUE(v)
+      else cur[[if (identical(f$field, "group_title")) "title" else f$field]] <- .s1(v)
+      cuts[[col]] <- cur; bdc$cuts <- cuts
+      if (identical(f$field, "group_on")) bdc$nonce <- bdc$nonce + 1   # show / hide the fields
+    }
+  })
+
+  observeEvent(input$bd_cfg_suggest, {
+    col  <- input$bd_cfg_suggest$col
+    vals <- .bdc_values(col)
+    cfg0 <- rv$trial_config; cfg0$column_labels[[col]] <- NULL
+    sug  <- as.character(.resolve_value_labels(vals$code, col, cfg0))
+    l <- bdc$labels; m <- l[[col]] %||% list()
+    for (i in seq_along(vals$code))
+      if (sug[i] != vals$code[i] && !nzchar(.s1(m[[vals$code[i]]]))) m[[vals$code[i]]] <- sug[i]
+    l[[col]] <- m; bdc$labels <- l; bdc$nonce <- bdc$nonce + 1
+  })
+
+  observeEvent(input$bd_cfg_save, {
     cfg <- rv$trial_config
     if (is.null(cfg)) { removeModal(); return() }
-    chosen <- input$breakdowns_choice %||% character(0)
-    selected_breakdowns(chosen)
-    all_inputs  <- reactiveValuesToList(input)
-    label_keys  <- grep("^codelbl_", names(all_inputs), value = TRUE)
-    col_labels  <- cfg$column_labels %||% list()
-    for (key in label_keys) {
-      val_text <- trimws(all_inputs[[key]] %||% "")
-      parts <- strsplit(sub("^codelbl_", "", key), "___", fixed = TRUE)[[1]]
-      if (length(parts) != 2) next
-      col  <- parts[1]; code <- parts[2]
-      if (!nzchar(val_text)) next
-      if (is.null(col_labels[[col]])) col_labels[[col]] <- list()
-      col_labels[[col]][[code]] <- val_text
-    }
-    tryCatch(
-      update_overrides(cfg,
-        participant_breakdowns = as.list(chosen),
-        column_labels          = col_labels),
-      error = function(e) message("breakdown save: ", e$message)
-    )
-    rv$trial_config$participant_breakdowns <- chosen
-    rv$trial_config$column_labels          <- col_labels
+    labels <- lapply(bdc$labels, function(m) Filter(function(x) nzchar(.s1(x)), m))
+    labels <- Filter(length, labels)
+    titles <- Filter(function(x) nzchar(trimws(.s1(x))), bdc$titles)
+    cuts   <- .bdc_cuts_for_cfg(bdc$cuts)
+    sel    <- bdc$selected
+    ok <- tryCatch({
+      update_overrides(cfg, participant_breakdowns = as.list(sel), column_labels = labels,
+                       breakdown_titles = titles, breakdown_cuts = cuts)
+      TRUE
+    }, error = function(e) {
+      showNotification(paste("Couldn't save:", conditionMessage(e)), type = "error", duration = 8)
+      FALSE
+    })
+    if (!ok) return()
+    rv$trial_config$participant_breakdowns <- sel
+    rv$trial_config$column_labels          <- labels
+    rv$trial_config$breakdown_titles       <- titles
+    rv$trial_config$breakdown_cuts         <- cuts
+    selected_breakdowns(sel)
     removeModal()
-    showNotification(sprintf("Saved %d breakdown%s.",
-                             length(chosen),
-                             if (length(chosen) == 1) "" else "s"),
-                     type = "message", duration = 3)
+    showNotification(sprintf("Saved: %d breakdown%s on the Data tab.", length(sel),
+                             if (length(sel) == 1) "" else "s"), type = "message", duration = 3)
   })
 
   # ── Quick-action handlers ─────────────────────────────────────────────
