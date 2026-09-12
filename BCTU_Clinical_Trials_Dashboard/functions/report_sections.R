@@ -316,15 +316,19 @@
 
 .rs_render_amendments <- function(ctx) {
   cfg <- ctx$cfg
-  items <- cfg$amendments
-  if (is.null(items) || !length(items)) {
+  # From the Modifications tab's register (functions/modifications.R)
+  reg <- modifications_register_rows(cfg)
+  if (!nrow(reg)) {
     return(paste0(
       .rs_h(2, "Amendments"),
-      .rs_subtle("No amendments tracked. Add them via the Amendments card on the Reports tab.")))
+      .rs_subtle("No modifications recorded. Add or import them on the Modifications tab.")))
   }
+  items <- lapply(seq_len(nrow(reg)), function(i)
+    list(ref = reg$ref[i], type = reg$type[i], date = reg$date[i], status = reg$status[i],
+         substantial = reg$substantial[i], description = reg$summary[i]))
 
   rows <- vapply(items, function(a) {
-    accent <- if (identical(a$type, "Substantial")) "#C20019" else "#0057BF"
+    accent <- if (isTRUE(a$substantial)) "#C20019" else "#0057BF"
     sprintf("<tr>
               <td style='padding:9px 12px;font-weight:500;'>%s</td>
               <td style='padding:9px 12px;color:%s;font-size:11.5px;

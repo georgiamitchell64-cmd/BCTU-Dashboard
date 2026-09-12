@@ -537,4 +537,152 @@ modifications_tab_server <- function(input, output, session, state) {
       write.csv(df_out, file, row.names = FALSE, na = "")
     }
   )
+
+  # ── Old Reports-tab amendments: move them into the register ───────────────
+  output$mod_legacy_banner <- renderUI({
+    old <- legacy_amendments_pending(rv$trial_config %||% list())
+    if (!length(old)) return(NULL)
+    n <- length(old)
+    div(class = "md-banner",
+        div(class = "md-banner-t",
+            sprintf("%d amendment%s entered on the Reports tab %s not in this register yet",
+                    n, if (n == 1) "" else "s", if (n == 1) "is" else "are")),
+        div(class = "md-banner-s",
+            "The reports already include them. Move them here so everything is edited in one place; any marked only “Substantial” are filed as Category A for you to check."),
+        actionButton("mod_legacy_move", "Move them into the register", class = "md-btn-primary"))
+  })
+
+  observeEvent(input$mod_legacy_move, {
+    cfg <- rv$trial_config; req(cfg)
+    res <- legacy_amendments_to_register(cfg)
+    persist(res$items)
+    tryCatch(update_overrides(cfg, amendments = list()), error = function(e) NULL)
+    rv$trial_config$amendments <- list()
+    showNotification(sprintf("Moved %d amendment%s into the register.", res$n_new,
+                             if (res$n_new == 1) "" else "s"), type = "message", duration = 4)
+  })
+
+  # ── Import from a CSV or Excel file ───────────────────────────────────────
+  imp_raw  <- reactiveVal(NULL)    # the file's rows, as text
+  imp_name <- reactiveVal("")
+
+  observeEvent(input$mod_import_open, {
+    if (is.null(rv$trial_config)) { showNotification("Select a trial first.", type = "warning"); return() }
+    imp_raw(NULL); imp_name("")
+    showModal(modalDialog(
+      title = "Import modifications", size = "l", easyClose = TRUE,
+      footer = tagList(modalButton("Cancel"),
+                       actionButton("mod_import_go", "Import", class = "md-btn-primary")),
+      div(class = "md-imp",
+          tags$p(class = "md-imp-lead",
+                 "Upload a spreadsheet of modifications, as CSV or Excel. Columns are matched automatically; check the matches and the preview before importing. Export CSV gives you a file in exactly this layout."),
+          fileInput("mod_import_file", NULL, accept = c(".csv", ".xlsx", ".xls"),
+                    buttonLabel = "Choose file…", placeholder = "No file chosen", width = "100%"),
+          uiOutput("mod_import_body"))))
+  })
+
+  observeEvent(input$mod_import_file, {
+    f <- input$mod_import_file; req(f)
+    df <- tryCatch(mod_import_read(f$datapath, f$name), error = function(e) {
+      showNotification(paste("Couldn't read that file:", conditionMessage(e)), type = "error", duration = 8)
+      NULL })
+    if (!is.null(df) && !nrow(df)) {
+      showNotification("That file has no rows to import.", type = "warning"); df <- NULL }
+    imp_raw(df); imp_name(f$name)
+  })
+
+  imp_mapping <- reactive({
+    df <- imp_raw(); req(df)
+    guess <- mod_import_guess(names(df))
+    setNames(lapply(names(MOD_IMPORT_FIELDS), function(f) {
+      v <- input[[paste0("mod_map_", f)]]
+      if (is.null(v)) guess[[f]] %||% "" else v
+    }), names(MOD_IMPORT_FIELDS))
+  })
+
+  imp_built <- reactive({
+    df <- imp_raw(); req(df)
+    mod_import_build(df, imp_mapping(), input$mod_import_default_sub %||% "substantial_a")
+  })
+
+  # The column matches (drawn once per file) and the options
+  output$mod_import_body <- renderUI({
+    df <- imp_raw()
+    if (is.null(df)) return(div(class = "md-imp-empty", "Choose a file to see its columns."))
+    guess <- mod_import_guess(names(df))
+    sel <- function(f) div(class = "md-imp-map-row",
+      tags$label(`for` = paste0("mod_map_", f), MOD_IMPORT_FIELDS[[f]]$label),
+      selectInput(paste0("mod_map_", f), NULL, choices = c("— not in this file —" = "", names(df)),
+                  selected = guess[[f]] %||% "", width = "100%"))
+    main <- c("ref", "title", "description", "category", "status", "date_submitted", "date_approved")
+    more <- setdiff(names(MOD_IMPORT_FIELDS), main)
+    plural <- function(n, w) sprintf("%d %s%s", n, w, if (n == 1) "" else "s")
+    tagList(
+      div(class = "md-imp-file", sprintf("%s · %s · %s", imp_name(), plural(nrow(df), "row"),
+                                         plural(ncol(df), "column"))),
+      div(class = "md-imp-h", "Match the columns"),
+      div(class = "md-imp-map", lapply(main, sel)),
+      tags$details(class = "md-imp-more",
+                   tags$summary(sprintf("More fields (%d)", length(more))),
+                   div(class = "md-imp-map", lapply(more, sel))),
+      div(class = "md-imp-opts",
+          selectInput("mod_import_default_sub", "Rows marked only “Substantial” are filed as",
+                      choices = MOD_CATEGORIES[MOD_CATEGORIES %in% .MOD_SUB_CODES],
+                      selected = "substantial_a", width = "100%"),
+          radioButtons("mod_import_dupes", "If a reference is already in the register",
+                       c("Skip that row" = "skip", "Update it with the imported row" = "update"),
+                       selected = "skip")),
+      div(class = "md-imp-h", "Preview"),
+      uiOutput("mod_import_preview"))
+  })
+
+  output$mod_import_preview <- renderUI({
+    b <- imp_built(); items <- b$items
+    if (!length(items))
+      return(div(class = "md-imp-empty", "No rows with a reference, title or description to import."))
+    existing <- tolower(vapply(mods_list(), function(m) m$ref %||% "", ""))
+    dup  <- vapply(items, function(m) nzchar(m$ref) && tolower(m$ref) %in% existing, logical(1))
+    mode <- input$mod_import_dupes %||% "skip"
+    stat <- function(v, l, warn = FALSE)
+      div(class = paste("md-imp-stat", if (warn) "warn"),
+          div(class = "md-imp-stat-v", v), div(class = "md-imp-stat-l", l))
+    rows <- lapply(utils::head(seq_along(items), 8), function(i) {
+      m <- items[[i]]
+      tags$tr(class = if (dup[i]) "dup",
+              tags$td(if (nzchar(m$ref)) m$ref else tags$em("next free")),
+              tags$td(category_label(m$category)), tags$td(m$title), tags$td(m$status),
+              tags$td(fmt_d(m$date_submitted)), tags$td(fmt_d(m$date_approved)))
+    })
+    tagList(
+      div(class = "md-imp-stats",
+          stat(sum(!dup), "new"),
+          if (any(dup)) stat(sum(dup), sprintf("already in the register — %s",
+                                               if (mode == "skip") "skipped" else "updated"),
+                             mode == "update"),
+          if (b$n_no_category) stat(b$n_no_category, "with no category — filed as minor", TRUE),
+          if (b$n_dropped) stat(b$n_dropped, "empty rows ignored")),
+      div(class = "md-imp-table",
+          tags$table(tags$thead(tags$tr(lapply(c("Ref", "Category", "Title", "Status", "Submitted", "Approved"),
+                                               tags$th))),
+                     tags$tbody(rows))),
+      if (length(items) > 8) div(class = "md-imp-more-n", sprintf("…and %d more.", length(items) - 8)))
+  })
+
+  observeEvent(input$mod_import_go, {
+    if (is.null(imp_raw())) { showNotification("Choose a file first.", type = "warning"); return() }
+    b <- imp_built()
+    if (!length(b$items)) { showNotification("There is nothing in that file to import.", type = "warning"); return() }
+    res <- mod_import_merge(mods_list(), b$items, input$mod_import_dupes %||% "skip")
+    persist(res$items)
+    n <- res$n_new + res$n_updated
+    if (exists("log_activity"))
+      tryCatch(log_activity("modifications_imported",
+                            sprintf("Imported %d modification%s from <strong>%s</strong>", n,
+                                    if (n == 1) "" else "s", htmltools::htmlEscape(imp_name())),
+                            username = rv$username, trial_code = rv$trial_config$code),
+               error = function(e) NULL)
+    removeModal(); imp_raw(NULL)
+    showNotification(sprintf("Imported %d new, updated %d, skipped %d.", res$n_new, res$n_updated,
+                             res$n_skipped), type = "message", duration = 5)
+  })
 }

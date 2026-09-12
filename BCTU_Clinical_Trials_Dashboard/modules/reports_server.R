@@ -461,20 +461,9 @@ reports_server <- function(input, output, session, state) {
   })
   
   # Helpers to assemble TSC inputs into data structures for the Rmd
-  collect_amendments <- function(kind) {
-    n <- if (kind == "sub") n_amd_sub() else n_amd_nonsub()
-    if (n == 0) return(NULL)
-    rows <- lapply(seq_len(n), function(i) {
-      d <- input[[paste0(kind, "_date_", i)]]
-      data.frame(
-        Date        = if (!is.null(d)) format(as.Date(d), "%d %b %Y") else "",
-        Description = if (!is.null(input[[paste0(kind, "_desc_", i)]])) input[[paste0(kind, "_desc_", i)]] else "",
-        Status      = if (!is.null(input[[paste0(kind, "_status_", i)]])) input[[paste0(kind, "_status_", i)]] else "",
-        stringsAsFactors = FALSE
-      )
-    })
-    do.call(rbind, rows)
-  }
+  # Amendment tables come from the Modifications tab's register
+  collect_amendments <- function(kind)
+    modifications_report_df(rv$trial_config, if (kind == "sub") "substantial" else "non_substantial")
   
   collect_custom_sections <- function() {
     n <- n_custom()
@@ -725,171 +714,11 @@ reports_server <- function(input, output, session, state) {
   )
 
   # ════════════════════════════════════════════════════════════════════════
-  # Amendments editor (feeds the Amendments report section)
+  # Amendments come from the Modifications tab's register
   # ════════════════════════════════════════════════════════════════════════
-  amendments_state <- reactiveVal(list())
-
-  observeEvent(rv$trial_config, {
-    cfg <- rv$trial_config
-    if (is.null(cfg)) { amendments_state(list()); return() }
-    saved <- cfg$amendments
-    amendments_state(if (is.null(saved)) list() else saved)
-  }, ignoreNULL = TRUE)
-
-  output$amendments_list_ui <- renderUI({
-    items <- amendments_state()
-    if (!length(items)) {
-      return(div(style = "padding:20px;text-align:center;color:#8A8A8C;
-                          font-size:12.5px;font-style:italic;",
-                 "No amendments tracked yet — click Add amendment."))
-    }
-    rows <- lapply(seq_along(items), function(i) {
-      a <- items[[i]]
-      sev <- if (identical(a$type, "Substantial"))
-        list(bg = "#FEF2F2", fg = "#C20019", border = "#FECACA")
-      else
-        list(bg = "#F4F4F4", fg = "#1B1B1B", border = "#E3E3E3")
-
-      div(style = sprintf("display:grid;grid-template-columns:auto 1fr auto;
-                           gap:14px;padding:12px 14px;border:1px solid %s;
-                           border-radius:10px;margin-bottom:8px;background:%s;",
-                          sev$border, sev$bg),
-          div(style = sprintf("font-size:10.5px;font-weight:700;
-                               text-transform:uppercase;letter-spacing:.5px;
-                               color:%s;align-self:center;width:90px;",
-                              sev$fg),
-              a$type %||% "Amendment"),
-          div(div(style = "font-weight:600;color:#1B1B1B;font-size:13px;",
-                  sprintf("%s — %s",
-                          a$ref     %||% sprintf("Amendment %d", i),
-                          a$status  %||% "Pending")),
-              div(style = "font-size:11.5px;color:#58595B;margin-top:2px;",
-                  sprintf("Submitted %s",
-                          a$date %||% "—")),
-              div(style = "font-size:12.5px;color:#4A4A4A;margin-top:6px;
-                           line-height:1.5;",
-                  a$description %||% "")),
-          div(style = "display:flex;gap:6px;align-self:start;",
-              actionButton(paste0("amend_edit_", i),
-                           HTML("&#9998;"),
-                           class = "btn btn-sm",
-                           style = "padding:2px 8px;font-size:11px;
-                                    background:#FFFFFF;border:1px solid #E3E3E3;
-                                    color:#4A4A4A;"),
-              actionButton(paste0("amend_del_", i),
-                           HTML("&times;"),
-                           class = "btn btn-sm",
-                           style = "padding:2px 8px;font-size:13px;
-                                    background:#FFFFFF;border:1px solid #FECACA;
-                                    color:#C20019;"))
-      )
-    })
-    div(rows)
-  })
-
-  # Persist + reflect into rv$trial_config
-  .save_amendments <- function(items) {
-    cfg <- rv$trial_config
-    if (is.null(cfg)) return()
-    tryCatch(update_overrides(cfg, amendments = items),
-             error = function(e) message("amend save: ", e$message))
-    rv$trial_config$amendments <- items
-  }
-
-  amend_editing <- reactiveVal(NULL)   # NULL = adding new
-
-  show_amend_modal <- function(idx = NULL) {
-    items <- amendments_state()
-    a <- if (is.null(idx)) list() else items[[idx]]
-    showModal(modalDialog(
-      title = if (is.null(idx)) "Add amendment" else "Edit amendment",
-      size = "m", easyClose = TRUE,
-      footer = tagList(
-        if (!is.null(idx))
-          actionButton("amend_save", "Save changes",
-                       class = "btn btn-primary",
-                       style = "background:#1B1B1B;border-color:#1B1B1B;")
-        else
-          actionButton("amend_save", "Add",
-                       class = "btn btn-primary",
-                       style = "background:#1B1B1B;border-color:#1B1B1B;"),
-        modalButton("Cancel")
-      ),
-      div(style = "display:grid;grid-template-columns:1fr 1fr;gap:12px;",
-          selectInput("amend_type", "Type",
-                      choices = c("Substantial", "Non-substantial"),
-                      selected = a$type %||% "Substantial"),
-          dateInput("amend_date", "Date submitted",
-                    value = a$date %||% Sys.Date(),
-                    format = "d M yyyy")),
-      div(style = "display:grid;grid-template-columns:1fr 1fr;gap:12px;",
-          textInput("amend_ref", "Reference (e.g. Amendment 3)",
-                    value = a$ref %||% ""),
-          selectInput("amend_status", "Status",
-                      choices = c("Pending", "Approved", "Rejected", "Withdrawn"),
-                      selected = a$status %||% "Pending")),
-      textAreaInput("amend_description", "Description",
-                    value = a$description %||% "",
-                    rows = 4, width = "100%",
-                    placeholder = "Brief summary of the amendment…")
-    ))
-    amend_editing(idx)
-  }
-
-  observeEvent(input$amend_add, show_amend_modal(NULL))
-
-  observeEvent(input$amend_save, {
-    items <- amendments_state()
-    new_a <- list(
-      type        = input$amend_type %||% "Substantial",
-      date        = format(input$amend_date %||% Sys.Date(), "%Y-%m-%d"),
-      ref         = input$amend_ref %||% "",
-      status      = input$amend_status %||% "Pending",
-      description = input$amend_description %||% ""
-    )
-    idx <- amend_editing()
-    if (is.null(idx)) {
-      items[[length(items) + 1]] <- new_a
-    } else {
-      items[[idx]] <- new_a
-    }
-    amendments_state(items)
-    .save_amendments(items)
-    cfg <- rv$trial_config
-    log_activity(
-      if (is.null(idx)) "amendment_added" else "amendment_edited",
-      sprintf("%s amendment %s — %s",
-              if (is.null(idx)) "Added" else "Edited",
-              htmltools::htmlEscape(new_a$ref %||% "(unnamed)"),
-              htmltools::htmlEscape(new_a$type %||% "")),
-      username = rv$username,
-      trial_code = if (!is.null(cfg)) cfg$code else NULL)
-    removeModal()
-    showNotification("Amendment saved.", type = "message", duration = 3)
-  })
-
-  # Wire edit/delete buttons (one per amendment, up to 50 supported)
-  lapply(seq_len(50), function(i) {
-    observeEvent(input[[paste0("amend_edit_", i)]], {
-      show_amend_modal(i)
-    }, ignoreInit = TRUE)
-    observeEvent(input[[paste0("amend_del_", i)]], {
-      items <- amendments_state()
-      if (i <= length(items)) {
-        removed_ref <- items[[i]]$ref %||% sprintf("Amendment %d", i)
-        items[[i]] <- NULL
-        amendments_state(items)
-        .save_amendments(items)
-        cfg <- rv$trial_config
-        log_activity("amendment_removed",
-                     sprintf("Removed amendment <strong>%s</strong>",
-                             htmltools::htmlEscape(removed_ref)),
-                     username = rv$username,
-                     trial_code = if (!is.null(cfg)) cfg$code else NULL)
-        showNotification("Amendment removed.", type = "message", duration = 3)
-      }
-    }, ignoreInit = TRUE)
-  })
+  # One row per modification (functions/modifications.R), plus any amendments
+  # from this tab's old editor that have not been moved into the register yet.
+  rb_mod_rows <- reactive(modifications_register_rows(rv$trial_config))
 
   # ════════════════════════════════════════════════════════════════════════
   # Stage 10: Report Builder
@@ -1143,21 +972,11 @@ reports_server <- function(input, output, session, state) {
                         target_override = wp_effective_target(rv$trial_config, rv$active_wp))
   }
 
-  # Amendments register → the date / description / status table the TSC template expects
-  rb_amendments_df <- function(kind) {
-    a <- Filter(function(x) identical(x$type %||% "", kind), amendments_state())
-    if (!length(a)) return(NULL)
-    data.frame(
-      date        = vapply(a, function(x) {
-        d <- suppressWarnings(as.Date(x$date %||% NA_character_))
-        if (is.na(d)) "" else format(d, "%d %b %Y") }, ""),
-      description = vapply(a, function(x) {
-        parts <- c(x$ref, x$description)
-        parts <- parts[!is.na(parts) & nzchar(parts)]
-        paste(parts, collapse = " — ") }, ""),
-      status      = vapply(a, function(x) x$status %||% "", ""),
-      stringsAsFactors = FALSE)
-  }
+  # The Modifications tab's register → the Date / Description / Status tables
+  # the TSC template expects (functions/modifications.R)
+  rb_amendments_df <- function(kind)
+    modifications_report_df(rv$trial_config,
+                            if (identical(kind, "Substantial")) "substantial" else "non_substantial")
 
   rb_rmd_params <- function(kind, report_data, crf_path, tmpl_choice) {
     cfg <- rv$trial_config
@@ -1307,12 +1126,12 @@ reports_server <- function(input, output, session, state) {
 
   output$rb_content_ui <- renderUI({
     t    <- rb_template_choice()
-    n_am <- length(amendments_state())
+    n_am <- nrow(rb_mod_rows())
     n_sc <- length(rb_section_order())
     ed <- function(key, title, sub)
       tags$button(id = paste0("rb_btab_", key), type = "button", class = "rb-editor-btn rb-btab",
                   div(tags$b(title), tags$small(sub)), tags$i(HTML("&rsaquo;")))
-    amend <- ed("amend", "Amendments", sprintf("%d in the register", n_am))
+    amend <- ed("amend", "Amendments", sprintf("%d from the Modifications tab", n_am))
     items <- switch(t,
       TSC       = list(amend),
       NIHR      = list(ed("sections", "Sections", sprintf("%d in this report", n_sc)),
@@ -1384,8 +1203,13 @@ reports_server <- function(input, output, session, state) {
                          "Update preview")))))
     }
     if (t %in% c("TSC", "NIHR")) {
-      k <- length(amendments_state())
-      items <- c(items, list(chk("info", sprintf("%d amendment%s in the register", k, if (k == 1) "" else "s"))))
+      k  <- nrow(rb_mod_rows())
+      nl <- length(legacy_amendments_pending(cfg))
+      items <- c(items, list(chk("info", sprintf("%d modification%s from the Modifications tab", k, if (k == 1) "" else "s"),
+                                 "Shown in the report's amendment tables.")))
+      if (nl) items <- c(items, list(chk("warn",
+        sprintf("%d old amendment%s still to move", nl, if (nl == 1) "" else "s"),
+        "They are included, but move them into the register on the Modifications tab.")))
     }
     if (identical(t, "NIHR") &&
         !nzchar(trimws(paste(input$rb_custom_text %||% "", input$rb_next_period %||% ""))))
@@ -1897,7 +1721,8 @@ reports_server <- function(input, output, session, state) {
   rb_preview_inputs <- reactive(list(
     rb_filters(), isTRUE(input$include_withdrawn), isTRUE(input$report_appendix),
     input$completeness_style, input$prepared_by, input$reviewed_by,
-    amendments_state(), rv$trial_config$report_content, rv$trial_config$report_template_paths))
+    rv$trial_config$modifications, rv$trial_config$amendments,
+    rv$trial_config$report_content, rv$trial_config$report_template_paths))
 
   rb_preview_want <- reactive(list(
     tmpl = rb_template_choice(), trial = rv$trial_config$code,
@@ -2120,35 +1945,32 @@ reports_server <- function(input, output, session, state) {
       )
 
     } else if (identical(tab, "amend")) {
-      items <- amendments_state()
-      sub    <- Filter(function(a) identical(a$type, "Substantial"), items)
-      nonsub <- Filter(function(a) !identical(a$type, "Substantial"), items)
-
-      render_a <- function(a, css_cls) {
+      # Read-only: the register lives on the Modifications tab
+      r <- rb_mod_rows()
+      render_r <- function(i, css_cls) {
         div(class = "rb-amend",
             div(class = "rb-amend-head",
                 span(class = "rb-amend-ref",
-                     paste0(a$ref %||% "—", " · ", a$date %||% "")),
-                span(class = paste("rb-amend-status", css_cls),
-                     a$status %||% "Pending")),
-            div(class = "rb-amend-desc", a$description %||% ""))
+                     paste0(if (nzchar(r$ref[i])) r$ref[i] else "—",
+                            if (nzchar(r$date[i])) paste0(" · ", r$date[i]) else "")),
+                span(class = paste("rb-amend-status", css_cls), r$status[i])),
+            div(class = "rb-amend-desc", r$title[i]))
       }
+      sub <- which(r$substantial); nonsub <- which(!r$substantial)
+      none <- function() span(style = "font-size:11.5px;color:#58595B;font-style:italic;", "None recorded.")
 
       tagList(
+        div(class = "rb-step-note", style = "margin:0 0 10px;",
+            "These come from the Modifications tab, which feeds the report's amendment tables. Add, import or edit them there."),
         tags$h4(sprintf("Substantial · %d", length(sub))),
-        if (length(sub)) lapply(sub, render_a, css_cls = "sub")
-        else span(style = "font-size:11.5px;color:#58595B;font-style:italic;",
-                  "None tracked yet."),
+        if (length(sub)) lapply(sub, render_r, css_cls = "sub") else none(),
         tags$h4(sprintf("Non-substantial · %d", length(nonsub))),
-        if (length(nonsub)) lapply(nonsub, render_a, css_cls = "nonsub")
-        else span(style = "font-size:11.5px;color:#58595B;font-style:italic;",
-                  "None tracked yet."),
-        actionButton("amend_add",
-                     HTML("&#43; Add amendment"),
-                     class = "rb-add-btn action-button",
-                     style = "margin-top:12px;background:transparent;
-                              border:1px dashed #E2E8EE;color:#58595B;
-                              border-radius:6px;padding:7px;width:100%;")
+        if (length(nonsub)) lapply(nonsub, render_r, css_cls = "nonsub") else none(),
+        tags$button(type = "button", class = "rb-add-btn",
+                    onclick = "Shiny.setInputValue('go_modifications', Math.random(), {priority:'event'}); if (window.setActiveTab) setActiveTab('tn_modifications');",
+                    style = "margin-top:12px;background:transparent;border:1px dashed #E2E8EE;
+                             color:#1B1B1B;border-radius:6px;padding:7px;width:100%;cursor:pointer;font-weight:600;",
+                    HTML("Open the Modifications tab &rsaquo;"))
       )
 
     } else if (identical(tab, "portfolio")) {

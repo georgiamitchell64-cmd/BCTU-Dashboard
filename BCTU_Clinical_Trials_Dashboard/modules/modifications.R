@@ -92,11 +92,16 @@ modifications_tab_ui <- function() {
                       selected = "all", width = "100%")
         ),
         div(class = "md-grow"),
+        actionButton("mod_import_open", HTML("&uarr; Import"),
+                     class = "md-btn-ghost"),
         downloadButton("mod_export_csv", HTML("&darr; Export CSV"),
                        class = "md-btn-ghost"),
         actionButton("mod_add_open", HTML("+ Add modification"),
                      class = "md-btn-primary")
       ),
+
+      # ── Old Reports-tab amendments still to move into the register ───────
+      uiOutput("mod_legacy_banner"),
 
       # ── Table card ───────────────────────────────────────────────────────
       div(class = "md-table-card",
@@ -105,7 +110,7 @@ modifications_tab_ui <- function() {
 
       # ── Footer note ──────────────────────────────────────────────────────
       div(class = "md-footer",
-          "Modifications saved per-trial to overrides.json · feeds the TMG report amendments section · classified per IRAS / HRA framework"),
+          "Saved per trial · feeds the amendment tables in the TSC and NIHR reports · classified per the IRAS / HRA framework"),
 
       # ── Slide-over editor (hidden by default) ────────────────────────────
       shinyjs::hidden(div(id = "mod_editor_scrim", class = "md-editor-scrim",
