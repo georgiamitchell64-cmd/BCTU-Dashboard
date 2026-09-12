@@ -1,6 +1,59 @@
 `%||%` <- function(a, b) if (!is.null(a) && length(a) > 0) a else b
 
 # =============================================================================
+# Module start-up guard
+# =============================================================================
+# Each module server is started inside a guard so one broken module cannot stop
+# the others from loading. The failure still has to reach the user: a module
+# that dies during start-up leaves its tab wired up but empty, and a message()
+# on the console is invisible to anyone running the app from a shortcut or a
+# server. So the guard both logs the error and raises a sticky notification
+# naming the part that failed, which the user can quote to whoever maintains
+# the dashboard.
+#
+# `expr` is evaluated lazily, inside the guard:
+#   start_module("Overview", overview_server(input, output, session, state))
+
+# Every module that failed to start in this session, newest first. Kept so a
+# diagnostics view can list them after the notifications have been dismissed.
+.MODULE_FAILURES <- new.env(parent = emptyenv())
+.MODULE_FAILURES$items <- list()
+
+module_failures <- function() .MODULE_FAILURES$items
+
+start_module <- function(label, expr) {
+  tryCatch(expr, error = function(e) {
+    msg <- conditionMessage(e)
+    message(toupper(label), ": ", msg)
+
+    .MODULE_FAILURES$items <- c(
+      list(list(module = label, message = msg, at = Sys.time())),
+      .MODULE_FAILURES$items
+    )
+
+    session <- shiny::getDefaultReactiveDomain()
+    if (!is.null(session)) {
+      tryCatch(
+        shiny::showNotification(
+          shiny::tagList(
+            shiny::tags$b(paste0(label, " could not start.")),
+            shiny::tags$br(),
+            "The rest of the dashboard still works. Report this message:",
+            shiny::tags$br(),
+            shiny::tags$code(msg)
+          ),
+          type = "error", duration = NULL, session = session
+        ),
+        error = function(e2) invisible(NULL)
+      )
+    }
+
+    invisible(NULL)
+  })
+}
+
+
+# =============================================================================
 # Pandoc discovery (cross-platform)
 # =============================================================================
 # rmarkdown::render() needs pandoc on PATH. On macOS RStudio sets
