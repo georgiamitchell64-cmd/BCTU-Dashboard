@@ -83,3 +83,21 @@ load_return_rates <- function(dir = NULL, trial_code = NULL) {
 
   df
 }
+
+# ── Cheap "has it changed?" fingerprint ──────────────────────────────────────
+# The dashboard re-checks the return-rate folder on a timer. Re-reading the CSV
+# on every tick costs a disk (often network drive) read and forces every table
+# and chart built from it to redraw, even when the export has not moved. This
+# resolves the same file the loader would pick and summarises it by path, size
+# and modification time — the three things that change when a new export lands
+# — so the caller can skip the read when the fingerprint is unchanged.
+#
+# `trial_code` is part of the fingerprint so switching to a trial that also has
+# no export still counts as a change.
+return_rates_fingerprint <- function(dir = NULL, trial_code = NULL) {
+  path <- latest_return_rate_file(dir, trial_code)
+  if (is.null(path)) return(paste0(trial_code %||% "", "|none"))
+
+  info <- file.info(path)
+  paste(trial_code %||% "", path, info$size, format(info$mtime), sep = "|")
+}

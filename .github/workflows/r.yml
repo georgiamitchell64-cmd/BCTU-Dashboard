@@ -85,3 +85,30 @@ jobs:
           }
 
           cat("\nEverything parsed cleanly.\n")
+
+  tests:
+    name: Run test suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tests exercise the platform pipeline and the report data builders
+      # headlessly — no Shiny, no browser. Ubuntu's r-cran-* packages are
+      # prebuilt, so this installs in under a minute instead of compiling
+      # the tidyverse from source.
+      - name: Install R and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            r-base-core \
+            r-cran-dplyr r-cran-tidyr r-cran-stringr r-cran-lubridate \
+            r-cran-tibble r-cran-rlang r-cran-dbi r-cran-rsqlite \
+            r-cran-jsonlite r-cran-digest r-cran-readxl r-cran-knitr \
+            r-cran-shiny
+
+      # --strict fails the job if a test script skips itself because a
+      # dependency is missing, so a green run always means the tests ran.
+      - name: Run tests
+        working-directory: BCTU_Clinical_Trials_Dashboard
+        run: Rscript tests/run_all.R --strict
