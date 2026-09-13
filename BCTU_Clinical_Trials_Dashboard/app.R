@@ -121,40 +121,43 @@ server <- function(input, output, session) {
   state <- init_app_state(input, output, session)
 
   # Welcome screen (self-registration)
-  tryCatch(welcome_server(input, output, session, state),
-           error = function(e) message("WELCOME: ", e$message))
+  start_module("Welcome screen", welcome_server(input, output, session, state))
 
   # Trial selector
-  tryCatch(trial_selector_server(input, output, session, state),
-           error = function(e) message("TRIAL SELECTOR: ", e$message))
+  start_module("Trial selector", trial_selector_server(input, output, session, state))
 
   # Module servers
-  tryCatch(overview_server(input, output, session, state),
-           error = function(e) message("OVERVIEW: ", e$message))
-  tryCatch(reports_server(input, output, session, state),
-           error = function(e) message("REPORTS: ", e$message))
-  tryCatch(randomisations_server(input, output, session, state),
-           error = function(e) message("RANDOMISATIONS: ", e$message))
-  tryCatch(participants_server(input, output, session, state),
-           error = function(e) message("PARTICIPANTS: ", e$message))
-  tryCatch(sites_server(input, output, session, state),
-           error = function(e) message("SITES: ", e$message))
-  tryCatch(upload_server(input, output, session, state),
-           error = function(e) message("UPLOAD: ", e$message))
-  tryCatch(people_server(input, output, session, state),
-           error = function(e) message("PEOPLE: ", e$message))
-  tryCatch(trial_settings_server(input, output, session, state),
-           error = function(e) message("SETTINGS: ", e$message))
-  tryCatch(settings_monitoring_server(input, output, session, state),
-           error = function(e) message("SETTINGS (monitoring): ", e$message))
-  tryCatch(modifications_tab_server(input, output, session, state),
-           error = function(e) message("MODIFICATIONS: ", e$message))
-  tryCatch(tutorial_server(input, output, session, state),
-           error = function(e) message("TUTORIAL: ", e$message))
+  start_module("Overview", overview_server(input, output, session, state))
+  start_module("Reports", reports_server(input, output, session, state))
+  start_module("Randomisations", randomisations_server(input, output, session, state))
+  start_module("Participants", participants_server(input, output, session, state))
+  start_module("Sites", sites_server(input, output, session, state))
+  start_module("Data upload", upload_server(input, output, session, state))
+  start_module("People", people_server(input, output, session, state))
+  start_module("Trial settings", trial_settings_server(input, output, session, state))
+  start_module("Settings (monitoring)", settings_monitoring_server(input, output, session, state))
+  start_module("Modifications", modifications_tab_server(input, output, session, state))
+  start_module("Tutorial", tutorial_server(input, output, session, state))
+
+  # The return-rate folder is polled so a freshly dropped export appears without
+  # a restart. Poll the cheap fingerprint (path + size + mtime), not the file:
+  # a reactiveVal only notifies when the value actually changes, so an unchanged
+  # folder costs one stat() every five minutes instead of re-reading the CSV and
+  # redrawing every table built from it.
+  rr_fingerprint <- reactiveVal(NULL)
+  observe({
+    invalidateLater(5 * 60 * 1000)
+    req(state$rv$trial_code)
+    cfg <- state$rv$trial_config
+    rr_fingerprint(return_rates_fingerprint(
+      dir        = cfg$return_rates_dir,        # folder pasted in Trial Settings
+      trial_code = state$rv$trial_code,
+      examples   = TRUE
+    ))
+  })
 
   rr_data <- reactive({
-    req(state$rv$trial_code)
-    invalidateLater(5 * 60 * 1000)
+    req(state$rv$trial_code, rr_fingerprint())
     cfg <- state$rv$trial_config
     load_return_rates(
       dir        = cfg$return_rates_dir,        # folder pasted in Trial Settings
@@ -163,11 +166,12 @@ server <- function(input, output, session) {
     )
   })
   # The REDCap export is the fallback source (and lists who still owes a form)
-  tryCatch(return_rates_server("rr", rr_data = rr_data, health = state$health,
-                               trial_code = reactive(state$rv$trial_code)),
-           error = function(e) message("RETURN RATES: ", e$message))
+  start_module("Return rates",
+               return_rates_server("rr", rr_data = rr_data, health = state$health,
+                                   trial_code = reactive(state$rv$trial_code)))
 
-  tryCatch(
+  start_module(
+    "Postal tracking",
     postal_tracking_server(
       "postal",
       redcap_data  = reactive({ state$rv$raw_redcap }),
@@ -194,8 +198,7 @@ server <- function(input, output, session) {
         else "baseline_arm_1"
       }),
       lead_days    = 7
-    ),
-    error = function(e) message("POSTAL: ", e$message)
+    )
   )
 
   session$onSessionEnded(function() {

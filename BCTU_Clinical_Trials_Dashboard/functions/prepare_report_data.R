@@ -755,7 +755,7 @@ prepare_report_data <- function(df,
   # A site that has recruited but has no open date on the Sites tab (usually
   # one created from a REDCap data access group) takes its first randomisation
   # as the open date, flagged so the report can mark it as an estimate.
-  site_reg$open_estimated <- FALSE
+  site_reg$open_estimated <- rep(FALSE, nrow(site_reg))   # a trial with no sites yet has 0 rows
   if (all(c("rand_date", "site_name") %in% names(ptcp_randomised)) && nrow(ptcp_randomised)) {
     rd <- tryCatch(as.Date(ptcp_randomised$rand_date), error = function(e) as.Date(rep(NA, nrow(ptcp_randomised))))
     first_rand <- vapply(split(rd, ptcp_randomised$site_name), function(x) {

@@ -19,7 +19,8 @@ source-independent clinical trial dashboard platform.
 | Declarative `trial.json` + config.R converter | `functions/pipeline/trial_config_json.R` | ✅ implemented |
 | Module manifests + availability engine | `modules/registry.R` | ✅ implemented |
 | Pipeline wired into import flow (additive) | `modules/upload_server.R` | ✅ implemented |
-| End-to-end smoke test | `tests/pipeline_smoke.R` (`Rscript tests/pipeline_smoke.R`) | ✅ passing |
+| End-to-end smoke test | `tests/pipeline_smoke.R` | ✅ passing |
+| Test runner (all of `tests/`, run in CI) | `tests/run_all.R` (`Rscript tests/run_all.R`) | ✅ passing |
 | Mapping studio UI (replaces autodetect modal) | — | ⬜ next |
 | Modules migrated off `rv$raw_redcap` onto `rv$canon` | — | ⬜ next (Phase 1 §13) |
 | Availability engine driving navigation | — | ⬜ next |

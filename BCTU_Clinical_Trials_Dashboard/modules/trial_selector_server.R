@@ -2426,7 +2426,6 @@ trial_config <- list(
     "home_sites_ui", "home_activity_ui",
     "home_add_button_ui", "home_dropdown_ui", "home_profile_name",
     "sites_top_ui", "sites_detail_ui",
-    "notif_badge_ui", "notif_drawer_ui",
-    "mu_user_list_ui", "mu_detail_ui"
+    "notif_badge_ui", "notif_drawer_ui"
   ))
 }
