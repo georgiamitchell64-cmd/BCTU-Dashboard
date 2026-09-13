@@ -14,7 +14,13 @@
 #      are worked out from it — for any trial, with or without a CSV, and down
 #      to the participants who still have a form to return.
 #
-# Both arrive in one shape, with ".Overall" rows for the whole trial:
+# Example files — a return-rate CSV with "example" in its name, e.g.
+# trials/tonic/data/TONIC_return_rate_example_20260911-120000.csv — are made-up
+# figures for trying the tab. They're kept apart from real files: only the
+# Returns tab asks for them (examples = TRUE), only when nothing real exists,
+# and they're labelled there. Reports never see them.
+#
+# Both sources arrive in one shape, with ".Overall" rows for the whole trial:
 #   site, timepoint, form, kind, expected, due, entered, overdue
 # (kind — "CRF" or "PROM" — and overdue are only known from REDCap).
 #
@@ -49,23 +55,30 @@ rr_band <- function(p) ifelse(is.na(p), "none", ifelse(p >= RR_GOOD, "good", ife
   at
 }
 
-# Every return-rate file in a folder, oldest first
-.rr_files <- function(dir, pattern = RR_PATTERN) {
+.rr_is_example <- function(files) grepl("example", basename(files), ignore.case = TRUE)
+
+# Every return-rate file in a folder, oldest first — the real ones, or with
+# example = TRUE only the example ones
+.rr_files <- function(dir, pattern = RR_PATTERN, example = FALSE) {
   if (is.null(dir) || !nzchar(dir) || !dir.exists(dir)) return(character())
   files <- list.files(dir, pattern = pattern, full.names = TRUE, ignore.case = TRUE)
+  files <- files[.rr_is_example(files) == example]
   if (!length(files)) return(character())
   files[order(.rr_stamp(files))]
 }
 
-.find_newest_rr_file <- function(dir, pattern = RR_PATTERN) {
-  files <- .rr_files(dir, pattern)
+.find_newest_rr_file <- function(dir, pattern = RR_PATTERN, example = FALSE) {
+  files <- .rr_files(dir, pattern, example)
   if (length(files)) files[length(files)] else NULL
 }
 
 # `dir` is the folder pasted in Trial Settings (cfg$return_rates_dir). When it
 # is supplied it takes precedence, so the dashboard reads from where the user
-# pointed it. We fall back to the local trial folder, then the legacy K: drive.
-latest_return_rate_file <- function(dir = NULL, trial_code = NULL) {
+# pointed it. We fall back to the local trial folder, then the legacy K: drive,
+# and — only when asked, for the Returns tab — the trial's example files.
+latest_return_rate_file <- function(dir = NULL, trial_code = NULL, examples = FALSE) {
+  has_code <- !is.null(trial_code) && nzchar(trial_code)
+
   # 1. Configured folder from Trial Settings (highest priority)
   if (!is.null(dir) && nzchar(dir)) {
     found <- .find_newest_rr_file(dir)
@@ -73,13 +86,17 @@ latest_return_rate_file <- function(dir = NULL, trial_code = NULL) {
   }
 
   # 2. Trial-specific local data folder
-  if (!is.null(trial_code) && nzchar(trial_code)) {
+  if (has_code) {
     found <- .find_newest_rr_file(file.path("trials", trial_code, "data"))
     if (!is.null(found)) return(found)
   }
 
   # 3. Fall back to legacy K: drive
-  .find_newest_rr_file(RR_DIR)
+  found <- .find_newest_rr_file(RR_DIR)
+  if (!is.null(found) || !isTRUE(examples) || !has_code) return(found)
+
+  # 4. Example files in the trial's data folder
+  .find_newest_rr_file(file.path("trials", trial_code, "data"), example = TRUE)
 }
 
 .rr_read <- function(path) {
@@ -207,12 +224,13 @@ rr_outstanding <- function(H) {
 }
 
 # ── Trend: the rates in every earlier file in the same folder ──────────────
-# One row per file x timepoint (due, entered, pct). Cached on the files'
-# names and modified times, so the 5-minute refresh doesn't re-read them.
+# One row per file x timepoint (due, entered, pct). Example files only trend
+# with other example files. Cached on the files' names and modified times, so
+# the 5-minute refresh doesn't re-read them.
 .rr_hist_cache <- new.env(parent = emptyenv())
 
 rr_history <- function(path, max_files = 60) {
-  files <- utils::tail(.rr_files(dirname(path)), max_files)
+  files <- utils::tail(.rr_files(dirname(path), example = .rr_is_example(path)), max_files)
   if (length(files) < 2) return(NULL)
   key <- paste(files, as.numeric(file.mtime(files)), collapse = "|")
   if (identical(.rr_hist_cache$key, key)) return(.rr_hist_cache$value)
@@ -232,9 +250,9 @@ rr_history <- function(path, max_files = 60) {
 }
 
 # ── Load the newest file ────────────────────────────────────────────────────
-load_return_rates <- function(dir = NULL, trial_code = NULL) {
+load_return_rates <- function(dir = NULL, trial_code = NULL, examples = FALSE) {
 
-  path <- latest_return_rate_file(dir, trial_code)
+  path <- latest_return_rate_file(dir, trial_code, examples)
   if (is.null(path)) return(NULL)
 
   df <- tryCatch(rr_standardise(.rr_read(path)), error = function(e) {
@@ -245,6 +263,7 @@ load_return_rates <- function(dir = NULL, trial_code = NULL) {
 
   # Where it came from and when — shown in the tab's header
   attr(df, "source_file") <- basename(path)
+  attr(df, "example")     <- .rr_is_example(path)
   attr(df, "loaded_at")   <- Sys.time()
   attr(df, "file_mtime")  <- file.mtime(path)
   attr(df, "exported_at") <- .rr_stamp(path)

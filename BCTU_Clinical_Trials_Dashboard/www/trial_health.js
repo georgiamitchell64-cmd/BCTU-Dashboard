@@ -49,13 +49,25 @@
   }
   function untip() { if (tipEl) tipEl.classList.remove('show'); }
 
-  // Re-render on width change; stop once Shiny has replaced the widget.
+  // Dark mode: canvas and script-built SVG colours don't come from CSS, so
+  // each goes through tc(), which swaps in its dark twin from
+  // www/dark_palette.js (tools/build_dark_theme.R). Widgets redraw when the
+  // theme changes.
+  const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+  const tc = c => (isDark() && window.BCTU_DARK_PALETTE && window.BCTU_DARK_PALETTE[String(c).toLowerCase()]) || c;
+  const themeWatchers = new Set();
+  new MutationObserver(() => themeWatchers.forEach(f => f()))
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // Re-render on width change and theme change; stop once Shiny has replaced the widget.
   function observe(el, render) {
     let lastW = -1;
     const ro = new ResizeObserver(() => {
-      if (!el.isConnected) { ro.disconnect(); untip(); return; }
+      if (!el.isConnected) { ro.disconnect(); themeWatchers.delete(onTheme); untip(); return; }
       if (el.clientWidth !== lastW) { lastW = el.clientWidth; render(); }
     });
+    const onTheme = () => { if (el.isConnected) render(); else themeWatchers.delete(onTheme); };
+    themeWatchers.add(onTheme);
     ro.observe(el);
     render();
   }
@@ -143,7 +155,7 @@
            `<text x="${w - mr}" y="${Y(p) - 5}" class="th-ax th-mean-lbl" text-anchor="end">Trial-wide ${(p * 100).toFixed(1)}%</text>`;
       cur.forEach((s, i) => {
         const col = s.small ? '#8A8A8C' : s.z >= za ? '#E30513' : s.z >= zw ? '#F07F3C' : '#1B1B1B';
-        g += `<circle cx="${X(s.x)}" cy="${Y(s.r)}" r="7" fill="${col}" class="th-pt" data-i="${i}"/>`;
+        g += `<circle cx="${X(s.x)}" cy="${Y(s.r)}" r="7" fill="${tc(col)}" class="th-pt" data-i="${i}"/>`;
       });
 
       // Labels: try right, left, above, below; skip one that can't fit without
@@ -279,9 +291,9 @@
         let j1 = j0;
         while (j1 + 1 < cols.length && cols[j1 + 1].f.tp === cols[j0].f.tp) j1++;
         const x0 = LBL + j0 * cw, x1 = LBL + (j1 + 1) * cw;
-        hx.fillStyle = band ? '#F4F4F4' : '#E9E9E9';
+        hx.fillStyle = tc(band ? '#F4F4F4' : '#E9E9E9');
         hx.fillRect(x0 + 1, 2, x1 - x0 - 2, 18);
-        hx.fillStyle = '#1B1B1B'; hx.font = `700 10.5px ${F}`; hx.textAlign = 'center';
+        hx.fillStyle = tc('#1B1B1B'); hx.font = `700 10.5px ${F}`; hx.textAlign = 'center';
         hx.fillText(fit(hx, cols[j0].f.tp, x1 - x0 - 6), (x0 + x1) / 2, 11);
         band = !band; j0 = j1 + 1;
       }
@@ -290,12 +302,12 @@
         hx.save();
         hx.translate(LBL + (k + 0.5) * cw + 3, HH - 6);
         hx.rotate(-Math.PI / 3.4);
-        hx.fillStyle = c.f.kind === 'CRF' ? '#1B1B1B' : '#58595B';
+        hx.fillStyle = tc(c.f.kind === 'CRF' ? '#1B1B1B' : '#58595B');
         hx.font = `${c.f.kind === 'CRF' ? 600 : 500} 10.5px ${F}`;
         hx.fillText(fit(hx, c.f.form, 84), 0, 0);
         hx.restore();
       });
-      hx.fillStyle = '#58595B'; hx.font = `600 10px ${F}`;
+      hx.fillStyle = tc('#58595B'); hx.font = `600 10px ${F}`;
       hx.fillText('PARTICIPANT', 8, HH - 10);
       hx.fillText('SITE', 84, HH - 10);
 
@@ -309,32 +321,32 @@
         const y = i * RH;
         if (sortBy === 'site' && r.site !== prev) {
           band = !band; prev = r.site;
-          if (i) { ctx.fillStyle = '#E3E3E3'; ctx.fillRect(0, y, gw, 1); }
+          if (i) { ctx.fillStyle = tc('#E3E3E3'); ctx.fillRect(0, y, gw, 1); }
         }
-        if (band && sortBy === 'site') { ctx.fillStyle = '#F8F8F8'; ctx.fillRect(0, y, LBL - 4, RH); }
-        ctx.fillStyle = '#1B1B1B'; ctx.font = `600 11px ${F}`;
+        if (band && sortBy === 'site') { ctx.fillStyle = tc('#F8F8F8'); ctx.fillRect(0, y, LBL - 4, RH); }
+        ctx.fillStyle = tc('#1B1B1B'); ctx.font = `600 11px ${F}`;
         ctx.fillText(fit(ctx, r.id, 72), 8, y + RH / 2);
-        ctx.fillStyle = '#58595B'; ctx.font = `400 10.5px ${F}`;
+        ctx.fillStyle = tc('#58595B'); ctx.font = `400 10.5px ${F}`;
         ctx.fillText(fit(ctx, r.site, LBL - 92), 84, y + RH / 2);
         cols.forEach((c, k) => {
           const ch = r.s[c.j] || '-', x = LBL + k * cw + 1, cy = y + 2, w = cw - 2, h = RH - 4;
           if (ch === 'x' || ch === '-') {
-            ctx.fillStyle = '#F8F8F8'; ctx.fillRect(x, cy, w, h);
+            ctx.fillStyle = tc('#F8F8F8'); ctx.fillRect(x, cy, w, h);
             if (ch === 'x') {
-              ctx.strokeStyle = '#D9D9D9'; ctx.lineWidth = 1;
+              ctx.strokeStyle = tc('#D9D9D9'); ctx.lineWidth = 1;
               ctx.beginPath(); ctx.moveTo(x + 1, cy + h - 1); ctx.lineTo(x + w - 1, cy + 1); ctx.stroke();
             }
             return;
           }
-          ctx.fillStyle = ch === 'o' && (+r.d[c.j] || 0) >= 30 ? '#C20019' : CELL[ch].col;
+          ctx.fillStyle = tc(ch === 'o' && (+r.d[c.j] || 0) >= 30 ? '#C20019' : CELL[ch].col);
           ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, cy, w, h, 2) : ctx.rect(x, cy, w, h); ctx.fill();
           if (r.e[c.j] === '1' && (ch === 'o' || ch === 'd')) {
-            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + w - 4, cy + 4, 1.8, 0, 7); ctx.fill();
+            ctx.fillStyle = tc('#fff'); ctx.beginPath(); ctx.arc(x + w - 4, cy + 4, 1.8, 0, 7); ctx.fill();
           }
         });
       });
       if (!rows.length) {
-        ctx.fillStyle = '#58595B'; ctx.font = `500 12px ${F}`;
+        ctx.fillStyle = tc('#58595B'); ctx.font = `500 12px ${F}`;
         ctx.fillText('No participants match these filters.', 8, RH / 2);
       }
       foot.textContent = 'Dark red = more than 30 days overdue. Hover over a cell for details, or click a row to open that participant.' +
@@ -379,8 +391,8 @@
     const tot = keys.reduce((a, k) => a + +cats[k], 0) || 1;
     el.innerHTML = `<div class="th-plot"></div>
       <div class="th-cats">
-        <div class="th-stack">${keys.map(k => `<i style="width:${100 * cats[k] / tot}%;background:${CAT[k]}"></i>`).join('')}</div>
-        <div class="th-cat-list">${keys.map(k => `<span><i style="background:${CAT[k]}"></i>${k} <b>${cats[k]}</b> <em>${Math.round(100 * cats[k] / tot)}%</em></span>`).join('')}</div>
+        <div class="th-stack">${keys.map(k => `<i style="width:${100 * cats[k] / tot}%;background:${tc(CAT[k])}"></i>`).join('')}</div>
+        <div class="th-cat-list">${keys.map(k => `<span><i style="background:${tc(CAT[k])}"></i>${k} <b>${cats[k]}</b> <em>${Math.round(100 * cats[k] / tot)}%</em></span>`).join('')}</div>
       </div>`;
     const box = el.querySelector('.th-plot');
     const inHours = (r, c) => work.includes(r + 1) && c * 60 >= +D.start && c * 60 < +D.end;

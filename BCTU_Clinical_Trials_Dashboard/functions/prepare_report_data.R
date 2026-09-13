@@ -855,6 +855,8 @@ prepare_report_data <- function(df,
     if (dir.exists(default_crf_folder)) {
       candidates <- list.files(default_crf_folder, pattern = "\\.csv$",
                                ignore.case = TRUE, full.names = TRUE)
+      # Example return-rate files are made-up figures — never in a report
+      candidates <- candidates[!grepl("example", basename(candidates), ignore.case = TRUE)]
       if (length(candidates) > 0) {
         ages <- file.info(candidates)$mtime
         crf_csv_path <- candidates[which.max(ages)]

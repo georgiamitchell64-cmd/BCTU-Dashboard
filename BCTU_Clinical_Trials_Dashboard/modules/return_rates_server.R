@@ -47,11 +47,14 @@ return_rates_server <- function(id, rr_data, health = reactive(NULL),
     H       <- reactive(quiet(health()))
     red_df  <- reactive(rr_from_health(H()))
     have    <- reactive(c(file = !is.null(file_df()), redcap = !is.null(red_df())))
+    # Example files (made-up figures) never take the place of the real export
+    is_example <- reactive(isTRUE(attr(file_df(), "example")))
 
     src <- reactive({
       h <- have(); pick <- input$source %||% ""
       if (pick %in% names(h)[h]) pick
-      else if (h[["file"]]) "file" else if (h[["redcap"]]) "redcap" else "none"
+      else if (h[["file"]] && !is_example()) "file"
+      else if (h[["redcap"]]) "redcap" else if (h[["file"]]) "file" else "none"
     })
     base <- reactive(switch(src(), file = file_df(), redcap = red_df(), NULL))
 
@@ -99,6 +102,10 @@ return_rates_server <- function(id, rr_data, health = reactive(NULL),
         d   <- file_df()
         at  <- attr(d, "exported_at") %||% attr(d, "file_mtime")
         age <- if (length(at) && !is.na(at)) as.numeric(difftime(Sys.time(), at, units = "days")) else NA
+        if (is_example())
+          return(div(class = "rt-src",
+            span(class = "rt-src-chip example", "Example data"),
+            span("made-up figures to show how this tab works · a real return-rate file in the folder replaces them")))
         stale <- !is.na(age) && age > 14
         div(class = "rt-src",
             span(class = paste("rt-src-chip", if (stale) "stale"), "Return-rate file"),
@@ -120,7 +127,8 @@ return_rates_server <- function(id, rr_data, health = reactive(NULL),
       btn <- function(v, l) tags$button(type = "button", class = if (s == v) "on",
                                         onclick = set_input("source", js_str(v)), l)
       div(class = "th-pills", title = "Where the figures come from",
-          btn("file", "Return-rate file"), btn("redcap", "REDCap export"))
+          btn("file", if (is_example()) "Example file" else "Return-rate file"),
+          btn("redcap", "REDCap export"))
     })
 
     output$filters <- renderUI({

@@ -13,6 +13,8 @@
   const RACE_TOP = 10;
   const SITE_COLS = ['#1B1B1B', '#00ACA9', '#F07F3C', '#C59A00', '#2581C4', '#CF4527',
                      '#65A30D', '#00788E', '#B45309', '#0057BF', '#0F766E', '#8A8A8C'];
+  // Dark mode: script colours swap for their dark twins (www/dark_palette.js)
+  const tc = c => (document.documentElement.getAttribute("data-theme") === "dark" && window.BCTU_DARK_PALETTE && window.BCTU_DARK_PALETTE[String(c).toLowerCase()]) || c;
   const ICON_PLAY  = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>';
   const ICON_PAUSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 
@@ -298,7 +300,7 @@
         L.sub.forEach((s, i) => {
           ctx.beginPath(); ctx.moveTo(s.x + 0.5, s.y + 12); ctx.lineTo(s.x + 0.5, s.y + s.h - 12);
           ctx.strokeStyle = C.laneLine; ctx.lineWidth = 1; ctx.stroke();
-          ctx.beginPath(); ctx.arc(s.x + 16, s.y + 18, 4, 0, 7); ctx.fillStyle = EXITS[i].col; ctx.fill();
+          ctx.beginPath(); ctx.arc(s.x + 16, s.y + 18, 4, 0, 7); ctx.fillStyle = tc(EXITS[i].col); ctx.fill();
           ctx.textAlign = 'left'; ctx.font = `600 11.5px ${F}`; ctx.fillStyle = C.ink;
           wrap2(EXITS[i].label, s.w - 64).forEach((line, j) => ctx.fillText(line, s.x + 26, s.y + 22 + j * 13));
           ctx.textAlign = 'right'; ctx.font = `700 13px ${F}`; ctx.fillStyle = C.laneInk;
@@ -313,13 +315,13 @@
           : p.stage >= 100 ? EXITS[p.stage - 100].col
           : (NS > 1 && p.stage === LAST) ? C.done : C.dot;
         ctx.globalAlpha = p.a * (dim ? 0.12 : 1);
-        ctx.beginPath(); ctx.arc(p.px, p.py, r, 0, 7); ctx.fillStyle = col; ctx.fill();
+        ctx.beginPath(); ctx.arc(p.px, p.py, r, 0, 7); ctx.fillStyle = tc(col); ctx.fill();
         if (isFinite(p.pa) && t >= p.pa && p.stage >= 0 && p.stage < 100) {
           ctx.beginPath(); ctx.arc(p.px, p.py, r + 2.2, 0, 7); ctx.strokeStyle = C.part; ctx.lineWidth = 1.6; ctx.stroke();
         }
         if (p.pulse > 0.03 && !dim) {
           ctx.globalAlpha = p.pulse * 0.55;
-          ctx.beginPath(); ctx.arc(p.px, p.py, 5 + (1 - p.pulse) * 16, 0, 7); ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+          ctx.beginPath(); ctx.arc(p.px, p.py, 5 + (1 - p.pulse) * 16, 0, 7); ctx.strokeStyle = tc(col); ctx.lineWidth = 1.5; ctx.stroke();
         }
         if (p === hover) {
           ctx.globalAlpha = 1;
@@ -366,7 +368,7 @@
     SITES.forEach(s => {
       const el = document.createElement('div');
       el.className = 'tr-row';
-      el.innerHTML = `<span class="tr-rname"><i style="background:${s.col}"></i><span>${esc(s.name)}</span></span><div class="tr-rtrack"><div class="tr-rfill"></div><div class="tr-rexp"></div></div><span class="tr-rval"></span>`;
+      el.innerHTML = `<span class="tr-rname"><i style="background:${tc(s.col)}"></i><span>${esc(s.name)}</span></span><div class="tr-rtrack"><div class="tr-rfill"></div><div class="tr-rexp"></div></div><span class="tr-rval"></span>`;
       el.title = s.name;
       race.appendChild(el);
       Object.assign(s, { el, fill: el.querySelector('.tr-rfill'), exp: el.querySelector('.tr-rexp'), val: el.querySelector('.tr-rval') });
@@ -490,7 +492,7 @@
       lastEv = k;
       const items = EV.slice(Math.max(0, k - 7), k).reverse();
       ticker.innerHTML = items.length
-        ? items.map((e, i) => `<li class="${i === 0 && forward ? 'new' : ''}"><span class="tr-tdot" style="background:${e.col}"></span><span class="tr-tdate">${fmt(e.t)}</span><span>${e.txt}</span></li>`).join('')
+        ? items.map((e, i) => `<li class="${i === 0 && forward ? 'new' : ''}"><span class="tr-tdot" style="background:${tc(e.col)}"></span><span class="tr-tdate">${fmt(e.t)}</span><span>${e.txt}</span></li>`).join('')
         : '<li class="tr-tempty">Nothing yet. Press play.</li>';
     }
 
@@ -549,9 +551,12 @@
     // ── Main loop (pauses while the Overview tab is hidden) ─────────────────
     const ro = new ResizeObserver(() => { layout(); lastDay = -1; });
     ro.observe(pipe); ro.observe($('.tr-pace'));
+    // Theme change: re-read the palette and redraw the race and ticker
+    const mo = new MutationObserver(() => { readColours(); lastDay = -1; });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     function frame(now) {
       if (!alive) return;
-      if (!root.isConnected) { alive = false; ro.disconnect(); return; }
+      if (!root.isConnected) { alive = false; ro.disconnect(); mo.disconnect(); return; }
       const dt = Math.min(0.25, (now - last) / 1000); last = now;
       if (root.offsetParent !== null) {
         if (!L) layout();

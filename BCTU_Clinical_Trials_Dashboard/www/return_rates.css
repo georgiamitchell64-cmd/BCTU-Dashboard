@@ -33,6 +33,8 @@
 }
 .rt-src-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--rt-good); }
 .rt-src-chip.stale::before { background: var(--rt-warn); }
+.rt-src-chip.example { background: var(--rt-warn-bg); border-color: #F5C7A6; color: var(--rt-warn-fg); }
+.rt-src-chip.example::before { background: var(--rt-warn); }
 .rt-stale { color: var(--rt-warn-fg); font-weight: 600; }
 .rt-top-r { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 

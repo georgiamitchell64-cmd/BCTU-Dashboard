@@ -576,7 +576,11 @@ trial_selector_server <- function(input, output, session, state) {
   observeEvent(input$home_help_open, {
     showModal(modalDialog(
       title = "Help",
-      size = "m", easyClose = TRUE, footer = modalButton("Close"),
+      size = "m", easyClose = TRUE,
+      footer = tagList(
+        tags$button(type = "button", class = "btn btn-default", onclick = "bctuTour.replay()",
+                    "Take the tour"),
+        modalButton("Close")),
       div(style = "font-size:13px;line-height:1.6;color:#3C3C3B;",
           tags$p(tags$strong("BCTU Clinical Trials Dashboard")),
           tags$p("Click any trial card to open its dashboard. Use the tabs at the top
@@ -1188,7 +1192,8 @@ trial_selector_server <- function(input, output, session, state) {
     items <- list(
       div(class = "home-dropdown-item",
           onclick = "Shiny.setInputValue('home_change_password', Math.random(), {priority:'event'})",
-          "Change Password")
+          "Change Password"),
+      div(class = "home-dropdown-item", onclick = "bctuTour.replay()", "Take the tour")
     )
     if (is_admin) {
       items <- c(items, list(

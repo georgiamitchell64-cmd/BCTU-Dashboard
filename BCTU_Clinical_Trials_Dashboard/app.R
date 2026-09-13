@@ -55,6 +55,7 @@ source("functions/trial_health_ui.R",   local = TRUE)
 source("functions/flat_completeness.R", local = TRUE)
 source("functions/baseline_table.R",    local = TRUE)
 source("functions/return_rates_data.R", local = TRUE)
+source("functions/tutorial.R",          local = TRUE)
 source("functions/projection_math.R",   local = TRUE)
 source("functions/postal_tracking_data.R", local = TRUE)
 source("functions/safety_events.R",      local = TRUE)
@@ -148,6 +149,8 @@ server <- function(input, output, session) {
            error = function(e) message("SETTINGS (monitoring): ", e$message))
   tryCatch(modifications_tab_server(input, output, session, state),
            error = function(e) message("MODIFICATIONS: ", e$message))
+  tryCatch(tutorial_server(input, output, session, state),
+           error = function(e) message("TUTORIAL: ", e$message))
 
   rr_data <- reactive({
     req(state$rv$trial_code)
@@ -155,7 +158,8 @@ server <- function(input, output, session) {
     cfg <- state$rv$trial_config
     load_return_rates(
       dir        = cfg$return_rates_dir,        # folder pasted in Trial Settings
-      trial_code = state$rv$trial_code
+      trial_code = state$rv$trial_code,
+      examples   = TRUE                          # the tab may show example files, labelled
     )
   })
   # The REDCap export is the fallback source (and lists who still owes a form)

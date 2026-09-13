@@ -666,7 +666,7 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
 /* Site performance — headline figures */
 .sk-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
-.sk{border:1px solid var(--line);border-top:3px solid var(--navy);border-radius:4px;padding:7px 10px 8px;background:#fff}
+.sk{border:1px solid var(--line);border-top:3px solid var(--navy);border-radius:4px;padding:7px 10px 8px;background:#fff;text-align:center}
 .sk-open{border-top-color:var(--green)} .sk-setup{border-top-color:var(--amber)}
 .sk-ident{border-top-color:#0c558a} .sk-rate{border-top-color:var(--teal)}
 .sk-l{font-size:7.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
