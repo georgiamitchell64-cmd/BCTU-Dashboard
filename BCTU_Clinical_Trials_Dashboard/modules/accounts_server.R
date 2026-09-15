@@ -1,6 +1,5 @@
 accounts_server <- function(input, output, session, state) {
   rv <- state$rv
-  auth <- state$auth
 
   # ── Admin password reset ────────────────────────────────────────────────
   # Operates on the real `profiles` SQLite table (the canonical user store).
@@ -22,7 +21,7 @@ accounts_server <- function(input, output, session, state) {
   }
 
   observe({
-    rv$username; rv$accounts        # depend on anything that hints at change
+    rv$username; rv$home_membership_changed   # anything that hints at a change
     refresh_pwadm_targets()
   })
 
@@ -60,16 +59,15 @@ accounts_server <- function(input, output, session, state) {
                         message = "Pick a user from the dropdown first."))
       return()
     }
-    # Only admins may run this. Fall back open if the role checker isn't
-    # available (e.g. legacy install) — the UI button is .tm-only-hidden
-    # for non-managers anyway.
+    # Only portfolio admins may run this. The tab itself is open to anyone
+    # managing this trial, so say which right is missing rather than leaving
+    # them clicking a button that never works.
     me <- rv$username %||% NA_character_
-    if (exists("user_is_admin", mode = "function")) {
-      if (!isTRUE(user_is_admin(me))) {
-        pwadm_result(list(success = FALSE,
-                          message = "Only Trial Managers can reset passwords."))
-        return()
-      }
+    if (!isTRUE(user_is_admin(me))) {
+      pwadm_result(list(success = FALSE,
+                        message = paste("Only a portfolio admin can reset passwords.",
+                                        "Ask one to do it from Manage users on the home screen.")))
+      return()
     }
     out <- admin_reset_password(target_fullname = target,
                                 admin_fullname  = me)
@@ -83,97 +81,50 @@ accounts_server <- function(input, output, session, state) {
   output$perms_table_ui <- renderUI({
     yes <- "<span style='color:#059669;font-weight:700'>&check;</span>"
     no  <- "<span style='color:#DC2626'>&cross;</span>"
+    # The four roles a person can hold on a trial (functions/permissions.R,
+    # TRIAL_ROLES), not the job titles the old card listed.
     roles <- list(
-      c("Trial Manager", yes, yes, yes, yes, yes),
-      c("CI",            yes, no,  no,  yes, no),
-      c("Team Leader",   yes, no,  no,  yes, no),
-      c("Guest",         yes, no,  no,  no,  no)
+      c("Manager",      yes, yes, yes, yes),
+      c("Coordinator",  yes, yes, yes, no),
+      c("Statistician", yes, no,  yes, no),
+      c("Read only",    yes, no,  no,  no)
     )
     rows <- lapply(roles, function(r) {
       tags$tr(lapply(r, function(v) tags$td(HTML(v))))
     })
     tags$table(class = "perm-table",
       tags$thead(tags$tr(
-        tags$th("Role"), tags$th("View"), tags$th("Edit"),
-        tags$th("Download data"), tags$th("Download graphs"), tags$th("Manage accounts")
+        tags$th("Trial role"), tags$th("View"), tags$th("Edit data"),
+        tags$th("Download"), tags$th("Trial settings")
       )),
-      tags$tbody(rows)
-    )
+      tags$tbody(rows))
   })
 
+  # Everyone with a role on this trial. Read-only: roles are granted from the
+  # home screen's Manage users console, which is the only place that writes to
+  # the shared profile store.
   output$accounts_table <- renderReactable({
-    df <- rv$accounts
-    req(!is.null(df), "role" %in% names(df), nrow(df) > 0)
-    df %>%
-      mutate(
-        Edit     = ifelse(role == "Trial Manager", "\u2713", "\u2717"),
-        DataDL   = ifelse(role == "Trial Manager", "\u2713", "\u2717"),
-        GraphDL  = ifelse(role %in% c("Trial Manager", "CI", "Team Leader"), "\u2713", "\u2717"),
-        Accounts = ifelse(role == "Trial Manager", "\u2713", "\u2717")
-      ) %>%
-      rename(`Data DL` = DataDL, `Graph DL` = GraphDL) %>%
-      select(Username = user, Name = fullname, Role = role, Edit, `Data DL`, `Graph DL`, Accounts) %>%
-      reactable(striped = TRUE, highlight = TRUE, compact = TRUE,
-                selection = "single", onClick = "select",
-                defaultColDef = colDef(style = list(fontFamily = "Outfit", fontSize = "12.5px")),
-                columns = list(
-                  Edit       = colDef(align = "center"),
-                  `Data DL`  = colDef(align = "center"),
-                  `Graph DL` = colDef(align = "center"),
-                  Accounts   = colDef(align = "center")
-                ))
-  })
-
-  observeEvent(input$accounts_table__reactable__selected, {
-    sel <- input$accounts_table__reactable__selected
-    req(sel)
-    if (sel < 1 || sel > nrow(rv$accounts)) return()
-    acc <- rv$accounts[sel, ]
-    updateTextInput(session, "acc_name", value = acc$fullname)
-    updateTextInput(session, "acc_user", value = acc$user)
-    updateSelectInput(session, "acc_role", selected = acc$role)
-    updateTextInput(session, "acc_pw", value = "")
-  })
-
-  observeEvent(input$create_account, {
-    req(input$acc_name, input$acc_user, input$acc_pw)
-    if (input$acc_user %in% rv$accounts$user) {
-      showNotification("Username already exists. Use Update selected to edit.", type = "warning")
-      return()
+    rv$home_membership_changed          # refresh when a role is granted
+    code <- rv$trial_code
+    req(!is.null(code), nzchar(code))
+    df <- tryCatch(list_trial_members(code), error = function(e) NULL)
+    if (is.null(df) || !nrow(df)) {
+      return(reactable(data.frame(`Who has access` = character(0),
+                                  check.names = FALSE),
+                       compact = TRUE))
     }
-    rv$accounts <- bind_rows(rv$accounts, data.frame(
-      user = input$acc_user, password = input$acc_pw,
-      role = input$acc_role, fullname = input$acc_name,
-      admin = FALSE, stringsAsFactors = FALSE))
-    showNotification(paste0("Account created: ", input$acc_name), type = "message", duration = 8)
-    updateTextInput(session, "acc_name", value = "")
-    updateTextInput(session, "acc_user", value = "")
-    updateTextInput(session, "acc_pw", value = "")
-  })
-
-  observeEvent(input$update_account, {
-    sel <- input$accounts_table__reactable__selected
-    req(sel)
-    if (sel < 1 || sel > nrow(rv$accounts)) return()
-    req(input$acc_name, input$acc_user)
-    rv$accounts$fullname[sel] <- input$acc_name
-    rv$accounts$user[sel]     <- input$acc_user
-    rv$accounts$role[sel]     <- input$acc_role
-    if (nzchar(input$acc_pw)) rv$accounts$password[sel] <- input$acc_pw
-    showNotification("Account updated.", type = "message")
-  })
-
-  observeEvent(input$remove_account, {
-    sel <- input$accounts_table__reactable__selected
-    req(sel)
-    if (sel < 1 || sel > nrow(rv$accounts)) return()
-    current_user <- tryCatch(auth$user, error = function(e) NULL)
-    if (!is.null(current_user) && identical(rv$accounts$user[sel], current_user)) {
-      showNotification("Cannot remove your own account.", type = "error")
-      return()
-    }
-    removed_user <- rv$accounts$user[sel]
-    rv$accounts <- rv$accounts[-sel, , drop = FALSE]
-    showNotification(paste("Account removed:", removed_user), type = "warning")
+    pretty <- c(manager = "Manager", coordinator = "Coordinator",
+                statistician = "Statistician", readonly = "Read only")
+    df$Role <- unname(pretty[df$trial_role])
+    df$Role[is.na(df$Role)] <- df$trial_role[is.na(df$Role)]
+    df$Portfolio <- ifelse(df$portfolio_role %in% "admin", "Admin", "Member")
+    df$Since <- substr(as.character(df$granted_at), 1, 10)
+    df <- df[, c("fullname", "Role", "Portfolio", "Since")]
+    names(df)[1] <- "Name"
+    reactable(df, striped = TRUE, highlight = TRUE, compact = TRUE,
+              defaultColDef = colDef(style = list(fontFamily = "Outfit",
+                                                  fontSize = "12.5px")),
+              columns = list(Portfolio = colDef(align = "center", width = 90),
+                             Since     = colDef(align = "center", width = 100)))
   })
 }

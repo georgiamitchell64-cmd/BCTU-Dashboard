@@ -36,6 +36,7 @@ trial_settings_server <- function(input, output, session, state) {
       detail           = "Detail fields",
       config           = "Config & overrides",
       report_content   = "Report content",
+      recruitment_targets = "Recruitment targets",
       portfolio_review = "Portfolio review",
       report_templates = "Report templates",
       danger           = "Danger zone"
@@ -1205,6 +1206,11 @@ trial_settings_server <- function(input, output, session, state) {
       if (is.list(x)) length(x) > 0 else nzchar(as.character(x))
     }, logical(1))]
     
+    # Monthly targets live in the same object but are edited on their own
+    # screen; carry them through so saving the cover text does not wipe them.
+    keep <- (cfg$report_content %||% list())$monthly_targets
+    if (length(keep)) rc$monthly_targets <- keep
+
     tryCatch({
       update_overrides(cfg, report_content = rc)
       rv$trial_config$report_content <- rc
@@ -1220,6 +1226,143 @@ trial_settings_server <- function(input, output, session, state) {
     })
   })
   
+  # ── Monthly recruitment targets ────────────────────────────────────────
+  # Stored under cfg$report_content$monthly_targets so they travel with every
+  # existing report render path, which already passes report_content through as
+  # an Rmd param. A list of {month = "YYYY-MM", target = n}, in month order.
+  # Trials with no agreed monthly profile leave it empty and the reports drop
+  # every "against plan" figure rather than inventing one.
+
+  # A month written the way people write it: 2026-01, 2026-01-15, 01/2026,
+  # "Jan 2026", "January 2026", "Jan 26". Returns NA when none of them fit.
+  .rct_month <- function(x) {
+    x <- trimws(x)
+    if (!nzchar(x)) return(NA)
+    tries <- list(c(paste0(x, "-01"), "%Y-%m-%d"), c(x, "%Y-%m-%d"),
+                  c(paste0("01/", x), "%d/%m/%Y"), c(paste("01", x), "%d %b %Y"),
+                  c(paste("01", x), "%d %B %Y"),   c(paste("01", x), "%d %b %y"))
+    for (t in tries) {
+      d <- suppressWarnings(as.Date(t[1], format = t[2]))
+      if (is.na(d)) next
+      # "Jan 26" parses under %Y as the year 26; read a short year as this
+      # century instead of the first one.
+      if (as.integer(format(d, "%Y")) < 1900) {
+        d2 <- suppressWarnings(as.Date(paste("01", x), format = "%d %b %y"))
+        if (!is.na(d2)) return(d2)
+        next
+      }
+      return(d)
+    }
+    NA
+  }
+
+  # One line of the editor: the month, then the target. A comma, colon,
+  # semicolon, tab or just a space separates them.
+  .rct_parse_line <- function(ln) {
+    ln <- trimws(ln)
+    if (!nzchar(ln)) return(NULL)
+    num <- regmatches(ln, regexpr("[0-9]+(\\.[0-9]+)?\\s*$", ln))
+    if (!length(num)) return(NULL)
+    val <- suppressWarnings(as.numeric(trimws(num)))
+    if (is.na(val)) return(NULL)
+    mtxt <- trimws(substr(ln, 1, nchar(ln) - nchar(num)))
+    mtxt <- trimws(sub("[,;:\t]+$", "", mtxt))
+    d <- .rct_month(mtxt)
+    if (is.na(d)) return(NULL)
+    list(month = format(d, "%Y-%m"), target = val)
+  }
+
+  .rct_parse <- function(txt) {
+    if (is.null(txt) || !nzchar(trimws(txt))) return(list())
+    rows <- Filter(Negate(is.null),
+                   lapply(strsplit(txt, "\n", fixed = TRUE)[[1]], .rct_parse_line))
+    if (!length(rows)) return(list())
+    # One entry per month, later lines winning, in month order.
+    months <- vapply(rows, function(r) r$month, character(1))
+    rows <- rows[!duplicated(months, fromLast = TRUE)]
+    rows[order(vapply(rows, function(r) r$month, character(1)))]
+  }
+
+  .rct_text <- function(rows) {
+    if (!length(rows)) return("")
+    paste(vapply(rows, function(r)
+      sprintf("%s, %s", r$month %||% "", format(r$target %||% 0)), character(1)),
+      collapse = "\n")
+  }
+
+  .rct_load <- function() {
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    rows <- (cfg$report_content %||% list())$monthly_targets %||% list()
+    updateTextAreaInput(session, "rct_targets", value = .rct_text(rows))
+  }
+
+  observeEvent(input$settings_active_section, {
+    if (identical(input$settings_active_section, "recruitment_targets")) .rct_load()
+  })
+  observeEvent(rv$trial_config, { .rct_load() }, ignoreInit = TRUE)
+
+  output$rct_summary <- renderUI({
+    rows <- .rct_parse(input$rct_targets %||% "")
+    if (!length(rows))
+      return(div(style = "font-size:11px;color:var(--ov-muted);margin-top:8px;",
+                 "No targets set \u2014 reports will show recruitment without a plan."))
+    tot <- sum(vapply(rows, function(r) as.numeric(r$target), numeric(1)))
+    div(style = "font-size:11px;color:var(--ov-muted);margin-top:8px;",
+        sprintf("%d month%s, %s in total, %s to %s.",
+                length(rows), if (length(rows) == 1) "" else "s",
+                format(tot), rows[[1]]$month, rows[[length(rows)]]$month))
+  })
+
+  observeEvent(input$rct_generate, {
+    start <- suppressWarnings(as.Date(paste0(trimws(input$rct_gen_start %||% ""), "-01")))
+    n     <- suppressWarnings(as.integer(input$rct_gen_months %||% NA))
+    per   <- suppressWarnings(as.numeric(input$rct_gen_per %||% NA))
+    if (is.na(start) || is.na(n) || n < 1 || is.na(per)) {
+      showNotification(
+        "Give a first month as YYYY-MM, a number of months and a target per month.",
+        type = "warning", duration = 6)
+      return()
+    }
+    months <- seq(start, by = "1 month", length.out = min(n, 120L))
+    updateTextAreaInput(session, "rct_targets",
+                        value = paste(sprintf("%s, %s", format(months, "%Y-%m"),
+                                              format(per)), collapse = "\n"))
+  })
+
+  observeEvent(input$rct_save, {
+    if (!require_role(rv, "manager")) return()
+    cfg <- rv$trial_config
+    if (is.null(cfg)) return()
+    rows <- .rct_parse(input$rct_targets %||% "")
+    txt  <- trimws(input$rct_targets %||% "")
+    if (nzchar(txt) && !length(rows)) {
+      showNotification(
+        "No targets could be read. Write one month per line, e.g. 2026-01, 5.",
+        type = "error", duration = 8)
+      return()
+    }
+    # Merge, never replace: report_content also holds the cover text, and the
+    # two editors save independently.
+    rc <- cfg$report_content %||% list()
+    rc$monthly_targets <- if (length(rows)) rows else NULL
+    tryCatch({
+      update_overrides(cfg, report_content = rc)
+      rv$trial_config$report_content <- rc
+      rv$settings_changed <- Sys.time()
+      log_activity("recruitment_targets_saved",
+                   sprintf("Set monthly recruitment targets for %d month(s)",
+                           length(rows)),
+                   username = rv$username, trial_code = cfg$code)
+      showNotification(HTML("&check; Recruitment targets saved."),
+                       type = "message", duration = 4)
+      .rct_load()
+    }, error = function(e) {
+      showNotification(paste("Save failed:", e$message),
+                       type = "error", duration = 8)
+    })
+  })
+
   # ── Portfolio review (fixed fields persisted in overrides) ──────────────
   # Stored under cfg$portfolio_review. Read by report_sections.R portfolio
   # render functions (.rs_render_pr_*). Variable per-report meeting dates
