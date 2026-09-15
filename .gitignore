@@ -1,0 +1,10 @@
+# R session leftovers
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# OS / file-manager junk
+.DS_Store
+Thumbs.db
+ehthumbs.db
