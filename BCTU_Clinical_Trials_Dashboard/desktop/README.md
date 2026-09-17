@@ -1,5 +1,26 @@
 # Starting the dashboard from the desktop
 
+There are two ways. **The installer** is the easy one and is what to give
+someone else; **the shortcut** below runs whatever is in your GitHub Desktop
+folder, which is what you want while things are still changing.
+
+## The installer
+
+An ordinary Windows installer. It carries its own R, Pandoc and Chrome, so the
+computer needs nothing installed — no R, no RStudio, no Chrome — and the
+dashboard opens in its own window rather than a browser tab.
+
+Build one on GitHub: **Actions** tab → *Desktop build (Windows)* → **Run
+workflow**. It takes 30-40 minutes; when it finishes, download
+`BCTU-Dashboard-Windows-Installer` from that run and run the `.exe` inside.
+
+It installs for you alone, so it needs no admin rights, and it keeps what it
+writes in your own user folder rather than in Program Files. It ships with no
+accounts and no participant data at all: **the first person to register on it
+becomes its admin.** That is what makes it safe to hand to another team.
+
+## The shortcut
+
 Double-click to start the dashboard; you don't need RStudio. The computer needs R installed (from cran.r-project.org). The first start installs the R packages the dashboard uses, which takes a few minutes; after that it's seconds.
 
 The dashboard itself runs in your browser, the same as it does through RStudio — the shortcut just starts it and opens the tab for you.
@@ -14,7 +35,7 @@ Rscript scripts/fetch_runtime.R
 
 It downloads Pandoc and a headless Chrome into `runtime/` (about 200MB) and the dashboard prefers those over anything installed. It's optional — without them the dashboard looks for an installed Pandoc and an installed Chrome exactly as before — but it's what makes the "Pandoc not found" error and a missing Chrome go away for good.
 
-## Windows
+### Windows
 
 1. Get the dashboard onto the PC: in GitHub Desktop, clone `georgiamitchell64-cmd/BCTU-Dashboard` (or pull, if it's already there).
 2. Open `BCTU_Clinical_Trials_Dashboard\desktop` and double-click **Create desktop shortcut**. Once per computer.
@@ -33,7 +54,7 @@ The dashboard runs in a minimised **BCTU Dashboard** window in the taskbar. You 
 
 If you double-click the shortcut while the dashboard is already running, it just opens the dashboard again.
 
-## Mac
+### Mac
 
 1. In Terminal, run `bash desktop/build_mac_app.sh` from the app folder. Do this once per Mac, and again if the folder moves.
    It builds **BCTU Dashboard.app** and puts it on the Desktop.

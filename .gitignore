@@ -11,3 +11,6 @@ BCTU_Clinical_Trials_Dashboard/desktop/*.app/
 .DS_Store
 Thumbs.db
 ehthumbs.db
+
+# The clean copy npm run stage builds for packaging (scripts/prepare_distribution.R)
+dist-staging/

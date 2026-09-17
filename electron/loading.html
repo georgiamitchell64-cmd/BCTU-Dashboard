@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Starting the BCTU Dashboard</title>
+<style>
+  :root { --bg:#F4F4F4; --card:#FFF; --ink:#1B1B1B; --muted:#58595B; --line:#E3E3E3; --accent:#00ACA9; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#13191E; --card:#1B2127; --ink:#E6E9ED; --muted:#ACAFB2; --line:#343A40; }
+  }
+  html,body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--ink); display:grid; place-items:center;
+         font:15px/1.55 "Segoe UI", -apple-system, system-ui, Roboto, Arial, sans-serif; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px;
+          padding:34px 38px 28px; width:min(460px, calc(100vw - 32px));
+          box-shadow:0 10px 30px rgba(0,0,0,.06); }
+  h1 { font-size:20px; margin:0 0 6px; letter-spacing:-.2px; }
+  p  { margin:0; color:var(--muted); }
+  .bar { height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin:22px 0 14px; }
+  .bar i { display:block; height:100%; width:35%; background:var(--accent); border-radius:2px;
+           animation:slide 1.4s ease-in-out infinite; }
+  @keyframes slide { from { transform:translateX(-100%); } to { transform:translateX(290%); } }
+  @media (prefers-reduced-motion: reduce) { .bar i { animation:none; width:100%; opacity:.5; } }
+  .small { font-size:12.5px; }
+</style>
+</head>
+<body>
+  <main class="card" role="status" aria-live="polite">
+    <h1>Starting the dashboard…</h1>
+    <p>This usually takes 10 to 20 seconds while R loads.</p>
+    <div class="bar" aria-hidden="true"><i></i></div>
+    <p class="small">It opens here as soon as it's ready.</p>
+  </main>
+</body>
+</html>

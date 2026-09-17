@@ -2,10 +2,19 @@
 #
 # Run this from the Actions tab (Run workflow) and download the finished
 # installer from the run's Artifacts section. It exists because the installer
-# needs a Windows machine plus network access to CRAN, and produces a ~400MB
+# needs a Windows machine plus network access to CRAN, and produces a ~600MB
 # artefact that has no business in git.
 #
-# Roughly 20-30 minutes, most of it installing R packages.
+# What goes in: R and its packages, pandoc and a headless Chrome for report
+# export, the Electron launcher in electron/, and a copy of the dashboard
+# staged by scripts/prepare_distribution.R — so the installer carries no
+# accounts and no participant data. The last step checks that rather than
+# trusting it.
+#
+# The result installs per-user and needs nothing else on the machine: no R, no
+# RStudio, no Chrome.
+#
+# Roughly 30-40 minutes, most of it installing R packages.
 
 name: Desktop build (Windows)
 
@@ -91,13 +100,61 @@ jobs:
           Copy-Item $pandoc -Destination $dest -Force
           Write-Host "Bundled: $pandoc"
 
+      # The other half of report export: PDF is printed by a headless Chrome
+      # through chromote. An installed Chrome is likely but not guaranteed, and
+      # the point of an installer is that nothing else has to be true.
+      #
+      # fetch_runtime.R is what does this on a user's own machine, so it is
+      # what resolves the version and unpacks the layout globals/runtime.R
+      # looks for. Using it here keeps those two from drifting apart. It lands
+      # in the app folder, so move it over.
+      - name: Bundle a headless Chrome alongside R
+        shell: pwsh
+        working-directory: BCTU_Clinical_Trials_Dashboard
+        run: |
+          Rscript scripts/fetch_runtime.R --chrome
+          $src = "runtime/chrome"
+          if (-not (Test-Path $src)) { throw "fetch_runtime.R did not produce $src" }
+          $dest = "../electron/runtime"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Move-Item $src "$dest/chrome" -Force
+          $exe = Get-ChildItem "$dest/chrome" -Recurse -Filter "chrome-headless-shell.exe"
+          if (-not $exe) { throw "chrome-headless-shell.exe missing from the staged runtime" }
+          Write-Host "Bundled: $($exe[0].FullName)"
+
+      # These need neither node_modules nor Electron, and they check the
+      # launcher against the R installed above — so run them before the slow
+      # part, where a failure is cheap.
+      - name: Test the launcher
+        working-directory: electron
+        run: npm test -- --strict
+
       - name: Install Electron tooling
         working-directory: electron
         run: npm install
 
+      # `npm run dist` stages the app first (predist -> npm run stage), which
+      # is scripts/prepare_distribution.R: the packaged copy is the stripped
+      # one, with no accounts, activity log or participant records in it. The
+      # first person to register on the installed app becomes its admin.
       - name: Build installer
         working-directory: electron
         run: npm run dist
+
+      - name: Check nothing personal got packaged
+        shell: Rscript {0}
+        run: |
+          source("BCTU_Clinical_Trials_Dashboard/scripts/prepare_distribution.R")
+          left <- remaining_rows("dist-staging")
+          for (f in names(left)) cat(sprintf("  %-44s %s\n", f, paste(left[[f]], collapse = " ")))
+          bad <- Filter(function(v) any(!grepl("^(sites|projection_settings)=", v)), left)
+          if (length(bad)) stop("staged copy still holds: ",
+                                paste(names(bad), collapse = ", "))
+          csv <- list.files("dist-staging", pattern = "[.]csv$", recursive = TRUE)
+          csv <- grep("(^|/)data/", csv, value = TRUE)
+          if (length(csv)) stop("staged copy still holds data exports: ",
+                                paste(csv, collapse = ", "))
+          cat("Staged copy is clean.\n")
 
       - name: List output
         shell: pwsh
