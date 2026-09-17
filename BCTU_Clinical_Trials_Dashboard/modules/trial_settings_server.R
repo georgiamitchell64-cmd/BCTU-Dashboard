@@ -350,7 +350,7 @@ trial_settings_server <- function(input, output, session, state) {
   .wp_dir <- function(cfg, i) {
     dirs <- wp_data_dirs(cfg)
     if (length(dirs) >= i && nzchar(dirs[i])) return(dirs[i])
-    file.path(cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code),
+    file.path(cfg$trial_dir %||% file.path(app_trials_dir(), cfg$code),
               "data", sprintf("wp%d", i))
   }
 
@@ -983,7 +983,7 @@ trial_settings_server <- function(input, output, session, state) {
     
     # Copy logo to www/trial_logos/ if valid
     if (nzchar(new_logo) && file.exists(new_logo)) {
-      logos_dir <- file.path(getwd(), "www", "trial_logos")
+      logos_dir <- trial_logo_dir()
       dir.create(logos_dir, recursive = TRUE, showWarnings = FALSE)
       ext <- tolower(tools::file_ext(new_logo))
       if (!ext %in% c("png", "jpg", "jpeg", "svg")) ext <- "png"
@@ -1073,13 +1073,13 @@ trial_settings_server <- function(input, output, session, state) {
     if (is.null(cfg)) return()
     code <- cfg$code
     
-    trial_dir <- file.path(getwd(), "trials", code)
+    trial_dir <- file.path(app_trials_dir(), code)
     success <- tryCatch({
       unlink(trial_dir, recursive = TRUE, force = TRUE)
       TRUE
     }, error = function(e) FALSE)
     
-    logo_path <- file.path(getwd(), "www", "trial_logos", paste0(code, ".jpg"))
+    logo_path <- file.path(trial_logo_dir(), paste0(code, ".jpg"))
     if (file.exists(logo_path)) file.remove(logo_path)
     
     removeModal()

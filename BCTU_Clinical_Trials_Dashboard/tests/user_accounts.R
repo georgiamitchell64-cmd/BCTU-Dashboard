@@ -29,6 +29,7 @@ discover_trials <- function() list(alpha = list(code = "alpha"),
                                    beta  = list(code = "beta"))
 
 tmp <- tempfile(fileext = ".sqlite")
+source("globals/paths.R")
 source("functions/permissions.R")
 SHARED_DB_PATH <- tmp          # after sourcing, so the constant is ours
 # The real init also imports profiles from any trial database it finds on

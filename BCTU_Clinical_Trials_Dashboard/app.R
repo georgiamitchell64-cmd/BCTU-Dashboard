@@ -7,6 +7,9 @@
 # =============================================================================
 
 source("globals/packages.R",       local = TRUE)
+# paths.R first: it works out where the app may write, and constants.R
+# and everything holding a database path are built on top of it.
+source("globals/paths.R",          local = TRUE)
 source("globals/constants.R",      local = TRUE)
 source("globals/datasets.R",       local = TRUE)
 source("globals/trial_config.R",   local = TRUE)
@@ -95,16 +98,22 @@ source("modules/modifications_server.R",    local = TRUE)
 
 
 # ── Initialise database & profiles table ──────────────────────────────────────
-if (!dir.exists("data")) dir.create("data", recursive = TRUE)
+# seed_data_root() creates data/ and, where the app can't write to its own
+# folder (a packaged build), copies the trials folder over on first run.
+seed_data_root()
 db_init()
 shared_db_init()
 notifications_db_init()
 activity_db_init()
 
-# ── Copy trial logos to www/ ──────────────────────────────────────────────────
+# ── Cache trial logos where the app can serve them ────────────────────────────
+# The UI writes <img src="trial_logos/<code>.<ext>">; addResourcePath() points
+# that URL at the cache, which sits next to the databases rather than inside
+# www/ so it still works when the app folder is read-only.
 trials <- discover_trials()
-logo_dir <- file.path(getwd(), "www", "trial_logos")
+logo_dir <- trial_logo_dir()
 if (!dir.exists(logo_dir)) dir.create(logo_dir, recursive = TRUE)
+addResourcePath("trial_logos", logo_dir)
 for (code in names(trials)) {
   cfg <- trials[[code]]
   logo <- cfg$logo_file

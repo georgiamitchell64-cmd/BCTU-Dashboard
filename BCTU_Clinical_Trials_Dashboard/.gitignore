@@ -11,6 +11,9 @@
 # ── Editor / tooling local config ────────────────────────────────────────────
 .claude/settings.local.json
 
+# ── The writability probe in globals/paths.R, if a run is ever killed mid-check
+.bctu-write-test-*
+
 # ── Backups & scratch ────────────────────────────────────────────────────────
 app_copy_*.R
 *_copy_*.R

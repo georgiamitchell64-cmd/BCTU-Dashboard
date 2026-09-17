@@ -50,7 +50,7 @@ suppressPackageStartupMessages({
 })
 
 # The app's own logic, minus the Shiny modules.
-for (f in c("globals/constants.R", "globals/datasets.R", "globals/trial_config.R",
+for (f in c("globals/paths.R", "globals/constants.R", "globals/datasets.R", "globals/trial_config.R",
             "functions/helpers.R", "functions/trial_overrides.R",
             "functions/recruitment.R", "functions/prepare_report_data.R",
             "functions/consort_flow.R", "functions/flat_completeness.R",

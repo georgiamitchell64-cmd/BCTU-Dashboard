@@ -265,7 +265,7 @@ concept_table <- function(registry = concept_registry()) {
 # at high confidence. Storage is a plain table: concept_id, field_name, label,
 # trial_code, confirmed_at.
 
-synonyms_db_init <- function(db_path = file.path("data", "shared.sqlite")) {
+synonyms_db_init <- function(db_path = file.path(app_data_dir(), "shared.sqlite")) {
   con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
   on.exit(DBI::dbDisconnect(con), add = TRUE)
   DBI::dbExecute(con, "
@@ -283,7 +283,7 @@ synonyms_db_init <- function(db_path = file.path("data", "shared.sqlite")) {
 #' Record a user-confirmed concept→field mapping so future trials benefit.
 record_confirmed_mapping <- function(concept_id, field_name, field_label = NULL,
                                      trial_code = NULL,
-                                     db_path = file.path("data", "shared.sqlite")) {
+                                     db_path = file.path(app_data_dir(), "shared.sqlite")) {
   tryCatch({
     synonyms_db_init(db_path)
     con <- DBI::dbConnect(RSQLite::SQLite(), db_path)
@@ -304,7 +304,7 @@ record_confirmed_mapping <- function(concept_id, field_name, field_label = NULL,
 
 #' Learned synonyms per concept: named list concept_id → character vector of
 #' field names/labels confirmed on previous trials.
-learned_synonyms <- function(db_path = file.path("data", "shared.sqlite")) {
+learned_synonyms <- function(db_path = file.path(app_data_dir(), "shared.sqlite")) {
   if (!file.exists(db_path)) return(list())
   tryCatch({
     con <- DBI::dbConnect(RSQLite::SQLite(), db_path)

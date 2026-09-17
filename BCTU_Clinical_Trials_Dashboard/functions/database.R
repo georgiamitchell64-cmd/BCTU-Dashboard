@@ -1,4 +1,4 @@
-DB_PATH <- file.path(getwd(), "data", "tonic.sqlite")
+DB_PATH <- file.path(app_data_dir(), "tonic.sqlite")
 
 db_connect <- function() {
   if (!dir.exists(dirname(DB_PATH))) {
