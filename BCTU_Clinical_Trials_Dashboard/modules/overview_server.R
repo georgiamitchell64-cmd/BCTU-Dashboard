@@ -29,6 +29,29 @@ overview_server <- function(input, output, session, state) {
   output$kpi_spark_pct   <- renderUI(th_kpi_spark(state$health(), "rand"))
   output$n_target_sub    <- renderText(paste0("of ", format(trial_target_r(), big.mark = ","), " participants"))
 
+  # Consented / on file at Baseline but not yet randomised — kept separate
+  # from "Total randomised" rather than folded into it (see .wp_site_counts()
+  # in modules/core.R for the counting rule this mirrors). NA when the export
+  # carries no randomisation-date column at all: there's then no real
+  # distinction to draw between "on file" and "randomised", so nothing shows
+  # rather than a misleading 0.
+  n_pending <- reactive({
+    raw <- redcap_wp()
+    if (is.null(raw) || !nrow(raw) ||
+        !all(c("record_id", "event_type") %in% names(raw))) return(NA_integer_)
+    base_ids <- unique(as.character(raw$record_id[raw$event_type == "Baseline"]))
+    if (!length(base_ids)) return(NA_integer_)
+    rand_ids <- randomised_ids(raw, rv$trial_config)
+    if (is.null(rand_ids)) return(NA_integer_)
+    length(setdiff(base_ids, rand_ids))
+  })
+  output$n_rand_pending <- renderUI({
+    n <- n_pending()
+    if (is.na(n) || n <= 0) return(NULL)
+    div(class = "pov-kpi-pending",
+        sprintf("+%s on file, not yet randomised", format(n, big.mark = ",")))
+  })
+
   # ── CONSORT flow diagram (only when the trial's consort_flow feature is on) ─
   output$consort_card_ui <- renderUI({
     cfg <- rv$trial_config

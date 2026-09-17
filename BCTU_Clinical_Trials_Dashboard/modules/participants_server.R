@@ -124,13 +124,24 @@ participants_server <- function(input, output, session, state) {
     raw <- redcap_wp()
     if (is.null(raw) || nrow(raw) == 0 || !"record_id" %in% names(raw))
       return(0L)
-    rec <- tryCatch(recruited_ids(raw, rv$trial_config), error = function(e) NULL)
-    if (!is.null(rec)) return(length(rec))
-    rc <- fld("randomisation_datetime", "rand_dttm_s")
-    if (!rc %in% names(raw)) return(total_p())
-    v <- trimws(as.character(raw[[rc]]))
-    keep <- !is.na(v) & nzchar(v) & v != "NA"
-    length(unique(raw$record_id[keep]))
+    ids <- randomised_ids(raw, rv$trial_config)
+    if (is.null(ids)) return(total_p())
+    length(ids)
+  }
+
+  # Baseline donut's numerator: Baseline-event rows for RANDOMISED
+  # participants only, so it can never read more than n_randomised(). A
+  # participant on file (e.g. consented) but not yet randomised used to
+  # inflate this past 100% — that count is shown separately on the Overview
+  # tab instead of leaking into this ratio.
+  n_baseline_randomised <- function() {
+    raw <- redcap_wp()
+    df  <- parts_wp()
+    if (is.null(df) || !nrow(df)) return(0L)
+    base_ids <- unique(df$record_id[df$event_type == "Baseline"])
+    ids <- randomised_ids(raw, rv$trial_config)
+    if (is.null(ids)) return(length(base_ids))
+    length(intersect(base_ids, ids))
   }
 
   # Count participants whose form for a timepoint is COMPLETE.
@@ -245,7 +256,7 @@ participants_server <- function(input, output, session, state) {
   # otherwise it falls back to "records present at this event".
   output$data_donuts <- renderUI({
     den <- n_randomised()
-    base_n <- n_event("Baseline")
+    base_n <- n_baseline_randomised()
     cards <- list(donut_card_ui(base_n, den, "Baseline",
                   ring = "#EFEFEF", fill = trial_palette()[["primary"]],
                   sub_extra = sprintf("%d missing", max(0L, den - base_n))))

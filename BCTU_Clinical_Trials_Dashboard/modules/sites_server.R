@@ -8,19 +8,12 @@ sites_server <- function(input, output, session, state) {
   output$site_health_ui <- renderUI({
     H <- state$health()
     if (is.null(H) || is.null(H$sites) || !nrow(H$sites)) return(NULL)
-    tagList(
-      div(class = "th-section",
-        div(class = "th-section-head",
-          div(tags$h3("Site health"),
-              div(class = "th-sub-t",
-                  "Each site's change-of-status and overdue-CRF rates against its size. A site outside the funnel is unusually high for its size, not just small. Click a site for details."))),
-        th_funnel_widget(H, "th-funnel-sites")),
-      div(class = "th-section",
-        div(class = "th-section-head",
-          div(tags$h3("Site scorecards"),
-              div(class = "th-sub-t",
-                  "Scored on recruitment against target, retention, CRF returns and recent activity. Weights and thresholds are in Settings → Recruitment & monitoring."))),
-        th_site_cards(H)))
+    div(class = "th-section",
+      div(class = "th-section-head",
+        div(tags$h3("Site scorecards"),
+            div(class = "th-sub-t",
+                "Scored on recruitment against target, retention, CRF returns and recent activity. Weights and thresholds are in Settings → Recruitment & monitoring."))),
+      th_site_cards(H))
   })
 
   # Open date per site: the Sites tab's, or — for a site that has recruited but

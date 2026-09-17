@@ -170,7 +170,6 @@ return_rates_server <- function(id, rr_data, health = reactive(NULL),
         section("By timepoint",
                 "Forms returned out of those due at each timepoint. The grey figure is how much of the timepoint has fallen due so far.",
                 uiOutput(ns("tp_cards"))),
-        uiOutput(ns("trend_ui")),
         section("Sites",
                 "Each site's return rate across the selected timepoints. Click a site to see its forms.",
                 uiOutput(ns("site_table")), uiOutput(ns("site_tools"))),
@@ -301,89 +300,6 @@ return_rates_server <- function(id, rr_data, health = reactive(NULL),
               else span("none missing")))
       })
       tagList(div(class = "rt-tps", `data-chart` = "timepoints", cards), key_ui())
-    })
-
-    # ── Over time (return-rate files only) ─────────────────────────────────
-    trend_svg <- function(h, tps) {
-      at  <- sort(unique(h$at))
-      all <- do.call(rbind, lapply(at, function(t) {
-        x <- h[h$at == t, , drop = FALSE]
-        data.frame(at = t, due = sum(x$due), entered = sum(x$entered))
-      }))
-      all$pct <- rr_pct(all$entered, all$due)
-      ok <- !is.na(all$pct)
-      if (sum(ok) < 2) return(NULL)
-
-      # Drawn about as wide as it shows on a laptop, so its text matches the page
-      W <- 1080; Ht <- 270; L <- 46; R <- 140; T <- 16; B <- 34
-      x0 <- as.numeric(min(at)); x1 <- as.numeric(max(at))
-      sx <- function(t) L + (as.numeric(t) - x0) / max(1, x1 - x0) * (W - L - R)
-      lo  <- suppressWarnings(min(c(h$pct, all$pct), na.rm = TRUE))
-      ylo <- if (is.finite(lo)) max(0, floor((min(lo, RR_WARN) - 5) / 10) * 10) else 0
-      sy  <- function(p) T + (100 - p) / (100 - ylo) * (Ht - T - B)
-      path <- function(x, y) {
-        k <- !is.na(y)
-        if (!any(k)) "" else paste0("M", paste(sprintf("%.1f,%.1f", x[k], y[k]), collapse = "L"))
-      }
-
-      gy <- seq(ylo, 100, by = if (100 - ylo > 50) 20 else 10)
-      grid <- paste(sprintf('<line class="grid" x1="%d" x2="%d" y1="%.1f" y2="%.1f"/><text x="%d" y="%.1f" dy="3.5" text-anchor="end">%d%%</text>',
-                            L, W - R, sy(gy), sy(gy), L - 8, sy(gy), gy), collapse = "")
-      d0 <- as.Date(min(at)); d1 <- as.Date(max(at))
-      ticks <- pretty(c(d0, d1), n = 6); ticks <- ticks[ticks >= d0 & ticks <= d1]
-      if (!length(ticks)) ticks <- unique(c(d0, d1))
-      tfmt <- if (as.numeric(d1 - d0) > 300) "%b %Y" else "%d %b"
-      xt <- paste(sprintf('<text x="%.1f" y="%d" text-anchor="middle">%s</text>',
-                          sx(as.POSIXct(format(ticks))), Ht - B + 18, sub("^0", "", format(ticks, tfmt))), collapse = "")
-      tgt <- if (RR_GOOD >= ylo)
-        sprintf('<line class="target" x1="%d" x2="%d" y1="%.1f" y2="%.1f"/><text class="target-l" x="%d" y="%.1f" dy="-5">Target %d%%</text>',
-                L, W - R, sy(RR_GOOD), sy(RR_GOOD), L + 6, sy(RR_GOOD), RR_GOOD) else ""
-
-      pal  <- c("#00788E", "#F07F3C", "#7C5CC4", "#3B82F6", "#059669", "#C59A00", "#B5405A", "#6B7280")
-      cols <- setNames(rep(pal, length.out = length(tps)), tps)
-      lines <- ""; ends <- list()
-      for (tp in tps) {
-        x <- h[h$timepoint == tp, , drop = FALSE]; x <- x[order(x$at), , drop = FALSE]
-        if (!nrow(x) || all(is.na(x$pct))) next
-        lines <- paste0(lines, sprintf('<path class="tp" d="%s" style="stroke:%s"/>', path(sx(x$at), sy(x$pct)), cols[[tp]]))
-        last <- x[max(which(!is.na(x$pct))), ]
-        ends[[length(ends) + 1]] <- list(y = sy(last$pct), cls = "end-l", col = cols[[tp]],
-                                         label = paste(tp, fmt_pct(last$pct)))
-      }
-      xa <- sx(all$at[ok]); ya <- sy(all$pct[ok])
-      area <- sprintf('<path class="area" d="%s L%.1f,%.1f L%.1f,%.1f Z"/>',
-                      path(xa, ya), max(xa), sy(ylo), min(xa), sy(ylo))
-      dots <- paste(sprintf('<circle class="dot" cx="%.1f" cy="%.1f" r="3.5"><title>%s: %s (%s of %s due)</title></circle>',
-                            xa, ya, format(all$at[ok], "%d %b %Y"), fmt_pct(all$pct[ok], 1),
-                            fmt_n(all$entered[ok]), fmt_n(all$due[ok])), collapse = "")
-      lastA <- all[max(which(ok)), ]
-      ends <- c(list(list(y = sy(lastA$pct), cls = "end-all", col = "#1B1B1B",
-                          label = paste("All", fmt_pct(lastA$pct)))), ends)
-      # End labels, nudged apart and kept inside the plot
-      ys <- vapply(ends, function(e) e$y, numeric(1)); o <- order(ys); yy <- ys[o]
-      for (i in seq_along(yy)[-1]) yy[i] <- max(yy[i], yy[i - 1] + 15)
-      over <- yy[length(yy)] - (Ht - B); if (over > 0) yy <- yy - over
-      yy <- pmax(yy, T); ys[o] <- yy
-      labels <- paste(vapply(seq_along(ends), function(i)
-        sprintf('<text class="%s" x="%d" y="%.1f" dy="3.5" style="fill:%s">%s</text>', ends[[i]]$cls,
-                W - R + 10, ys[i], ends[[i]]$col, htmltools::htmlEscape(ends[[i]]$label)), ""), collapse = "")
-
-      HTML(sprintf(paste0('<svg viewBox="0 0 %d %d" role="img" aria-label="Return rate in each return-rate file over time">',
-                          '%s%s<line class="axis" x1="%d" x2="%d" y1="%.1f" y2="%.1f"/>%s%s%s<path class="all" d="%s"/>%s%s</svg>'),
-                   W, Ht, grid, tgt, L, W - R, sy(ylo), sy(ylo), xt, area, lines, path(xa, ya), dots, labels))
-    }
-
-    output$trend_ui <- renderUI({
-      if (src() != "file") return(NULL)
-      h <- attr(file_df(), "history")
-      if (is.null(h)) return(NULL)
-      h <- h[h$timepoint %in% tps(), , drop = FALSE]
-      svg <- if (nrow(h)) trend_svg(h, tps()) else NULL
-      if (is.null(svg)) return(NULL)
-      n <- length(unique(h$at))
-      section("Over time",
-              sprintf("The return rate in each of the last %d return-rate files in the folder, overall (black) and by timepoint.", n),
-              div(class = "rt-trend", svg))
     })
 
     # ── Sites ──────────────────────────────────────────────────────────────

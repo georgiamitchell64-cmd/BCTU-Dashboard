@@ -168,20 +168,6 @@
 /* Sort buttons in the Sites header */
 .rt-sort { font-family: inherit; }
 
-/* ── Trend ── */
-.rt-trend svg { width: 100%; height: auto; display: block; overflow: visible; }
-.rt-trend text { font-family: inherit; font-size: 11px; fill: var(--rt-muted); }
-.rt-trend .grid { stroke: var(--rt-line2); stroke-width: 1; }
-.rt-trend .axis { stroke: #D0D0D0; stroke-width: 1; }
-.rt-trend .target { stroke: var(--rt-good); stroke-width: 1.5; stroke-dasharray: 5 4; }
-.rt-trend .target-l { fill: var(--rt-good-fg); font-weight: 600; }
-.rt-trend .area { fill: rgba(27, 27, 27, .05); stroke: none; }
-.rt-trend .all { fill: none; stroke: var(--rt-ink); stroke-width: 2.5; stroke-linejoin: round; }
-.rt-trend .dot { fill: #fff; stroke: var(--rt-ink); stroke-width: 2; }
-.rt-trend .tp { fill: none; stroke-width: 1.6; stroke-linejoin: round; }
-.rt-trend .end-l { font-weight: 600; }
-.rt-trend .end-all { font-weight: 700; fill: var(--rt-ink); }
-
 /* ── Participants still to return ── */
 .rt-st { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
 .rt-st.overdue { background: var(--rt-bad-bg); color: var(--rt-bad-fg); }

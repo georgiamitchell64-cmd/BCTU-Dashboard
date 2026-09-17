@@ -267,15 +267,30 @@ init_app_state <- function(input, output, session) {
                  suppressWarnings(as.integer(work_package)) == wp)
   })
 
-  # Per-WP randomised count per site (one Baseline row per participant). Used to
-  # rescale the site list so KPIs / maps / tables reflect the active WP.
+  # Per-WP randomised count per site. Used to rescale the site list so KPIs /
+  # maps / tables reflect the active WP.
+  #
+  # Mirrors process_redcap()'s per-site sync (functions/helpers.R): the
+  # trial's recruitment model if one is configured, else "has a
+  # randomisation datetime", else (only when the export carries no
+  # randomisation-date column at all) presence at the Baseline event.
+  # Counting every Baseline row regardless of that — the previous
+  # behaviour — folded consented-but-not-yet-randomised participants into
+  # "randomised" the moment a work package was selected, while the
+  # all-work-packages view (rv$sites$randomised, set by process_redcap())
+  # correctly excluded them: the same trial showed two different
+  # "randomised" totals depending on the work-package picker.
   .wp_site_counts <- reactive({
-    wp <- rv$active_wp
-    if (is.null(wp) || !"work_package" %in% names(rv$participants)) return(NULL)
-    rv$participants %>%
-      filter(!is.na(work_package), work_package == wp,
-             event_type == "Baseline",
-             !is.na(site_dag), nchar(trimws(site_dag)) > 0) %>%
+    wp  <- rv$active_wp
+    raw <- redcap_wp()
+    if (is.null(wp) || is.null(raw) || !nrow(raw) ||
+        !all(c("site_dag", "record_id") %in% names(raw))) return(NULL)
+    ids  <- randomised_ids(raw, rv$trial_config)
+    keep <- if (!is.null(ids)) as.character(raw$record_id) %in% ids
+           else raw$event_type == "Baseline"   # no randomisation signal at all
+    raw %>%
+      filter(keep, !is.na(site_dag), nchar(trimws(site_dag)) > 0) %>%
+      distinct(record_id, site_dag) %>%
       count(site_dag, name = "wp_rand")
   })
 
