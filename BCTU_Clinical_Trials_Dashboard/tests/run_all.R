@@ -17,7 +17,10 @@
 
 args      <- commandArgs(TRUE)
 strict    <- "--strict" %in% args
-this_file <- sub("--file=", "", grep("--file=", commandArgs(FALSE), value = TRUE))
+# Rscript passes spaces in the script's path as "~+~" on Windows.
+this_file <- gsub("~+~", " ",
+                  sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1]),
+                  fixed = TRUE)
 test_dir  <- dirname(this_file)
 setwd(file.path(test_dir, ".."))
 
@@ -31,7 +34,8 @@ if (!length(scripts)) {
   quit(status = 1L)
 }
 
-rscript <- file.path(R.home("bin"), "Rscript")
+rscript <- file.path(R.home("bin"),
+                     if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
 results <- character(0)
 
 for (script in scripts) {

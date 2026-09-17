@@ -1429,7 +1429,7 @@ reports_server <- function(input, output, session, state) {
           tryCatch({
             b <- chromote::ChromoteSession$new()
             on.exit(try(b$close(), silent = TRUE), add = TRUE)
-            b$Page$navigate(paste0("file://", normalizePath(tmp_html)))
+            b$Page$navigate(file_url(tmp_html))
             Sys.sleep(1.5)
             pdf_data <- b$Page$printToPDF(
               paperWidth = 8.27, paperHeight = 11.69,
@@ -1457,8 +1457,9 @@ reports_server <- function(input, output, session, state) {
         } else {
           # pdf requested but chromote unavailable: best-effort pandoc to docx
           tryCatch({
-            pandoc_dir <- Sys.getenv("RSTUDIO_PANDOC")
-            pandoc_bin <- if (nzchar(pandoc_dir)) file.path(pandoc_dir, "pandoc") else "pandoc"
+            # .pandoc_bin() adds the .exe Windows needs; a bare "pandoc"
+            # path does not resolve there.
+            pandoc_bin <- .pandoc_bin()
             tmp_out <- tempfile(fileext = ".docx")
             system2(pandoc_bin,
                     args = c(shQuote(tmp_html), "-f", "html",
@@ -1578,7 +1579,7 @@ reports_server <- function(input, output, session, state) {
             stop("chromote not installed (install.packages('chromote'))")
           b <- chromote::ChromoteSession$new()
           on.exit(try(b$close(), silent = TRUE), add = TRUE)
-          b$Page$navigate(paste0("file://", normalizePath(html_out)))
+          b$Page$navigate(file_url(html_out))
           Sys.sleep(2)   # let webfonts + base64 logos resolve
           pdf_data <- b$Page$printToPDF(
             landscape       = FALSE,

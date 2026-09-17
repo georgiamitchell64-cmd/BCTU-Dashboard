@@ -64,7 +64,20 @@ write_portfolio_backup <- function(target) {
   on.exit(unlink(manifest_target), add = TRUE)
 
   zip_files <- c(manifest_target, rel)
-  utils::zip(zipfile = target, files = zip_files, flags = "-r9X")
+  # utils::zip() shells out to an external zip command, which Windows does not
+  # ship, so prefer the zip package (pure libzip, same on every platform) and
+  # only fall back when a zip command really is on PATH.
+  if (requireNamespace("zip", quietly = TRUE)) {
+    # zip::zip() works from `root`, so the archive path has to be absolute.
+    out <- if (grepl("^(/|[A-Za-z]:)", target)) target else file.path(getwd(), target)
+    zip::zip(zipfile = out, files = zip_files, root = getwd(),
+             mode = "mirror", compression_level = 9)
+  } else if (nzchar(Sys.which(Sys.getenv("R_ZIPCMD", "zip")))) {
+    utils::zip(zipfile = target, files = zip_files, flags = "-r9X")
+  } else {
+    stop("Cannot write a backup: no zip support. Run install.packages(\"zip\") ",
+         "and try again.", call. = FALSE)
+  }
   invisible(target)
 }
 

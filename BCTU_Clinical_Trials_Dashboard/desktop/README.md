@@ -7,6 +7,8 @@ Double-click to start the dashboard; you don't need RStudio. The computer needs 
 1. Open this `desktop` folder and double-click **Create desktop shortcut**. You only need to do this once per computer.
 2. From then on, double-click **BCTU Dashboard** on your desktop.
 
+If Windows shows *"The publisher could not be verified. Are you sure you want to run this software?"*, that is Windows' mark-of-the-web on files that came out of a downloaded zip, not a problem with the dashboard. Click **Run**. **Create desktop shortcut** clears the mark for this folder, so it should only appear once. To clear it for the whole folder yourself, right-click the downloaded `.zip` before extracting it, choose **Properties**, tick **Unblock**, then extract again.
+
 A *Starting the dashboard…* page opens in your browser. After 10 to 20 seconds it switches to the dashboard.
 
 The dashboard runs in a minimised **BCTU Dashboard** window in the taskbar. You can stop it in two ways:

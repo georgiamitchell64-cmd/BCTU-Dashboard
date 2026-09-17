@@ -12,8 +12,9 @@
 # Exits non-zero on the first failed assertion.
 # =============================================================================
 
-setwd(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE),
-                                                value = TRUE))), ".."))
+# Rscript passes spaces in the script's path as "~+~" on Windows.
+.this <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1])
+setwd(file.path(dirname(gsub("~+~", " ", .this, fixed = TRUE)), ".."))
 
 ok_pkgs <- all(vapply(c("DBI", "RSQLite", "digest"), requireNamespace,
                       logical(1), quietly = TRUE))
