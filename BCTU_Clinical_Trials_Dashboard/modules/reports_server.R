@@ -543,11 +543,7 @@ reports_server <- function(input, output, session, state) {
 
       # Make sure pandoc is reachable on this machine (Mac / Windows / Linux).
       if (!ensure_pandoc()) {
-        showNotification(
-          HTML("Pandoc not found. Install it (https://pandoc.org/installing.html)
-                or open this app from inside RStudio so it can find the bundled
-                pandoc."),
-          type = "error", duration = 12)
+        showNotification(pandoc_missing_html(), type = "error", duration = 15)
         return()
       }
 
@@ -1515,11 +1511,7 @@ reports_server <- function(input, output, session, state) {
       # knows they need to install pandoc rather than seeing the cryptic
       # "cannot open connection" from rmarkdown.
       if (!ensure_pandoc()) {
-        showNotification(
-          HTML("Pandoc not found. Install it (https://pandoc.org/installing.html)
-                or open this app from inside RStudio so it can find the bundled
-                pandoc."),
-          type = "error", duration = 12)
+        showNotification(pandoc_missing_html(), type = "error", duration = 15)
         return()
       }
 

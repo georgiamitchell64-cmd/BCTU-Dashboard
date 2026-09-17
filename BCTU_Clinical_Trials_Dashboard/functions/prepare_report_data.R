@@ -628,8 +628,24 @@ prepare_report_data <- function(df,
   fu_90_kpi <- if ("fu_90_any" %in% names(filtered)) sum(filtered$fu_90_any == 1, na.rm = TRUE) else 0
 
   # ── 17. Safety ─────────────────────────────────────────────────────────────
-  safety_summary <- if (nrow(sae_rows) > 0)
-    sae_rows[, intersect(c("site_name"), names(sae_rows)), drop = FALSE] else NULL
+  # sae_log (above) is the detail table already built for the report, with
+  # friendly-enough raw names (record_id, site_name, reported, diagnosis, …).
+  # This used to be sae_rows[, intersect(c("site_name"), names(sae_rows))],
+  # which — since sae_rows never actually has a "site_name" column, only
+  # "site_v" before the merge — always came back with every column dropped:
+  # a 0-column, N-row data frame that crashed the TSC report's flextable()
+  # the first time a trial had a real SAE. Rename sae_log's columns instead.
+  safety_summary <- if (!is.null(sae_log) && nrow(sae_log) > 0) {
+    nice <- c(record_id = "Record ID", site_name = "Site", reported = "Reported",
+             diagnosis = "Diagnosis", soc = "System organ class",
+             category = "Category", severity = "Severity", outcome = "Outcome",
+             related = "Related", expected = "Expected", death_yn = "Fatal?",
+             death = "Date of death")
+    out <- sae_log
+    matched <- names(out) %in% names(nice)
+    names(out)[matched] <- unname(nice[names(out)[matched]])
+    out
+  } else NULL
 
   # ── 18. Site performance ──────────────────────────────────────────────────
   site_summary <- if ("site_name" %in% names(filtered) && nrow(filtered) > 0) {

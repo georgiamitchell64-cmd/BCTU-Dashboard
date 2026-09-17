@@ -159,6 +159,20 @@ ensure_pandoc <- function() {
   FALSE
 }
 
+# The notification shown wherever ensure_pandoc() fails. A direct download
+# link rather than the generic pandoc.org page, since the exact installer a
+# person needs (the .msi vs the .pkg vs the .deb) is confusing to find from
+# there — and a reminder to fully restart the dashboard, not just the browser
+# tab, because the launcher only reads PATH / the registry once, at startup.
+pandoc_missing_html <- function() {
+  htmltools::HTML(paste0(
+    "Pandoc not found. Install it from ",
+    "<a href=\"https://github.com/jgm/pandoc/releases/latest\" target=\"_blank\">",
+    "github.com/jgm/pandoc/releases/latest</a> (the .msi on Windows, the .pkg ",
+    "on Mac), then close the dashboard completely and start it again — or open ",
+    "this app from inside RStudio, which bundles its own pandoc."))
+}
+
 # A config mapping (a redcap_fields / redcap_events entry) may hold one name or
 # several — a trial that registers under any of a few candidate events maps them
 # all. Test emptiness with this rather than `nzchar(x)`, which returns a vector
