@@ -11,8 +11,9 @@ computer needs nothing installed — no R, no RStudio, no Chrome — and the
 dashboard opens in its own window rather than a browser tab.
 
 Build one on GitHub: **Actions** tab → *Desktop build (Windows)* → **Run
-workflow**. It takes 30-40 minutes; when it finishes, download
+workflow**. It takes under 10 minutes; when it finishes, download
 `BCTU-Dashboard-Windows-Installer` from that run and run the `.exe` inside.
+The installer is about 450MB, so give it a moment to download.
 
 It installs for you alone, so it needs no admin rights, and it keeps what it
 writes in your own user folder rather than in Program Files. It ships with no

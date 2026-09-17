@@ -2,8 +2,8 @@
 #
 # Run this from the Actions tab (Run workflow) and download the finished
 # installer from the run's Artifacts section. It exists because the installer
-# needs a Windows machine plus network access to CRAN, and produces a ~600MB
-# artefact that has no business in git.
+# needs a Windows machine plus network access to CRAN, and produces a 450MB
+# installer that has no business in git.
 #
 # What goes in: R and its packages, pandoc and a headless Chrome for report
 # export, the Electron launcher in electron/, and a copy of the dashboard
@@ -14,7 +14,7 @@
 # The result installs per-user and needs nothing else on the machine: no R, no
 # RStudio, no Chrome.
 #
-# Roughly 30-40 minutes, most of it installing R packages.
+# Under 10 minutes, split about evenly between installing R and packaging.
 
 name: Desktop build (Windows)
 
