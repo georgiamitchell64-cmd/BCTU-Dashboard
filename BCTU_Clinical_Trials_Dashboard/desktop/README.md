@@ -4,6 +4,8 @@ Double-click to start the dashboard; you don't need RStudio. The computer needs 
 
 The dashboard itself runs in your browser, the same as it does through RStudio — the shortcut just starts it and opens the tab for you.
 
+**Report export (PDF / Word) needs Pandoc.** RStudio bundles its own copy, but a plain double-click launch does not, so install it once from [github.com/jgm/pandoc/releases/latest](https://github.com/jgm/pandoc/releases/latest) (the `.msi` on Windows, the `.pkg` on Mac) if report export says "Pandoc not found".
+
 ## Windows
 
 1. Get the dashboard onto the PC: in GitHub Desktop, clone `georgiamitchell64-cmd/BCTU-Dashboard` (or pull, if it's already there).

@@ -10,6 +10,9 @@ build_app_ui <- function() {
     theme = tonic_theme,
 
     tags$head(
+      # The browser tab / taskbar icon — without this the tab just shows a
+      # generic page icon (on Windows, a blank one; on Mac, Chrome's own).
+      tags$link(rel = "icon", type = "image/x-icon", href = .asset("favicon.ico")),
       # Order matters: tokens + base components first, then page-level
       # overrides in the redesign sheets.
       tags$link(rel = "preconnect", href = "https://fonts.googleapis.com"),
