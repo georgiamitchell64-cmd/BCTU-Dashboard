@@ -26,7 +26,7 @@ if (length(absent)) {
 }
 suppressPackageStartupMessages(for (p in need) library(p, character.only = TRUE))
 
-for (f in c("globals/constants.R", "globals/datasets.R", "globals/trial_config.R",
+for (f in c("globals/paths.R", "globals/constants.R", "globals/datasets.R", "globals/trial_config.R",
             "functions/helpers.R", "functions/trial_overrides.R",
             "functions/recruitment.R", "functions/prepare_report_data.R"))
   source(f)

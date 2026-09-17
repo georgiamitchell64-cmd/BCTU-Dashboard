@@ -12,7 +12,7 @@
 
 # ── Lightly-cached raw CSV per trial (one-shot per call) ────────────────────
 .read_trial_raw <- function(cfg) {
-  data_dir <- cfg$data_dir %||% file.path(getwd(), "trials", cfg$code, "data")
+  data_dir <- cfg$data_dir %||% file.path(app_trials_dir(), cfg$code, "data")
   csv <- tryCatch(find_latest_csv(data_dir), error = function(e) NULL)
   if (is.null(csv)) return(NULL)
   tryCatch(read_redcap_file(csv), error = function(e) NULL)

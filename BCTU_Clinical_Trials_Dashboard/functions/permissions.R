@@ -16,7 +16,7 @@
 # Admins are implicit 'manager' on every trial.
 # =============================================================================
 
-SHARED_DB_PATH <- file.path(getwd(), "data", "shared.sqlite")
+SHARED_DB_PATH <- file.path(app_data_dir(), "shared.sqlite")
 
 shared_db_connect <- function() {
   if (!dir.exists(dirname(SHARED_DB_PATH)))
@@ -123,11 +123,11 @@ shared_db_init <- function() {
 }
 
 .migrate_legacy_profiles <- function(con_shared) {
-  candidates <- list.files(file.path(getwd(), "data"),
+  candidates <- list.files(app_data_dir(),
                            pattern = "\\.sqlite$", full.names = TRUE,
                            ignore.case = TRUE)
   candidates <- c(candidates,
-                  list.files(file.path(getwd(), "trials"),
+                  list.files(app_trials_dir(),
                              pattern = "\\.sqlite$", full.names = TRUE,
                              recursive = TRUE, ignore.case = TRUE))
   candidates <- setdiff(candidates, SHARED_DB_PATH)

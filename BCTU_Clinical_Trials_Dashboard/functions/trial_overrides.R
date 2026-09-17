@@ -12,7 +12,7 @@
 # =============================================================================
 
 overrides_path <- function(cfg) {
-  trial_dir <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code)
+  trial_dir <- cfg$trial_dir %||% file.path(app_trials_dir(), cfg$code)
   file.path(trial_dir, "overrides.json")
 }
 

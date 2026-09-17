@@ -17,7 +17,7 @@ trial_selector_server <- function(input, output, session, state) {
 
   # \u2500\u2500 Per-trial recruitment count (cheap: reads latest CSV, counts unique IDs) \u2500\u2500
   .recruited_count <- function(cfg) {
-    data_dir <- cfg$data_dir %||% file.path(getwd(), "trials", cfg$code, "data")
+    data_dir <- cfg$data_dir %||% file.path(app_trials_dir(), cfg$code, "data")
     csv <- tryCatch(find_latest_csv(data_dir), error = function(e) NULL)
     if (is.null(csv)) return(0L)
     raw <- tryCatch(read_redcap_file(csv), error = function(e) NULL)
@@ -55,7 +55,7 @@ trial_selector_server <- function(input, output, session, state) {
   .trial_logo_url <- function(cfg) {
     code <- cfg$code %||% ""
     if (!nzchar(code)) return(NULL)
-    dir <- file.path(getwd(), "www", "trial_logos")
+    dir <- trial_logo_dir()
     if (!dir.exists(dir)) return(NULL)
     for (ext in c("png", "svg", "jpg", "jpeg", "webp", "gif")) {
       f <- file.path(dir, paste0(code, ".", ext))
@@ -1654,14 +1654,14 @@ trial_selector_server <- function(input, output, session, state) {
     code <- rv$pending_delete
     if (is.null(code)) return()
 
-    trial_dir <- file.path(getwd(), "trials", code)
+    trial_dir <- file.path(app_trials_dir(), code)
     success <- tryCatch({
       unlink(trial_dir, recursive = TRUE, force = TRUE)
       TRUE
     }, error = function(e) FALSE)
 
     # Also remove the logo if it was copied to www/
-    logo_path <- file.path(getwd(), "www", "trial_logos", paste0(code, ".jpg"))
+    logo_path <- file.path(trial_logo_dir(), paste0(code, ".jpg"))
     if (file.exists(logo_path)) file.remove(logo_path)
 
     removeModal()
@@ -1693,7 +1693,7 @@ trial_selector_server <- function(input, output, session, state) {
       return()
     }
 
-    trials_dir <- file.path(getwd(), "trials")
+    trials_dir <- app_trials_dir()
     trial_dir  <- file.path(trials_dir, code)
 
     if (dir.exists(trial_dir)) {
@@ -2044,7 +2044,7 @@ trial_config <- list(
       # Copy logo to www/trial_logos/ if a path was provided
       logo_src <- trimws(input$wiz_logo_path %||% "")
       if (nzchar(logo_src) && file.exists(logo_src)) {
-        logos_dir <- file.path(getwd(), "www", "trial_logos")
+        logos_dir <- trial_logo_dir()
         dir.create(logos_dir, recursive = TRUE, showWarnings = FALSE)
         ext <- tolower(tools::file_ext(logo_src))
         if (!ext %in% c("png", "jpg", "jpeg", "svg")) ext <- "png"

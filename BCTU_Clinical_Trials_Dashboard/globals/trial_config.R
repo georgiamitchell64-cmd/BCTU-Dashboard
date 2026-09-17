@@ -181,7 +181,7 @@ wp_data_dirs <- function(cfg = current_trial_config()) {
   wps <- cfg$work_packages %||% character(0)
   if (!length(wps)) return(character(0))
   dirs <- as.character(unlist(cfg$work_package_data_dirs %||% character(0)))
-  base <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
+  base <- cfg$trial_dir %||% file.path(app_trials_dir(), cfg$code %||% "")
   vapply(seq_along(wps), function(i) {
     d <- if (length(dirs) >= i && !is.na(dirs[i])) trimws(dirs[i]) else ""
     if (nzchar(d)) d else file.path(base, "data", sprintf("wp%d", i))
@@ -262,7 +262,7 @@ wp_report_context <- function(cfg, active_wp = NULL) {
 
 #' Discover all available trial configs
 #' @return Named list of trial config lists, keyed by trial code
-discover_trials <- function(trials_dir = file.path(getwd(), "trials")) {
+discover_trials <- function(trials_dir = app_trials_dir()) {
   if (!dir.exists(trials_dir)) {
     message("No trials/ directory found at: ", trials_dir)
     return(list())
@@ -381,7 +381,7 @@ validate_trial_config <- function(cfg) {
 #' Create a blank trial config template (for new trials)
 #' @param trial_code Short lowercase code (e.g. "mytrial")
 #' @param output_dir Where to create the trial folder
-create_trial_template <- function(trial_code, output_dir = file.path(getwd(), "trials")) {
+create_trial_template <- function(trial_code, output_dir = app_trials_dir()) {
   trial_dir <- file.path(output_dir, trial_code)
   if (dir.exists(trial_dir)) {
     message("Trial folder already exists: ", trial_dir)

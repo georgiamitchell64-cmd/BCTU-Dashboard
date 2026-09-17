@@ -39,5 +39,6 @@ Set these as environment variables before starting:
 
 - `BCTU_PORT`: the port to use (default 3838).
 - `BCTU_AUTO_STOP_MINUTES`: how long the dashboard waits after the last tab closes before stopping (default 10).
+- `BCTU_DATA_DIR`: where the dashboard keeps what it writes — the databases, each trial's settings and report templates, and the logo cache. Left unset it writes inside the dashboard folder, which is what every current install does and needs no change. Set it to put those files somewhere else: a shared folder on K: so a team works off one copy, or a per-user folder when the dashboard folder itself is read-only. The trials that shipped with the dashboard are copied across the first time, and left alone after that.
 
 The icon is drawn by `make_icons.R`.

@@ -251,7 +251,7 @@ REPORT_TEMPLATE_KINDS <- c("tonic", "tsc", "tsc_interim")
 trial_logo_url <- function(cfg) {
   code <- cfg$code %||% ""
   if (!nzchar(code)) return(NULL)
-  dir <- file.path(getwd(), "www", "trial_logos")
+  dir <- trial_logo_dir()
   if (!dir.exists(dir)) return(NULL)
   for (ext in c("png", "svg", "jpg", "jpeg", "webp", "gif")) {
     f <- file.path(dir, paste0(code, ".", ext))
@@ -320,7 +320,7 @@ report_template_filenames <- function(kind) {
 
 # Path to the trial's own copy (may not exist yet).
 trial_report_template_path <- function(cfg, kind, existing = FALSE) {
-  trial_dir <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
+  trial_dir <- cfg$trial_dir %||% file.path(app_trials_dir(), cfg$code %||% "")
   paths <- file.path(trial_dir, "reports", report_template_filenames(kind))
   # `existing` picks whichever name is actually on disk (a trial set up before
   # the rename still has tonic_report.Rmd); otherwise the current name, which
@@ -334,7 +334,7 @@ trial_report_template_path <- function(cfg, kind, existing = FALSE) {
 
 # Path to the project-level fallback template (the "factory default").
 default_report_template_path <- function(kind, existing = FALSE) {
-  paths <- file.path(getwd(), report_template_filenames(kind))
+  paths <- file.path(app_install_dir(), report_template_filenames(kind))
   if (existing) {
     hit <- paths[file.exists(paths)]
     if (length(hit)) return(hit[1])
@@ -404,7 +404,7 @@ backup_trial_report_template <- function(cfg, kind, incoming = NULL) {
 # `overwrite = FALSE` by default so we don't trample edits the user has made;
 # with `overwrite = TRUE` the trial's current copy is backed up first.
 seed_trial_report_templates <- function(cfg, overwrite = FALSE) {
-  trial_dir   <- cfg$trial_dir %||% file.path(getwd(), "trials", cfg$code %||% "")
+  trial_dir   <- cfg$trial_dir %||% file.path(app_trials_dir(), cfg$code %||% "")
   reports_dir <- file.path(trial_dir, "reports")
   if (!dir.exists(reports_dir))
     dir.create(reports_dir, recursive = TRUE, showWarnings = FALSE)

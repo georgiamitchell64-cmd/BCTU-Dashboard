@@ -20,11 +20,12 @@
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
-POSTAL_DB_PATH <- file.path("data", "postal_tracking.sqlite")
+POSTAL_DB_PATH <- file.path(app_data_dir(), "postal_tracking.sqlite")
 
 # ── Connection helper ────────────────────────────────────────────────────────
 postal_db_connect <- function() {
-  if (!dir.exists("data")) dir.create("data", recursive = TRUE)
+  if (!dir.exists(dirname(POSTAL_DB_PATH)))
+    dir.create(dirname(POSTAL_DB_PATH), recursive = TRUE, showWarnings = FALSE)
   DBI::dbConnect(RSQLite::SQLite(), POSTAL_DB_PATH)
 }
 

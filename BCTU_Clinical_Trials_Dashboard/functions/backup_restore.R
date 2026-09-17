@@ -16,7 +16,7 @@
 # =============================================================================
 
 # ── List all paths that should go into a backup ────────────────────────────
-.backup_paths <- function(root = getwd()) {
+.backup_paths <- function(root = app_data_root()) {
   out <- character(0)
 
   shared <- file.path(root, "data", "shared.sqlite")
@@ -47,8 +47,9 @@ write_portfolio_backup <- function(target) {
     stop("Nothing to back up — no shared DB or trial configs found.",
          call. = FALSE)
   }
-  # zip wants paths relative to wd for clean entries
-  rel <- sub(paste0("^", normalizePath(getwd(), winslash = "/"), "/"), "",
+  # zip wants paths relative to the data root for clean entries
+  root <- app_data_root()
+  rel <- sub(paste0("^", normalizePath(root, winslash = "/"), "/"), "",
              normalizePath(paths, winslash = "/"))
   # Add a small manifest so the restore side knows what version produced it
   manifest_path <- tempfile(fileext = ".json")
@@ -58,19 +59,21 @@ write_portfolio_backup <- function(target) {
          file_count   = length(paths),
          files        = rel),
     manifest_path, auto_unbox = TRUE, pretty = TRUE)
-  # Stage the manifest into the zip too
-  manifest_target <- "BACKUP_MANIFEST.json"
+  # Stage the manifest into the zip too — beside the files it describes, so
+  # this writes where the app is allowed to, not into its own folder
+  manifest_entry  <- "BACKUP_MANIFEST.json"
+  manifest_target <- file.path(root, manifest_entry)
   file.copy(manifest_path, manifest_target, overwrite = TRUE)
   on.exit(unlink(manifest_target), add = TRUE)
 
-  zip_files <- c(manifest_target, rel)
+  zip_files <- c(manifest_entry, rel)
   # utils::zip() shells out to an external zip command, which Windows does not
   # ship, so prefer the zip package (pure libzip, same on every platform) and
   # only fall back when a zip command really is on PATH.
   if (requireNamespace("zip", quietly = TRUE)) {
     # zip::zip() works from `root`, so the archive path has to be absolute.
-    out <- if (grepl("^(/|[A-Za-z]:)", target)) target else file.path(getwd(), target)
-    zip::zip(zipfile = out, files = zip_files, root = getwd(),
+    out <- if (grepl("^(/|[A-Za-z]:)", target)) target else file.path(root, target)
+    zip::zip(zipfile = out, files = zip_files, root = root,
              mode = "mirror", compression_level = 9)
   } else if (nzchar(Sys.which(Sys.getenv("R_ZIPCMD", "zip")))) {
     utils::zip(zipfile = target, files = zip_files, flags = "-r9X")
@@ -83,7 +86,7 @@ write_portfolio_backup <- function(target) {
 
 # Restore from a zip file path.
 # Returns a list(restored = N, skipped = M, errors = chr) summary.
-restore_portfolio_backup <- function(zip_path, root = getwd()) {
+restore_portfolio_backup <- function(zip_path, root = app_data_root()) {
   if (!file.exists(zip_path)) stop("Backup file not found: ", zip_path)
 
   tmp <- tempfile("bctu_restore_")
