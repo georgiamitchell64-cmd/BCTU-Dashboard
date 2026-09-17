@@ -159,7 +159,11 @@ if (.invoked_directly()) {
   if (dir.exists(out_abs)) unlink(out_abs, recursive = TRUE)
   dir.create(out_abs, recursive = TRUE, showWarnings = FALSE)
 
-  skip_top <- c(".git", ".Rproj.user", ".Rhistory", ".RData", "node_modules", "renv")
+  # "runtime" is the hundreds of MB of pandoc and Chrome that fetch_runtime.R
+  # downloads. It is per-platform and re-fetched wherever the copy lands, so
+  # copying it only makes the staged folder enormous.
+  skip_top <- c(".git", ".Rproj.user", ".Rhistory", ".RData", "node_modules",
+                "renv", "runtime")
   top <- setdiff(list.files(app_dir, all.files = TRUE, no.. = TRUE), skip_top)
   invisible(file.copy(file.path(app_dir, top), out_abs, recursive = TRUE))
 

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+# The R, pandoc and Chrome staged in by the build workflow — hundreds of MB of
+# third-party binaries, fetched per platform at build time, never committed.
+runtime/
