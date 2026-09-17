@@ -4,7 +4,15 @@ Double-click to start the dashboard; you don't need RStudio. The computer needs 
 
 The dashboard itself runs in your browser, the same as it does through RStudio — the shortcut just starts it and opens the tab for you.
 
-**Report export (PDF / Word) needs Pandoc.** RStudio bundles its own copy, but a plain double-click launch does not, so install it once from [github.com/jgm/pandoc/releases/latest](https://github.com/jgm/pandoc/releases/latest) (the `.msi` on Windows, the `.pkg` on Mac) if report export says "Pandoc not found".
+**Report export (PDF / Word) needs two things that aren't R packages:** Pandoc, for every Word report, and a Chrome, which is what prints the styled reports to PDF. RStudio brings Pandoc and most machines have Chrome, but a plain double-click launch can have neither.
+
+The dashboard can carry its own copies. Run this once in the dashboard folder, on each kind of machine you use it on:
+
+```
+Rscript scripts/fetch_runtime.R
+```
+
+It downloads Pandoc and a headless Chrome into `runtime/` (about 200MB) and the dashboard prefers those over anything installed. It's optional — without them the dashboard looks for an installed Pandoc and an installed Chrome exactly as before — but it's what makes the "Pandoc not found" error and a missing Chrome go away for good.
 
 ## Windows
 

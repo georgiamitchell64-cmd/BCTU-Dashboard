@@ -10,6 +10,7 @@ source("globals/packages.R",       local = TRUE)
 # paths.R first: it works out where the app may write, and constants.R
 # and everything holding a database path are built on top of it.
 source("globals/paths.R",          local = TRUE)
+source("globals/runtime.R",        local = TRUE)
 source("globals/constants.R",      local = TRUE)
 source("globals/datasets.R",       local = TRUE)
 source("globals/trial_config.R",   local = TRUE)
@@ -101,6 +102,10 @@ source("modules/modifications_server.R",    local = TRUE)
 # seed_data_root() creates data/ and, where the app can't write to its own
 # folder (a packaged build), copies the trials folder over on first run.
 seed_data_root()
+# Point rmarkdown and chromote at the pandoc and headless Chrome bundled in
+# runtime/, when there are any. Without them both fall back to whatever is
+# installed on the machine, exactly as before.
+message(runtime_summary())
 db_init()
 shared_db_init()
 notifications_db_init()
