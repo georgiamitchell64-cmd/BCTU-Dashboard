@@ -5,7 +5,7 @@ Windows program: no R, no RStudio, no Chrome, no browser tab, nothing to set up.
 The dashboard inside it is the same Shiny app — this only starts it and shows it.
 
 Build it from the **Actions** tab on GitHub: *Desktop build (Windows)* → **Run
-workflow**, then download the `.exe` from the finished run. It takes 30-40
+workflow**, then download the `.exe` from the finished run. It takes under 10
 minutes and needs a Windows machine, which is why it runs there and not here.
 
 ## How it starts
