@@ -7,6 +7,13 @@ rem =========================================================================
 set "TARGET=%~dp0Start BCTU Dashboard.bat"
 set "ICON=%~dp0icon\bctu_dashboard.ico"
 
+rem Files that arrived inside a downloaded zip carry Windows' "mark of the
+rem web", which makes every double-click show "The publisher could not be
+rem verified". Clear it for the dashboard folder so that stops happening.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Get-ChildItem -LiteralPath (Split-Path $env:TARGET -Parent) -Recurse -File |" ^
+  "Unblock-File -ErrorAction SilentlyContinue"
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$d = [Environment]::GetFolderPath('Desktop');" ^
   "$s = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $d 'BCTU Dashboard.lnk'));" ^

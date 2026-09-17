@@ -15,8 +15,9 @@
 #   Rscript tests/report_data_events.R
 # =============================================================================
 
-setwd(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE),
-                                                value = TRUE))), ".."))
+# Rscript passes spaces in the script's path as "~+~" on Windows.
+.this <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1])
+setwd(file.path(dirname(gsub("~+~", " ", .this, fixed = TRUE)), ".."))
 
 need <- c("dplyr", "tidyr", "stringr", "lubridate", "tibble", "rlang")
 absent <- need[!vapply(need, requireNamespace, logical(1), quietly = TRUE)]

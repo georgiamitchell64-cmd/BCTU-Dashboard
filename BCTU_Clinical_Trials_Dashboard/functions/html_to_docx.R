@@ -112,7 +112,7 @@ rasterize_html_charts <- function(html_path, out_html = tempfile(fileext = ".htm
   baked <- tryCatch({
     b <- chromote::ChromoteSession$new()
     on.exit(try(b$close(), silent = TRUE), add = TRUE)
-    b$Page$navigate(paste0("file://", normalizePath(html_path)))
+    b$Page$navigate(file_url(html_path))
     Sys.sleep(2)  # let webfonts + Chart.js animations settle
     res <- b$Runtime$evaluate(expression = js,
                               awaitPromise = TRUE,
@@ -190,14 +190,14 @@ ensure_brand_reference_docx <- function() {
       xml2::write_xml(doc, styles_xml)
     }
 
-    # 3. Re-zip the folder back into a .docx (contents at archive root).
+    # 3. Re-zip the folder back into a .docx. "mirror" with an explicit root
+    #    keeps word/, _rels/ and the rest at their own paths inside the
+    #    archive, which a .docx requires. zip::zip() is used rather than
+    #    utils::zip() because Windows has no zip command to shell out to.
     files <- list.files(work, recursive = TRUE, all.files = TRUE,
                         full.names = FALSE, include.dirs = FALSE)
     unlink(ref_path)
-    old_wd <- getwd(); on.exit(setwd(old_wd), add = TRUE)
-    setwd(work)
-    zip::zip(zipfile = ref_path, files = files, mode = "cherry-pick")
-    setwd(old_wd)
+    zip::zip(zipfile = ref_path, files = files, root = work, mode = "mirror")
 
     if (file.exists(ref_path) && file.info(ref_path)$size > 0) ref_path else NULL
   }, error = function(e) {
@@ -227,7 +227,7 @@ html_to_editable_docx <- function(html_path, out_file) {
   tmp_docx <- tempfile(fileext = ".docx")
   args <- c(shQuote(src_html), "-f", "html", "-t", "docx")
   if (!is.null(ref_doc) && file.exists(ref_doc))
-    args <- c(args, paste0("--reference-doc=", ref_doc))
+    args <- c(args, shQuote(paste0("--reference-doc=", ref_doc)))
   args <- c(args, "-o", shQuote(tmp_docx))
 
   out <- suppressWarnings(system2(pandoc_bin, args = args,

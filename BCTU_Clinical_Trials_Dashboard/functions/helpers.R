@@ -54,6 +54,19 @@ start_module <- function(label, expr) {
 
 
 # =============================================================================
+# Local file path -> file:// URL (cross-platform)
+# =============================================================================
+# normalizePath() returns "C:\\dir\\file" on Windows, and
+# paste0("file://", that) is not a URL headless Chrome will load: it needs
+# forward slashes, three slashes before the drive letter, and spaces escaped.
+file_url <- function(path) {
+  p <- normalizePath(path, winslash = "/", mustWork = FALSE)
+  if (!startsWith(p, "/")) p <- paste0("/", p)
+  paste0("file://", utils::URLencode(p))
+}
+
+
+# =============================================================================
 # Desktop shortcut: stop when nobody is using it
 # =============================================================================
 # desktop/run_dashboard.R (the double-click launcher) sets BCTU_DESKTOP=1. The

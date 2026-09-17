@@ -8,8 +8,9 @@
 # Run from the app directory:  Rscript tests/return_rates_fingerprint.R
 # =============================================================================
 
-setwd(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE),
-                                                value = TRUE))), ".."))
+# Rscript passes spaces in the script's path as "~+~" on Windows.
+.this <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1])
+setwd(file.path(dirname(gsub("~+~", " ", .this, fixed = TRUE)), ".."))
 
 source("functions/helpers.R")
 source("functions/return_rates_data.R")

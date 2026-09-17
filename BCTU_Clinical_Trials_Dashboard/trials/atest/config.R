@@ -27,7 +27,7 @@ trial_config <- list(
   ),
 
   # -- Data paths --
-  data_dir = "/Users/georgiamitchell/Documents/Claude/Projects/TONIC Dashboard/BCTU_Clinical_Trials_Dashboard/trials/multiwp/data",
+  data_dir = file.path("trials", "multiwp", "data"),   # relative to the app folder
   return_rates_dir = NULL,
 
   # -- REDCap events --
