@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starting BCTU Dashboard</title>
+<!-- Opened by the desktop shortcut while R starts. Checks every second for the
+     dashboard on this computer, then switches to it. -->
+<style>
+  :root {
+    --bg: #F4F4F4; --card: #FFFFFF; --ink: #1B1B1B; --muted: #58595B;
+    --line: #E3E3E3; --accent: #00ACA9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #13191E; --card: #1B2127; --ink: #E6E9ED; --muted: #ACAFB2; --line: #343A40; }
+    .logo { filter: brightness(0) invert(.93); }
+  }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+    display: grid; place-items: center;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 34px 38px 28px; width: min(460px, calc(100vw - 32px)); box-sizing: border-box;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .06);
+  }
+  .logo { height: 40px; display: block; margin-bottom: 26px; }
+  h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: -.2px; }
+  p { margin: 0; color: var(--muted); }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin: 22px 0 14px; }
+  .bar i { display: block; height: 100%; width: 35%; background: var(--accent); border-radius: 2px;
+           animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+  @media (prefers-reduced-motion: reduce) { .bar i { animation: none; width: 100%; opacity: .5; } }
+  .small { font-size: 12.5px; }
+  .slow { display: none; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+          font-size: 13px; color: var(--ink); }
+  .slow.show { display: block; }
+  code { font-size: 12px; }
+</style>
+</head>
+<body>
+<main class="card" role="status" aria-live="polite">
+  <img class="logo" src="../www/BlackText-landscape.png" alt="Birmingham Clinical Trials Unit">
+  <h1>Starting the dashboard…</h1>
+  <p>This usually takes 10 to 20 seconds. The dashboard opens in this tab when it's ready.</p>
+  <div class="bar" aria-hidden="true"><i></i></div>
+  <p class="small">When you've finished, just close the tab. The dashboard stops by itself ten minutes later.</p>
+  <div class="slow" id="slow">
+    This is taking longer than usual. On Windows, open the minimised <b>BCTU Dashboard</b> window in
+    the taskbar to see what it says. On a Mac, the details are in
+    <code>~/Library/Logs/BCTU Dashboard.log</code>.
+  </div>
+</main>
+<script>
+(function () {
+  var address = 'http://127.0.0.1:3838/', started = Date.now();
+  // An image the dashboard serves: it loads as soon as the dashboard is up
+  function check() {
+    var img = new Image();
+    img.onload = function () { location.replace(address); };
+    img.onerror = function () {
+      if (Date.now() - started > 90000) document.getElementById('slow').classList.add('show');
+      setTimeout(check, 900);
+    };
+    img.src = address + 'BlackText-landscape.png?t=' + Date.now();
+  }
+  check();
+})();
+</script>
+</body>
+</html>

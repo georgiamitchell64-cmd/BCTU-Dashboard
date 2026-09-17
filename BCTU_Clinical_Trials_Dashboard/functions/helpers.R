@@ -54,6 +54,35 @@ start_module <- function(label, expr) {
 
 
 # =============================================================================
+# Desktop shortcut: stop when nobody is using it
+# =============================================================================
+# desktop/run_dashboard.R (the double-click launcher) sets BCTU_DESKTOP=1. The
+# app then stops itself BCTU_AUTO_STOP_MINUTES (default 10) after the last
+# browser tab closes, so a shortcut never leaves R running in the background.
+# A page reload closes and reopens its session within seconds, so it's safe.
+.DESKTOP <- new.env(parent = emptyenv())
+.DESKTOP$sessions <- 0L
+
+desktop_track_session <- function(session) {
+  if (!identical(Sys.getenv("BCTU_DESKTOP"), "1")) return(invisible(NULL))
+  minutes <- suppressWarnings(as.numeric(Sys.getenv("BCTU_AUTO_STOP_MINUTES", "10")))
+  if (is.na(minutes) || minutes <= 0) minutes <- 10
+  .DESKTOP$sessions <- .DESKTOP$sessions + 1L
+  session$onSessionEnded(function() {
+    .DESKTOP$sessions <- .DESKTOP$sessions - 1L
+    if (.DESKTOP$sessions <= 0L)
+      later::later(function() {
+        if (.DESKTOP$sessions <= 0L) {
+          message("No browser tab has had the dashboard open for ", minutes, " minutes: stopping.")
+          shiny::stopApp()
+        }
+      }, delay = minutes * 60)
+  })
+  invisible(NULL)
+}
+
+
+# =============================================================================
 # Pandoc discovery (cross-platform)
 # =============================================================================
 # rmarkdown::render() needs pandoc on PATH. On macOS RStudio sets

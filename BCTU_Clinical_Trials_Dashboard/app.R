@@ -119,6 +119,7 @@ ui <- build_app_ui()
 
 server <- function(input, output, session) {
   state <- init_app_state(input, output, session)
+  desktop_track_session(session)   # desktop shortcut: stop once the last tab closes
 
   # Welcome screen (self-registration)
   start_module("Welcome screen", welcome_server(input, output, session, state))

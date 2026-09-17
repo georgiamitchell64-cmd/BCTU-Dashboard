@@ -4,6 +4,9 @@
 .Rproj.user/
 .Ruserdata
 
+# The Mac launcher is built on each Mac (desktop/build_mac_app.sh)
+BCTU_Clinical_Trials_Dashboard/desktop/*.app/
+
 # OS / file-manager junk
 .DS_Store
 Thumbs.db
