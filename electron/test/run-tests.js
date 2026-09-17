@@ -37,6 +37,20 @@ function eq(actual, expected, label) {
   if (!same) console.log(`        got ${JSON.stringify(actual)}, wanted ${JSON.stringify(expected)}`);
   ok(same, label);
 }
+
+// Paths come back with the platform's own separator, because that is what
+// spawn() and fs want — so compare them with the separator normalised rather
+// than writing every expectation twice.
+const slash = (p) => String(p).replace(/\\/g, '/');
+function eqPath(actual, expected, label) {
+  const same = slash(actual) === slash(expected);
+  if (!same) console.log(`        got ${JSON.stringify(actual)}, wanted ${JSON.stringify(expected)}`);
+  ok(same, label);
+}
+
+// An absolute fixture path needs a drive on Windows, or path.resolve() helpfully
+// supplies the one the tests happen to be running from.
+const A = process.platform === 'win32' ? 'C:' : '';
 async function section(name, fn) {
   console.log(`\n${name}`);
   try { await fn(); } catch (e) { failed++; console.log(`  FAIL  threw: ${e && e.stack}`); }
@@ -64,44 +78,45 @@ function fakeFs(present) {
 
 async function testLocate() {
   await section('locate: packaged layout', () => {
-    const res = '/opt/BCTU/resources';
+    const res = `${A}/opt/BCTU/resources`;
+    const data = `${A}/home/g/.config/BCTU`;
     const fsx = fakeFs([`${res}/runtime/R/bin/Rscript`]);
     const p = resolvePaths({
       appPath: `${res}/app.asar`, resourcesPath: res, isPackaged: true,
-      userData: '/home/g/.config/BCTU', platform: 'linux', env: {}, ...fsx,
+      userData: data, platform: 'linux', env: {}, ...fsx,
     });
-    eq(p.appDir, '/opt/BCTU/resources/app', 'app comes from resources/app');
-    eq(p.runtimeDir, '/opt/BCTU/resources/runtime', 'runtime comes from resources/runtime');
-    eq(p.dataDir, '/home/g/.config/BCTU', 'data is the per-user folder');
-    eq(p.logFile, '/home/g/.config/BCTU/dashboard.log', 'log sits in the data folder');
-    eq(p.rscript, `${res}/runtime/R/bin/Rscript`, 'finds the bundled R');
+    eqPath(p.appDir, `${res}/app`, 'app comes from resources/app');
+    eqPath(p.runtimeDir, `${res}/runtime`, 'runtime comes from resources/runtime');
+    eqPath(p.dataDir, data, 'data is the per-user folder');
+    eqPath(p.logFile, `${data}/dashboard.log`, 'log sits in the data folder');
+    eqPath(p.rscript, `${res}/runtime/R/bin/Rscript`, 'finds the bundled R');
   });
 
   await section('locate: development layout', () => {
-    const el = '/home/g/BCTU-Dashboard/electron';
+    const el = `${A}/home/g/BCTU-Dashboard/electron`;
     const p = resolvePaths({
-      appPath: el, resourcesPath: '/unused', isPackaged: false,
-      userData: '/home/g/.config/BCTU', platform: 'linux', env: {},
+      appPath: el, resourcesPath: `${A}/unused`, isPackaged: false,
+      userData: `${A}/home/g/.config/BCTU`, platform: 'linux', env: {},
       ...fakeFs(['/usr/bin/Rscript']),
     });
-    eq(p.appDir, '/home/g/BCTU-Dashboard/BCTU_Clinical_Trials_Dashboard',
-       'app is the checkout beside electron/');
-    eq(p.runtimeDir, `${el}/runtime`, 'runtime is electron/runtime');
-    eq(p.rscript, '/usr/bin/Rscript', 'falls back to an installed R');
+    eqPath(p.appDir, `${A}/home/g/BCTU-Dashboard/BCTU_Clinical_Trials_Dashboard`,
+           'app is the checkout beside electron/');
+    eqPath(p.runtimeDir, `${el}/runtime`, 'runtime is electron/runtime');
+    eqPath(p.rscript, '/usr/bin/Rscript', 'falls back to an installed R');
   });
 
   await section('locate: which R wins', () => {
-    const el = '/e';
+    const el = `${A}/e`;
     const ctx = {
-      appPath: el, resourcesPath: '/r', isPackaged: false,
-      userData: '/u', platform: 'linux', env: {},
+      appPath: el, resourcesPath: `${A}/r`, isPackaged: false,
+      userData: `${A}/u`, platform: 'linux', env: {},
     };
     let p = resolvePaths({ ...ctx, ...fakeFs([`${el}/runtime/R/bin/Rscript`, '/usr/bin/Rscript']) });
-    eq(p.rscript, `${el}/runtime/R/bin/Rscript`,
-       'the bundled R is preferred over an installed one');
+    eqPath(p.rscript, `${el}/runtime/R/bin/Rscript`,
+           'the bundled R is preferred over an installed one');
 
     p = resolvePaths({ ...ctx, ...fakeFs(['/usr/local/bin/Rscript', '/usr/bin/Rscript']) });
-    eq(p.rscript, '/usr/local/bin/Rscript', 'and among installed ones, the first listed');
+    eqPath(p.rscript, '/usr/local/bin/Rscript', 'and among installed ones, the first listed');
 
     p = resolvePaths({ ...ctx, ...fakeFs([]) });
     eq(p.rscript, null, 'no R found is null, not a throw');
@@ -115,24 +130,24 @@ async function testLocate() {
                   platform: 'win32', env };
 
     let p = resolvePaths({ ...ctx, ...fakeFs([`${el}/runtime/R/bin/x64/Rscript.exe`]) });
-    eq(p.rscript, 'C:/e/runtime/R/bin/x64/Rscript.exe', 'prefers bin/x64 when it exists');
+    eqPath(p.rscript, 'C:/e/runtime/R/bin/x64/Rscript.exe', 'prefers bin/x64 when it exists');
 
     p = resolvePaths({ ...ctx, ...fakeFs([`${el}/runtime/R/bin/Rscript.exe`]) });
-    eq(p.rscript, 'C:/e/runtime/R/bin/Rscript.exe', 'and takes plain bin/ when it does not');
+    eqPath(p.rscript, 'C:/e/runtime/R/bin/Rscript.exe', 'and takes plain bin/ when it does not');
 
     // The installed-R glob: R keeps each version in its own folder.
     p = resolvePaths({ ...ctx, ...fakeFs([
       'C:/Program Files/R/R-4.3.1/bin/x64/Rscript.exe',
       'C:/Program Files/R/R-4.4.2/bin/x64/Rscript.exe',
     ]) });
-    eq(p.rscript, 'C:/Program Files/R/R-4.4.2/bin/x64/Rscript.exe',
-       'picks the newest installed R version');
+    eqPath(p.rscript, 'C:/Program Files/R/R-4.4.2/bin/x64/Rscript.exe',
+           'picks the newest installed R version');
 
     p = resolvePaths({ ...ctx, ...fakeFs([
       'C:/Users/g/AppData/Local/Programs/R/R-4.4.2/bin/x64/Rscript.exe',
     ]) });
-    eq(p.rscript, 'C:/Users/g/AppData/Local/Programs/R/R-4.4.2/bin/x64/Rscript.exe',
-       'and finds a per-user install too');
+    eqPath(p.rscript, 'C:/Users/g/AppData/Local/Programs/R/R-4.4.2/bin/x64/Rscript.exe',
+           'and finds a per-user install too');
 
     ok(!resolvePaths({ ...ctx, ...fakeFs(['C:/Program Files/R/notR/bin/x64/Rscript.exe']) }).rscript,
        'a folder that is not R-something is not treated as an R install');
@@ -322,12 +337,13 @@ async function testPackaging() {
 
     // resolvePaths puts the app at resources/app and the runtime at
     // resources/runtime; if these ever disagree the app starts and finds nothing.
+    const res = `${A}/res`;
     const p = resolvePaths({
-      appPath: '/res/app.asar', resourcesPath: '/res', isPackaged: true,
-      userData: '/u', platform: 'linux', env: {}, ...fakeFs([]),
+      appPath: `${res}/app.asar`, resourcesPath: res, isPackaged: true,
+      userData: `${A}/u`, platform: 'linux', env: {}, ...fakeFs([]),
     });
-    eq(p.appDir, `/res/${app.to}`, 'and main.js looks where the builder puts the app');
-    eq(p.runtimeDir, `/res/${rt.to}`, 'and where it puts the runtime');
+    eqPath(p.appDir, `${res}/${app.to}`, 'and main.js looks where the builder puts the app');
+    eqPath(p.runtimeDir, `${res}/${rt.to}`, 'and where it puts the runtime');
   });
 }
 
