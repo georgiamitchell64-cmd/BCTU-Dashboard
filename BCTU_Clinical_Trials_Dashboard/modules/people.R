@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# People & access — the admin workspace on the home screen (a tab beside My
-# Trials, Portfolio, All Trials, Sites and Activity). Styles: www/people.css.
+# People & access — the admin workspace on the home screen, opened from the
+# settings menu (gear, top left). Styles: www/people.css.
 # Server: modules/people_server.R.
 # ─────────────────────────────────────────────────────────────────────────────
 

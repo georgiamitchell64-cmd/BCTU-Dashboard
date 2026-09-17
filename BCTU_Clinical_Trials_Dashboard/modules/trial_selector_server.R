@@ -41,20 +41,6 @@ trial_selector_server <- function(input, output, session, state) {
                                     tags$span(class = "dot"), "Below 25%")
   }
 
-  # New: redesigned status pill (.stat-pill) for rich-card layout
-  .stat_pill_v2 <- function(pct, size = "md") {
-    if (pct >= 0.5) {
-      cls <- "on-track"; lbl <- "On track"
-    } else if (pct >= 0.25) {
-      cls <- "warning"; lbl <- "Behind pace"
-    } else {
-      cls <- "warning"; lbl <- "Below 25%"
-    }
-    tags$span(class = paste("stat-pill", cls, if (size == "sm") "sm"),
-              tags$span(class = "stat-pill-dot"),
-              lbl)
-  }
-
   # Pick a stable colour pair for a trial mark (logo tile)
   .trial_mark_colors <- function(cfg) {
     pal <- list(list("#1B1B1B", "#58595B"))
@@ -139,110 +125,38 @@ trial_selector_server <- function(input, output, session, state) {
     rv$username %||% "Profile"
   })
 
-  # "Add Trial" button (admin only)
+  # "+ Add trial" (admin only) — primary button in the My Trials header
   output$home_add_button_ui <- renderUI({
     if (isTRUE(rv$portfolio_role == "admin")) {
-      tags$button(class = "sec-head2-act",
+      tags$button(type = "button", class = "mt-btn-primary",
                   onclick = "Shiny.setInputValue('open_wizard', Math.random(), {priority:'event'})",
-                  style = "padding:6px 10px;border:1px solid #E2E8EE;border-radius:8px;background:#fff;",
                   HTML("&#43; Add trial"))
     }
   })
 
-  # Hide tabs the user shouldn't see (admin-only ones).
-  observe({
-    is_admin <- isTRUE(rv$portfolio_role == "admin")
-    shinyjs::runjs(sprintf(
-      "document.querySelectorAll('.home-root .htab').forEach(function(t){
-         var label = t.textContent.trim();
-         // strip count badges (e.g. 'My Trials3')
-         label = label.replace(/[0-9]+$/, '').trim();
-         if (label === 'All Trials' || label === 'Activity' || label === 'Sites') {
-           t.style.display = %s ? '' : 'none';
-         }
-       });", if (is_admin) "true" else "false"))
+  # ── Which home tabs to show ──────────────────────────────────────────────
+  # Portfolio and All Trials are off until switched on in the settings menu
+  # (per person, profiles.home_prefs). All Trials, Sites and People also need
+  # admin. A tab that disappears while open drops back to My Trials.
+  home_prefs_r <- reactive({
+    rv$home_prefs_changed
+    tryCatch(home_prefs(rv$username), error = function(e) character())
   })
 
-  # \u2500\u2500 Rich trial card (new redesign \u2014 .rcard) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  .render_trial_card <- function(r, is_tm) {
-    cfg     <- r$cfg
-    ci      <- cfg$report_defaults$ci      %||% "\u2014"
-    sponsor <- cfg$report_defaults$sponsor %||% "\u2014"
-    phase   <- cfg$phase                   %||% "\u2014"
-    cat     <- r$category                  %||% "\u2014"
-    pct_w   <- sprintf("%d%%", round(r$pct * 100))
-    bar_col <- .trial_mark_colors(cfg)[[1]]
-
-    full_name <- cfg$full_name %||% cfg$name %||% (cfg$short_name %||% toupper(r$code))
-
-    last_rand <- cfg$last_rand %||% "\u2014"
-    sites_open <- cfg$sites_open %||% NA_integer_
-    sites_total <- cfg$sites_total %||% NA_integer_
-    queries <- cfg$open_queries %||% 0
-
-    sites_txt <- if (!is.na(sites_open) && !is.na(sites_total))
-      tagList(sites_open, tags$span(class = "rcard-foot-sub", sprintf(" / %d", sites_total)))
-    else "\u2014"
-
-    tags$button(class = "rcard",
-        onclick = sprintf("Shiny.setInputValue('select_trial', '%s', {priority:'event'})", r$code),
-
-        div(class = "rcard-head",
-            .trial_mark(cfg),
-            div(class = "rcard-titleblock",
-                div(class = "rcard-code", cfg$short_name %||% toupper(r$code)),
-                div(class = "rcard-name", full_name)),
-            .stat_pill_v2(r$pct)
-        ),
-
-        div(class = "rcard-meta",
-            div(class = "rcard-meta-row",
-                tags$span(class = "rcard-meta-k", "CI"),
-                tags$span(class = "rcard-meta-v", ci)),
-            div(class = "rcard-meta-row",
-                tags$span(class = "rcard-meta-k", "Sponsor"),
-                tags$span(class = "rcard-meta-v", sponsor)),
-            div(class = "rcard-meta-row",
-                tags$span(class = "rcard-meta-k", "Phase"),
-                tags$span(class = "rcard-meta-v", paste(phase, "\u00b7", cat)))
-        ),
-
-        div(class = "rcard-progressblock",
-            div(class = "rcard-progress-top",
-                tags$span(class = "rcard-recruited", format(r$n, big.mark = ",")),
-                tags$span(class = "rcard-target",
-                          sprintf("/ %s recruited", format(r$target, big.mark = ","))),
-                tags$span(class = "rcard-pct", pct_w)),
-            div(class = "rcard-bar",
-                div(class = "rcard-bar-fill",
-                    style = sprintf("width:%s;background:%s;", pct_w, bar_col)))
-        ),
-
-        div(class = "rcard-foot",
-            div(class = "rcard-foot-cell",
-                tags$span(class = "rcard-foot-k", "Sites"),
-                tags$span(class = "rcard-foot-v", sites_txt)),
-            div(class = "rcard-foot-cell",
-                tags$span(class = "rcard-foot-k", "Last rand."),
-                tags$span(class = "rcard-foot-v", last_rand)),
-            div(class = "rcard-foot-cell",
-                tags$span(class = "rcard-foot-k", "Queries"),
-                tags$span(class = paste("rcard-foot-v", if (queries > 10) "warn" else ""),
-                          as.character(queries)))
-        )
-    )
-  }
-
-  # \u2500\u2500 Category divider (new design \u2014 .cat-head) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  .category_header <- function(cat, n) {
-    icon <- TRIAL_CATEGORY_ICONS[[cat]] %||% TRIAL_CATEGORY_ICONS[["Other"]]
-    div(class = "cat-head",
-        div(class = "cat-icon", HTML(icon)),
-        div(class = "cat-label", cat),
-        div(class = "cat-count",
-            paste(n, if (n == 1) "trial" else "trials")),
-        div(class = "cat-divider"))
-  }
+  observe({
+    is_admin <- isTRUE(rv$portfolio_role == "admin")
+    prefs    <- home_prefs_r()
+    show <- c(overview = "portfolio" %in% prefs,
+              all      = is_admin && "all_trials" %in% prefs,
+              sites    = is_admin)
+    for (t in names(show)) shinyjs::toggle(paste0("htab_", t), condition = show[[t]])
+    hidden <- names(show)[!show]
+    if (length(hidden))
+      shinyjs::runjs(sprintf(
+        "(function(){ var a = document.querySelector('.home-root .htab.active');
+           if (a && %s.indexOf(a.id) >= 0) homeShowTab('my'); })();",
+        jsonlite::toJSON(paste0("htab_", hidden))))
+  })
 
   # Order categories in TRIAL_CATEGORIES order, with Uncategorised last.
   .ordered_categories <- function(cats) {
@@ -252,52 +166,114 @@ trial_selector_server <- function(input, output, session, state) {
     c(known, sort(extra))
   }
 
-  output$trial_cards_ui <- renderUI({
-    rows  <- tryCatch(trials_data(), error = function(e) {
-      message("trial_cards rows err: ", e$message)
-      return(list())
+  # ══════════════════════════════════════════════════════════════════════════
+  # MY TRIALS TILES
+  # ══════════════════════════════════════════════════════════════════════════
+  # One tile per trial the person is a member of: code, title, category, CI
+  # and sponsor, recruitment against target, and sites. Click to open.
+
+  my_trials_enriched <- reactive({
+    rv$home_membership_changed
+    rv$settings_changed
+    rows <- tryCatch(trials_data(), error = function(e) list())
+    lapply(rows, function(r) {
+      cfg      <- r$cfg
+      sites_df <- tryCatch(.read_trial_sites(cfg), error = function(e) NULL)
+      r$site_counts <- tryCatch(trial_site_counts(cfg, sites_df),
+                                error = function(e) list(open = 0L, total = 0L, not_recruiting = 0L))
+      r$ci      <- cfg$report_defaults$ci      %||% ""
+      r$sponsor <- cfg$report_defaults$sponsor %||% ""
+      r$short   <- cfg$short_name %||% toupper(r$code)
+      r$name    <- cfg$full_name %||% cfg$name %||% ""
+      r
     })
-    is_tm <- isTRUE(rv$portfolio_role == "admin")
-
-    add_card <- if (is_tm) {
-      tags$button(class = "add-card",
-          onclick = "Shiny.setInputValue('open_wizard', Math.random(), {priority:'event'})",
-          div(class = "add-card-plus", HTML("&#43;")),
-          div(class = "add-card-l1", "Add a new trial"),
-          div(class = "add-card-l2", "Wizard takes ~3 min"))
-    }
-
-    if (length(rows) == 0 && is.null(add_card)) {
-      return(div(class = "empty-tab",
-                 div(class = "empty-tab-i", HTML("&#x2299;")),
-                 div(class = "empty-tab-t", "No trials yet"),
-                 div(class = "empty-tab-s", "No trials available — ask an admin to add you to a trial.")))
-    }
-
-    if (length(rows) == 0) {
-      return(div(class = "rgrid", add_card))
-    }
-
-    cats_seen <- unique(vapply(rows, function(r) r$category, character(1)))
-    blocks <- lapply(.ordered_categories(cats_seen), function(cat) {
-      group <- Filter(function(r) identical(r$category, cat), rows)
-      tagList(
-        .category_header(cat, length(group)),
-        div(class = "rgrid",
-            lapply(group, function(r) .render_trial_card(r, is_tm)))
-      )
-    })
-
-    if (!is.null(add_card)) {
-      blocks <- c(blocks, list(
-        div(class = "rgrid", style = "margin-top:14px;", add_card)
-      ))
-    }
-
-    do.call(tagList, blocks)
   })
 
-  # ── Topbar pieces: profile initials, my-trials count, activity dot ────
+  # The tiles after the search box and category filter, A–Z by trial
+  my_trials_filtered <- reactive({
+    rows <- tryCatch(my_trials_enriched(), error = function(e) list())
+    total <- length(rows)
+    q <- tolower(trimws(input$my_search %||% ""))
+    if (nzchar(q))
+      rows <- Filter(function(r) grepl(q, tolower(paste(r$short, r$name, r$ci, r$sponsor,
+                                                        r$category, collapse = " ")), fixed = TRUE), rows)
+    cat <- input$my_category %||% "__all__"
+    if (!identical(cat, "__all__")) rows <- Filter(function(r) identical(r$category, cat), rows)
+    rows <- rows[order(vapply(rows, function(r) tolower(r$short), character(1)))]
+    list(rows = rows, total = total)
+  })
+
+  output$home_my_category_ui <- renderUI({
+    rows <- tryCatch(my_trials_enriched(), error = function(e) list())
+    cats <- .ordered_categories(unique(vapply(rows, function(r) r$category, character(1))))
+    cur  <- isolate(input$my_category) %||% "__all__"
+    tags$select(class = "mt-select", id = "my_category_box", `aria-label` = "Category",
+                onchange = "Shiny.setInputValue('my_category', this.value)",
+                tags$option(value = "__all__", "All categories"),
+                lapply(cats, function(c) tags$option(value = c, selected = if (identical(c, cur)) NA, c)))
+  })
+
+  output$home_my_trials_badge <- renderText({
+    as.character(length(tryCatch(trials_data(), error = function(e) list())))
+  })
+
+  output$home_my_trials_showing <- renderText({
+    f <- my_trials_filtered()
+    n <- length(f$rows)
+    if (n == f$total) sprintf("%d %s", n, if (n == 1) "trial" else "trials")
+    else sprintf("%d of %d trials", n, f$total)
+  })
+
+  output$my_trials_table_ui <- renderUI({
+    f    <- my_trials_filtered()
+    rows <- f$rows
+    is_admin <- isTRUE(rv$portfolio_role == "admin")
+
+    if (f$total == 0) {
+      return(div(class = "mt-empty", id = "my_trials_table",
+                 div(class = "mt-empty-t", "No trials yet"),
+                 div(class = "mt-empty-s",
+                     if (is_admin) "Use + Add trial to set up the first dashboard."
+                     else "Ask an admin to add you to a trial.")))
+    }
+    if (!length(rows)) {
+      return(div(class = "mt-empty", id = "my_trials_table",
+                 div(class = "mt-empty-t", "No trials match"),
+                 div(class = "mt-empty-s", "Try a different search or category.")))
+    }
+
+    tiles <- lapply(rows, function(r) {
+      pct <- max(0, min(1, r$pct %||% 0))
+      sc  <- r$site_counts
+      pending <- max(0L, sc$total - sc$open)
+      dash <- tags$span(class = "mt-dash", "—")
+      who <- c(if (nzchar(r$ci)) r$ci, if (nzchar(r$sponsor)) r$sponsor)
+      tags$button(type = "button", class = "mt-tile",
+        onclick = sprintf("Shiny.setInputValue('select_trial','%s',{priority:'event'})", r$code),
+        div(class = "mt-tile-top",
+            tags$span(class = "mt-tile-code", r$short),
+            tags$span(class = "mt-tag", r$category)),
+        div(class = "mt-tile-name", title = r$name, if (nzchar(r$name)) r$name else dash),
+        div(class = "mt-tile-who", if (length(who)) paste(who, collapse = " · ") else dash),
+        div(class = "mt-tile-prog",
+            div(class = "mt-prog-top",
+                tags$span(class = "mt-prog-n",
+                          tags$b(format(r$n, big.mark = ",")),
+                          if (r$target > 0) sprintf(" / %s recruited", format(r$target, big.mark = ","))
+                          else " recruited"),
+                tags$span(class = "mt-prog-pct", sprintf("%d%%", round(pct * 100)))),
+            div(class = "mt-bar", div(class = "mt-bar-f", style = sprintf("width:%.1f%%;", pct * 100)))),
+        div(class = "mt-tile-sites",
+            if (sc$total == 0) "No sites yet"
+            else tagList(tags$b(sc$open), sprintf(" %s active", if (sc$open == 1) "site" else "sites"),
+                         if (pending > 0) tags$span(class = "mt-sub", sprintf(" · %d pending", pending)))),
+        tags$span(class = "mt-tile-go", `aria-hidden` = "true", HTML("&rarr;")))
+    })
+
+    div(id = "my_trials_table", class = "mt-grid", tiles)
+  })
+
+  # ── Topbar pieces: profile initials, my-trials count ──────────────────
   output$home_user_initials <- renderText({
     nm <- rv$username %||% "U"
     parts <- strsplit(nm, "\\s+")[[1]]
@@ -310,266 +286,64 @@ trial_selector_server <- function(input, output, session, state) {
     as.character(length(rows))
   })
 
-  output$home_activity_dot <- renderUI({
-    feed <- tryCatch(activity_feed(), error = function(e) NULL)
-    if (!is.null(feed) && nrow(feed) > 0) tags$span(class = "htab-dot")
+  # ── Settings menu (gear, top left) ────────────────────────────────────
+  # Theme, the optional Portfolio / All Trials tabs, and People & access.
+  output$home_settings_ui <- renderUI({
+    is_admin <- isTRUE(rv$portfolio_role == "admin")
+    prefs    <- home_prefs_r()
+    theme_row <- function(key, label)
+      tags$button(type = "button", class = "hs-item hs-theme", `data-t` = key,
+                  onclick = sprintf("Shiny.setInputValue('home_theme_pick','%s',{priority:'event'})", key),
+                  span(class = "hs-radio", `aria-hidden` = "true"), label)
+    toggle_row <- function(key, label, on)
+      tags$button(type = "button", class = paste("hs-item hs-toggle", if (on) "on"),
+                  `data-keep` = "1", role = "switch", `aria-checked` = if (on) "true" else "false",
+                  onclick = sprintf("Shiny.setInputValue('home_toggle_tab',{key:'%s',on:%s,n:Math.random()},{priority:'event'})",
+                                    key, if (on) "false" else "true"),
+                  span(label), span(class = "hs-switch", `aria-hidden` = "true"))
+    div(class = "hs-menu", role = "menu",
+        div(class = "hs-head", "Appearance"),
+        theme_row("light",  "Light"),
+        theme_row("dark",   "Dark"),
+        theme_row("system", "Match system"),
+        div(class = "hs-head", "Optional tabs"),
+        toggle_row("portfolio", "Portfolio", "portfolio" %in% prefs),
+        if (is_admin) toggle_row("all_trials", "All Trials", "all_trials" %in% prefs),
+        if (is_admin) tagList(
+          div(class = "hs-divider"),
+          tags$button(type = "button", class = "hs-item",
+                      onclick = "homeShowTab('people');",
+                      "People & access")),
+        # mark the theme in use
+        tags$script(HTML("(function(){
+          var t = 'light'; try { t = localStorage.getItem('bctu_theme') || 'light'; } catch(e) {}
+          document.querySelectorAll('.hs-theme').forEach(function(b){
+            b.classList.toggle('on', b.getAttribute('data-t') === t); });
+        })();")))
   })
 
-  output$home_trials_section_title <- renderText({
-    rows <- tryCatch(trials_data(), error = function(e) list())
-    sprintf("%d active %s", length(rows),
-            if (length(rows) == 1) "trial" else "trials")
-  })
-
-  # ── Portfolio summary strip (My Trials hero header) ───────────────────
-  output$home_summary_strip_ui <- renderUI({
-    rows <- tryCatch(trials_data(), error = function(e) list())
-    if (length(rows) == 0) return(NULL)
-
-    n_trials <- length(rows)
-    pcts <- vapply(rows, function(r) r$pct, numeric(1))
-    on_track <- sum(pcts >= 0.5)
-    at_risk  <- sum(pcts < 0.25)
-
-    sites_open <- sum(vapply(rows, function(r) r$cfg$sites_open %||% 0L, integer(1)))
-    sites_total <- sum(vapply(rows, function(r) r$cfg$sites_total %||% 0L, integer(1)))
-    this_week <- sum(vapply(rows, function(r) r$cfg$this_week %||% 0L, integer(1)))
-    queries  <- sum(vapply(rows, function(r) r$cfg$open_queries %||% 0L, integer(1)))
-
-    greet_hr <- as.integer(format(Sys.time(), "%H"))
-    greeting <- if (greet_hr < 12) "Good morning" else if (greet_hr < 18) "Good afternoon" else "Good evening"
-    fname <- strsplit(rv$username %||% "there", "\\s+")[[1]][1]
-
-    div(class = "psum",
-        div(class = "psum-head",
-            div(class = "psum-eye", "Portfolio · last 7 days"),
-            div(class = "psum-greet",
-                sprintf("%s, %s — ", greeting, fname),
-                tags$span(class = "psum-greet-sub",
-                          sprintf("%d %s across %d %s",
-                                  this_week,
-                                  if (this_week == 1) "new participant this week" else "new participants this week",
-                                  n_trials,
-                                  if (n_trials == 1) "trial" else "trials")))
-        ),
-        div(class = "psum-grid",
-            div(class = "psum-stat accent",
-                div(class = "psum-stat-k", "Active trials"),
-                div(class = "psum-stat-v", n_trials),
-                div(class = "psum-stat-s",
-                    sprintf("%d on track at 50%%+ of target", on_track))),
-            div(class = "psum-stat pos",
-                div(class = "psum-stat-k", "This week"),
-                div(class = "psum-stat-v", sprintf("+%d", this_week)),
-                div(class = "psum-stat-s", "recruited across portfolio")),
-            div(class = paste("psum-stat", if (queries > 50) "warn"),
-                div(class = "psum-stat-k", "Open queries"),
-                div(class = "psum-stat-v", queries),
-                div(class = "psum-stat-s", "across all trials"))
-        ),
-        div(class = "psum-trials",
-            div(class = "psum-trials-head",
-                tags$span(class = "psum-trials-eye", "Per-trial recruitment & sites"),
-                tags$span(class = "psum-trials-leg",
-                          tags$span(class = "psum-trials-leg-sw"),
-                          " recruited vs target")),
-            div(class = "psum-trials-list",
-                lapply(rows, function(r) {
-                  cfg <- r$cfg
-                  pct <- r$pct
-                  s_open <- cfg$sites_open %||% 0L
-                  s_total <- cfg$sites_total %||% 0L
-                  s_pct <- if (s_total > 0) min(1, s_open / s_total) else 0
-                  bar_col <- .trial_mark_colors(cfg)[[1]]
-                  dot_col <- if (pct >= 0.5) "#3AAA35" else if (pct >= 0.25) "#F07F3C" else "#E30513"
-                  div(class = "psum-trow",
-                      div(class = "psum-trow-id",
-                          tags$span(class = "psum-trow-dot",
-                                    style = sprintf("background:%s;", dot_col)),
-                          tags$span(class = "psum-trow-code",
-                                    cfg$short_name %||% toupper(r$code))),
-                      div(class = "psum-trow-met",
-                          div(class = "psum-trow-met-k", "Recruited"),
-                          div(class = "psum-trow-met-v",
-                              format(r$n, big.mark = ","),
-                              tags$span(class = "psum-trow-met-of",
-                                        sprintf(" / %s", format(r$target, big.mark = ",")))),
-                          div(class = "psum-trow-bar",
-                              div(class = "psum-trow-bar-f",
-                                  style = sprintf("width:%d%%;background:%s;",
-                                                  round(pct * 100), bar_col))),
-                          div(class = "psum-trow-met-s",
-                              sprintf("%d%% of target", round(pct * 100)))),
-                      div(class = "psum-trow-met",
-                          div(class = "psum-trow-met-k", "Sites"),
-                          div(class = "psum-trow-met-v",
-                              s_open,
-                              tags$span(class = "psum-trow-met-of",
-                                        sprintf(" / %d", s_total))),
-                          div(class = "psum-trow-bar",
-                              div(class = "psum-trow-bar-f",
-                                  style = sprintf("width:%d%%;background:#3C3C3B;opacity:.55;",
-                                                  round(s_pct * 100)))),
-                          div(class = "psum-trow-met-s",
-                              sprintf("%d pending open", max(0L, s_total - s_open))))
-                  )
-                })))
-    )
-  })
-
-  # ── Activity preview (small list under My Trials) ─────────────────────
-  output$home_activity_preview_ui <- renderUI({
-    feed <- tryCatch(activity_feed(), error = function(e) NULL)
-    if (is.null(feed) || nrow(feed) == 0) {
-      return(div(class = "act-list",
-                 div(style = "padding:20px;text-align:center;color:#58595B;font-size:12.5px;",
-                     "No recent activity yet.")))
-    }
-    trials <- discover_trials()
-    rows <- head(feed, 6)
-    div(class = "act-list",
-        lapply(seq_len(nrow(rows)), function(i) {
-          r <- rows[i, ]
-          ev <- as.character(r$event_type %||% "info")
-          map <- list(
-            trial_created    = list(c = "#3AAA35", l = "TRIAL"),
-            trial_deleted    = list(c = "#E30513", l = "TRIAL"),
-            site_added       = list(c = "#2581C4", l = "SITE"),
-            sites_bulk_added = list(c = "#2581C4", l = "SITE"),
-            site_deleted     = list(c = "#E30513", l = "SITE"),
-            csv_uploaded     = list(c = "#2581C4", l = "DATA"),
-            amendment_added  = list(c = "#C59A00", l = "AMEND"),
-            amendment_edited = list(c = "#C59A00", l = "AMEND"),
-            settings_saved   = list(c = "#58595B", l = "SET"),
-            report_generated = list(c = "#1B1B1B", l = "REPORT"),
-            membership_changed = list(c = "#F07F3C", l = "USER"),
-            portfolio_role_changed = list(c = "#F07F3C", l = "ROLE")
-          )
-          k <- map[[ev]] %||% list(c = "#3AAA35", l = "INFO")
-          tcode <- as.character(r$trial_code %||% "—")
-          tshort <- if (!is.null(trials[[tcode]]))
-            (trials[[tcode]]$short_name %||% toupper(tcode)) else tcode
-          when <- as.character(r$happened_at %||% r$timestamp %||% "")
-          when_s <- if (nchar(when)) format(as.POSIXct(when), "%d %b %H:%M") else ""
-          div(class = "act-row",
-              div(class = "act-tag",
-                  style = sprintf("background:%s;", k$c), k$l),
-              div(class = "act-trial", tshort),
-              div(class = "act-text", as.character(r$summary %||% r$description %||% "")),
-              div(class = "act-time", when_s))
-        }))
-  })
-
-  # ── Quick actions: New trial → wizard ─────────────────────────────────
-  observeEvent(input$qa_new_trial, {
-    if (isTRUE(rv$portfolio_role == "admin")) {
-      session$sendCustomMessage("trigger_open_wizard", list())
-      shinyjs::runjs("Shiny.setInputValue('open_wizard', Math.random(), {priority:'event'});")
-    } else {
-      showModal(modalDialog(
-        title = "Admins only",
-        easyClose = TRUE, footer = modalButton("OK"),
-        "Only portfolio admins can create new trials."
-      ))
-    }
-  })
-
-  # ── Quick actions: Run a report → trial picker → reports module ───────
-  observeEvent(input$qa_run_report, {
-    rows <- tryCatch(trials_data(), error = function(e) list())
-    if (length(rows) == 0) {
-      showModal(modalDialog(
-        title = "No trials available",
-        easyClose = TRUE, footer = modalButton("Close"),
-        "You need at least one trial to run a report."))
-      return()
-    }
-    choices <- setNames(
-      vapply(rows, function(r) r$code, character(1)),
-      vapply(rows, function(r) r$cfg$short_name %||% toupper(r$code), character(1))
-    )
-    showModal(modalDialog(
-      title = "Run a report",
-      size = "s", easyClose = TRUE,
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("qa_run_report_go", "Open report builder",
-                     class = "btn btn-primary",
-                     style = "background:#1B1B1B;border-color:#1B1B1B;")),
-      div(style = "padding:6px 0;",
-          tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
-                              text-transform:uppercase;letter-spacing:.5px;",
-                     "Trial"),
-          selectInput("qa_run_report_trial", label = NULL,
-                      choices = choices, width = "100%"),
-          div(style = "font-size:12px;color:#58595B;margin-top:8px;",
-              "Opens the report builder where you'll choose format
-               (Word / PDF / HTML) and sections."))
-    ))
-  })
-
-  observeEvent(input$qa_run_report_go, {
-    code <- input$qa_run_report_trial
-    removeModal()
-    if (!is.null(code) && nzchar(code)) {
-      shinyjs::runjs(sprintf(
-        "Shiny.setInputValue('select_trial', '%s', {priority:'event'});", code))
-      # Switch to reports tab once trial is loaded
-      shinyjs::runjs("setTimeout(function(){
-        var btn = document.getElementById('nav_reports');
-        if (btn) btn.click();
-      }, 600);")
-    }
-  })
-
-  # ── Quick actions: Switch theme ───────────────────────────────────────
-  observeEvent(input$qa_switch_theme, {
-    showModal(modalDialog(
-      title = "Switch theme",
-      size = "s", easyClose = TRUE,
-      footer = modalButton("Close"),
-      div(style = "display:grid;gap:10px;padding:6px 0;",
-          tags$button(class = "qa-tile",
-                      onclick = "Shiny.setInputValue('qa_theme_pick','light',{priority:'event'})",
-                      div(class = "qa-icon", HTML("&#x2600;")),
-                      div(class = "qa-text",
-                          div(class = "qa-label", "Light"),
-                          div(class = "qa-desc", "Default BCTU navy & teal"))),
-          tags$button(class = "qa-tile",
-                      onclick = "Shiny.setInputValue('qa_theme_pick','dark',{priority:'event'})",
-                      div(class = "qa-icon", HTML("&#x263D;")),
-                      div(class = "qa-text",
-                          div(class = "qa-label", "Dark"),
-                          div(class = "qa-desc", "Reduced glare for evening work"))),
-          tags$button(class = "qa-tile",
-                      onclick = "Shiny.setInputValue('qa_theme_pick','system',{priority:'event'})",
-                      div(class = "qa-icon", HTML("&#x1F5A5;")),
-                      div(class = "qa-text",
-                          div(class = "qa-label", "System"),
-                          div(class = "qa-desc", "Follow OS preference"))))
-    ))
-  })
-
-  observeEvent(input$qa_theme_pick, {
-    pick <- input$qa_theme_pick
-    removeModal()
+  observeEvent(input$home_theme_pick, {
+    pick <- input$home_theme_pick
+    if (!pick %in% c("light", "dark", "system")) return()
     shinyjs::runjs(sprintf("
-      document.documentElement.setAttribute('data-theme','%s');
-      try { localStorage.setItem('bctu_theme','%s'); } catch(e){}
-    ", pick, pick))
-    showNotification(sprintf("Theme set to %s.", pick), duration = 2)
+      (function(){
+        var t = '%s';
+        try { localStorage.setItem('bctu_theme', t); } catch(e){}
+        if (t === 'system') t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+        document.querySelectorAll('.hs-theme').forEach(function(b){
+          b.classList.toggle('on', b.getAttribute('data-t') === '%s'); });
+      })();", pick, pick))
   })
 
-  # ── Quick actions: Portfolio settings → People & access ────────────────
-  observeEvent(input$qa_portfolio_settings, {
-    if (isTRUE(rv$portfolio_role == "admin")) {
-      shinyjs::runjs("homeShowTab('people', document.getElementById('htab_people'));")
-    } else {
-      showModal(modalDialog(
-        title = "Admins only",
-        easyClose = TRUE, footer = modalButton("OK"),
-        "Only portfolio admins can change portfolio settings."))
-    }
+  observeEvent(input$home_toggle_tab, {
+    t <- input$home_toggle_tab
+    key <- t$key %||% ""
+    if (!key %in% HOME_OPTIONAL_TABS) return()
+    if (key == "all_trials" && !isTRUE(rv$portfolio_role == "admin")) return()
+    tryCatch(set_home_pref(rv$username, key, isTRUE(t$on)),
+             error = function(e) showNotification(paste("Couldn't save that:", conditionMessage(e)), type = "error"))
+    rv$home_prefs_changed <- Sys.time()
   })
 
   # ── Help button ───────────────────────────────────────────────────────
@@ -583,14 +357,15 @@ trial_selector_server <- function(input, output, session, state) {
         modalButton("Close")),
       div(style = "font-size:13px;line-height:1.6;color:#3C3C3B;",
           tags$p(tags$strong("BCTU Clinical Trials Dashboard")),
-          tags$p("Click any trial card to open its dashboard. Use the tabs at the top
-                  to switch between My Trials, Portfolio, All Trials, Sites and Activity."),
-          tags$p("Quick actions row:"),
+          tags$p("Click a trial tile to open its dashboard. Use the search box or category
+                  list to narrow the tiles."),
+          tags$p("The settings menu (gear, top left):"),
           tags$ul(
-            tags$li(tags$strong("New trial"), " — wizard to spin up a new dashboard (admin)."),
-            tags$li(tags$strong("Run a report"), " — pick a trial and open the report builder."),
-            tags$li(tags$strong("Switch theme"), " — light, dark, or system."),
-            tags$li(tags$strong("Portfolio settings"), " — manage users, roles and access (admin).")),
+            tags$li(tags$strong("Appearance"), " — light, dark, or match your system."),
+            tags$li(tags$strong("Optional tabs"), " — switch on Portfolio (every trial's progress at a glance)
+                    and, for admins, All Trials."),
+            tags$li(tags$strong("People & access"), " — manage users, roles and access (admin).")),
+          tags$p(tags$strong("+ Add trial"), " (admin) starts the new-trial wizard."),
           tags$p(style = "color:#58595B;font-size:12px;",
                  "Need more help? Contact the BCTU support team."))
     ))
@@ -950,73 +725,6 @@ trial_selector_server <- function(input, output, session, state) {
     do.call(tagList, blocks)
   })
 
-  # \u2500\u2500 Activity placeholder \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  # Reactive feed — invalidates when any of the obvious sources changes.
-  activity_feed <- reactive({
-    rv$home_membership_changed
-    rv$settings_changed
-    invalidateLater(60 * 1000)   # gentle background refresh
-    list_activity(limit = 200,
-                  trial_code = if (isTRUE(input$activity_trial_filter == "__all__"))
-                    NULL else input$activity_trial_filter,
-                  event_type = if (isTRUE(input$activity_event_filter == "__all__"))
-                    NULL else input$activity_event_filter)
-  })
-
-  output$home_activity_ui <- renderUI({
-    trials <- discover_trials()
-    trial_choices <- c("All trials" = "__all__",
-                       setNames(names(trials),
-                                vapply(trials, function(t)
-                                  t$short_name %||% toupper(t$code),
-                                  character(1))))
-    event_choices <- c("All events"          = "__all__",
-                       "Trial created"       = "trial_created",
-                       "Trial deleted"       = "trial_deleted",
-                       "Site added"          = "site_added",
-                       "Sites bulk-added"    = "sites_bulk_added",
-                       "Site deleted"        = "site_deleted",
-                       "CSV uploaded"        = "csv_uploaded",
-                       "Amendment added"     = "amendment_added",
-                       "Amendment edited"    = "amendment_edited",
-                       "Amendment removed"   = "amendment_removed",
-                       "Settings saved"      = "settings_saved",
-                       "Membership changed"  = "membership_changed",
-                       "Portfolio role"      = "portfolio_role_changed")
-
-    feed <- activity_feed()
-    rows <- if (is.null(feed) || !nrow(feed)) {
-      div(class = "home-empty",
-          div(class = "icon", HTML("&#x1F514;")),
-          div(style = "font-size:15px;color:#1B1B1B;font-weight:500;margin-bottom:6px;",
-              "No activity yet"),
-          div("Trial creations, site changes, uploads and amendments will show up here."))
-    } else {
-      div(lapply(seq_len(nrow(feed)), function(i)
-        render_activity_row(feed[i, ], trials)))
-    }
-
-    div(
-      div(style = "display:grid;grid-template-columns:1fr 1fr;gap:14px;
-                   margin-bottom:16px;",
-          div(tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
-                                  text-transform:uppercase;letter-spacing:.5px;",
-                         "Trial"),
-              selectInput("activity_trial_filter", label = NULL,
-                          choices = trial_choices,
-                          selected = "__all__", width = "100%")),
-          div(tags$label(style = "font-size:11px;font-weight:600;color:#58595B;
-                                  text-transform:uppercase;letter-spacing:.5px;",
-                         "Event type"),
-              selectInput("activity_event_filter", label = NULL,
-                          choices = event_choices,
-                          selected = "__all__", width = "100%"))),
-      div(style = "background:#FFFFFF;border:1px solid #EEF2F7;border-radius:14px;
-                   padding:6px 22px;",
-          rows)
-    )
-  })
-
   # ── Sites tab (cross-trial site performance) ─────────────────────────────
   cross_sites_long <- reactive({
     rv$home_membership_changed
@@ -1197,9 +905,6 @@ trial_selector_server <- function(input, output, session, state) {
     )
     if (is_admin) {
       items <- c(items, list(
-        div(class = "home-dropdown-item",
-            onclick = "homeShowTab('people', document.getElementById('htab_people')); document.querySelector('.home-root .userchip').classList.remove('open');",
-            "People & access"),
         div(class = "home-dropdown-item",
             onclick = "Shiny.setInputValue('home_backup_restore', Math.random(), {priority:'event'})",
             "Backup / Restore")
@@ -2422,8 +2127,9 @@ trial_config <- list(
   # Force-render every home output — they live inside JS-toggled divs which
   # Shiny would otherwise suspend.
   .force_render(c(
-    "trial_cards_ui", "home_overview_ui", "home_all_trials_ui",
-    "home_sites_ui", "home_activity_ui",
+    "my_trials_table_ui", "home_my_category_ui", "home_my_trials_badge",
+    "home_my_trials_showing", "home_settings_ui",
+    "home_overview_ui", "home_all_trials_ui", "home_sites_ui",
     "home_add_button_ui", "home_dropdown_ui", "home_profile_name",
     "sites_top_ui", "sites_detail_ui",
     "notif_badge_ui", "notif_drawer_ui"

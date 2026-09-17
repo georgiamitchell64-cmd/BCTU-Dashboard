@@ -511,3 +511,34 @@ list_trial_members <- function(trial_code) {
      ORDER BY m.fullname",
     params = list(trial_code))
 }
+
+# ── Home-screen preferences (profiles.home_prefs, comma-separated) ──────────
+# Optional home tabs are off unless the person switches them on in the
+# settings menu (gear, top left): "portfolio" and "all_trials".
+HOME_OPTIONAL_TABS <- c("portfolio", "all_trials")
+
+.home_prefs_migrate <- function(con) {
+  cols <- tryCatch(dbGetQuery(con, "PRAGMA table_info(profiles)")$name, error = function(e) character())
+  if (length(cols) && !"home_prefs" %in% cols)
+    dbExecute(con, "ALTER TABLE profiles ADD COLUMN home_prefs TEXT")
+}
+
+home_prefs <- function(fullname) {
+  if (is.null(fullname) || !nzchar(fullname)) return(character())
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  .home_prefs_migrate(con)
+  v <- dbGetQuery(con, "SELECT home_prefs FROM profiles WHERE fullname = ?",
+                  params = list(fullname))$home_prefs
+  if (!length(v) || is.na(v[1]) || !nzchar(v[1])) character()
+  else intersect(strsplit(v[1], ",", fixed = TRUE)[[1]], HOME_OPTIONAL_TABS)
+}
+
+set_home_pref <- function(fullname, key, on) {
+  if (is.null(fullname) || !nzchar(fullname) || !key %in% HOME_OPTIONAL_TABS) return(invisible(FALSE))
+  cur <- home_prefs(fullname)
+  new <- if (isTRUE(on)) union(cur, key) else setdiff(cur, key)
+  con <- shared_db_connect(); on.exit(dbDisconnect(con))
+  dbExecute(con, "UPDATE profiles SET home_prefs = ? WHERE fullname = ?",
+            params = list(paste(new, collapse = ","), fullname))
+  invisible(TRUE)
+}

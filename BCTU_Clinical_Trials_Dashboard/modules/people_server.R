@@ -54,8 +54,11 @@ people_server <- function(input, output, session, state) {
   changed  <- function() rv$home_membership_changed <- Sys.time()
   notify   <- function(msg, type = "message", d = 4) showNotification(msg, type = type, duration = d)
 
-  # The People tab is for admins only
-  observe(shinyjs::toggle("htab_people", condition = is_admin()))
+  # People & access opens from the settings menu (admins only — the menu
+  # entry is only rendered for them). If someone loses admin while the panel
+  # is open, drop back to My Trials.
+  observe(if (!is_admin()) shinyjs::runjs(
+    "if (document.getElementById('home_tab_people') && document.getElementById('home_tab_people').style.display !== 'none') homeShowTab('my');"))
 
   # ── Data ─────────────────────────────────────────────────────────────────
   trials <- reactive({ rv$home_membership_changed; tryCatch(discover_trials(), error = function(e) list()) })

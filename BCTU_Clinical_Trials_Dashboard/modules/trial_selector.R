@@ -1,18 +1,26 @@
 trial_selector_ui <- function() {
   div(id = "trial_selector_panel", class = "home-root",
 
-      # ── JS: tab switching, dropdown toggle, notification drawer ───────────
+      # ── JS: tab switching, menus, My Trials toolbar ───────────────────────
       tags$script(HTML("
         document.addEventListener('click', function(e){
           var prof = document.querySelector('.home-root .userchip');
+          var gear = document.querySelector('.home-root .home-settings');
           if (prof && prof.contains(e.target)) {
             prof.classList.toggle('open');
           } else if (prof) {
             prof.classList.remove('open');
           }
+          if (gear && gear.contains(e.target)) {
+            // rows marked data-keep keep the menu open (toggles)
+            if (e.target.closest('.hs-item') && !e.target.closest('[data-keep]')) gear.classList.remove('open');
+            else if (!e.target.closest('.hs-menu')) gear.classList.toggle('open');
+          } else if (gear) {
+            gear.classList.remove('open');
+          }
         });
         function homeShowTab(tab, el) {
-          ['my','overview','all','sites','activity','people'].forEach(function(t){
+          ['my','overview','all','sites','people'].forEach(function(t){
             var n = document.getElementById('home_tab_'+t);
             if (!n) return;
             n.style.display = (t===tab) ? '' : 'none';
@@ -23,6 +31,7 @@ trial_selector_ui <- function() {
           document.querySelectorAll('.home-root .htab').forEach(function(t){
             t.classList.remove('active');
           });
+          if (!el) el = document.getElementById('htab_' + tab);
           if (el) el.classList.add('active');
           if (window.Shiny) Shiny.setInputValue('home_active_tab', tab, {priority:'event'});
         }
@@ -31,9 +40,18 @@ trial_selector_ui <- function() {
       div(class = "home-shell",
 
           # ── Top bar ──────────────────────────────────────────────────────
-          # Logo size + filter are owned by .home-topbar img in home_redesign.css
-          # so the BCTU colours render at their native magenta/pink.
           div(class = "home-topbar",
+              # Settings menu (theme, optional tabs, people & access)
+              div(class = "home-settings",
+                  tags$button(class = "tb-icon", title = "Settings", type = "button",
+                              `aria-label` = "Settings",
+                              tags$svg(width = "16", height = "16", viewBox = "0 0 24 24",
+                                       fill = "none", stroke = "currentColor",
+                                       `stroke-width` = "2", `stroke-linecap` = "round",
+                                       `stroke-linejoin` = "round",
+                                       tags$circle(cx = "12", cy = "12", r = "3"),
+                                       tags$path(d = "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"))),
+                  uiOutput("home_settings_ui")),
               tags$img(src = "BlackText-landscape.png",
                        alt = "BCTU — Birmingham Clinical Trials Unit"),
               div(class = "topbar-spacer"),
@@ -98,77 +116,46 @@ trial_selector_ui <- function() {
           # ── Canvas with tabs ─────────────────────────────────────────────
           div(class = "home-canvas",
 
+              # Portfolio and All Trials are optional (settings menu); Sites and
+              # All Trials are admin-only. The server shows them. People & access
+              # has no tab: it opens from the settings menu.
               div(class = "home-tabs",
-                  tags$button(class = "htab active",
+                  tags$button(id = "htab_my", class = "htab active",
                               onclick = "homeShowTab('my', this)",
                               "My Trials",
                               span(class = "htab-count",
                                    textOutput("home_my_trials_count", inline = TRUE))),
-                  tags$button(class = "htab",
-                              onclick = "homeShowTab('overview', this)", "Portfolio"),
-                  tags$button(class = "htab",
-                              onclick = "homeShowTab('all', this)", "All Trials"),
-                  tags$button(class = "htab",
-                              onclick = "homeShowTab('sites', this)", "Sites"),
-                  tags$button(class = "htab",
-                              onclick = "homeShowTab('activity', this)",
-                              "Activity",
-                              uiOutput("home_activity_dot", inline = TRUE)),
-                  shinyjs::hidden(tags$button(id = "htab_people", class = "htab",
-                                              onclick = "homeShowTab('people', this)", "People"))
+                  shinyjs::hidden(tags$button(id = "htab_overview", class = "htab",
+                                              onclick = "homeShowTab('overview', this)", "Portfolio")),
+                  shinyjs::hidden(tags$button(id = "htab_all", class = "htab",
+                                              onclick = "homeShowTab('all', this)", "All Trials")),
+                  shinyjs::hidden(tags$button(id = "htab_sites", class = "htab",
+                                              onclick = "homeShowTab('sites', this)", "Sites"))
               ),
 
-              # My Trials
+              # My Trials: header, toolbar, tiles
               div(id = "home_tab_my",
-                  uiOutput("home_summary_strip_ui"),
-
-                  # Quick actions row
-                  div(class = "qa-row",
-                      tags$button(class = "qa-tile primary",
-                                  onclick = "Shiny.setInputValue('qa_new_trial', Math.random(), {priority:'event'})",
-                                  div(class = "qa-icon", HTML("&#43;")),
-                                  div(class = "qa-text",
-                                      div(class = "qa-label", "New trial"),
-                                      div(class = "qa-desc", "Spin up a dashboard"))),
-                      tags$button(class = "qa-tile",
-                                  onclick = "Shiny.setInputValue('qa_run_report', Math.random(), {priority:'event'})",
-                                  div(class = "qa-icon", HTML("&#x2913;")),
-                                  div(class = "qa-text",
-                                      div(class = "qa-label", "Run a report"),
-                                      div(class = "qa-desc", "Generate TMG / TSC"))),
-                      tags$button(class = "qa-tile",
-                                  onclick = "Shiny.setInputValue('qa_switch_theme', Math.random(), {priority:'event'})",
-                                  div(class = "qa-icon", HTML("&#x2197;")),
-                                  div(class = "qa-text",
-                                      div(class = "qa-label", "Switch theme"),
-                                      div(class = "qa-desc", "Light, dark, system"))),
-                      tags$button(class = "qa-tile",
-                                  onclick = "Shiny.setInputValue('qa_portfolio_settings', Math.random(), {priority:'event'})",
-                                  div(class = "qa-icon", HTML("&#9881;")),
-                                  div(class = "qa-text",
-                                      div(class = "qa-label", "Portfolio settings"),
-                                      div(class = "qa-desc", "Members, defaults, audit")))
-                  ),
-
-                  # Header for the trials grid
-                  div(class = "sec-head2",
-                      div(tags$h2(textOutput("home_trials_section_title", inline = TRUE)),
-                          div(class = "sec-head2-sub",
-                              "Click any card to open the trial dashboard")),
-                      uiOutput("home_add_button_ui", inline = TRUE)
-                  ),
-                  uiOutput("trial_cards_ui"),
-
-                  # Recent activity preview
-                  div(class = "sec-head2",
-                      div(tags$h2("Recent activity"),
-                          div(class = "sec-head2-sub",
-                              "Across all your trials")),
-                      tags$button(class = "sec-head2-act",
-                                  onclick = "homeShowTab('activity', document.querySelectorAll('.home-root .htab')[4])",
-                                  "See all →")
-                  ),
-                  uiOutput("home_activity_preview_ui")
+                  div(class = "mt-head",
+                      div(class = "mt-title-wrap",
+                          tags$h1(class = "mt-title", "My Trials",
+                                  span(class = "mt-badge",
+                                       textOutput("home_my_trials_badge", inline = TRUE))),
+                          div(class = "mt-sub", "Click a trial to open its dashboard")),
+                      uiOutput("home_add_button_ui", inline = TRUE)),
+                  div(class = "mt-toolbar",
+                      div(class = "mt-search",
+                          tags$svg(width = "14", height = "14", viewBox = "0 0 24 24",
+                                   fill = "none", stroke = "currentColor", `stroke-width` = "2",
+                                   tags$circle(cx = "11", cy = "11", r = "7"),
+                                   tags$path(d = "M20 20l-3-3")),
+                          tags$input(type = "search", id = "my_search_box",
+                                     placeholder = "Search trials, CIs, sponsors",
+                                     `aria-label` = "Search trials", autocomplete = "off",
+                                     oninput = "Shiny.setInputValue('my_search', this.value)")),
+                      uiOutput("home_my_category_ui", inline = TRUE),
+                      div(class = "mt-toolbar-spacer"),
+                      span(class = "mt-count", textOutput("home_my_trials_showing", inline = TRUE))),
+                  uiOutput("my_trials_table_ui")
               ),
 
               # Portfolio (was Overview)
@@ -246,19 +233,9 @@ trial_selector_ui <- function() {
                   uiOutput("home_sites_ui")
               ),
 
-              # Activity
-              people_tab_ui(),
-
-              div(id = "home_tab_activity", style = "display:none;",
-                  div(class = "sec-head2",
-                      div(tags$h2("Activity"),
-                          div(class = "sec-head2-sub",
-                              "Recent randomisations, site changes, and data uploads"))
-                  ),
-                  uiOutput("home_activity_ui")
-              )
+              # People & access (admin; opened from the settings menu)
+              people_tab_ui()
           )
       )
   )
 }
-
