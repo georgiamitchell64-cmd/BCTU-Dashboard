@@ -26,11 +26,11 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
 
       # Install R via the standard action rather than fetch-r.ps1: the action
       # caches, and we copy the result into electron/runtime/R so the packaged

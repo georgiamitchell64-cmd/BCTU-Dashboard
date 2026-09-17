@@ -380,9 +380,14 @@ trial_selector_server <- function(input, output, session, state) {
         list()
       })
     if (length(rows) == 0) {
+      # A member with no memberships is not looking at an empty portfolio —
+      # they are looking at one they have not been added to yet.
       return(div(class = "home-empty",
                  div(class = "icon", HTML("&#x1F4CA;")),
-                 div("No trials yet \u2014 create one to see portfolio stats.")))
+                 div(if (isTRUE(rv$portfolio_role == "admin"))
+                       "No trials yet \u2014 create one to see portfolio stats."
+                     else
+                       "No trials yet \u2014 ask an admin to add you to one.")))
     }
 
     # \u2500\u2500 Pre-compute v2 status for each trial (avoids reading raw twice) \u2500\u2500
