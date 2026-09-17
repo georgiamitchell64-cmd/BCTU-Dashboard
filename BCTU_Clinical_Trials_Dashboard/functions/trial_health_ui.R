@@ -147,7 +147,7 @@ th_health_card <- function(H) {
           div(class = "th-attn-h", "Needs attention"),
           items,
           div(class = "th-attn-links",
-              .th_go("Site health", "go_sites", "tn_sites"),
+              .th_go("Site scorecards", "go_sites", "tn_sites"),
               .th_go("Data worklist", "go_participants", "tn_participants"),
               .th_go("Recruitment trends", "go_randomisations", "tn_randomisations")))))
 }
@@ -257,16 +257,6 @@ th_site_detail <- function(H, site) {
 # =============================================================================
 # JSON widgets (mounted by www/trial_health.js)
 # =============================================================================
-th_funnel_widget <- function(H, id = "th-funnel") {
-  S <- H$sites
-  if (is.null(S) || !nrow(S)) return(th_empty_note("No sites with participants yet."))
-  fl <- H$settings$flags
-  .th_widget("funnel", id, list(
-    sites = data.frame(site = S$site, n = S$n, cos = S$cos_n, expected = S$expected,
-                       overdue = S$overdue, rag = S$rag, stringsAsFactors = FALSE),
-    p_cos = attr(S, "p_cos"), p_over = attr(S, "p_over"),
-    z_warn = fl$z_warn, z_alarm = fl$z_alarm, min_n = fl$min_n))
-}
 
 th_crfgrid_widget <- function(H, id = "th-crfgrid") {
   crf <- H$crf; sched <- H$schedule[H$schedule$present %in% TRUE, , drop = FALSE]

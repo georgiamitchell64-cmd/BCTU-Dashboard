@@ -80,131 +80,6 @@
     }));
   }
 
-  // ═══ Funnel plot ═══════════════════════════════════════════════════════
-  // Each site's rate against its size, with binomial control limits around the
-  // trial-wide rate — a site outside the funnel is unusual, not just small.
-  function Funnel(el, D) {
-    let metric = 'cos', cur = [];
-    el.innerHTML = `
-      <div class="th-toolbar">
-        <div class="th-pills th-metric" role="group" aria-label="Measure">
-          <button type="button" class="on" data-m="cos">Change of status</button>
-          <button type="button" data-m="over">Overdue CRFs</button>
-        </div>
-        <span class="th-note"></span>
-      </div>
-      <div class="th-plot"></div>
-      <div class="th-legend">
-        <span><i class="th-lg-line th-lg-mean"></i>Trial-wide rate</span>
-        <span><i class="th-lg-line th-lg-warn"></i>95% limit</span>
-        <span><i class="th-lg-line th-lg-alarm"></i>99.8% limit</span>
-        <span><i class="th-lg-dot" style="background:#E30513"></i>Above 99.8%</span>
-        <span><i class="th-lg-dot" style="background:#F07F3C"></i>Above 95%</span>
-        <span><i class="th-lg-dot" style="background:#1B1B1B"></i>Within limits</span>
-        <span><i class="th-lg-dot" style="background:#8A8A8C"></i>Too few to judge</span>
-      </div>`;
-    const box = el.querySelector('.th-plot'), note = el.querySelector('.th-note');
-    pillGroup(el, '.th-metric', 'm', m => { metric = m; render(); });
-
-    function render() {
-      const w = box.clientWidth;
-      if (w < 120) return;
-      const cos = metric === 'cos';
-      const p = +(cos ? D.p_cos : D.p_over);
-      const zw = +D.z_warn || 1.96, za = +D.z_alarm || 3.09;
-      note.textContent = cos ? 'Participants with a change of status (deaths excluded) against site size'
-                             : 'Overdue CRFs against the CRFs expected so far';
-      cur = arr(D.sites).map(s => {
-        const x = +(cos ? s.n : s.expected), k = +(cos ? s.cos : s.overdue);
-        const z = x > 0 && p > 0 && p < 1 ? (k / x - p) / Math.sqrt(p * (1 - p) / x) : 0;
-        return { site: s.site, x, k, r: x > 0 ? k / x : 0, z, small: cos && x < +D.min_n };
-      }).filter(s => s.x > 0);
-      if (!cur.length || !(p >= 0)) {
-        box.innerHTML = `<div class="th-empty">${cos ? 'No participants yet.' : 'No CRFs are due yet.'}</div>`;
-        return;
-      }
-      const h = 300, ml = 46, mr = 16, mt = 12, mb = 38;
-      const nBig = Math.max(...cur.map(s => s.x));
-      const xmax = nBig * 1.1 + 1;
-      const lim = (n, z) => p + z * Math.sqrt(p * (1 - p) / n);
-      // Scale to the sites rather than the funnel's mouth: keep the alarm limit
-      // visible at the largest site and let the curves leave through the top.
-      const ymax = Math.min(1, Math.max(0.05, p * 2, lim(nBig, za) * 1.12, ...cur.map(s => s.r * 1.3)));
-      const X = n => ml + n / xmax * (w - ml - mr);
-      const Y = v => mt + (1 - v / ymax) * (h - mt - mb);
-      let g = '';
-      niceTicks(ymax * 100, 4).forEach(v => {
-        g += `<line x1="${ml}" x2="${w - mr}" y1="${Y(v / 100)}" y2="${Y(v / 100)}" class="th-gl"/>` +
-             `<text x="${ml - 6}" y="${Y(v / 100) + 3.5}" class="th-ax" text-anchor="end">${v}%</text>`;
-      });
-      niceTicks(xmax, 5).forEach(v => { g += `<text x="${X(v)}" y="${h - mb + 16}" class="th-ax" text-anchor="middle">${v}</text>`; });
-      g += `<text x="${ml + (w - ml - mr) / 2}" y="${h - 4}" class="th-ax th-ax-title" text-anchor="middle">${cos ? 'Participants randomised' : 'CRFs expected by now'}</text>`;
-      const curve = z => {
-        let d = '', started = false;
-        for (let i = 0; i <= 160; i++) {
-          const n = Math.max(0.3, xmax * i / 160), v = lim(n, z);
-          if (v < 0 || v > ymax) { started = false; continue; }
-          d += (started ? 'L' : 'M') + X(n).toFixed(1) + ',' + Y(v).toFixed(1);
-          started = true;
-        }
-        return d;
-      };
-      g += `<path d="${curve(za)}" class="th-lim-alarm"/><path d="${curve(zw)}" class="th-lim-warn"/>` +
-           `<path d="${curve(-zw)}" class="th-lim-warn th-lim-low"/>`;
-      g += `<line x1="${ml}" x2="${w - mr}" y1="${Y(p)}" y2="${Y(p)}" class="th-mean"/>` +
-           `<text x="${w - mr}" y="${Y(p) - 5}" class="th-ax th-mean-lbl" text-anchor="end">Trial-wide ${(p * 100).toFixed(1)}%</text>`;
-      cur.forEach((s, i) => {
-        const col = s.small ? '#8A8A8C' : s.z >= za ? '#E30513' : s.z >= zw ? '#F07F3C' : '#1B1B1B';
-        g += `<circle cx="${X(s.x)}" cy="${Y(s.r)}" r="7" fill="${tc(col)}" class="th-pt" data-i="${i}"/>`;
-      });
-
-      // Labels: try right, left, above, below; skip one that can't fit without
-      // overlapping a point or another label (it's still in the tooltip).
-      const mc = document.createElement('canvas').getContext('2d');
-      mc.font = `600 11px ${getComputedStyle(el).fontFamily || 'sans-serif'}`;
-      const taken = cur.map(s => ({ x0: X(s.x) - 8, x1: X(s.x) + 8, y0: Y(s.r) - 8, y1: Y(s.r) + 8 }));
-      const meanW = mc.measureText(`Trial-wide ${(p * 100).toFixed(1)}%`).width;
-      taken.push({ x0: w - mr - meanW - 4, x1: w - mr, y0: Y(p) - 17, y1: Y(p) - 2 });
-      const clash = b => b.x0 < ml || b.x1 > w - mr || b.y0 < mt - 4 || b.y1 > h - mb ||
-                         taken.some(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
-      const wanted = cur.length <= 14;
-      cur.map((s, i) => i)
-        .sort((a, b) => ((cur[b].z >= zw) - (cur[a].z >= zw)) || (cur[b].x - cur[a].x))
-        .forEach(i => {
-          const s = cur[i];
-          if (!wanted && s.z < zw) return;
-          const cx = X(s.x), cy = Y(s.r), tw = mc.measureText(s.site).width;
-          const spot = [
-            { x: cx + 11, y: cy + 4,  a: 'start',  b: { x0: cx + 10, x1: cx + 13 + tw, y0: cy - 7, y1: cy + 6 } },
-            { x: cx - 11, y: cy + 4,  a: 'end',    b: { x0: cx - 13 - tw, x1: cx - 10, y0: cy - 7, y1: cy + 6 } },
-            { x: cx,      y: cy - 12, a: 'middle', b: { x0: cx - tw / 2 - 2, x1: cx + tw / 2 + 2, y0: cy - 22, y1: cy - 9 } },
-            { x: cx,      y: cy + 21, a: 'middle', b: { x0: cx - tw / 2 - 2, x1: cx + tw / 2 + 2, y0: cy + 9, y1: cy + 22 } }
-          ].find(c => !clash(c.b));
-          if (!spot) return;
-          taken.push(spot.b);
-          g += `<text x="${spot.x}" y="${spot.y}" class="th-pt-lbl" text-anchor="${spot.a}">${esc(s.site)}</text>`;
-        });
-      box.innerHTML = `<svg width="${w}" height="${h}" role="img" aria-label="Funnel plot of ${cos ? 'change-of-status' : 'overdue CRF'} rates by site">${g}</svg>`;
-    }
-
-    box.addEventListener('mousemove', e => {
-      const c = e.target.closest('[data-i]');
-      if (!c) return untip();
-      const s = cur[+c.dataset.i], cos = metric === 'cos';
-      const p = +(cos ? D.p_cos : D.p_over);
-      tip(`<b>${esc(s.site)}</b><div>${s.k} of ${s.x} ${cos ? 'participants' : 'expected CRFs'} (${Math.round(s.r * 100)}%)</div>` +
-          `<div>Trial-wide ${(p * 100).toFixed(1)}% · z = ${s.z.toFixed(2)}</div>` +
-          (s.small ? '<div class="th-tip-m">Too few participants to judge yet</div>' : '') +
-          '<div class="th-tip-m">Click for site details</div>', e);
-    });
-    box.addEventListener('mouseleave', untip);
-    box.addEventListener('click', e => {
-      const c = e.target.closest('[data-i]');
-      if (c) shiny('th_site_open', { site: cur[+c.dataset.i].site, n: Math.random() });
-    });
-    observe(el, render);
-  }
-
   // ═══ CRF completeness grid ═════════════════════════════════════════════
   const CELL = {
     c: { name: 'Complete',            col: '#00ACA9' },
@@ -377,71 +252,77 @@
     observe(el, render);
   }
 
-  // ═══ Randomisation punchcard ═══════════════════════════════════════════
+  // ═══ When randomisations happen ═══════════════════════════════════════
+  // Two simple bar charts — by day of week, by hour of day — in place of a
+  // 7x24 dot-matrix heatmap with its own margin bars: the same two totals,
+  // read at a glance instead of parsed out of a grid.
   function Punchcard(el, D) {
     const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const heat = arr(D.heat).map(r => arr(r).map(Number));
     const wd = arr(D.by_wday).map(Number), hr = arr(D.by_hour).map(Number);
     const work = arr(D.work_days).map(Number);
-    const max = Math.max(1, ...heat.flat());
+    const isWorkday = i => work.includes(i + 1);            // i: 0 = Mon
+    const inHours = h => h * 60 >= +D.start && h * 60 < +D.end;
     const CAT = { 'In hours': '#00ACA9', 'Weekday out of hours': '#1B1B1B', 'Weekend': '#C59A00',
                   'Bank holiday': '#CF4527', 'Time not recorded': '#CFCFCF' };
     const cats = D.cats || {};
     const keys = Object.keys(CAT).filter(k => +cats[k] > 0);
     const tot = keys.reduce((a, k) => a + +cats[k], 0) || 1;
-    el.innerHTML = `<div class="th-plot"></div>
+    el.innerHTML = `
       <div class="th-cats">
         <div class="th-stack">${keys.map(k => `<i style="width:${100 * cats[k] / tot}%;background:${tc(CAT[k])}"></i>`).join('')}</div>
         <div class="th-cat-list">${keys.map(k => `<span><i style="background:${tc(CAT[k])}"></i>${k} <b>${cats[k]}</b> <em>${Math.round(100 * cats[k] / tot)}%</em></span>`).join('')}</div>
+      </div>
+      <div class="th-bars2">
+        <div class="th-bar-col"><div class="th-bar-t">By day of week</div><div class="th-plot th-plot-wd"></div></div>
+        <div class="th-bar-col"><div class="th-bar-t">By hour of day</div><div class="th-plot th-plot-hr"></div></div>
       </div>`;
-    const box = el.querySelector('.th-plot');
-    const inHours = (r, c) => work.includes(r + 1) && c * 60 >= +D.start && c * 60 < +D.end;
+    const wdBox = el.querySelector('.th-plot-wd'), hrBox = el.querySelector('.th-plot-hr');
 
-    function render() {
+    // A plain bar chart: `values[i]` gets a bar labelled `labels[i]`, styled
+    // by `barClass(i)`, with an optional shaded band (working hours) behind
+    // the bars and a label under every `labelEvery`-th bar.
+    function bars(box, labels, values, barClass, labelEvery, band) {
       const w = box.clientWidth;
-      if (w < 240) return;
-      const ml = 40, mr = 70, mt = 6, mb = 60;
-      const cwid = (w - ml - mr) / 24, ch = Math.min(30, Math.max(18, cwid * 1.05));
-      const gh = 7 * ch, h = mt + gh + mb;
-      const X = hh => ml + hh * cwid;
+      if (w < 100) return;
+      const h = 150, ml = 30, mr = 6, mt = 6, mb = 26;
+      const n = values.length, bw = (w - ml - mr) / n;
+      const vmax = Math.max(1, ...values);
+      const Y = v => mt + (h - mt - mb) * (1 - v / vmax);
       let g = '';
-      work.forEach(d => {
-        g += `<rect x="${X(+D.start / 60)}" y="${mt + (d - 1) * ch + 1}" width="${X(+D.end / 60) - X(+D.start / 60)}" height="${ch - 2}" rx="4" class="th-wh"/>`;
+      if (band)
+        g += `<rect x="${ml + band[0] * bw}" y="${mt}" width="${(band[1] - band[0]) * bw}" height="${h - mt - mb}" class="th-wh"/>`;
+      [0.5, 1].forEach(f =>
+        g += `<line x1="${ml}" x2="${w - mr}" y1="${Y(vmax * f)}" y2="${Y(vmax * f)}" class="th-gl"/>`);
+      values.forEach((v, i) => {
+        const x = ml + i * bw, y = Y(v);
+        g += `<rect x="${x + 1.5}" y="${y}" width="${Math.max(1, bw - 3)}" height="${Math.max(0, h - mb - y)}" rx="1.5" class="${barClass(i)}" data-i="${i}"/>` +
+             `<rect x="${x}" y="${mt}" width="${bw}" height="${h - mt - mb}" fill="transparent" data-i="${i}"/>`;
+        if (i % labelEvery === 0)
+          g += `<text x="${x + bw / 2}" y="${h - mb + 15}" class="th-ax" text-anchor="middle">${labels[i]}</text>`;
       });
-      const wmax = Math.max(1, ...wd);
-      for (let r = 0; r < 7; r++) {
-        const y = mt + r * ch;
-        g += `<text x="${ml - 8}" y="${y + ch / 2 + 4}" class="th-ax${work.includes(r + 1) ? '' : ' th-ax-we'}" text-anchor="end">${DAYS[r]}</text>`;
-        for (let c = 0; c < 24; c++) {
-          const v = (heat[r] || [])[c] || 0, cx = X(c + 0.5), cy = y + ch / 2;
-          if (v) {
-            const rad = 2.5 + Math.sqrt(v / max) * (Math.min(cwid, ch) / 2 - 3.5);
-            g += `<circle cx="${cx}" cy="${cy}" r="${rad.toFixed(1)}" class="th-pc" style="fill-opacity:${(0.35 + 0.65 * v / max).toFixed(2)}"/>`;
-          } else g += `<circle cx="${cx}" cy="${cy}" r="1.2" class="th-pc0"/>`;
-          g += `<rect x="${X(c)}" y="${y}" width="${cwid}" height="${ch}" fill="transparent" data-r="${r}" data-c="${c}"/>`;
-        }
-        const bw = (mr - 34) * (wd[r] || 0) / wmax;
-        g += `<rect x="${w - mr + 8}" y="${y + ch * 0.22}" width="${bw}" height="${ch * 0.56}" rx="2" class="th-marg"/>` +
-             `<text x="${w - mr + 12 + bw}" y="${y + ch / 2 + 4}" class="th-ax">${wd[r] || 0}</text>`;
-      }
-      const hmax = Math.max(1, ...hr), by = mt + gh + 10, bh = 28;
-      for (let c = 0; c < 24; c++) {
-        const bhh = bh * (hr[c] || 0) / hmax;
-        g += `<rect x="${X(c) + 1.5}" y="${by + bh - bhh}" width="${Math.max(1, cwid - 3)}" height="${bhh}" rx="1.5" class="th-marg${c * 60 >= +D.start && c * 60 < +D.end ? ' th-marg-in' : ''}"/>`;
-        if (c % 3 === 0) g += `<text x="${X(c)}" y="${by + bh + 15}" class="th-ax">${pad2(c)}:00</text>`;
-      }
-      box.innerHTML = `<svg width="${w}" height="${h}" role="img" aria-label="Randomisations by weekday and hour of day">${g}</svg>`;
+      box.innerHTML = `<svg width="${w}" height="${h}" role="img" aria-label="${box === wdBox ? 'Randomisations by day of week' : 'Randomisations by hour of day'}">${g}</svg>`;
     }
 
-    box.addEventListener('mousemove', e => {
-      const c = e.target.closest('[data-r]');
+    function render() {
+      bars(wdBox, DAYS, wd, i => isWorkday(i) ? 'th-marg-in' : 'th-marg', 1);
+      bars(hrBox, Array.from({ length: 24 }, (_, i) => pad2(i) + ':00'), hr,
+           i => inHours(i) ? 'th-marg-in' : 'th-marg', 3, [+D.start / 60, +D.end / 60]);
+    }
+
+    el.addEventListener('mousemove', e => {
+      const c = e.target.closest('[data-i]');
       if (!c) return untip();
-      const r = +c.dataset.r, hh = +c.dataset.c, v = (heat[r] || [])[hh] || 0;
-      tip(`<b>${DAYS[r]} ${pad2(hh)}:00–${pad2((hh + 1) % 24)}:00</b>` +
-          `<div>${v} randomisation${v === 1 ? '' : 's'}</div>` +
-          `<div class="th-tip-m">${inHours(r, hh) ? 'In working hours' : 'Out of hours'}</div>`, e);
+      const i = +c.dataset.i;
+      if (c.closest('.th-plot-wd')) {
+        const v = wd[i] || 0;
+        tip(`<b>${DAYS[i]}</b><div>${v} randomisation${v === 1 ? '' : 's'}</div>`, e);
+      } else {
+        const v = hr[i] || 0;
+        tip(`<b>${pad2(i)}:00\u2013${pad2((i + 1) % 24)}:00</b><div>${v} randomisation${v === 1 ? '' : 's'}</div>` +
+            `<div class="th-tip-m">${inHours(i) ? 'In working hours' : 'Out of hours'}</div>`, e);
+      }
     });
-    box.addEventListener('mouseleave', untip);
+    el.addEventListener('mouseleave', untip);
     observe(el, render);
   }
 
@@ -623,7 +504,7 @@
   }
 
   // ── Mounting ───────────────────────────────────────────────────────────
-  const KINDS = { funnel: Funnel, crfgrid: CrfGrid, punchcard: Punchcard, trajectory: Trajectory };
+  const KINDS = { crfgrid: CrfGrid, punchcard: Punchcard, trajectory: Trajectory };
   function mount(el) {
     if (el.dataset.mounted) return;
     const make = KINDS[el.dataset.kind], src = document.getElementById(el.id + '-data');

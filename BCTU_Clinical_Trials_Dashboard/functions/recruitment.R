@@ -261,6 +261,35 @@ recruited_ids <- function(raw, cfg = current_trial_config()) {
   if (is.null(out)) NULL else as.character(out)
 }
 
+#' Record ids that count as randomised (or "recruited", for a registration-
+#' style trial): the trial's recruitment model if one is configured
+#' (recruited_ids()), else anyone with a non-empty randomisation-datetime
+#' value. Used wherever a total needs to exclude a participant who is on
+#' file (e.g. consented, or present at the Baseline event) but not yet
+#' randomised — see modules/core.R's .wp_site_counts() and
+#' modules/overview_server.R's n_pending for what this fixed.
+#'
+#' NULL when the export has no randomisation signal to go on at all (no
+#' recruitment model AND no randomisation-date column) — the caller then has
+#' no real way to tell "randomised" apart from "on file", and should keep
+#' its old, unscoped behaviour rather than report an empty set.
+randomised_ids <- function(raw, cfg = current_trial_config()) {
+  rec_ids <- tryCatch(recruited_ids(raw, cfg), error = function(e) NULL)
+  if (!is.null(rec_ids)) return(rec_ids)
+  if (is.null(raw) || !is.data.frame(raw) || !nrow(raw) ||
+      !"record_id" %in% names(raw)) return(NULL)
+  rc <- if (".rand_dttm" %in% names(raw)) {
+    ".rand_dttm"
+  } else {
+    f <- tryCatch(fld("randomisation_datetime", default = "rand_dttm_s", cfg = cfg),
+                 error = function(e) "rand_dttm_s")
+    if (!is.null(f) && f %in% names(raw)) f else NULL
+  }
+  if (is.null(rc)) return(NULL)
+  v <- trimws(as.character(raw[[rc]]))
+  unique(as.character(raw$record_id[!is.na(v) & nzchar(v) & v != "NA"]))
+}
+
 # =============================================================================
 # Timepoints — what is due, and what has not happened yet
 # =============================================================================

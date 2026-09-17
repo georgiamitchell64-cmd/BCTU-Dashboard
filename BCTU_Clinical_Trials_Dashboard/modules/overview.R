@@ -56,6 +56,7 @@ overview_tab_ui <- function() {
             div(class = "pov-kpi-label", textOutput("kpi_rand_label", inline = TRUE)),
             div(class = "pov-kpi-value", textOutput("n_rand", inline = TRUE)),
             div(class = "pov-kpi-sub", textOutput("n_rand_sub", inline = TRUE)),
+            uiOutput("n_rand_pending"),
             div(class = "pov-kpi-delta-row",
                 uiOutput("delta_rand", inline = TRUE),
                 span(class = "pov-delta-label", "this period"))),

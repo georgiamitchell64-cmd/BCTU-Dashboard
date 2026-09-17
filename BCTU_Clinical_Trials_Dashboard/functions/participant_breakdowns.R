@@ -50,8 +50,10 @@ detect_breakdown_columns <- function(raw, cfg = NULL) {
 
     if (is_numeric_like) {
       n_unique <- length(unique(v_num[!is.na(v_num)]))
-      # Numerics with very few values (e.g. 1/2 sex codes) are categorical
-      type <- if (n_unique > 6) "numeric" else "categorical"
+      # Numerics with very few values (e.g. 1/2 sex codes) are categorical,
+      # and so is a coded column with an actual label list however many
+      # distinct codes it has (e.g. a 19-code ethnicity scheme).
+      type <- if (n_unique > 6 && !.pb_has_value_mapping(v, c, cfg)) "numeric" else "categorical"
     } else {
       n_unique <- length(unique(v[!is.na(v)]))
       if (n_unique > 30) return(NULL)  # too many distinct strings
@@ -196,7 +198,7 @@ find_editable_code_cols <- function(raw, cfg, det) {
     uniq_vals <- sort(unique(v[!is.na(v)]))
     if (!length(uniq_vals)) next
 
-    existing  <- cfg$column_labels[[col]]; if (is.null(existing)) existing <- list()
+    existing  <- .pb_lookup_saved_mapping(col, cfg); if (is.null(existing)) existing <- list()
     suggested <- .suggest_code_labels(col, uniq_vals)
     if (is.null(suggested) && grepl("ethnic", col, ignore.case = TRUE))
       suggested <- .NHS_ETHNICITY_LABELS
@@ -254,7 +256,7 @@ detect_coded_columns <- function(raw, cfg = NULL, max_codes = 25) {
     if (!length(uniq) || length(uniq) > max_codes) next
     if (length(uniq) == length(vals) && length(vals) > 3) next   # looks like an id
 
-    existing  <- cfg$column_labels[[col]]
+    existing  <- .pb_lookup_saved_mapping(col, cfg)
     if (is.null(existing)) existing <- list()
     suggested <- .suggest_code_labels(col, as.character(uniq))
     if (is.null(suggested) && grepl("ethnic", col, ignore.case = TRUE))
@@ -303,6 +305,31 @@ detect_coded_columns <- function(raw, cfg = NULL, max_codes = 25) {
   "19" = "Unknown"
 )
 
+# A trial's own saved mapping for a column — overrides.json's column_labels,
+# or a legacy per-column key such as cfg$ethnicity_labels — with no fallback
+# to a built-in scheme. Shared by resolve_value_labels() (what's actually
+# shown) and the codebook editor (what counts as "already labelled", so it
+# doesn't offer a generic suggestion that would overwrite a trial's real
+# mapping if saved).
+.pb_lookup_saved_mapping <- function(col, cfg = NULL) {
+  # 1. User-defined per-column labels saved in overrides.json → cfg$column_labels
+  if (!is.null(cfg) && !is.null(cfg$column_labels[[col]]) &&
+      length(cfg$column_labels[[col]]) > 0) {
+    return(unlist(cfg$column_labels[[col]]))
+  }
+
+  # 2. Legacy per-column mapping from cfg, e.g. cfg$dem_ethnicity_labels
+  if (!is.null(cfg)) {
+    candidate_keys <- c(paste0(col, "_labels"),
+                        sub("^(dem|cae|base|baseline)_", "", col),
+                        "ethnicity_labels")
+    for (k in candidate_keys) {
+      if (!is.null(cfg[[k]]) && length(cfg[[k]]) > 0) return(cfg[[k]])
+    }
+  }
+  NULL
+}
+
 # Resolve coded values to human labels using cfg, with sensible fallbacks.
 # Looks for cfg[[paste0(col, "_labels")]] first; falls back to NHS scheme
 # for columns whose name contains "ethnic".
@@ -310,24 +337,7 @@ detect_coded_columns <- function(raw, cfg = NULL, max_codes = 25) {
   if (is.null(values) || !length(values)) return(values)
   values <- as.character(values)
 
-  # 1. User-defined per-column labels saved in overrides.json → cfg$column_labels
-  mapping <- NULL
-  if (!is.null(cfg) && !is.null(cfg$column_labels[[col]]) &&
-      length(cfg$column_labels[[col]]) > 0) {
-    mapping <- unlist(cfg$column_labels[[col]])
-  }
-
-  # 2. Legacy per-column mapping from cfg, e.g. cfg$dem_ethnicity_labels
-  if (is.null(mapping) && !is.null(cfg)) {
-    candidate_keys <- c(paste0(col, "_labels"),
-                        sub("^(dem|cae|base|baseline)_", "", col),
-                        "ethnicity_labels")
-    for (k in candidate_keys) {
-      if (!is.null(cfg[[k]]) && length(cfg[[k]]) > 0) {
-        mapping <- cfg[[k]]; break
-      }
-    }
-  }
+  mapping <- .pb_lookup_saved_mapping(col, cfg)
 
   # 3. NHS ethnicity fallback
   if (is.null(mapping) && grepl("ethnic", col, ignore.case = TRUE)) {
@@ -348,6 +358,20 @@ detect_coded_columns <- function(raw, cfg = NULL, max_codes = 25) {
   out <- mapping[values]
   out[is.na(out)] <- values[is.na(out)]   # keep raw value if not in mapping
   unname(out)
+}
+
+# Whether resolve_value_labels() would actually translate at least one of a
+# column's distinct values — i.e. a real code list exists for it, from the
+# trial's overrides, a legacy per-column mapping, or (for an ethnicity-named
+# column) the NHS fallback. Used to keep a coded column categorical however
+# many distinct codes it has: the numeric-vs-categorical heuristic below is
+# for genuinely continuous fields (age, BMI, NELA score), and was wrongly
+# catching a 19-code ethnicity scheme — more than its 6-unique-value cutoff
+# — and showing it as a numeric range instead of resolving the labels.
+.pb_has_value_mapping <- function(values, col, cfg = NULL) {
+  vals <- unique(as.character(values[!is.na(values)]))
+  if (!length(vals)) return(FALSE)
+  any(.resolve_value_labels(vals, col, cfg) != vals)
 }
 
 # Grouping for a numeric breakdown, or NULL. Defaults: NELA predicted
@@ -413,7 +437,8 @@ compute_breakdown <- function(raw, col, cfg = NULL,
 
   v_num <- suppressWarnings(as.numeric(v))
   is_numeric_like <- mean(!is.na(v_num)) >= 0.8 &&
-                     length(unique(v_num[!is.na(v_num)])) > 6
+                     length(unique(v_num[!is.na(v_num)])) > 6 &&
+                     !.pb_has_value_mapping(v, col, cfg)
   total   <- length(v)
   missing <- sum(is.na(v))
 
