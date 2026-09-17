@@ -656,17 +656,14 @@ ph_header <- function(page_label) {
     sprintf('<b>%s</b> · <span style="color:var(--teal);font-weight:600">Confidential</span>',
             esc(report_date_str))
 
-  # An iTMG report goes to the Internal Trial Management Group
-  group_name <- if (identical(safe(params$report_type, "TMG"), "iTMG"))
-    "Internal Trial Management Group" else "Trial Management Group"
   cat(sprintf(
 '<header class="ph">
   <div class="brand">%s
-    <div class="tag"><b>%s</b>%s · Progress Report</div>
+    <div class="tag"><b>%s</b>Trial Management Group · Progress Report</div>
   </div>
   <div class="meta">%s<div>%s</div></div>
 </header>',
-    trial_logo_html, esc(trial_title), esc(group_name), bctu_logo_html, meta_line))
+    trial_logo_html, esc(trial_title), bctu_logo_html, meta_line))
 }
 pf_footer <- function(n_page, n_total = 6) {
   rt <- safe(params$report_type, "TMG")

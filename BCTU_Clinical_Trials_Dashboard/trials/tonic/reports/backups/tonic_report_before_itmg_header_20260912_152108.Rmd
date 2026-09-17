@@ -265,11 +265,11 @@ thr <- rc$pilot_thresholds %||% list(
        stop_lbl = "< 90% complete", mod_lbl = "90 – 99% complete",
        go_lbl   = "100% complete"),
   list(name = "90-day questionnaire return rate",
-       det  = "Proportion of due 90-day post-op questionnaires returned by participants.",
+       det  = "Day 90 forms entered as a proportion of Day 90 forms due, taken from the return-rate sheet — the same overall % entered (of due) as the CRF return rates by timepoint & form.",
        stop_lbl = "< 70% returned", mod_lbl = "70 – 99% returned",
        go_lbl   = "100% returned"),
   list(name = "Intervention delivery — intervention arm",
-       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants.",
+       det  = "Early parenteral-nutrition started within 48 hours of randomisation, intervention-arm participants. Not measurable from the REDCap export — no band is marked, and the criterion is assessed outside the dashboard.",
        stop_lbl = "< 70% within 48 h", mod_lbl = "75 – 99% within 48 h",
        go_lbl   = "100% within 48 h"),
   list(name = "Contamination — control arm",
@@ -282,8 +282,92 @@ thr <- rc$pilot_thresholds %||% list(
        go_lbl   = "0% crossed over")
 )
 
+# CRF return rates — derive a tidy stage summary if crf_data is present
+crf <- rd$crf_data
+crf_overall_pct <- NA_real_
+crf_stage_rows  <- NULL
+if (!is.null(crf) && nrow(crf) > 0) {
+  # Use whatever columns exist; common shape: Forms, Expected, Due, Entered, Pct
+  guess <- function(pat) {
+    m <- grep(pat, names(crf), ignore.case = TRUE, value = TRUE)
+    if (length(m)) crf[[m[1]]] else NULL
+  }
+  st <- list(
+    event    = guess("^(event|timepoint|time.?point|visit)"),
+    stage    = guess("^(stage|form|instrument)"),
+    forms    = guess("^forms$|^count"),
+    expected = guess("expected"),
+    due      = guess("^due"),
+    entered  = guess("entered|received"),
+    pct      = guess("pct|%|percent")
+  )
+  if (!is.null(st$stage)) {
+    n_rows <- length(st$stage)
+    crf_stage_rows <- data.frame(
+      event    = if (!is.null(st$event)) as.character(st$event) else rep(NA_character_, n_rows),
+      stage    = as.character(st$stage),
+      forms    = if (!is.null(st$forms))    as.integer(st$forms)    else rep(NA_integer_, n_rows),
+      expected = if (!is.null(st$expected)) as.integer(st$expected) else rep(NA_integer_, n_rows),
+      due      = if (!is.null(st$due))      as.integer(st$due)      else rep(NA_integer_, n_rows),
+      entered  = if (!is.null(st$entered))  as.integer(st$entered)  else rep(NA_integer_, n_rows),
+      stringsAsFactors = FALSE)
+
+    # Return rate is entered ÷ DUE, never ÷ expected. TONIC is longitudinal
+    # (Baseline, Discharge, Day 30, Day 90); "expected" counts participants who
+    # will eventually reach a timepoint, so windows that have not yet opened
+    # (e.g. Day 90, 0 due) would otherwise deflate the figure. Rows with 0 due
+    # are "not yet due" and contribute nothing to the denominator.
+    #
+    # Numerator is capped at due (min(entered, due)) so that early entries —
+    # forms submitted before the formal due window fires — cannot inflate the
+    # rate above 100%. e.g. Barthel Discharge: 12 entered, 10 due → 100%, not 120%.
+    crf_stage_rows$pct <- ifelse(crf_stage_rows$due > 0,
+                                 pmin(crf_stage_rows$entered, crf_stage_rows$due) /
+                                   crf_stage_rows$due * 100,
+                                 NA_real_)
+
+    # Order timepoints chronologically when an event column is present
+    if (!all(is.na(crf_stage_rows$event))) {
+      tp_levels <- c("Baseline", "Discharge", "Day 30", "Day 90")
+      crf_stage_rows$event <- factor(crf_stage_rows$event,
+                                     levels = union(tp_levels, unique(crf_stage_rows$event)))
+      crf_stage_rows <- crf_stage_rows[order(crf_stage_rows$event), , drop = FALSE]
+    }
+
+    # Overall rate: cap entered at due per row before summing so aggregate
+    # cannot exceed 100% either.
+    tot_due <- sum(crf_stage_rows$due, na.rm = TRUE)
+    tot_ent <- sum(pmin(crf_stage_rows$entered, crf_stage_rows$due), na.rm = TRUE)
+    crf_overall_pct <- if (tot_due > 0) round(tot_ent / tot_due * 100, 1) else NA
+  }
+}
+
+# Day-90 pilot criterion — taken from the return-rate sheet rather than from
+# REDCap follow-up flags, so it matches "CRF return rates by timepoint & form"
+# exactly. Same definition as that table: entered / due, with entered capped at
+# due per row so early returns cannot push a timepoint over 100%, aggregated
+# across the forms in the Day 90 window.
+fu90_return_pct <- NA_real_
+if (!is.null(crf_stage_rows) && nrow(crf_stage_rows) > 0 &&
+    !all(is.na(crf_stage_rows$event))) {
+  d90 <- crf_stage_rows[!is.na(crf_stage_rows$event) &
+                          as.character(crf_stage_rows$event) == "Day 90", , drop = FALSE]
+  if (nrow(d90) > 0) {
+    d90_due <- sum(d90$due, na.rm = TRUE)
+    d90_ent <- sum(pmin(d90$entered, d90$due), na.rm = TRUE)
+    fu90_return_pct <- if (d90_due > 0) round(d90_ent / d90_due * 100, 1) else NA_real_
+  }
+}
+
 # Map current values onto each threshold band (stop|mod|go|NA)
 band_for <- function(idx) {
+  # Intervention delivery cannot be determined from the REDCap export — there is
+  # no field recording whether early parenteral nutrition actually started
+  # within 48 h. The criterion stays on the report so the pilot decision set is
+  # complete, but with no band marked current rather than a figure that would
+  # only look authoritative.
+  if (idx == 4) return(list(band = NA_character_, val = NA))
+
   v <- switch(idx,
     recruit_rate_box,   # 1 — same figure as shown in the card (n randomised ÷ expected)
     NA,                  # 2 data completeness — we approximate below
@@ -319,7 +403,7 @@ pc_cards <- list(
   # delivery (no allocation field; PN timing incomplete), so this criterion is
   # shown as pending with an explanatory caption rather than a misleading 0%.
   list(title = "Intervention delivery <48 h", val = NA_real_,             sub = "cannot be calculated from the REDCap export", fmt = "pct"),
-  list(title = "Contamination",               val = pilot$contam_rate,    sub = "target 0% in control", fmt = "pct"),
+  list(title = "Contamination",               val = pilot$contam_rate,    sub = if (is.na(safe(pilot$contam_rate, NA))) "not determinable from export" else "late/early PN reason recorded", fmt = "pct"),
   list(title = "Crossover rate",              val = pilot$crossover_rate, sub = "target 0%", fmt = "pct")
 )
 
@@ -343,6 +427,31 @@ if (nrow(sched) > 0) {
   if (length(cutoff_idx)) ca[cutoff_idx] <- NA
   chart_actual <- ca
 }
+
+# ── Actual monthly average recruits per site ───────────────────────────────────
+# Support for the "Actual / mo" column in the all-sites table: the rate each
+# site has actually delivered, its randomisations over the months it has been
+# open. prepare_report_data() precomputes it via .actual_monthly_per_site() in
+# functions/projection_math.R and passes it as site_status$actual_monthly; the
+# helpers here back the fallback path and the colour banding.
+
+# Whole months from `from` to `to`, counting both end months, so a site that
+# opened this month reads as one month rather than zero.
+months_inclusive <- function(from, to) {
+  if (is.na(from) || is.na(to)) return(NA_integer_)
+  n <- (as.integer(format(to, "%Y")) - as.integer(format(from, "%Y"))) * 12L +
+       (as.integer(format(to, "%m")) - as.integer(format(from, "%m"))) + 1L
+  if (n < 1L) NA_integer_ else n
+}
+
+this_month <- as.Date(format(Sys.Date(), "%Y-%m-01"))
+
+# Protocol benchmark — pilot criterion 1 ("an average of 2 participants per
+# month at each open site"). Overridable from report content.
+site_rate_target <- suppressWarnings(as.numeric(safe(rc$site_monthly_target, 2)))
+
+fmt_rate <- function(x, dp = 1) if (is.null(x) || length(x) == 0 || is.na(x)) "—" else
+  formatC(as.numeric(x), format = "f", digits = dp)
 
 # JSON helper
 j <- function(x) {
@@ -437,9 +546,9 @@ body{padding:24px 0}
   .page:last-child{page-break-after:auto}
   /* Blocks never split mid-element: anything that will not fit in the space
      left on the current page starts on the next one instead. */
-  .ph,.ph-info,.card,.row2,.row3,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
-  .ol-chart-wrap,.ol-status,.milestones,.ml-grp,.chart-wrap,
-  .demo,.note,.scale-key,.eth-split,.eth-legend,svg{
+  .ph,.ph-info,.card,.row2,.row3,.row-demo,.sw-cell,.pc,.meta-strip,.pilot-strip,.timeline-wrap,
+  .ol-chart-wrap,.ol-phases,.ol-status,.milestones,.ml-grp,.chart-wrap,
+  .demo,.note,.scale-key,.eth-split,.eth-bar,.eth-legend,svg{
     break-inside:avoid;page-break-inside:avoid}
   /* Headings and table captions stay with the content they introduce. */
   h2.sec,p.lab{break-after:avoid-page;page-break-after:avoid;break-inside:avoid}
@@ -555,6 +664,11 @@ table.rt tr.tot td{background:var(--navy-tint);font-weight:700;color:var(--navy)
 
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+/* Demographics: ethnicity carries a bar plus a legend of long category
+   labels, while age and NELA hold two chips each. Give ethnicity roughly
+   half the row so its labels stop wrapping and the other two stop
+   carrying dead space. */
+.row-demo{display:grid;grid-template-columns:0.82fr 0.82fr 1.36fr;gap:14px}
 
 .card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:#fff}
 .card .ct{font-size:8.5pt;color:var(--navy);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
@@ -656,17 +770,14 @@ ph_header <- function(page_label) {
     sprintf('<b>%s</b> · <span style="color:var(--teal);font-weight:600">Confidential</span>',
             esc(report_date_str))
 
-  # An iTMG report goes to the Internal Trial Management Group
-  group_name <- if (identical(safe(params$report_type, "TMG"), "iTMG"))
-    "Internal Trial Management Group" else "Trial Management Group"
   cat(sprintf(
 '<header class="ph">
   <div class="brand">%s
-    <div class="tag"><b>%s</b>%s · Progress Report</div>
+    <div class="tag"><b>%s</b>Trial Management Group · Progress Report</div>
   </div>
   <div class="meta">%s<div>%s</div></div>
 </header>',
-    trial_logo_html, esc(trial_title), esc(group_name), bctu_logo_html, meta_line))
+    trial_logo_html, esc(trial_title), bctu_logo_html, meta_line))
 }
 pf_footer <- function(n_page, n_total = 6) {
   rt <- safe(params$report_type, "TMG")
@@ -1019,17 +1130,37 @@ All sites — status & recruitment
 <table class="rt">
   <thead><tr>
     <th class="l">Site</th><th class="l">Status</th>
-    <th>Opened</th><th>Rand.</th><th>Avg / mo</th><th>Target</th>
+    <th>Opened</th><th>Rand.</th><th>Target</th><th>Monthly&nbsp;Average<br>Recruits</th>
     <th class="l" style="width:20%">Progress</th>
   </tr></thead>
   <tbody>
 ```{r site-table}
 ss <- site_status
 if (nrow(ss) == 0 && nrow(pipeline) > 0) ss <- pipeline
+
+# Fallback for the actual monthly average when report_data predates the
+# actual_monthly column (e.g. the Rmd knitted against an older payload).
+# Same calculation as .actual_monthly_per_site() in functions/projection_math.R:
+# randomisations ÷ months open, counting the opening month and this month.
+actual_monthly_row <- function(row) {
+  od <- suppressWarnings(tryCatch(as.Date(row$open_date), error = function(e) as.Date(NA)))
+  if (length(od) != 1 || is.na(od)) return(NA_real_)
+  rn <- suppressWarnings(as.numeric(row$randomisations %||% NA))
+  if (length(rn) != 1 || is.na(rn)) return(NA_real_)
+  open_month <- as.Date(format(od, "%Y-%m-01"))
+  n <- months_inclusive(open_month, this_month)
+  if (is.na(n)) NA_real_ else rn / n
+}
+
 if (nrow(ss) > 0) {
   # normalise columns
+  # Every figure here comes from report_data, which prepare_report_data() builds
+  # from the Sites tab register (status, open date, per-site targets, randomised
+  # count) plus the unfiltered REDCap totals. Nothing is invented locally: a
+  # column the payload does not carry renders as "—" rather than a stand-in
+  # number that would look authoritative.
   if (!"randomisations" %in% names(ss)) ss$randomisations <- 0L
-  if (!"target"         %in% names(ss)) ss$target <- 42L
+  if (!"target"         %in% names(ss)) ss$target <- NA_integer_
   if (!"open_date"      %in% names(ss)) ss$open_date <- NA
   if (!"stage"          %in% names(ss)) ss$stage <- "—"
   # Sort: recruiting first, then set-up, then identified, then by name
@@ -1048,25 +1179,29 @@ if (nrow(ss) > 0) {
                  if (is_ident(r$stage)) "Identified" else as.character(r$stage)
     opened <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date)))
                 fmt_date(r$open_date, "%b %Y") else "—"
-    rand <- as.integer(r$randomisations %||% 0)
-    tgt  <- as.integer(r$target %||% 42)
-    # Average randomisations per month since this site opened. The denominator
-    # is floored at one month so a site open a fortnight cannot report a rate
-    # extrapolated far above what it has actually achieved. Only meaningful for
-    # a recruiting site with a known open date; anything else reads "—".
-    mo_open <- if (!is.na(r$open_date) && nzchar(as.character(r$open_date))) {
-      d <- suppressWarnings(as.Date(r$open_date))
-      if (is.na(d)) NA_real_ else
-        max(1, as.numeric(difftime(Sys.Date(), d, units = "days")) / 30.44)
-    } else NA_real_
-    avg_mo   <- if (!is.na(mo_open) && is_open(r$stage)) rand / mo_open else NA_real_
-    avg_cell <- if (is.na(avg_mo)) "\u2014" else sprintf("%.1f", avg_mo)
-    pct  <- if (tgt > 0) round(rand/tgt*100, 1) else 0
-    progress_html <- if (is_open(r$stage))
+    rand <- as.integer(safe(r$randomisations, 0))
+    tgt  <- suppressWarnings(as.integer(safe(r$target, NA)))
+    has_tgt <- length(tgt) == 1 && !is.na(tgt) && tgt > 0
+    pct  <- if (has_tgt) round(rand/tgt*100, 1) else 0
+    # Actual monthly average recruits this site has delivered: randomisations
+    # over the months it has been open. prepare_report_data() computes it with
+    # .actual_monthly_per_site(); recompute here only when rendering against
+    # data that predates that column. Blank without an open date — there is no
+    # denominator, which is what the "Opened" column is showing.
+    act_site <- suppressWarnings(as.numeric(r$actual_monthly %||% NA))
+    if (length(act_site) != 1 || is.na(act_site)) act_site <- actual_monthly_row(r)
+    act_cell <- if (is.na(act_site)) '<span style="color:var(--muted)">—</span>' else
+      sprintf('<b style="color:var(--%s)">%s</b>',
+              if (!is.na(site_rate_target) && act_site >= site_rate_target) "green"
+              else if (!is.na(site_rate_target) && act_site >= site_rate_target * 0.5) "amber"
+              else "red",
+              fmt_rate(act_site))
+    progress_html <- if (is_open(r$stage) && has_tgt)
       sprintf('<div class="pb"><div class="track"><div class="fill" style="width:%.0f%%"></div></div><span class="lbl">%d/%d</span></div>', pct, rand, tgt)
       else sprintf('<span class="note" style="margin:0">%s</span>', esc(r$stage))
-    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%s</td><td>%d</td><td class="l">%s</td></tr>',
-                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand, avg_cell, tgt, progress_html))
+    cat(sprintf('<tr><td class="sn">%s</td><td class="l"><span class="pill %s"><span class="dot"></span>%s</span></td><td>%s</td><td>%d</td><td>%s</td><td>%s</td><td class="l">%s</td></tr>',
+                esc(r$site_name), pill_cls, esc(stage_lbl), esc(opened), rand,
+                if (has_tgt) as.character(tgt) else "—", act_cell, progress_html))
   }
 } else {
   cat('<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:14px">No site data available.</td></tr>')
@@ -1074,6 +1209,7 @@ if (nrow(ss) > 0) {
 ```
   </tbody>
 </table>
+<p class="note">Monthly Average Recruits — the average monthly recruits each site has actually delivered: its randomisations divided by the months it has been open, counting the opening month and the current one. Coloured against the protocol benchmark of `r fmt_rate(site_rate_target, 0)` per site per month — green at or above it, amber from half the benchmark up, red below. Sites with no <b>Opened</b> date recorded show “—”: without an open date there is no number of months to divide by. Open dates are taken from the Sites tab.</p>
 
 ```{r page3-footer}
 pf_footer(3)

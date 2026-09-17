@@ -33,16 +33,24 @@
   "category": "Surgery",
   "features": {
     "postal_tracking": false,
-    "return_rates": false,
+    "return_rates": true,
     "projections": true,
     "pilot_criteria": false,
     "consort_flow": false,
-    "baseline_table": false,
+    "baseline_table": true,
     "trial_replay": true,
     "participant_questionnaires": true
   },
   "report_defaults": {
     "ci": "GEORGIA MITCHELL",
     "sponsor": "UNIVERSITY OF BIRMINGHAM"
-  }
+  },
+  "participant_breakdowns": [
+    "dem_age",
+    "dem_ethnicity",
+    "nela_score"
+  ],
+  "column_labels": [],
+  "breakdown_titles": [],
+  "breakdown_cuts": []
 }

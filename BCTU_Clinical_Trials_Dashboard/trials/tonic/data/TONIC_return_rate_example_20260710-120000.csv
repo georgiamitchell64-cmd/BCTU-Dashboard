@@ -1,0 +1,127 @@
+"Site","Event","Form","Expected","Due","Entered","% Due Entered","% Expected Entered"
+".Overall","Baseline","Randomisation",65,65,61,93.8,93.8
+".Overall","Baseline","Consent & eligibility",65,65,62,95.4,95.4
+".Overall","Baseline","EQ-5D",65,65,57,87.7,87.7
+".Overall","Discharge","Discharge form",65,63,59,93.7,90.8
+".Overall","Discharge","PRODIGI",65,63,53,84.1,81.5
+".Overall","Discharge","EQ-5D",65,63,57,90.5,87.7
+".Overall","Discharge","QoR-15",65,63,52,82.5,80
+".Overall","Day 30","Day 30 form",65,53,51,96.2,78.5
+".Overall","Day 30","EQ-5D",65,53,45,84.9,69.2
+".Overall","Day 30","Patient satisfaction",65,53,46,86.8,70.8
+".Overall","Day 30","HRUQ",65,53,43,81.1,66.2
+".Overall","Day 90","Day 90 form",65,41,37,90.2,56.9
+".Overall","Day 90","EQ-5D",65,41,32,78,49.2
+".Overall","Day 90","HRUQ",65,41,33,80.5,50.8
+"Example site A","Baseline","Randomisation",15,15,15,100,100
+"Example site A","Baseline","Consent & eligibility",15,15,15,100,100
+"Example site A","Baseline","EQ-5D",15,15,14,93.3,93.3
+"Example site A","Discharge","Discharge form",15,14,14,100,93.3
+"Example site A","Discharge","PRODIGI",15,14,14,100,93.3
+"Example site A","Discharge","EQ-5D",15,14,13,92.9,86.7
+"Example site A","Discharge","QoR-15",15,14,12,85.7,80
+"Example site A","Day 30","Day 30 form",15,12,12,100,80
+"Example site A","Day 30","EQ-5D",15,12,11,91.7,73.3
+"Example site A","Day 30","Patient satisfaction",15,12,12,100,80
+"Example site A","Day 30","HRUQ",15,12,11,91.7,73.3
+"Example site A","Day 90","Day 90 form",15,9,9,100,60
+"Example site A","Day 90","EQ-5D",15,9,9,100,60
+"Example site A","Day 90","HRUQ",15,9,7,77.8,46.7
+"Example site B","Baseline","Randomisation",11,11,11,100,100
+"Example site B","Baseline","Consent & eligibility",11,11,11,100,100
+"Example site B","Baseline","EQ-5D",11,11,10,90.9,90.9
+"Example site B","Discharge","Discharge form",11,10,10,100,90.9
+"Example site B","Discharge","PRODIGI",11,10,9,90,81.8
+"Example site B","Discharge","EQ-5D",11,10,10,100,90.9
+"Example site B","Discharge","QoR-15",11,10,9,90,81.8
+"Example site B","Day 30","Day 30 form",11,9,9,100,81.8
+"Example site B","Day 30","EQ-5D",11,9,8,88.9,72.7
+"Example site B","Day 30","Patient satisfaction",11,9,8,88.9,72.7
+"Example site B","Day 30","HRUQ",11,9,9,100,81.8
+"Example site B","Day 90","Day 90 form",11,7,7,100,63.6
+"Example site B","Day 90","EQ-5D",11,7,5,71.4,45.5
+"Example site B","Day 90","HRUQ",11,7,5,71.4,45.5
+"Example site C","Baseline","Randomisation",9,9,8,88.9,88.9
+"Example site C","Baseline","Consent & eligibility",9,9,9,100,100
+"Example site C","Baseline","EQ-5D",9,9,9,100,100
+"Example site C","Discharge","Discharge form",9,9,8,88.9,88.9
+"Example site C","Discharge","PRODIGI",9,9,8,88.9,88.9
+"Example site C","Discharge","EQ-5D",9,9,7,77.8,77.8
+"Example site C","Discharge","QoR-15",9,9,6,66.7,66.7
+"Example site C","Day 30","Day 30 form",9,7,7,100,77.8
+"Example site C","Day 30","EQ-5D",9,7,7,100,77.8
+"Example site C","Day 30","Patient satisfaction",9,7,7,100,77.8
+"Example site C","Day 30","HRUQ",9,7,6,85.7,66.7
+"Example site C","Day 90","Day 90 form",9,6,6,100,66.7
+"Example site C","Day 90","EQ-5D",9,6,4,66.7,44.4
+"Example site C","Day 90","HRUQ",9,6,5,83.3,55.6
+"Example site D","Baseline","Randomisation",8,8,8,100,100
+"Example site D","Baseline","Consent & eligibility",8,8,8,100,100
+"Example site D","Baseline","EQ-5D",8,8,8,100,100
+"Example site D","Discharge","Discharge form",8,8,8,100,100
+"Example site D","Discharge","PRODIGI",8,8,6,75,75
+"Example site D","Discharge","EQ-5D",8,8,7,87.5,87.5
+"Example site D","Discharge","QoR-15",8,8,6,75,75
+"Example site D","Day 30","Day 30 form",8,7,7,100,87.5
+"Example site D","Day 30","EQ-5D",8,7,7,100,87.5
+"Example site D","Day 30","Patient satisfaction",8,7,6,85.7,75
+"Example site D","Day 30","HRUQ",8,7,6,85.7,75
+"Example site D","Day 90","Day 90 form",8,5,3,60,37.5
+"Example site D","Day 90","EQ-5D",8,5,4,80,50
+"Example site D","Day 90","HRUQ",8,5,5,100,62.5
+"Example site E","Baseline","Randomisation",5,5,4,80,80
+"Example site E","Baseline","Consent & eligibility",5,5,2,40,40
+"Example site E","Baseline","EQ-5D",5,5,2,40,40
+"Example site E","Discharge","Discharge form",5,5,3,60,60
+"Example site E","Discharge","PRODIGI",5,5,2,40,40
+"Example site E","Discharge","EQ-5D",5,5,4,80,80
+"Example site E","Discharge","QoR-15",5,5,4,80,80
+"Example site E","Day 30","Day 30 form",5,4,2,50,40
+"Example site E","Day 30","EQ-5D",5,4,2,50,40
+"Example site E","Day 30","Patient satisfaction",5,4,2,50,40
+"Example site E","Day 30","HRUQ",5,4,2,50,40
+"Example site E","Day 90","Day 90 form",5,3,2,66.7,40
+"Example site E","Day 90","EQ-5D",5,3,2,66.7,40
+"Example site E","Day 90","HRUQ",5,3,2,66.7,40
+"Example site F","Baseline","Randomisation",6,6,6,100,100
+"Example site F","Baseline","Consent & eligibility",6,6,6,100,100
+"Example site F","Baseline","EQ-5D",6,6,6,100,100
+"Example site F","Discharge","Discharge form",6,6,6,100,100
+"Example site F","Discharge","PRODIGI",6,6,5,83.3,83.3
+"Example site F","Discharge","EQ-5D",6,6,6,100,100
+"Example site F","Discharge","QoR-15",6,6,5,83.3,83.3
+"Example site F","Day 30","Day 30 form",6,5,5,100,83.3
+"Example site F","Day 30","EQ-5D",6,5,5,100,83.3
+"Example site F","Day 30","Patient satisfaction",6,5,5,100,83.3
+"Example site F","Day 30","HRUQ",6,5,4,80,66.7
+"Example site F","Day 90","Day 90 form",6,4,4,100,66.7
+"Example site F","Day 90","EQ-5D",6,4,3,75,50
+"Example site F","Day 90","HRUQ",6,4,4,100,66.7
+"Example site G","Baseline","Randomisation",7,7,5,71.4,71.4
+"Example site G","Baseline","Consent & eligibility",7,7,7,100,100
+"Example site G","Baseline","EQ-5D",7,7,4,57.1,57.1
+"Example site G","Discharge","Discharge form",7,7,6,85.7,85.7
+"Example site G","Discharge","PRODIGI",7,7,5,71.4,71.4
+"Example site G","Discharge","EQ-5D",7,7,6,85.7,85.7
+"Example site G","Discharge","QoR-15",7,7,6,85.7,85.7
+"Example site G","Day 30","Day 30 form",7,6,6,100,85.7
+"Example site G","Day 30","EQ-5D",7,6,2,33.3,28.6
+"Example site G","Day 30","Patient satisfaction",7,6,3,50,42.9
+"Example site G","Day 30","HRUQ",7,6,2,33.3,28.6
+"Example site G","Day 90","Day 90 form",7,4,3,75,42.9
+"Example site G","Day 90","EQ-5D",7,4,2,50,28.6
+"Example site G","Day 90","HRUQ",7,4,2,50,28.6
+"Example site H","Baseline","Randomisation",4,4,4,100,100
+"Example site H","Baseline","Consent & eligibility",4,4,4,100,100
+"Example site H","Baseline","EQ-5D",4,4,4,100,100
+"Example site H","Discharge","Discharge form",4,4,4,100,100
+"Example site H","Discharge","PRODIGI",4,4,4,100,100
+"Example site H","Discharge","EQ-5D",4,4,4,100,100
+"Example site H","Discharge","QoR-15",4,4,4,100,100
+"Example site H","Day 30","Day 30 form",4,3,3,100,75
+"Example site H","Day 30","EQ-5D",4,3,3,100,75
+"Example site H","Day 30","Patient satisfaction",4,3,3,100,75
+"Example site H","Day 30","HRUQ",4,3,3,100,75
+"Example site H","Day 90","Day 90 form",4,3,3,100,75
+"Example site H","Day 90","EQ-5D",4,3,3,100,75
+"Example site H","Day 90","HRUQ",4,3,3,100,75

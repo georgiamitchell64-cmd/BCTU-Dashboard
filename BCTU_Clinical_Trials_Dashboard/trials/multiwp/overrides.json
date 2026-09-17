@@ -90,5 +90,23 @@
     "day_30": {},
     "day_90": {},
     "sub_forms": "sub_forms_arm_1"
+  },
+  "short_name": "MULTIWP",
+  "name": "MULTIWP — Multi-work-package Test Trial",
+  "trial_target": 92,
+  "category": "Surgery",
+  "features": {
+    "postal_tracking": false,
+    "return_rates": false,
+    "projections": true,
+    "pilot_criteria": false,
+    "consort_flow": false,
+    "baseline_table": true,
+    "trial_replay": false,
+    "participant_questionnaires": true
+  },
+  "report_defaults": {
+    "ci": "Test CI",
+    "sponsor": "University of Birmingham"
   }
 }
