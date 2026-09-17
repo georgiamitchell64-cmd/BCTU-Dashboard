@@ -1,11 +1,16 @@
 # Starting the dashboard from the desktop
 
-Double-click to start the dashboard; you don't need RStudio. The computer needs R and the dashboard's R packages, as it does for RStudio.
+Double-click to start the dashboard; you don't need RStudio. The computer needs R installed (from cran.r-project.org). The first start installs the R packages the dashboard uses, which takes a few minutes; after that it's seconds.
+
+The dashboard itself runs in your browser, the same as it does through RStudio — the shortcut just starts it and opens the tab for you.
 
 ## Windows
 
-1. Open this `desktop` folder and double-click **Create desktop shortcut**. You only need to do this once per computer.
-2. From then on, double-click **BCTU Dashboard** on your desktop.
+1. Get the dashboard onto the PC: in GitHub Desktop, clone `georgiamitchell64-cmd/BCTU-Dashboard` (or pull, if it's already there).
+2. Open `BCTU_Clinical_Trials_Dashboard\desktop` and double-click **Create desktop shortcut**. Once per computer.
+3. From then on, double-click **BCTU Dashboard** on your desktop.
+
+Pull in GitHub Desktop whenever you want the latest version — the shortcut always runs whatever is in that folder.
 
 A *Starting the dashboard…* page opens in your browser. After 10 to 20 seconds it switches to the dashboard.
 

@@ -40,8 +40,41 @@ if (already == "other") {
   quit(save = "no", status = 1)
 }
 
-Sys.setenv(BCTU_DESKTOP = "1")
 setwd(app_dir)
+
+# Every package the dashboard loads must be installed on this computer. Name
+# the missing ones and offer to fetch them, rather than failing later inside
+# library() with one name and no context.
+missing <- local({
+  lib  <- readLines("globals/packages.R", warn = FALSE)
+  pkgs <- unique(sub('^\\s*library\\(["\']?([^)"\']+).*', "\\1", grep("^\\s*library\\(", lib, value = TRUE)))
+  # Used through :: rather than library(), mostly by the report builder
+  pkgs <- c(pkgs, "rmarkdown", "knitr", "purrr", "htmltools", "base64enc",
+            "officer", "flextable", "scales", "later", "ragg")
+  pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+})
+if (length(missing)) {
+  message("\nThe dashboard needs ", length(missing), " R package",
+          if (length(missing) == 1) "" else "s", " this computer doesn't have:\n  ",
+          paste(missing, collapse = ", "), "\n")
+  ans <- if (interactive()) readline("Install them now? (y/n) ") else {
+    message("Installing them now (this takes a few minutes the first time).")
+    "y"
+  }
+  if (tolower(substr(ans, 1, 1)) == "y") {
+    install.packages(missing, repos = "https://cloud.r-project.org")
+    still <- missing[!vapply(missing, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(still)) {
+      message("\nStill missing: ", paste(still, collapse = ", "),
+              "\nInstall them in R, then start the dashboard again.")
+      quit(save = "no", status = 1)
+    }
+  } else {
+    quit(save = "no", status = 1)
+  }
+}
+
+Sys.setenv(BCTU_DESKTOP = "1")
 message("Starting the BCTU Clinical Trials Dashboard at ", address)
 message("It stops by itself once no browser tab has had it open for ",
         Sys.getenv("BCTU_AUTO_STOP_MINUTES", "10"), " minutes. Closing this window stops it now.")
