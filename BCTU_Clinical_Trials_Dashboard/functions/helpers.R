@@ -118,8 +118,12 @@ ensure_pandoc <- function() {
     Sys.setenv(RSTUDIO_PANDOC = dirname(rm_path)); return(TRUE)
   }
   
-  # Common install locations across the three OSes
+  # Common install locations across the three OSes. A copy bundled with the
+  # app (scripts/fetch_runtime.R) comes first — it is the one we know is
+  # there, and on a packaged build it is usually the only one.
   candidates <- c(
+    if (exists("bundled_pandoc_dir", mode = "function")) bundled_pandoc_dir(),
+
     # macOS — RStudio + Quarto
     "/Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/aarch64",
     "/Applications/RStudio.app/Contents/Resources/app/quarto/bin/tools/x86_64",
@@ -166,11 +170,14 @@ ensure_pandoc <- function() {
 # tab, because the launcher only reads PATH / the registry once, at startup.
 pandoc_missing_html <- function() {
   htmltools::HTML(paste0(
-    "Pandoc not found. Install it from ",
+    "Pandoc not found, so reports can’t be built. The quickest fix is to let ",
+    "the dashboard fetch its own copy: run ",
+    "<code>Rscript scripts/fetch_runtime.R</code> in the dashboard folder, then ",
+    "start it again. Failing that, install pandoc from ",
     "<a href=\"https://github.com/jgm/pandoc/releases/latest\" target=\"_blank\">",
     "github.com/jgm/pandoc/releases/latest</a> (the .msi on Windows, the .pkg ",
-    "on Mac), then close the dashboard completely and start it again — or open ",
-    "this app from inside RStudio, which bundles its own pandoc."))
+    "on Mac) and restart the dashboard completely — or open it from inside ",
+    "RStudio, which brings its own."))
 }
 
 # A config mapping (a redcap_fields / redcap_events entry) may hold one name or

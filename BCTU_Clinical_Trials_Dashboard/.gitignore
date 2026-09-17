@@ -14,6 +14,11 @@
 # ── The writability probe in globals/paths.R, if a run is ever killed mid-check
 .bctu-write-test-*
 
+# ── The bundled report-export runtime ────────────────────────────────────────
+# pandoc and a headless Chrome, fetched per platform at build time by
+# scripts/fetch_runtime.R. ~200MB of third-party binaries: not committed.
+runtime/
+
 # ── Backups & scratch ────────────────────────────────────────────────────────
 app_copy_*.R
 *_copy_*.R
