@@ -33,6 +33,18 @@ If you double-click the shortcut while the dashboard is already running, it just
 
 The dashboard stops ten minutes after the last browser tab closes. Details are logged in `~/Library/Logs/BCTU Dashboard.log`.
 
+## Giving a copy to someone else
+
+The working copy accumulates real data — accounts, the activity log, participant postal tracking, REDCap exports left in a trial's folder. Don't hand that folder to anyone. Stage a clean copy instead:
+
+```
+Rscript scripts/prepare_distribution.R ../BCTU-Dashboard-dist
+```
+
+It copies the dashboard elsewhere, deletes the data files, and empties every database table that isn't trial configuration — sites and projection settings are all that survive. It never writes to the folder it reads from, and prints exactly what it cleared and what is left.
+
+The clean copy ships with no accounts and doesn't need any: **the first person to register on it becomes its admin**, and an admin manages every trial automatically. So set it up on the new machine by opening it and registering yourself first.
+
 ## Settings
 
 Set these as environment variables before starting:
