@@ -127,7 +127,7 @@ jobs:
       # part, where a failure is cheap.
       - name: Test the launcher
         working-directory: electron
-        run: npm test
+        run: npm test -- --strict
 
       - name: Install Electron tooling
         working-directory: electron

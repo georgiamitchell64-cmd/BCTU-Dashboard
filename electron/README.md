@@ -52,9 +52,11 @@ npm start    # runs it against the checkout
 ```
 
 `npm test` is plain node with no dependencies, so it runs before `npm install`
-and in CI. It covers both layouts, finding R on each platform, and — where the
-machine has R and shiny — actually starting a Shiny app, waiting for it, and
-stopping it again.
+and in CI — the *R* workflow runs it on every pull request. It covers both
+layouts, finding R on each platform, and — where the machine has R and shiny —
+actually starting a Shiny app, waiting for it, and stopping it again. That last
+part skips itself on a machine without R; `npm test -- --strict` turns the skip
+into a failure, which is what CI uses, so a green run there always means it ran.
 
 To run `npm start` with report export working, fetch the runtime first:
 

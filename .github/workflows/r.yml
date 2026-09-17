@@ -10,6 +10,10 @@
 # that actually bites — a syntax error committed to a module, which otherwise
 # only shows up when someone launches the app — and it needs nothing installed
 # beyond R itself and knitr.
+#
+# A second job runs the R test suite, and with it the desktop launcher's own
+# tests — those start a real Shiny app and wait for it, which is the part the
+# installer depends on.
 
 name: R
 
@@ -112,3 +116,17 @@ jobs:
       - name: Run tests
         working-directory: BCTU_Clinical_Trials_Dashboard
         run: Rscript tests/run_all.R --strict
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      # The desktop launcher, which starts the app as an installed copy does.
+      # It needs no npm install — the tests have no dependencies — and the R
+      # and shiny installed above are what make the round-trip part of it real,
+      # so --strict here too. This runs on every pull request; the Windows
+      # installer build is dispatched by hand and would otherwise be the only
+      # place these ever ran.
+      - name: Test the desktop launcher
+        working-directory: electron
+        run: npm test -- --strict

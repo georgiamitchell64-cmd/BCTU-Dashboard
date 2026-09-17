@@ -21,6 +21,11 @@ const { execFileSync } = require('child_process');
 const { resolvePaths, rscriptCandidates, appEnv } = require('../lib/locate');
 const { freePort, startR, ping, waitForServer, stopR } = require('../lib/server');
 
+// --strict: fail rather than skip when the machine has no R, so a green CI run
+// always means the R round trip actually ran. Same convention as
+// tests/run_all.R --strict on the R side.
+const strict = process.argv.includes('--strict');
+
 let passed = 0, failed = 0, skipped = 0;
 
 function ok(cond, label) {
@@ -163,11 +168,21 @@ async function testLocate() {
 
 // -- lib/server --------------------------------------------------------------
 
+// PATH first, because that is what both CI runners guarantee and what a
+// developer has; then the places the launcher itself looks, for a machine where
+// R is installed but not on PATH.
 function findRscript() {
-  for (const c of ['/usr/local/bin/Rscript', '/usr/bin/Rscript', '/opt/homebrew/bin/Rscript']) {
-    if (fs.existsSync(c)) return c;
+  const exe = process.platform === 'win32' ? 'Rscript.exe' : 'Rscript';
+  const sep = process.platform === 'win32' ? ';' : ':';
+  for (const dir of (process.env.PATH || '').split(sep)) {
+    if (dir && fs.existsSync(path.join(dir, exe))) return path.join(dir, exe);
   }
-  return null;
+  const probe = resolvePaths({
+    appPath: __dirname, resourcesPath: __dirname, isPackaged: false,
+    userData: os.tmpdir(), platform: process.platform, env: process.env,
+    exists: fs.existsSync, listDir: fs.readdirSync,
+  });
+  return probe.rscript;
 }
 function hasShiny(rscript) {
   try {
@@ -209,8 +224,14 @@ async function testServer() {
 
   const rscript = findRscript();
   if (!rscript || !hasShiny(rscript)) {
-    console.log('\nserver: against a real R\n  SKIP  no R with shiny on this machine');
-    skipped += 1;
+    const why = rscript ? `${rscript} has no shiny installed` : 'no Rscript on this machine';
+    if (strict) {
+      failed++;
+      console.log(`\nserver: against a real R\n  FAIL  --strict, and ${why}`);
+    } else {
+      console.log(`\nserver: against a real R\n  SKIP  ${why}`);
+      skipped += 1;
+    }
     return;
   }
 
