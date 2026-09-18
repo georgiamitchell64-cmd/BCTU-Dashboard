@@ -123,6 +123,42 @@ if (all(vapply(c("DBI", "RSQLite"), requireNamespace, logical(1), quietly = TRUE
   cat("\n  (skipping the database check — DBI / RSQLite not installed)\n")
 }
 
+# ── Seeding on an upgrade ────────────────────────────────────────────────────
+# Installing a new version must bring across a trial it added, and must not
+# touch a trial folder the person has already edited.
+local({
+  root <- file.path(tempdir(), paste0("bctu-upgrade-", Sys.getpid()))
+  unlink(root, recursive = TRUE)
+  dir.create(file.path(root, "data"), recursive = TRUE, showWarnings = FALSE)
+
+  reset(file.path(root, "data"))
+  src <- file.path(app_install_dir(), "trials")
+  if (!dir.exists(src)) return(invisible(NULL))
+
+  seed_data_root(quiet = TRUE)
+  dest <- app_trials_dir()
+  shipped <- basename(list.files(src))
+  ok(all(file.exists(file.path(dest, shipped))), "a first run seeds every shipped trial")
+
+  # The person edits one trial, and a later version ships an extra one.
+  edited <- file.path(dest, shipped[1], ".bctu-their-edit")
+  writeLines("their settings", edited)
+  added <- file.path(dest, "a_trial_only_the_new_version_ships")
+  unlink(added, recursive = TRUE)
+  # Simulate the update by removing one seeded trial, so it looks new.
+  removed <- shipped[length(shipped)]
+  unlink(file.path(dest, removed), recursive = TRUE)
+
+  seed_data_root(quiet = TRUE)
+  ok(dir.exists(file.path(dest, removed)),
+     "a trial the new version adds is seeded on the next run")
+  ok(file.exists(edited) && identical(readLines(edited), "their settings"),
+     "and a trial they have already edited is left untouched")
+
+  reset()
+  unlink(root, recursive = TRUE)
+})
+
 reset()
 unlink(dirname(elsewhere), recursive = TRUE)
 cat("\nAll data-path assertions passed.\n")

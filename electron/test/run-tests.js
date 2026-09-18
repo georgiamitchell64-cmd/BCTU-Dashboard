@@ -168,6 +168,45 @@ async function testLocate() {
        'does not set BCTU_DESKTOP — the idle shutdown would fight the window');
   });
 
+  await section('locate: the R library is ours when the R is ours', () => {
+    // Anyone who already has R of the same minor version has a personal
+    // package library that R puts FIRST. Running the dashboard against those
+    // packages instead of the bundled ones defeats the point of bundling, and
+    // fails far from the cause.
+    const withBundled = appEnv({}, { dataDir: '/d', runtimeDir: '/rt', bundledR: true });
+    eqPath(withBundled.R_LIBS_USER, '/rt/R/library', 'pins R_LIBS_USER to the bundled library');
+    eqPath(withBundled.R_LIBS, '/rt/R/library', 'and R_LIBS, which can be set machine-wide');
+    eqPath(withBundled.R_LIBS_SITE, '/rt/R/library', 'and R_LIBS_SITE');
+
+    // On a fallback to an installed R, the person's library is where the
+    // packages actually are — pinning it would break the app.
+    const installed = appEnv({ R_LIBS_USER: '/home/g/R/lib' },
+                             { dataDir: '/d', runtimeDir: '/rt', bundledR: false });
+    eq(installed.R_LIBS_USER, '/home/g/R/lib',
+       'leaves an installed R to use the library it was set up with');
+    ok(!('R_LIBS' in installed), 'and adds nothing of its own');
+
+    const A2 = process.platform === 'win32' ? 'C:' : '';
+    const rt = `${A2}/opt/BCTU/resources`;
+    let p = resolvePaths({
+      appPath: `${rt}/app.asar`, resourcesPath: rt, isPackaged: true, userData: `${A2}/u`,
+      platform: 'linux', env: {}, ...fakeFs([`${rt}/runtime/R/bin/Rscript`]),
+    });
+    ok(p.bundledR === true, 'an R under the runtime folder counts as bundled');
+
+    p = resolvePaths({
+      appPath: `${rt}/app.asar`, resourcesPath: rt, isPackaged: true, userData: `${A2}/u`,
+      platform: 'linux', env: {}, ...fakeFs(['/usr/bin/Rscript']),
+    });
+    ok(p.bundledR === false, 'and an R found on the machine does not');
+
+    p = resolvePaths({
+      appPath: `${rt}/app.asar`, resourcesPath: rt, isPackaged: true, userData: `${A2}/u`,
+      platform: 'linux', env: {}, ...fakeFs([]),
+    });
+    ok(p.bundledR === false, 'no R at all is not "bundled"');
+  });
+
   // The R side reads these two names; if either is renamed this fails here
   // rather than as a dashboard that writes to a read-only folder.
   await section('locate: agrees with the R side', () => {
@@ -274,6 +313,8 @@ async function testServer() {
       ok(await ping(port), 'and keeps answering');
       ok(lines.some((l) => /Listening on/.test(l)),
          'R\'s output is captured line by line — this is what the log and the error dialog show');
+      ok((child.spawnargs || []).includes('--vanilla'),
+         'R is started with --vanilla');
     } finally {
       stopR(child, { graceMs: 1000 });
     }
@@ -325,6 +366,39 @@ async function testServer() {
        `and promptly — ${elapsed}ms, not the full timeout`);
     ok(listening, 'startR reported the "Listening on" line');
     stopR(child, { graceMs: 500 });
+  });
+
+  // A person who uses R has a personal R setup. It must not reach in here —
+  // and a .Renviron is applied AFTER the environment we pass, so one naming
+  // BCTU_DATA_DIR (a variable the README documents) would silently redirect
+  // where the dashboard writes.
+  await section('server: the person\'s own R setup does not leak in', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bctu-home-'));
+    fs.writeFileSync(path.join(home, '.Renviron'), 'BCTU_DATA_DIR=/somewhere/they/set/years/ago\n');
+    fs.writeFileSync(path.join(home, '.Rprofile'), 'options(bctu_personal_profile_ran = TRUE)\n');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bctu-env-'));
+    fs.writeFileSync(path.join(dir, 'app.R'),
+      'cat("DATA_DIR=", Sys.getenv("BCTU_DATA_DIR"), "\\n", sep = "")\n' +
+      'cat("PROFILE_RAN=", isTRUE(getOption("bctu_personal_profile_ran")), "\\n", sep = "")\n' +
+      'quit(status = 0)\n');
+
+    const lines = [];
+    const wanted = path.join(dir, 'data');
+    const child = startR({
+      rscript, appDir: dir, port: await freePort(),
+      env: Object.assign({}, appEnv(process.env, { dataDir: wanted, runtimeDir: dir }),
+                         { HOME: home, USERPROFILE: home, R_USER: home }),
+      onLog: (l) => lines.push(l),
+    });
+    await new Promise((res) => child.on('exit', res));
+
+    const out = lines.join('\n');
+    ok(out.includes(`DATA_DIR=${wanted}`),
+       'the data folder we passed wins over the one in their .Renviron');
+    ok(!out.includes('/somewhere/they/set/years/ago'),
+       'their .Renviron value is not what the app sees');
+    ok(/PROFILE_RAN=FALSE/.test(out), 'and their .Rprofile does not run');
   });
 
   await section('server: an R that dies is reported, not waited on', async () => {

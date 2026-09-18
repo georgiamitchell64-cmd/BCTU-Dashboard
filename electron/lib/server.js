@@ -50,7 +50,12 @@ function startR({ rscript, appDir, port, env, onLog = () => {}, onListening = ()
   const expr =
     `shiny::runApp(${JSON.stringify(appDir)}, host = "127.0.0.1", ` +
     `port = ${port}, launch.browser = FALSE)`;
-  const child = spawn(rscript, ['-e', expr], {
+  // --vanilla: no .Rprofile, no .Renviron, no saved workspace. The dashboard
+  // must behave the same on every machine, and a person who uses R already has
+  // a personal R setup that would otherwise apply here. A .Renviron in
+  // particular is applied *after* the environment we pass, so a stale
+  // BCTU_DATA_DIR in one would silently redirect where the dashboard writes.
+  const child = spawn(rscript, ['--vanilla', '-e', expr], {
     cwd: appDir,
     env,
     windowsHide: true,
