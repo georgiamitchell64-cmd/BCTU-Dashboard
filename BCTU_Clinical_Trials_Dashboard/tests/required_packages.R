@@ -17,9 +17,12 @@ ok <- function(cond, label) {
   if (isTRUE(cond)) pass <<- pass + 1L else fail <<- c(fail, label)
 }
 
+# "SKIP:" at the start of a line is what tests/run_all.R looks for to count
+# this as skipped rather than passed — and what --strict there turns into a
+# failure. Any other wording reads as a pass, which is the exact mistake this
+# file exists to catch.
 if (!requireNamespace("knitr", quietly = TRUE)) {
-  cat("SKIP required-packages tests: knitr is not installed\n")
-  if ("--strict" %in% commandArgs(trailingOnly = TRUE)) quit(status = 1L)
+  cat("SKIP: knitr is not installed, so the report templates cannot be scanned\n")
   quit(status = 0L)
 }
 
