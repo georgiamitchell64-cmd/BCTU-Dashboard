@@ -49,16 +49,17 @@ jobs:
           r-version: ${{ inputs.r-version || '4.4.2' }}
           use-public-rspm: true
 
+      # The list comes from globals/required_packages.txt, which is read out of
+      # the source by scripts/required_packages.R and kept honest by
+      # tests/required_packages.R. It used to be typed out here, and drifted:
+      # the first installer shipped without ggplot2 and died on startup.
       - name: Install R packages
         shell: Rscript {0}
         run: |
-          pkgs <- c(
-            "shiny", "bslib", "shinyWidgets", "shinyjs", "reactable", "echarts4r",
-            "shinycssloaders", "dplyr", "tidyr", "stringr", "lubridate", "writexl",
-            "readxl", "leaflet", "tibble", "rlang", "DBI", "RSQLite", "jsonlite",
-            "digest", "rmarkdown", "knitr", "purrr", "htmltools", "base64enc",
-            "officer", "flextable", "scales"
-          )
+          source("BCTU_Clinical_Trials_Dashboard/scripts/required_packages.R")
+          pkgs <- manifest_packages("BCTU_Clinical_Trials_Dashboard")
+          if (!length(pkgs)) stop("globals/required_packages.txt is empty or missing")
+          cat("Manifest lists", length(pkgs), "packages.\n")
           missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
           if (length(missing)) install.packages(missing)
           still <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
@@ -85,6 +86,23 @@ jobs:
           if (-not (Test-Path "$dest\bin\x64\Rscript.exe") -and -not (Test-Path "$dest\bin\Rscript.exe")) {
             throw "Rscript.exe missing from the staged runtime"
           }
+
+      # The check that would have caught the missing ggplot2: load every package
+      # from the staged library the installer will actually ship, rather than
+      # from the runner's own. A package that installed but cannot be loaded
+      # here is one the dashboard dies on at startup.
+      # The check that would have caught the missing ggplot2: load every package
+      # from the staged library the installer will actually ship, rather than
+      # from the runner's own. A package that installed but cannot be loaded
+      # here is one the dashboard dies on at startup.
+      - name: Check the bundled library loads
+        shell: pwsh
+        run: |
+          $rscript = if (Test-Path "electron/runtime/R/bin/x64/Rscript.exe") {
+            "electron/runtime/R/bin/x64/Rscript.exe"
+          } else { "electron/runtime/R/bin/Rscript.exe" }
+          & $rscript BCTU_Clinical_Trials_Dashboard/scripts/required_packages.R --check
+          if ($LASTEXITCODE -ne 0) { throw "the bundled library is missing packages" }
 
       # pandoc is what rmarkdown shells out to for HTML/PDF report export.
       # It normally arrives with RStudio, which a packaged app does not have,
