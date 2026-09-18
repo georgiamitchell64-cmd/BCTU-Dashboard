@@ -17,8 +17,12 @@ tonic_theme <- bs_theme(
   info = "#2581C4",
   bg = "#F4F4F4",
   fg = "#1B1B1B",
-  base_font = font_google("Outfit"),
-  heading_font = font_google("Outfit", wght = "700"),
+  # Named, not fetched: the @font-face rules at the top of www/tonic_core.css
+  # point at the copies in www/fonts. font_google() would download the font
+  # during the first render instead, which is what made the desktop build look
+  # like it had failed to start on a slow network.
+  base_font = font_collection("Outfit", "system-ui", "sans-serif"),
+  heading_font = font_collection("Outfit", "system-ui", "sans-serif"),
   "card-border-radius" = "8px",
   "card-cap-bg" = "#F8FAFD",
   "card-border-color" = "#E3E3E3",

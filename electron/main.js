@@ -22,6 +22,7 @@ const { freePort, startR, waitForServer, stopR } = require('./lib/server');
 let win = null;
 let rProc = null;
 let logStream = null;
+let quitting = false;      // so quitting mid-startup isn't reported as a crash
 const recentLog = [];          // the tail, for the error dialog
 
 function log(line) {
@@ -100,12 +101,14 @@ async function start() {
   const port = await freePort();
   log(`port     ${port}`);
 
+  let listening = false;
   rProc = startR({
     rscript: p.rscript,
     appDir: p.appDir,
     port,
     env: appEnv(process.env, p),
     onLog: log,
+    onListening: () => { listening = true; },
   });
   rProc.on('error', (e) => fail('R could not be started', String(e && e.message)));
 
@@ -115,14 +118,17 @@ async function start() {
     log(`R exited with code ${code}`);
     // Only a problem if it happened before we had a window on it; afterwards
     // it's just the app being closed.
-    if (win && win.webContents.getURL().startsWith('file://')) {
+    if (!quitting && win && win.webContents.getURL().startsWith('file://')) {
       fail('The dashboard stopped while starting up',
         `R exited with code ${code} before the dashboard was ready.`);
     }
   });
 
   try {
-    const ms = await waitForServer(port, { hasExited: () => exited });
+    const ms = await waitForServer(port, {
+      hasExited: () => exited,
+      isListening: () => listening,
+    });
     log(`ready in ${ms}ms`);
     if (win && !win.isDestroyed()) win.loadURL(`http://127.0.0.1:${port}/`);
   } catch (e) {
@@ -150,6 +156,6 @@ if (!app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => app.quit());
   // Closing the window stops R — it has no other owner, and leaving it running
   // would hold both the port and the databases.
-  app.on('before-quit', () => { stopR(rProc); });
+  app.on('before-quit', () => { quitting = true; stopR(rProc); });
   app.on('quit', () => { stopR(rProc); if (logStream) logStream.end(); });
 }

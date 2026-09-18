@@ -288,6 +288,45 @@ async function testServer() {
     ok(!(await ping(port, 500)), 'and the port is free again');
   });
 
+  // The bug from the field: Shiny was up and serving, but the first render was
+  // slow (bslib fetching a Google font), so every probe timed out and a running
+  // dashboard was reported as never having started.
+  await section('server: a server that is slow to render is not a failure', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bctu-slow-'));
+    // A real Shiny app that listens straight away but is very slow to render:
+    // a function UI runs per request, so the server is up while the first page
+    // is still being built — the exact shape of the field failure.
+    fs.writeFileSync(path.join(dir, 'app.R'),
+      'library(shiny)\n' +
+      'shinyApp(ui = function(req) { Sys.sleep(120); fluidPage("slow") },\n' +
+      '         server = function(input, output) {})\n');
+
+    const port = await freePort();
+    const lines = [];
+    let listening = false, exited = false;
+    const child = startR({
+      rscript, appDir: dir, port,
+      env: process.env,
+      onLog: (l) => lines.push(l),
+      onListening: () => { listening = true; },
+    });
+    child.on('exit', () => { exited = true; });
+
+    const t0 = Date.now();
+    let ms = null, err = null;
+    try {
+      ms = await waitForServer(port, { timeoutMs: 60000, intervalMs: 200,
+                                       hasExited: () => exited, isListening: () => listening });
+    } catch (e) { err = e; }
+    const elapsed = Date.now() - t0;
+
+    ok(err === null, 'a server that has announced itself is treated as up');
+    ok(ms !== null && elapsed < 30000,
+       `and promptly — ${elapsed}ms, not the full timeout`);
+    ok(listening, 'startR reported the "Listening on" line');
+    stopR(child, { graceMs: 500 });
+  });
+
   await section('server: an R that dies is reported, not waited on', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bctu-broken-'));
     // The realistic failure: app.R exists but doesn't load.
