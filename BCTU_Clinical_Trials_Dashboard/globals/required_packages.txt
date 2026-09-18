@@ -1,0 +1,47 @@
+# Every package the dashboard needs, read out of the source by
+# scripts/required_packages.R --write. Do not edit by hand: the build
+# workflow installs exactly this list, and tests/required_packages.R
+# fails if it no longer matches the code.
+DBI
+DiagrammeR
+DiagrammeRsvg
+RSQLite
+base64enc
+bslib
+chromote
+consort
+digest
+dplyr
+echarts4r
+flextable
+ggplot2
+gridExtra
+htmltools
+htmlwidgets
+jsonlite
+knitr
+later
+leaflet
+lubridate
+officer
+openxlsx
+pdftools
+ragg
+reactable
+readxl
+reshape2
+rlang
+rmarkdown
+scales
+shiny
+shinyWidgets
+shinycssloaders
+shinyjs
+stringr
+svglite
+systemfonts
+tibble
+tidyr
+writexl
+xml2
+zip

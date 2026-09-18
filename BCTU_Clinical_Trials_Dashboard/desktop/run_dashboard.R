@@ -46,11 +46,8 @@ setwd(app_dir)
 # the missing ones and offer to fetch them, rather than failing later inside
 # library() with one name and no context.
 missing <- local({
-  lib  <- readLines("globals/packages.R", warn = FALSE)
-  pkgs <- unique(sub('^\\s*library\\(["\']?([^)"\']+).*', "\\1", grep("^\\s*library\\(", lib, value = TRUE)))
-  # Used through :: rather than library(), mostly by the report builder
-  pkgs <- c(pkgs, "rmarkdown", "knitr", "purrr", "htmltools", "base64enc",
-            "officer", "flextable", "scales", "later", "ragg")
+  source("scripts/required_packages.R", local = TRUE)
+  pkgs <- manifest_packages(".")
   pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
 })
 if (length(missing)) {
