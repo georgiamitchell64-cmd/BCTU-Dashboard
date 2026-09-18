@@ -25,6 +25,12 @@
 #   site_name             — for site breakdown in minimisation block
 # =============================================================================
 
+# `%||%` is base R only from 4.4.0, and this file is sourced on its own into
+# report-rendering sessions that may have neither the app's copy nor a new
+# enough R.
+if (!exists("%||%", mode = "function"))
+  `%||%` <- function(a, b) if (is.null(a)) b else a
+
 # ── Sex coding ───────────────────────────────────────────────────────────────
 .sex_labels <- c("1" = "Male", "2" = "Female")
 
@@ -65,6 +71,46 @@
   "2" = "1 (Medium risk)",
   "3" = "\u22652 (High risk)"
 )
+
+# ── Standalone resolution of trial config / columns ──────────────────────────
+# The Rmds source this file on its own, into the rendering session's global
+# environment, so nothing else from the app is in scope: calling fld() there
+# failed with "could not find function", the caller's tryCatch() turned that
+# into a NULL, and the report silently lost its whole baseline table. Resolve
+# the config defensively instead, and fall back to the trial's own field names.
+.bt_cfg <- function() {
+  if (exists("current_trial_config", mode = "function"))
+    tryCatch(current_trial_config(), error = function(e) NULL) else NULL
+}
+
+.bt_fld <- function(name, default, cfg = .bt_cfg()) {
+  if (exists("fld", mode = "function"))
+    return(tryCatch(fld(name, default = default), error = function(e) default))
+  m <- (cfg %||% list())$redcap_fields[[name]]
+  if (is.null(m) || !length(m) || !nzchar(as.character(m)[1])) default
+  else as.character(m)[1]
+}
+
+# prepare_report_data() copies each mapped column to a canonical alias
+# (cae_age → age_v, base_sex → sex_v …) and the report is handed whichever
+# frame it built, so look for the alias too rather than assuming raw REDCap
+# names survived.
+.bt_col <- function(df, ...) {
+  cand <- unique(unlist(list(...)))
+  cand <- cand[!is.na(cand) & nzchar(cand)]
+  hit  <- cand[cand %in% names(df)]
+  if (length(hit)) hit[1] else if (length(cand)) cand[1] else ""
+}
+
+# Coded value → label. The trial's own codebook (cfg$column_labels, filled by
+# the codebook importer) wins over the built-in scheme, so a trial that codes
+# sex or residence differently reads correctly.
+.bt_labels <- function(col, builtin, cfg = .bt_cfg()) {
+  cl <- (cfg %||% list())$column_labels[[col]]
+  if (is.null(cl) || !length(cl)) return(builtin)
+  out <- unlist(cl)
+  out[!is.na(out) & nzchar(out)]
+}
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 .fmt_n_pct <- function(n, total) {
@@ -107,13 +153,19 @@ baseline_characteristics_df <- function(rd) {
 
   # Resolve trial-specific REDCap column names from the active config.
   # Falls back to TONIC defaults so existing call sites keep working.
-  c_nela <- fld("nela_score",  default = "base_nela_score_mort")
-  c_nrs  <- fld("nrs_group",   default = "nut_b_nrs_group")
-  c_age  <- fld("age",         default = "cae_age")
-  c_sex  <- fld("sex",         default = "base_sex")
-  c_eth  <- fld("ethnicity",   default = "base_ethnic_gp")
-  c_res  <- fld("residence",   default = "base_residence")
-  c_must <- fld("must_score",  default = "nut_b_must_score")
+  c_nela <- .bt_col(df, .bt_fld("nela_score", "base_nela_score_mort"), "nela_v")
+  c_nrs  <- .bt_col(df, .bt_fld("nrs_group",  "nut_b_nrs_group"),       "nrs_v")
+  c_age  <- .bt_col(df, .bt_fld("age",        "cae_age"),               "age_v")
+  c_sex  <- .bt_col(df, .bt_fld("sex",        "base_sex"),              "sex_v")
+  c_eth  <- .bt_col(df, .bt_fld("ethnicity",  "base_ethnic_gp"),        "eth_v")
+  c_res  <- .bt_col(df, .bt_fld("residence",  "base_residence"),        "residence_v")
+  c_must <- .bt_col(df, .bt_fld("must_score", "nut_b_must_score"),      "must_v")
+  c_site <- .bt_col(df, "site_name", "site_v")
+
+  sex_labels <- .bt_labels(c_sex,  .sex_labels)
+  eth_labels <- .bt_labels(c_eth,  .eth_labels)
+  res_labels <- .bt_labels(c_res,  .residence_labels)
+  must_labels <- .bt_labels(c_must, .must_labels)
 
   rows <- list()
   add  <- function(section, label, sublabel, stat) {
@@ -157,8 +209,9 @@ baseline_characteristics_df <- function(rd) {
   }
 
   # Site
-  if ("site_name" %in% names(df)) {
-    valid <- df$site_name[!is.na(df$site_name) & nzchar(df$site_name)]
+  if (c_site %in% names(df)) {
+    valid <- as.character(df[[c_site]])
+    valid <- valid[!is.na(valid) & nzchar(valid)]
     if (length(valid) > 0) {
       tab <- sort(table(valid), decreasing = TRUE)
       for (nm in names(tab)) {
@@ -196,9 +249,9 @@ baseline_characteristics_df <- function(rd) {
   # Gender
   if (c_sex %in% names(df)) {
     sx    <- as.character(df[[c_sex]])
-    labs  <- .sex_labels[sx]
+    labs  <- sex_labels[sx]
     valid <- sum(!is.na(labs))
-    for (nm in unname(.sex_labels)) {
+    for (nm in unname(sex_labels)) {
       n <- sum(labs == nm, na.rm = TRUE)
       add("Participant demographics", "Gender, n (%)", nm,
           .fmt_n_pct(n, valid))
@@ -213,7 +266,7 @@ baseline_characteristics_df <- function(rd) {
   # Ethnic group — only show categories that actually appear
   if (c_eth %in% names(df)) {
     eg    <- as.character(df[[c_eth]])
-    labs  <- .eth_labels[eg]
+    labs  <- eth_labels[eg]
     valid <- sum(!is.na(labs))
     if (valid > 0) {
       tab <- sort(table(labs), decreasing = TRUE)
@@ -233,9 +286,9 @@ baseline_characteristics_df <- function(rd) {
   # Place of residence
   if (c_res %in% names(df)) {
     res   <- as.character(df[[c_res]])
-    labs  <- .residence_labels[res]
+    labs  <- res_labels[res]
     valid <- sum(!is.na(labs))
-    for (nm in unname(.residence_labels)) {
+    for (nm in unname(res_labels)) {
       n <- sum(labs == nm, na.rm = TRUE)
       add("General", "Participant's place of residence", nm,
           .fmt_n_pct(n, valid))
@@ -250,9 +303,9 @@ baseline_characteristics_df <- function(rd) {
   # MUST score
   if (c_must %in% names(df)) {
     ms    <- as.character(df[[c_must]])
-    labs  <- .must_labels[ms]
+    labs  <- must_labels[ms]
     valid <- sum(!is.na(labs))
-    for (nm in unname(.must_labels)) {
+    for (nm in unname(must_labels)) {
       n <- sum(labs == nm, na.rm = TRUE)
       add("General", "MUST Score", nm,
           .fmt_n_pct(n, valid))

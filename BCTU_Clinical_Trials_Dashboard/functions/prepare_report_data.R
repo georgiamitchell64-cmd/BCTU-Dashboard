@@ -486,6 +486,22 @@ prepare_report_data <- function(df,
   n_sites_active   <- if ("site_name" %in% names(ptcp_randomised))
     length(unique(ptcp_randomised$site_name)) else NA
 
+  # Consented but not randomised — the CONSORT stage between enrolment and
+  # allocation. A record reaches the database once the consent & eligibility
+  # form is complete; only some of those go on to be randomised, and the gap
+  # is what the TSC asks for. Without a consent-completion field every record
+  # counts as consented, which is the best the export supports.
+  rand_ids      <- as.character(ptcp_randomised$record_id)
+  consented_ids <- if ("consent_done" %in% names(ptcp)) {
+    cv <- suppressWarnings(as.integer(ptcp$consent_done))
+    as.character(ptcp$record_id[!is.na(cv) & cv == 2L])
+  } else as.character(ptcp$record_id)
+  # Someone randomised without the consent form marked complete is consented
+  # in fact, so count them in rather than reporting a negative gap.
+  consented_ids   <- unique(c(consented_ids, rand_ids))
+  total_consented <- length(consented_ids)
+  consented_not_randomised <- length(setdiff(consented_ids, rand_ids))
+
   # ── 13. Protocol target schedule (from cfg) ───────────────────────────────
   # th_target_schedule() also reads schedules saved from Settings (stored as lists)
   target_schedule <- (if (exists("th_target_schedule")) th_target_schedule(cfg) else cfg$target_schedule) %||% data.frame(
@@ -676,6 +692,7 @@ prepare_report_data <- function(df,
       "Overall target"="target","overall target"="target",
       "Monthly target"="monthly_target","monthly target"="monthly_target",
       "Site ID"="site_id","site id"="site_id","Identified"="identified",
+      "Source"="reg_source","source"="reg_source",
       "Already randomised"="already_randomised")
     for (on in names(rmap)) {
       idx <- which(pn == on)
@@ -728,6 +745,7 @@ prepare_report_data <- function(df,
       open_date      = .iso_date_chr(pick("open_date", NA)),
       n_register     = suppressWarnings(as.integer(pick("randomised",     NA))),
       source         = "register",
+      reg_source     = as.character(pick("reg_source", NA_character_)),
       stringsAsFactors = FALSE)
 
     # Any REDCap site absent from the register (an export loaded before the
@@ -743,6 +761,7 @@ prepare_report_data <- function(df,
         open_date      = NA_character_,
         n_register     = NA_integer_,
         source         = "redcap",
+        reg_source     = NA_character_,
         stringsAsFactors = FALSE))
     }
   } else {
@@ -757,8 +776,26 @@ prepare_report_data <- function(df,
       open_date      = rep(NA_character_, n0),
       n_register     = rep(NA_integer_, n0),
       source         = rep("redcap", n0),
+      reg_source     = rep(NA_character_, n0),
       stringsAsFactors = FALSE)
   }
+
+  # ── Which sites the REDCap export actually knows about ────────────────────
+  # The Sites tab is a register: it carries sites typed in by hand during
+  # set-up alongside the ones synced from the export's data access groups.
+  # A site the export has never heard of has no recruitment to report and no
+  # open date the data can vouch for, so the report's site table and the open-
+  # centres chart count only the imported ones. A site is imported when the
+  # export names it, or when the register itself recorded it as coming from
+  # REDCap (site row source "auto", written by the Sites-tab sync).
+  export_site_names <- if ("site_v" %in% names(df)) {
+    v <- trimws(as.character(df$site_v))
+    unique(v[!is.na(v) & nzchar(v) & v != "NA"])
+  } else character(0)
+  site_reg$in_redcap <- site_reg$site_name %in% export_site_names |
+    (!is.na(site_reg$reg_source) & site_reg$reg_source == "auto") |
+    site_reg$source == "redcap"
+
 
   site_reg <- merge(site_reg, all_time_counts, by = "site_name", all.x = TRUE)
 
@@ -792,12 +829,17 @@ prepare_report_data <- function(df,
   site_reg$target[is.na(site_reg$target)]                 <- .sd$target
   site_reg$monthly_target[is.na(site_reg$monthly_target)] <- .sd$monthly_target
 
-  recruiting_sites  <- site_reg[site_reg$randomisations > 0, , drop = FALSE]
+  # "Recruiting" for the report's purposes: a site the export knows about that
+  # has randomised somebody. A register-only site with a hand-typed count is
+  # not evidence of recruitment, and set-up sites have none to show.
+  recruiting_sites  <- site_reg[site_reg$randomisations > 0 & site_reg$in_redcap, ,
+                                drop = FALSE]
   pipeline_combined <- site_reg
 
   site_status_table <- if (nrow(pipeline_combined) > 0) {
     st <- pipeline_combined[, c("site_name","stage","target","monthly_target",
-                                "randomisations","open_date","open_estimated"), drop=FALSE]
+                                "randomisations","open_date","open_estimated",
+                                "in_redcap"), drop=FALSE]
     st$randomisations[is.na(st$randomisations)] <- 0
     st$progress_pct <- ifelse(st$target > 0,
                               round(st$randomisations / st$target * 100, 1), NA_real_)
@@ -809,6 +851,7 @@ prepare_report_data <- function(df,
   } else data.frame(site_name=character(0), stage=character(0),
                     target=integer(0), monthly_target=integer(0),
                     randomisations=integer(0), open_date=character(0),
+                    open_estimated=logical(0), in_redcap=logical(0),
                     progress_pct=numeric(0), actual_monthly=numeric(0))
 
   # ── 20. Monthly target achievement ────────────────────────────────────────
@@ -842,8 +885,9 @@ prepare_report_data <- function(df,
     ot$open_date_parsed <- tryCatch(as.Date(ot$open_date), error = function(e) rep(NA_Date_, nrow(ot)))
     ot$days_to_first <- as.integer(difftime(ot$first_rand_date, ot$open_date_parsed, units = "days"))
     ot[order(-ot$randomisations, ot$site_name),
-       c("site_name","open_date","randomisations","days_to_first")]
+       c("site_name","open_date","first_rand_date","randomisations","days_to_first")]
   } else data.frame(site_name=character(0), open_date=character(0),
+                    first_rand_date=as.Date(character(0)),
                     randomisations=integer(0), days_to_first=integer(0))
 
   # ── 22. Per-site per-month heatmap ────────────────────────────────────────
@@ -1030,27 +1074,32 @@ prepare_report_data <- function(df,
     }, error = function(e) NULL)
   }
   if (!is.null(deviation_log)) {
-    # Scope to the participants this report covers, and label the site from the
-    # resolved participant record rather than the raw DAG column.
-    deviation_log <- deviation_log[
-      as.character(deviation_log$record_id) %in% as.character(filtered$record_id), ,
-      drop = FALSE]
-    if (nrow(deviation_log) == 0) {
-      deviation_log <- NULL
-    } else if ("site_name" %in% names(filtered)) {
-      lk <- data.frame(record_id = as.character(filtered$record_id),
-                       .site     = as.character(filtered$site_name),
+    # Label the site from the resolved participant record rather than the raw
+    # DAG column, then keep every deviation the export carries — as the SAE
+    # block above does. Scoping them to `filtered` (randomised participants
+    # inside the reporting window) was why a report could show 0 deviations
+    # against an export that plainly had them: a deviation recorded on the ad
+    # hoc event for someone consented but never randomised, or randomised
+    # before the window opened, matched nobody. Only a site-scoped report
+    # narrows the list, so one site's report cannot show another's.
+    deviation_log$record_id <- as.character(deviation_log$record_id)
+    if ("site_name" %in% names(ptcp)) {
+      lk <- data.frame(record_id = as.character(ptcp$record_id),
+                       .site     = as.character(ptcp$site_name),
                        stringsAsFactors = FALSE)
       lk <- lk[!duplicated(lk$record_id), , drop = FALSE]
-      deviation_log$record_id <- as.character(deviation_log$record_id)
       deviation_log <- merge(deviation_log, lk, by = "record_id", all.x = TRUE)
       has_site <- !is.na(deviation_log$.site) & nzchar(deviation_log$.site)
       deviation_log$site[has_site] <- deviation_log$.site[has_site]
       deviation_log$.site <- NULL
-      deviation_log <- deviation_log[order(deviation_log$onset_date,
-                                           deviation_log$record_id,
-                                           na.last = TRUE), , drop = FALSE]
     }
+    if (!is.null(selected_sites) && length(selected_sites) > 0 &&
+        !("All sites" %in% selected_sites) && "site" %in% names(deviation_log))
+      deviation_log <- deviation_log[deviation_log$site %in% selected_sites, ,
+                                     drop = FALSE]
+    deviation_log <- if (nrow(deviation_log) == 0) NULL else
+      deviation_log[order(deviation_log$onset_date, deviation_log$record_id,
+                          na.last = TRUE), , drop = FALSE]
   }
   deviation_count <- if (is.null(deviation_log)) 0L else nrow(deviation_log)
   # Distinguishes "no deviations reported" from "this export carries no
@@ -1068,6 +1117,8 @@ prepare_report_data <- function(df,
     raw_df      = df,
     filtered_df = filtered,
     kpis = list(total_randomised = total_randomised, trial_target = trial_target,
+      total_consented = total_consented,
+      consented_not_randomised = consented_not_randomised,
       n_sites_active = n_sites_active, expected_to_date = expected_to_date,
       recruitment_pct = recruitment_pct, months_elapsed = round(months_elapsed, 1),
       sae_count = sae_count, report_date = format(Sys.Date(), "%d %B %Y")),

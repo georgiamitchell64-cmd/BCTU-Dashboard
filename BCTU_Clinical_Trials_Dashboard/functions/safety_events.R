@@ -71,20 +71,21 @@ detail_fields_for <- function(section, cfg = current_trial_config()) {
 #' @param complete_field  logical field that flags this event was completed
 #'                        (typically `<form>_complete` with value 2 = complete)
 #' @param spec            list of column names by role: list(
-#'                          term, severity, relatedness, status,
-#'                          onset_date, report_date, narrative
+#'                          term, severity, relatedness, status, category,
+#'                          action, onset_date, report_date, narrative
 #'                        ) — each may be NULL or "" if not configured
 #' @param event_label     short label for the event type (e.g. "SAE")
 #' @return  tibble — one row per event, columns:
 #'           record_id, site, event_type, term, severity, relatedness,
-#'           status, onset_date, report_date, lag_days, narrative
+#'           status, category, action, onset_date, report_date, lag_days,
+#'           narrative
 extract_events <- function(raw_df, complete_field, spec, event_label = "Event",
                            extra = list()) {
   if (is.null(raw_df) || nrow(raw_df) == 0) {
     return(tibble::tibble(
       record_id = character(0), site = character(0), event_type = character(0),
       term = character(0), severity = character(0), relatedness = character(0),
-      status = character(0),
+      status = character(0), category = character(0), action = character(0),
       onset_date = as.Date(integer(0), origin = "1970-01-01"),
       report_date = as.Date(integer(0), origin = "1970-01-01"),
       lag_days = integer(0), narrative = character(0)
@@ -97,7 +98,7 @@ extract_events <- function(raw_df, complete_field, spec, event_label = "Event",
     return(tibble::tibble(
       record_id = character(0), site = character(0), event_type = character(0),
       term = character(0), severity = character(0), relatedness = character(0),
-      status = character(0),
+      status = character(0), category = character(0), action = character(0),
       onset_date = as.Date(integer(0), origin = "1970-01-01"),
       report_date = as.Date(integer(0), origin = "1970-01-01"),
       lag_days = integer(0), narrative = character(0)
@@ -119,6 +120,8 @@ extract_events <- function(raw_df, complete_field, spec, event_label = "Event",
     severity    = as.character(.safety_col(df, spec$severity,    n, NA_character_)),
     relatedness = as.character(.safety_col(df, spec$relatedness, n, NA_character_)),
     status      = as.character(.safety_col(df, spec$status,      n, NA_character_)),
+    category    = as.character(.safety_col(df, spec$category,    n, NA_character_)),
+    action      = as.character(.safety_col(df, spec$action,      n, NA_character_)),
     onset_date  = onset,
     report_date = report,
     lag_days    = lag,
@@ -134,6 +137,10 @@ extract_events <- function(raw_df, complete_field, spec, event_label = "Event",
       tib$severity <- .resolve_value_labels(tib$severity, spec$severity, cfg)
     if (!is.null(spec$status) && nzchar(spec$status %||% ""))
       tib$status   <- .resolve_value_labels(tib$status,   spec$status,   cfg)
+    # Deviation category (REDCap's dev_type and friends) is coded too — the
+    # report shows "Non-compliance with the trial protocol", not "1".
+    if (!is.null(spec$category) && nzchar(spec$category %||% ""))
+      tib$category <- .resolve_value_labels(tib$category, spec$category, cfg)
   }
 
   .append_detail_cols(tib, df, extra)
@@ -168,11 +175,14 @@ deviation_events <- function(raw_df) {
       severity    = fld("deviation_severity",    default = NULL),
       relatedness = fld("deviation_relatedness", default = NULL),
       status      = fld("deviation_status",      default = NULL),
+      category    = fld("deviation_category",    default = NULL),
+      action      = fld("deviation_action",      default = NULL),
       onset_date  = fld("deviation_date",        default = NULL),
       report_date = fld("deviation_report_date", default = NULL),
       narrative   = fld("deviation_narrative",   default = NULL)
     ),
-    event_label = "Deviation"
+    event_label = "Deviation",
+    extra = detail_fields_for("deviation")
   )
 }
 
@@ -221,7 +231,7 @@ withdrawal_events <- function(raw_df) {
     return(tibble::tibble(
       record_id = character(0), site = character(0), event_type = character(0),
       term = character(0), severity = character(0), relatedness = character(0),
-      status = character(0),
+      status = character(0), category = character(0), action = character(0),
       onset_date = as.Date(integer(0), origin = "1970-01-01"),
       report_date = as.Date(integer(0), origin = "1970-01-01"),
       lag_days = integer(0), narrative = character(0)
