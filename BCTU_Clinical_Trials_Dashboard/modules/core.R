@@ -48,9 +48,12 @@ init_app_state <- function(input, output, session) {
       div(style = "font-size:16px;font-weight:700;color:#fff;",
           HTML("&#x2694; BCTU"))
     } else {
-      logo <- cfg$logo_file
-      if (!is.null(logo) && file.exists(logo)) {
-        tags$img(src = paste0("trial_logos/", cfg$code, ".jpg"),
+      # The cached file keeps the logo's own extension, so ask for the URL
+      # rather than assuming .jpg — TONIC's logo is a .png, and the hardcoded
+      # extension asked for a file that was never written.
+      logo_url <- trial_logo_url(cfg)
+      if (!is.null(logo_url)) {
+        tags$img(src = logo_url,
                  height = "34px",
                  style = "filter:brightness(0) invert(1);object-fit:contain;")
       } else {

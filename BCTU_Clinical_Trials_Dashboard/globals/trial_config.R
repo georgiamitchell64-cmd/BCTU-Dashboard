@@ -335,7 +335,7 @@ discover_trials <- function(trials_dir = app_trials_dir()) {
       cfg$trial_dir  <- folder
       cfg$data_dir   <- cfg$data_dir %||% file.path(folder, "data")
       cfg$db_path    <- cfg$db_path %||% file.path(cfg$data_dir, paste0(trial_code, ".sqlite"))
-      cfg$logo_file  <- cfg$logo_file %||% file.path(folder, "www", "logo.jpg")
+      cfg$logo_file  <- .trial_logo_file(cfg$logo_file, folder)
 
       # Apply overrides.json if present (Stage 5 — JSON overlay)
       if (exists("apply_overrides", mode = "function")) {
@@ -350,6 +350,30 @@ discover_trials <- function(trials_dir = app_trials_dir()) {
   configs
 }
 
+
+#' A trial's logo as an absolute path to a file that exists, or NULL.
+#'
+#' config.R files have written this three ways: an absolute path, a path
+#' relative to the app folder ("trials/tonic/www/logo.png"), and not at all.
+#' The relative form only resolved while the working directory was the app
+#' folder; on an installed build, where trials live in the writable data root,
+#' it silently matched nothing and every tile fell back to its initials. The
+#' old default — <folder>/www/logo.jpg — had the same effect for a trial whose
+#' logo is a .png. So resolve against the trial's own folder, accept any of the
+#' usual image types, and return NULL when there really is no logo: dropping
+#' www/logo.png into a trial folder is then enough to give it one.
+.trial_logo_file <- function(logo, folder) {
+  exts <- c("png", "svg", "jpg", "jpeg", "webp", "gif")
+  cand <- character(0)
+  if (!is.null(logo) && length(logo) && nzchar(as.character(logo)[1])) {
+    lf   <- as.character(logo)[1]
+    cand <- c(lf, file.path(folder, lf), file.path(folder, "www", basename(lf)))
+  }
+  cand <- c(cand, file.path(folder, "www", paste0("logo.", exts)))
+  hit  <- cand[file.exists(cand)]
+  if (!length(hit)) return(NULL)
+  normalizePath(hit[1], winslash = "/", mustWork = FALSE)
+}
 
 #' Validate a trial config has all required fields
 #' @return Character vector of missing fields (empty if valid)
