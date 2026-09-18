@@ -4,6 +4,7 @@
 # Produces a standard single-arm CONSORT diagram:
 #
 #   Enrolment:      Assessed for eligibility → Excluded
+#                   Consented and added to the database → not randomised
 #   Allocation:     Randomised → Did not receive intervention (no-op)
 #   Follow-up:      Lost / withdrew after randomisation
 #   Analysis:       Analysed at Day 30 and Day 90
@@ -43,6 +44,8 @@ consort_counts <- function(rd, screening_xlsx_path = NULL) {
   counts <- list(
     screened              = 0L,
     excluded              = 0L,
+    consented             = 0L,
+    consented_not_rand    = 0L,
     randomised            = 0L,
     withdrawn_complete    = 0L,
     withdrawn_partial     = 0L,
@@ -56,6 +59,15 @@ consort_counts <- function(rd, screening_xlsx_path = NULL) {
   )
 
   counts$randomised <- .safe_int(rd$kpis$total_randomised, 0)
+
+  # Consented and on the database, but not randomised. prepare_report_data()
+  # counts these from the consent-completion field; derive them here when the
+  # report data predates that (an rd object built by an older app version).
+  counts$consented <- .safe_int(rd$kpis$total_consented, counts$randomised)
+  counts$consented_not_rand <- .safe_int(
+    rd$kpis$consented_not_randomised,
+    max(0L, counts$consented - counts$randomised))
+  if (counts$consented < counts$randomised) counts$consented <- counts$randomised
 
   fdf <- rd$filtered_df
 
@@ -102,7 +114,7 @@ consort_counts <- function(rd, screening_xlsx_path = NULL) {
     })
   }
 
-  counts$screened <- counts$excluded + counts$randomised
+  counts$screened <- counts$excluded + counts$consented
   counts
 }
 
@@ -157,6 +169,26 @@ consort_object <- function(counts) {
     g <- consort::add_side_box(
       g,
       txt    = .n("Excluded", counts$excluded),
+      box_gp = fill_amber,
+      txt_gp = text_amber
+    )
+  }
+
+  # ── Consented and added to the database ────────────────────────
+  # The TSC asks how many participants consented and reached the database but
+  # were never randomised, so the flow shows that stage rather than jumping
+  # from eligibility straight to allocation.
+  g <- consort::add_box(
+    g,
+    txt    = .n("Consented and added to database", counts$consented),
+    box_gp = fill_cream,
+    txt_gp = text_navy
+  )
+
+  if (counts$consented_not_rand > 0) {
+    g <- consort::add_side_box(
+      g,
+      txt    = .n("Consented but not randomised", counts$consented_not_rand),
       box_gp = fill_amber,
       txt_gp = text_amber
     )
@@ -225,11 +257,14 @@ consort_object <- function(counts) {
   # ── Phase labels on the left (navy fill, white bold text) ──────────────
   # Temporarily switch box defaults so the label boxes get the navy treatment
   options(box_gp = fill_navy, txt_gp = text_white)
+  # Names are row positions among the vertical boxes, so they move with the
+  # consent stage added above: 1 assessed, 2 consented, 3 randomised,
+  # 4 received intervention, 5 Day 30, 6 Day 90.
   label_indices <- c(
     "1" = "Enrolment",
-    "2" = "Allocation",
-    "3" = "Follow-up",
-    "4" = "Analysis"
+    "3" = "Allocation",
+    "4" = "Follow-up",
+    "5" = "Analysis"
   )
   g <- consort::add_label_box(g, txt = label_indices)
 

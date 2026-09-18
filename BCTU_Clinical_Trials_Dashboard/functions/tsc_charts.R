@@ -234,11 +234,25 @@ chart_site_recruitment <- function(rd, filepath,
 # Sites open at the end of each month (step line) and sites opening that month
 # (bars), on one axis. Uses the Sites tab open dates, falling back to each
 # site's first randomisation when none are recorded.
+#
+# Counts only centres the REDCap export knows about (site_status$in_redcap),
+# and drops closed or withdrawn ones: a site typed into the Sites tab during
+# set-up has an open date but no trial data behind it, and counting those
+# overstated how many centres were actually open.
+.tsc_open_sites_rows <- function(st) {
+  if (is.null(st) || !nrow(st)) return(st)
+  keep <- rep(TRUE, nrow(st))
+  if ("in_redcap" %in% names(st)) keep <- keep & !is.na(st$in_redcap) & st$in_redcap
+  if ("stage" %in% names(st))
+    keep <- keep & !grepl("closed|withdrawn", as.character(st$stage), ignore.case = TRUE)
+  st[keep, , drop = FALSE]
+}
+
 chart_open_sites <- function(rd, filepath,
                              width = 6.3, height = 2.8, dpi = 300) {
   pal <- .tsc_pal()
   cm  <- .tsc_this_month()
-  st  <- rd$site_status
+  st  <- .tsc_open_sites_rows(rd$site_status)
   od  <- if (!is.null(st) && nrow(st) && "open_date" %in% names(st))
     suppressWarnings(as.Date(st$open_date)) else as.Date(character(0))
   od  <- od[!is.na(od) & od <= Sys.Date()]

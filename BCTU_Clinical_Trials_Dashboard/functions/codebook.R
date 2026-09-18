@@ -78,6 +78,187 @@ parse_redcap_dictionary <- function(path) {
        n_fields = length(labels), source = basename(path))
 }
 
+# =============================================================================
+# REDCap "Codebook" CSV — the print-out, not the data dictionary
+# =============================================================================
+# REDCap's Codebook page exports one row per field header followed by one row
+# per choice, with the codes sitting in the attributes column. The importer
+# above wants a data dictionary, so convert the layout first: the result is a
+# real data dictionary data frame, which parse_redcap_dictionary() reads and
+# which can be written back out for anyone who wants the CSV itself.
+# =============================================================================
+
+# REDCap lets labels carry HTML (<b>Death</b>); the dashboard shows plain text.
+.cb_plain <- function(x) trimws(gsub("\\s+", " ", gsub("<[^>]+>", "", x)))
+
+.cb_strip_zwsp <- function(x) {
+  x <- gsub("\u200b|\ufeff|\u00a0", " ", x, useBytes = TRUE)
+  trimws(x)
+}
+
+.CB_DD_HEADERS <- c(
+  "Variable / Field Name", "Form Name", "Section Header", "Field Type",
+  "Field Label", "Choices, Calculations, OR Slider Labels", "Field Note",
+  "Text Validation Type OR Show Slider Number", "Text Validation Min",
+  "Text Validation Max", "Identifier?",
+  "Branching Logic (Show field only if...)", "Required Field?",
+  "Custom Alignment", "Question Number (surveys only)", "Matrix Group Name",
+  "Matrix Ranking?", "Field Annotation"
+)
+
+# "text (date_dmy, Min: [x], Max: [y])" -> type text, validation date_dmy
+.cb_split_type <- function(x) {
+  x <- .cb_strip_zwsp(x)
+  m <- regmatches(x, regexec("^([A-Za-z_]+)\\s*\\((.*)\\)\\s*$", x))[[1]]
+  if (length(m) != 3) return(list(type = x, validation = "", min = "", max = ""))
+  inner <- m[3]
+  vmin <- ""; vmax <- ""
+  mm <- regmatches(inner, regexec("Min:\\s*([^,)]+)", inner))[[1]]
+  if (length(mm) == 2) vmin <- trimws(mm[2])
+  mm <- regmatches(inner, regexec("Max:\\s*([^,)]+)", inner))[[1]]
+  if (length(mm) == 2) vmax <- trimws(mm[2])
+  val <- trimws(unlist(strsplit(inner, ","))[1])
+  if (grepl("^(Min|Max):", val)) val <- ""
+  list(type = m[2], validation = val, min = vmin, max = vmax)
+}
+
+# Form header rows look like "Record Creation   record_creation"
+.cb_form_name <- function(x) {
+  x <- .cb_strip_zwsp(x)
+  m <- regmatches(x, regexec("\\s{2,}([a-z0-9_]+)\\s*$", x))[[1]]
+  if (length(m) == 2) m[2] else ""
+}
+
+redcap_codebook_to_dictionary <- function(path) {
+  if (!file.exists(path)) stop("File not found: ", path)
+  # Read as bytes and mark UTF-8 by hand: the export carries a BOM and REDCap's
+  # zero-width spaces, which read.csv() refuses under a non-UTF-8 locale.
+  txt <- rawToChar(readBin(path, "raw", file.info(path)$size))
+  Encoding(txt) <- "UTF-8"
+  raw <- utils::read.csv(text = txt, header = FALSE, stringsAsFactors = FALSE,
+                         colClasses = "character", check.names = FALSE,
+                         blank.lines.skip = FALSE, encoding = "UTF-8")
+  if (ncol(raw) < 5) stop("Not a REDCap codebook export: expected at least 5 columns.")
+  while (ncol(raw) < 7) raw[[ncol(raw) + 1]] <- ""
+  for (j in seq_len(ncol(raw))) raw[[j]][is.na(raw[[j]])] <- ""
+
+  rows <- list(); form <- ""; cur <- NULL; expect_logic <- FALSE
+
+  flush <- function() {
+    if (is.null(cur)) return(invisible(NULL))
+    ch <- cur$choices
+    cur$choices <- if (length(ch)) paste(sprintf("%s, %s", names(ch), unname(ch)),
+                                         collapse = " | ") else ""
+    rows[[length(rows) + 1L]] <<- cur
+    cur <<- NULL
+  }
+
+  for (i in seq_len(nrow(raw))) {
+    c1 <- .cb_strip_zwsp(raw[[1]][i]); c2 <- .cb_strip_zwsp(raw[[2]][i])
+    c3 <- .cb_strip_zwsp(raw[[3]][i]); c4 <- .cb_strip_zwsp(raw[[4]][i])
+    c5 <- .cb_strip_zwsp(raw[[5]][i]); c6 <- .cb_strip_zwsp(raw[[6]][i])
+    c7 <- .cb_strip_zwsp(raw[[7]][i])
+
+    # Instrument header: number column empty, "!" marker, form name in col 2
+    if (!nzchar(c1) && identical(c7, "!")) {
+      fn <- .cb_form_name(raw[[2]][i])
+      if (nzchar(fn)) { flush(); form <- fn; expect_logic <- FALSE; next }
+    }
+
+    # Field header: "<n>,<variable>,<label>,<type>"
+    if (grepl("^[0-9]+$", c1) && grepl("^[A-Za-z][A-Za-z0-9_]*$", c2)) {
+      flush()
+      ty <- .cb_split_type(c4)
+      cur <- list(field = c2, form = form, section = "", type = ty$type,
+                  label = .cb_plain(c3), choices = character(0), note = "",
+                  validation = ty$validation, vmin = ty$min, vmax = ty$max,
+                  identifier = "", logic = "", required = "", align = "",
+                  annotation = sub("\\s*\\|\\s*$", "", c6))
+      expect_logic <- FALSE
+      next
+    }
+    if (is.null(cur)) next
+
+    # Attribute column: "Required" / "Optional, Identifier" / alignment
+    if (nzchar(c4) && !grepl("^-?[0-9]+$", c4)) {
+      if (grepl("^Required\\b", c4)) cur$required <- "y"
+      if (grepl("\\bIdentifier\\b", c4)) cur$identifier <- "y"
+      m <- regmatches(c4, regexec("Custom alignment:\\s*(\\S+)", c4))[[1]]
+      if (length(m) == 2) cur$align <- m[2]
+    }
+
+    # Choice row: code in col 4, label in col 5
+    if (grepl("^-?[0-9]+$", c4) && nzchar(c5)) {
+      cur$choices[[c4]] <- .cb_plain(c5)
+    }
+
+    # Branching logic sits on the row after "Show the field ONLY if:"
+    if (identical(c2, "Show the field ONLY if:")) { expect_logic <- TRUE; next }
+    if (expect_logic && nzchar(c2)) {
+      if (!grepl("^//", c2)) { cur$logic <- c2; expect_logic <- FALSE }
+    }
+
+    # Field note printed under the label, minus REDCap's HTML styling
+    if (nzchar(c3) && !grepl("^<em>", c3) && !nzchar(cur$note))
+      cur$note <- gsub("<[^>]+>", "", c3)
+  }
+  flush()
+
+  if (!length(rows)) stop("No fields found — is this a REDCap Codebook CSV export?")
+
+  out <- do.call(rbind, lapply(rows, function(r) data.frame(
+    r$field, r$form, r$section, r$type, r$label, r$choices, r$note,
+    r$validation, r$vmin, r$vmax, r$identifier, r$logic, r$required,
+    r$align, "", "", "", r$annotation,
+    stringsAsFactors = FALSE, check.names = FALSE
+  )))
+  names(out) <- .CB_DD_HEADERS
+  out
+}
+
+# Written by hand rather than with write.csv() so the file is UTF-8 whatever
+# locale R is running under.
+write_redcap_dictionary <- function(df, path) {
+  q <- function(v) {
+    v <- enc2utf8(as.character(v)); v[is.na(v)] <- ""
+    paste0("\"", gsub("\"", "\"\"", v, useBytes = TRUE), "\"")
+  }
+  body <- if (nrow(df)) apply(vapply(df, q, character(nrow(df))), 1,
+                              paste, collapse = ",") else character(0)
+  lines <- c(paste(q(names(df)), collapse = ","), body)
+  con <- file(path, "wb"); on.exit(close(con), add = TRUE)
+  writeLines(lines, con, sep = "\r\n", useBytes = TRUE)
+  invisible(path)
+}
+
+# TRUE when a CSV is the Codebook print-out rather than a data dictionary.
+.cb_is_codebook_export <- function(path) {
+  first <- tryCatch(suppressWarnings(readLines(path, n = 1L, warn = FALSE)),
+                    error = function(e) character(0))
+  if (!length(first)) return(FALSE)
+  h <- tolower(first[1])
+  # The print-out's own attributes header mentions "Choices, Calculations",
+  # so a dictionary is told apart by its separate choices column instead.
+  grepl("field attributes", h, fixed = TRUE) &&
+    !grepl("choices, calculations, or slider", h, fixed = TRUE)
+}
+
+#' Read a REDCap Codebook CSV export straight into codebook form.
+parse_redcap_codebook_csv <- function(path) {
+  dd <- redcap_codebook_to_dictionary(path)
+  labels <- list(); field_labels <- character(0)
+  for (i in seq_len(nrow(dd))) {
+    v <- dd[["Variable / Field Name"]][i]
+    if (!nzchar(v)) next
+    ch <- parse_choice_string(dd[["Choices, Calculations, OR Slider Labels"]][i])
+    if (length(ch)) labels[[v]] <- as.list(ch)
+    fl <- dd[["Field Label"]][i]
+    if (nzchar(fl)) field_labels[[v]] <- fl
+  }
+  list(labels = labels, field_labels = field_labels,
+       n_fields = length(labels), source = basename(path))
+}
+
 #' Read a codebook out of free text — a pasted block or the text of a PDF.
 #' Recognises a field name on its own line followed by indented code/label
 #' pairs, and "field: 1, Label | 2, Label" on a single line.
@@ -232,6 +413,9 @@ parse_codebook_pdf <- function(path) {
 import_codebook_file <- function(path) {
   ext <- tolower(tools::file_ext(path))
   if (ext %in% c("csv", "tsv")) {
+    if (.cb_is_codebook_export(path))
+      return(tryCatch(parse_redcap_codebook_csv(path),
+                      error = function(e) parse_redcap_dictionary(path)))
     out <- tryCatch(parse_redcap_dictionary(path), error = function(e) {
       # Not a dictionary — fall back to reading it as text.
       txt <- tryCatch(readLines(path, warn = FALSE), error = function(e2) NULL)

@@ -52,7 +52,8 @@ suppressPackageStartupMessages({
 # The app's own logic, minus the Shiny modules.
 for (f in c("globals/paths.R", "globals/constants.R", "globals/datasets.R", "globals/trial_config.R",
             "functions/helpers.R", "functions/trial_overrides.R",
-            "functions/recruitment.R", "functions/prepare_report_data.R",
+            "functions/recruitment.R", "functions/participant_breakdowns.R",
+            "functions/safety_events.R", "functions/prepare_report_data.R",
             "functions/consort_flow.R", "functions/flat_completeness.R",
             "functions/baseline_table.R", "functions/codebook.R"))
   source(f)
@@ -207,7 +208,8 @@ dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
 rmd_dest <- file.path(tmp_dir, basename(tmpl))
 file.copy(tmpl, rmd_dest, overwrite = TRUE)
 for (f in c("functions/consort_flow.R", "functions/flat_completeness.R",
-            "functions/baseline_table.R", "www/BlackText-landscape.png",
+            "functions/baseline_table.R", "functions/tsc_charts.R",
+            "www/BlackText-landscape.png",
             "www/NIHR_Acknowledgement_Funded by_Logo_RGB.png"))
   if (file.exists(f)) file.copy(f, file.path(tmp_dir, basename(f)), overwrite = TRUE)
 

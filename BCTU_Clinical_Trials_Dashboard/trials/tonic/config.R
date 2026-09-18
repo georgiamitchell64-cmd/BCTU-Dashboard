@@ -112,6 +112,8 @@ trial_config <- list(
     deviation_date          = "dev_dt",       # Date of deviation → "Date occurred"
     deviation_report_date   = "dev_aware",    # Date team aware   → "Date submitted"
     deviation_narrative     = "dev_summary",  # Summary           → "Reason / notes"
+    deviation_category      = "dev_type",     # 1-7 deviation type → "Category"
+    deviation_action        = "dev_capa",     # Corrective action  → "Action"
 
     # REDCap structural fields
     redcap_event_name = "redcap_event_name"
@@ -126,7 +128,19 @@ trial_config <- list(
   # instead of raw codes. Add more columns here as needed.
   column_labels = list(
     sae_severity = list("1" = "Mild",    "2" = "Moderate", "3" = "Severe"),
-    sae_status   = list("1" = "Ongoing", "2" = "Resolved", "3" = "Fatal")
+    sae_status   = list("1" = "Ongoing", "2" = "Resolved", "3" = "Fatal"),
+    # Deviation type, from the TONIC codebook (deviation form, dev_type).
+    # Importing the codebook fills these in for every coded field; they are
+    # here so the deviation table reads in words before anyone does.
+    dev_type     = list(
+      "1" = "Non-compliance with the trial protocol",
+      "2" = "Non-compliance with the applicable regulations/GCP",
+      "3" = "Approval Issues",
+      "4" = "Non-compliance with the BCTU QMS",
+      "5" = "Data Management",
+      "6" = "Patient Safety",
+      "7" = "Scientific Value/data credibility"
+    )
   ),
 
   # ── COS type labels ───────────────────────────────────────────────────────

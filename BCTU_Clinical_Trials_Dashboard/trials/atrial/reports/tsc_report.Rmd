@@ -620,16 +620,23 @@ if (!is.null(sf) && nrow(sf) > 0) {
     pmin(24L, cumsum(rep(2L, nrow(sf))))
   }
 
-  # Actual open centres per month: count sites whose site_open_date
-  # is ≤ each month's month_date and status not Closed/Withdrawn.
+  # Actual open centres per month: sites the REDCap export knows about
+  # (site_status$in_redcap) whose open date is on or before each month, minus
+  # any that have closed or withdrawn. Set-up sites typed into the Sites tab
+  # carry an open date but no trial data, and counting them overstated how
+  # many centres were really open.
   actual_open <- rep(NA_integer_, nrow(sf))
-  if (!is.null(sites_df) && nrow(sites_df) > 0 &&
-      "site_open_date" %in% names(sites_df)) {
-    sod <- suppressWarnings(as.Date(sites_df$site_open_date))
-    valid_status <- if ("status" %in% names(sites_df)) {
-      !(sites_df$status %in% c("Closed", "Withdrawn"))
-    } else rep(TRUE, nrow(sites_df))
-    sod <- sod[valid_status]
+  open_col <- if (is.null(sites_df)) NA_character_ else
+    intersect(c("open_date", "site_open_date"), names(sites_df))[1]
+  if (!is.null(sites_df) && nrow(sites_df) > 0 && !is.na(open_col)) {
+    keep <- rep(TRUE, nrow(sites_df))
+    if ("in_redcap" %in% names(sites_df))
+      keep <- keep & !is.na(sites_df$in_redcap) & sites_df$in_redcap
+    stage_col <- intersect(c("stage", "status"), names(sites_df))[1]
+    if (!is.na(stage_col))
+      keep <- keep & !grepl("closed|withdrawn", as.character(sites_df[[stage_col]]),
+                            ignore.case = TRUE)
+    sod <- suppressWarnings(as.Date(sites_df[[open_col]][keep]))
     for (i in seq_len(nrow(sf))) {
       if (sf$month_date[i] <= cur) {
         actual_open[i] <- sum(!is.na(sod) & sod <= sf$month_date[i])
@@ -673,116 +680,78 @@ if (!is.null(sf) && nrow(sf) > 0) {
 **Table 2: Recruitment per site**
 
 ```{r recruitment-site-summary}
-# MK request: Site / Date site opened / Date first patient randomised /
-# Number of patients randomised — one row per recruiting site.
-sites_df  <- rd$site_status
-ptcp_rand <- rd$participants_randomised   # if available
-raw       <- rd$raw_redcap                # fallback for rand dates
+# Site / Date site opened / Date first patient randomised / Number randomised
+# \u2014 one row per recruiting site. prepare_report_data() builds this from the
+# Sites register scoped to the centres the REDCap export knows about, so the
+# table shows the sites that have actually recruited rather than every site
+# ever typed into the Sites tab.
+site_tbl <- rd$open_sites
 
-if (!is.null(sites_df) && nrow(sites_df) > 0) {
-
-  # Build a per-site summary (first rand date + count) using whichever
-  # data source is available.
-  rand_src <- NULL
-  if (!is.null(ptcp_rand) && nrow(ptcp_rand) > 0 &&
-      all(c("site_name","rand_dttm_s") %in% names(ptcp_rand))) {
-    rand_src <- ptcp_rand
-  } else if (!is.null(raw) && nrow(raw) > 0 &&
-             all(c("site_name","rand_dttm_s") %in% names(raw))) {
-    rand_src <- raw[!is.na(raw$rand_dttm_s), , drop = FALSE]
-  }
-
-  if (!is.null(rand_src) && nrow(rand_src) > 0) {
-    rand_src$rand_date <- suppressWarnings(as.Date(rand_src$rand_dttm_s))
-    rand_src <- rand_src[!is.na(rand_src$rand_date) & !is.na(rand_src$site_name), , drop = FALSE]
-  }
-
-  # Helper: first rand date for a given site (NA if none)
-  first_rand_for <- function(site) {
-    if (is.null(rand_src) || nrow(rand_src) == 0) return(as.Date(NA))
-    d <- rand_src$rand_date[rand_src$site_name == site]
-    if (length(d) == 0) as.Date(NA) else min(d, na.rm = TRUE)
-  }
-
-  # Helper: rand count for a given site
-  n_rand_for <- function(site) {
-    if (is.null(rand_src) || nrow(rand_src) == 0) return(0L)
-    sum(rand_src$site_name == site, na.rm = TRUE)
-  }
-
-  # Filter sites to those that are open, recruiting, or closed (drop set-up)
-  site_rows <- sites_df
-  if ("status" %in% names(site_rows)) {
-    site_rows <- site_rows[site_rows$status %in% c("Open","Recruiting","Closed"), , drop = FALSE]
-  }
-
-  # If no eligible sites after filtering, show placeholder
-  if (nrow(site_rows) == 0) {
-    manual_placeholder(
-      c("Site", "Date site opened", "Date first patient randomised",
-        "Number of patients randomised"),
-      "No open/recruiting sites to summarise.",
-      widths = c(2.6, 1.4, 1.8, 1.2)
-    )
-  } else {
-    # Build the display data frame row by row to avoid NA length issues
-    site_names <- site_rows$site_name
-    n_sites    <- length(site_names)
-    open_dates <- if ("site_open_date" %in% names(site_rows)) site_rows$site_open_date else rep(NA, n_sites)
-
-    first_rands <- as.Date(vapply(site_names, function(s) {
-      d <- first_rand_for(s)
-      if (is.na(d)) NA_real_ else as.numeric(d)
-    }, numeric(1)), origin = "1970-01-01")
-
-    n_rands <- vapply(site_names, n_rand_for, integer(1))
-
-    # Sort: highest-recruiting sites first, alphabetical as tiebreaker
-    ord <- order(-n_rands, site_names)
-    site_names  <- site_names[ord]
-    open_dates  <- open_dates[ord]
-    first_rands <- first_rands[ord]
-    n_rands     <- n_rands[ord]
-
-    fmt_date <- function(d) {
-      d <- suppressWarnings(as.Date(d))
-      ifelse(is.na(d), "\u2014", format(d, "%d %b %Y"))
+# Fallback for report data built before open_sites carried the first
+# randomisation date: rebuild from the site status table and site summary.
+if (is.null(site_tbl) || !nrow(site_tbl) || !"first_rand_date" %in% names(site_tbl)) {
+  st <- rd$site_status
+  if (!is.null(st) && nrow(st) > 0) {
+    keep <- rep(TRUE, nrow(st))
+    if ("in_redcap" %in% names(st)) keep <- keep & !is.na(st$in_redcap) & st$in_redcap
+    if ("randomisations" %in% names(st)) keep <- keep & st$randomisations > 0
+    st <- st[keep, , drop = FALSE]
+    site_tbl <- data.frame(
+      site_name      = st$site_name,
+      open_date      = if ("open_date" %in% names(st)) st$open_date else NA_character_,
+      first_rand_date = as.Date(NA),
+      randomisations = if ("randomisations" %in% names(st)) st$randomisations else 0L,
+      stringsAsFactors = FALSE)
+    ss <- rd$site_summary
+    if (!is.null(ss) && nrow(ss) > 0 && "first_rand_date" %in% names(ss)) {
+      idx <- match(site_tbl$site_name, ss$site_name)
+      site_tbl$first_rand_date <- as.Date(ss$first_rand_date[idx])
     }
+  } else site_tbl <- NULL
+}
 
-    out <- data.frame(
-      `Site`                          = site_names,
-      `Date site opened`              = fmt_date(open_dates),
-      `Date first patient randomised` = fmt_date(first_rands),
-      `Number of patients randomised` = as.integer(n_rands),
-      check.names = FALSE, stringsAsFactors = FALSE
-    )
-
-    # Total row
-    out <- rbind(
-      out,
-      data.frame(
-        `Site` = "Total",
-        `Date site opened` = "",
-        `Date first patient randomised` = "",
-        `Number of patients randomised` = as.integer(sum(n_rands)),
-        check.names = FALSE, stringsAsFactors = FALSE
-      )
-    )
-
-    ft <- tonic_ft(out, widths = c(2.6, 1.4, 1.8, 1.2))
-    ft <- align(ft, j = 2:4, align = "center", part = "all")
-    ft <- bold(ft, i = nrow(out), part = "body")
-    ft <- bg(ft,   i = nrow(out), bg = "#F4F6F8", part = "body")
-    ft
-  }
-
-} else {
+if (is.null(site_tbl) || nrow(site_tbl) == 0) {
   manual_placeholder(
     c("Site", "Date site opened", "Date first patient randomised",
       "Number of patients randomised"),
-    "Site data not available.",
+    "No recruiting sites from the REDCap export to summarise.",
     widths = c(2.6, 1.4, 1.8, 1.2)
   )
+} else {
+  n_rands <- as.integer(site_tbl$randomisations)
+  n_rands[is.na(n_rands)] <- 0L
+  ord <- order(-n_rands, site_tbl$site_name)
+
+  fmt_date <- function(d) {
+    d <- suppressWarnings(as.Date(d))
+    ifelse(is.na(d), "\u2014", format(d, "%d %b %Y"))
+  }
+
+  out <- data.frame(
+    `Site`                          = site_tbl$site_name[ord],
+    `Date site opened`              = fmt_date(site_tbl$open_date[ord]),
+    `Date first patient randomised` = fmt_date(site_tbl$first_rand_date[ord]),
+    `Number of patients randomised` = n_rands[ord],
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  # Total row
+  out <- rbind(
+    out,
+    data.frame(
+      `Site` = "Total",
+      `Date site opened` = "",
+      `Date first patient randomised` = "",
+      `Number of patients randomised` = as.integer(sum(n_rands)),
+      check.names = FALSE, stringsAsFactors = FALSE
+    )
+  )
+
+  ft <- tonic_ft(out, widths = c(2.6, 1.4, 1.8, 1.2))
+  ft <- align(ft, j = 2:4, align = "center", part = "all")
+  ft <- bold(ft, i = nrow(out), part = "body")
+  ft <- bg(ft,   i = nrow(out), bg = "#F4F6F8", part = "body")
+  ft
 }
 ```
 
@@ -839,14 +808,31 @@ if (!is.na(consort_script)) {
 Participant characteristics at baseline, including the three minimisation variables used during randomisation and key demographic measures.
 
 ```{r baseline-characteristics-table, results='asis'}
-if (file.exists("baseline_table.R")) {
-  source("baseline_table.R")
-  bl_df <- tryCatch(baseline_characteristics_df(rd), error = function(e) NULL)
-  if (!is.null(bl_df) && nrow(bl_df) > 0) {
+# The app stages baseline_table.R beside the Rmd; a render driven from the
+# repo (scripts/render_report.R) may leave it in functions/. Look in the same
+# places the CONSORT chunk does rather than assuming the working directory,
+# and say what went wrong instead of dropping the table silently.
+bt_candidates <- c(
+  "baseline_table.R",
+  file.path(dirname(knitr::current_input(dir = TRUE)), "baseline_table.R"),
+  file.path(dirname(knitr::current_input(dir = TRUE)), "..", "baseline_table.R"),
+  file.path(dirname(knitr::current_input(dir = TRUE)), "..", "functions", "baseline_table.R")
+)
+bt_script <- bt_candidates[file.exists(bt_candidates)][1]
+
+if (is.na(bt_script)) {
+  cat("*Baseline characteristics builder not found \u2014 add baseline_table.R to the app directory.*\n\n")
+} else {
+  source(bt_script, local = FALSE)
+  bl_df <- tryCatch(baseline_characteristics_df(rd), error = function(e) e)
+  if (inherits(bl_df, "error")) {
+    cat("*Baseline characteristics could not be built: ", conditionMessage(bl_df),
+        ".*\n\n", sep = "")
+  } else if (nrow(bl_df) > 0) {
     cat(knitr::knit_print(baseline_characteristics_flextable(bl_df)))
     cat("\n\n")
   } else {
-    cat("*Baseline characteristics data not available.*\n\n")
+    cat("*No baseline characteristics recorded for the participants in this report.*\n\n")
   }
 }
 ```
@@ -1005,19 +991,18 @@ if (!is.null(crf) && nrow(crf) > 0) {
 **Table 8: Summary of protocol deviations**
 
 ```{r deviations}
-# Follow the SAE pattern: show an amber-style banner when there are no
-# deviations to report, otherwise list them in a structured table.
-dev <- rd$deviations     # expected list(log = data.frame, n = integer)
-dev_n   <- if (!is.null(dev) && !is.null(dev$n)) dev$n else 0
-dev_log <- if (!is.null(dev) && !is.null(dev$log)) dev$log else NULL
+# Deviations come from prepare_report_data(): deviation_log is the per-event
+# table the Data tab drills into, deviation_count its size, and
+# deviation_available says whether the export carries a deviation form at all
+# \u2014 so "none reported" reads differently from "not collected here".
+dev_log <- rd$deviation_log
+dev_n   <- if (!is.null(rd$deviation_count)) {
+  as.integer(rd$deviation_count)
+} else if (!is.null(dev_log)) nrow(dev_log) else 0L
+dev_has_form <- !identical(rd$deviation_available, FALSE)
 
-if (dev_n == 0 || is.null(dev_log) || nrow(dev_log) == 0) {
-  # Amber banner matching the SAE style
-  banner_df <- data.frame(
-    x = "Total protocol deviations reported to date: 0. No deviation details to summarise.",
-    stringsAsFactors = FALSE
-  )
-  banner_ft <- flextable(banner_df) |>
+banner <- function(txt) {
+  ft <- flextable(data.frame(x = txt, stringsAsFactors = FALSE)) |>
     delete_part(part = "header") |>
     bg(bg = "#FEF3DC", part = "body") |>
     color(color = "#8A5A0D", part = "body") |>
@@ -1027,28 +1012,41 @@ if (dev_n == 0 || is.null(dev_log) || nrow(dev_log) == 0) {
     border_outer(border = fp_border(color = "#D97706", width = 1.5)) |>
     width(j = 1, width = 6.5) |>
     align(align = "left", part = "body")
-  knit_print(banner_ft)
+  knit_print(ft)
+}
+
+if (dev_n == 0 || is.null(dev_log) || nrow(dev_log) == 0) {
+  banner(if (dev_has_form)
+           "Total protocol deviations reported to date: 0. No deviation details to summarise."
+         else
+           "This export carries no protocol deviation form, so no deviations can be summarised.")
 } else {
-  # Display whatever columns are available (defensive — dev_log might have
-  # different column names depending on how deviations are captured).
-  want_cols <- c("date", "site", "description", "category", "action")
-  available <- intersect(want_cols, tolower(names(dev_log)))
-
-  # Reorder dev_log columns to the preferred order, rename for display
-  dev_disp <- dev_log
-  names(dev_disp) <- tolower(names(dev_disp))
-  dev_disp <- dev_disp[, available, drop = FALSE]
-  pretty_names <- c(date = "Date", site = "Site", description = "Description",
-                    category = "Category", action = "Action")
-  names(dev_disp) <- pretty_names[names(dev_disp)]
-
-  # Fill in missing expected columns as blanks
-  for (nm in setdiff(unname(pretty_names), names(dev_disp))) {
-    dev_disp[[nm]] <- ""
+  # Coded values (deviation type) arrive already translated through the trial's
+  # codebook, so the table shows words rather than REDCap's numbers.
+  col <- function(nm) if (nm %in% names(dev_log)) as.character(dev_log[[nm]]) else rep(NA_character_, nrow(dev_log))
+  fmt_d <- function(x) {
+    d <- suppressWarnings(as.Date(x))
+    ifelse(is.na(d), "\u2014", format(d, "%d %b %Y"))
   }
-  dev_disp <- dev_disp[, unname(pretty_names)]
+  blank <- function(x) ifelse(is.na(x) | !nzchar(trimws(x)), "\u2014", trimws(x))
 
-  tonic_ft(dev_disp, widths = c(0.9, 1.1, 2.3, 1.1, 1.1))
+  descr <- col("narrative")
+  term  <- col("term")
+  descr <- ifelse(is.na(descr) | !nzchar(trimws(descr)), term, descr)
+
+  dev_disp <- data.frame(
+    `Participant` = blank(col("record_id")),
+    `Date`        = fmt_d(col("onset_date")),
+    `Site`        = blank(col("site")),
+    `Description` = blank(descr),
+    `Category`    = blank(col("category")),
+    `Action`      = blank(col("action")),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  banner(sprintf("Total protocol deviations reported to date: %d", dev_n))
+  cat("\n\n")
+  tonic_ft(dev_disp, widths = c(0.8, 0.9, 1.1, 1.6, 1.3, 0.8))
 }
 ```
 
