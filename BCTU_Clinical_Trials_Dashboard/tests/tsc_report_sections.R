@@ -36,8 +36,14 @@ for (f in c("globals/paths.R", "globals/constants.R", "globals/datasets.R",
             "functions/trial_overrides.R", "functions/recruitment.R",
             "functions/participant_breakdowns.R", "functions/safety_events.R",
             "functions/prepare_report_data.R", "functions/consort_flow.R",
-            "functions/baseline_table.R", "functions/tsc_charts.R"))
+            "functions/baseline_table.R"))
   source(f)
+
+# tsc_charts.R attaches ggplot2, which a runner that installs only the test
+# packages does not have; its one assertion below is skipped there.
+have_charts <- all(vapply(c("ggplot2", "scales"), requireNamespace,
+                          logical(1), quietly = TRUE))
+if (have_charts) source("functions/tsc_charts.R")
 
 cfg <- discover_trials()[["tonic"]]
 if (is.null(cfg)) { cat("SKIP: no tonic trial config\n"); quit(status = 0L) }
@@ -161,8 +167,12 @@ ok(all(st$in_redcap[st$site_name %in% sites]),
    "every site in the export is flagged as imported")
 ok(!any(st$in_redcap[grepl("Set-up Only", st$site_name)]),
    "hand-typed set-up sites are not")
-ok(nrow(.tsc_open_sites_rows(st)) == 3,
-   "the open-centres chart counts only the imported sites")
+if (have_charts) {
+  ok(nrow(.tsc_open_sites_rows(st)) == 3,
+     "the open-centres chart counts only the imported sites")
+} else {
+  cat("  - open-centres chart filter not checked (ggplot2 absent)\n")
+}
 
 # ── 5. CONSORT: consented but not randomised ──────────────────────────────
 ok(identical(as.integer(rd$kpis$total_consented), 12L),
