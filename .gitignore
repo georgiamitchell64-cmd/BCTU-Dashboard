@@ -14,3 +14,6 @@ ehthumbs.db
 
 # The clean copy npm run stage builds for packaging (scripts/prepare_distribution.R)
 dist-staging/
+
+# Stray plot device output from running R scripts
+Rplots.pdf
