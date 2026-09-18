@@ -49,9 +49,9 @@ function rscriptCandidates(runtimeDir, platform, env = {}) {
  *   exists(p)   -> boolean            (fs.existsSync)
  *   listDir(p)  -> string[]           (fs.readdirSync, for the R-x.y.z glob)
  *
- * Returns { appDir, runtimeDir, dataDir, logFile, rscript, rscriptTried }.
- * rscript is null when no R could be found — main.js turns that into a
- * readable message rather than a window that never loads.
+ * Returns { appDir, runtimeDir, dataDir, logFile, rscript, rscriptTried,
+ * bundledR }. rscript is null when no R could be found — main.js turns that
+ * into a readable message rather than a window that never loads.
  */
 function resolvePaths(ctx) {
   const { appPath, resourcesPath, isPackaged, userData, platform } = ctx;
@@ -81,6 +81,12 @@ function resolvePaths(ctx) {
 
   const rscript = candidates.find((p) => exists(p)) || null;
 
+  // Whether we are running the R we shipped, which decides whether the
+  // packages are ours to pin — see appEnv().
+  const slash = (p) => String(p).replace(/\\/g, '/');
+  const rHome = slash(path.join(runtimeDir, 'R')) + '/';
+  const bundledR = !!rscript && slash(rscript).startsWith(rHome);
+
   return {
     appDir,
     runtimeDir,
@@ -88,6 +94,7 @@ function resolvePaths(ctx) {
     logFile: path.join(userData, 'dashboard.log'),
     rscript,
     rscriptTried: candidates,
+    bundledR,
   };
 }
 
@@ -98,15 +105,34 @@ function resolvePaths(ctx) {
  * globals/runtime.R read: the first sends everything the app writes to the
  * per-user folder (the install folder is read-only), the second points
  * report export at the pandoc and Chrome shipped alongside.
+ *
+ * When we are running our own R, the library is pinned to the one we shipped.
+ * R otherwise puts the person's own package library first — on Windows that is
+ * %LOCALAPPDATA%\R\win-library\<x.y> — so anyone who already has R of the
+ * same minor version would silently run the dashboard against their packages
+ * rather than the tested ones. That is the whole point of bundling, and the
+ * failure it causes ("object not found" somewhere deep in a package) looks
+ * nothing like its cause. R_LIBS and R_LIBS_SITE go the same way, since either
+ * can be set machine-wide and would be inherited here.
+ *
+ * On a fallback to an installed R we leave all of it alone: there, the
+ * person's library is exactly where the packages are.
  */
-function appEnv(base, { dataDir, runtimeDir }) {
-  return Object.assign({}, base, {
+function appEnv(base, { dataDir, runtimeDir, bundledR = false }) {
+  const env = Object.assign({}, base, {
     BCTU_DATA_DIR: dataDir,
     BCTU_RUNTIME_DIR: runtimeDir,
     // Not BCTU_DESKTOP: that arms the ten-minute idle shutdown meant for the
     // browser shortcut. Here the window owns the lifetime — closing it stops
     // R directly, so a timer would only ever fire at the wrong moment.
   });
+  if (bundledR) {
+    const lib = path.join(runtimeDir, 'R', 'library');
+    env.R_LIBS = lib;
+    env.R_LIBS_USER = lib;
+    env.R_LIBS_SITE = lib;
+  }
+  return env;
 }
 
 module.exports = { resolvePaths, rscriptCandidates, appEnv };

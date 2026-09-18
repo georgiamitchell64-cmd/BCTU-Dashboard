@@ -95,14 +95,23 @@ seed_data_root <- function(quiet = FALSE) {
 
   if (app_data_root_is_install()) return(invisible(root))
 
+  # Seed trial by trial, not all-or-nothing. Checking only whether the trials
+  # folder exists meant that once it did, a trial added in a later version
+  # never appeared — the update installed, and the new trial was simply
+  # missing with nothing said. Anything already there is left exactly as it
+  # is: these folders hold the settings and report templates people have
+  # edited, and an update must never write over those.
   dest <- app_trials_dir()
   src  <- file.path(app_install_dir(), "trials")
-  if (!dir.exists(dest) && dir.exists(src)) {
-    dir.create(dest, recursive = TRUE, showWarnings = FALSE)
-    copied <- file.copy(list.files(src, full.names = TRUE), dest,
-                        recursive = TRUE, overwrite = FALSE)
-    if (!quiet)
-      message("Set up ", sum(copied), " trial folder(s) in ", dest)
+  if (dir.exists(src)) {
+    if (!dir.exists(dest)) dir.create(dest, recursive = TRUE, showWarnings = FALSE)
+    shipped <- list.files(src, full.names = TRUE)
+    fresh   <- shipped[!file.exists(file.path(dest, basename(shipped)))]
+    if (length(fresh)) {
+      copied <- file.copy(fresh, dest, recursive = TRUE, overwrite = FALSE)
+      if (!quiet)
+        message("Set up ", sum(copied), " trial folder(s) in ", dest)
+    }
   }
   if (!quiet) message("Writing to ", root)
   invisible(root)
